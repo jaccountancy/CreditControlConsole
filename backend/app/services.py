@@ -20911,7 +20911,7 @@ def _vault_slug(value: str, fallback: str = "document") -> str:
 
 
 def _vault_clean_filename(filename: str, default_ext: str = "") -> str:
-    name = str(filename or "").strip().replace("/", "-").replace("\\", "-")
+    name = str(filename or "").strip().replace("/", "-").replace("\\", "-").replace("_", " ")
     if not name:
         name = "document"
     name = re.sub(r"\s+", " ", name)

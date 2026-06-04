@@ -21361,9 +21361,87 @@
             }
 
             .vault-layout {
-                display: grid;
-                grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
-                gap: 14px;
+                display: block;
+            }
+
+            .vault-documents-panel {
+                margin-top: 12px;
+            }
+
+            .vault-documents-panel .ch-companies-table-wrap {
+                min-height: min(62vh, 760px);
+            }
+
+            .vault-folder-row {
+                cursor: pointer;
+            }
+
+            .vault-folder-name {
+                display: block;
+                font-weight: 800;
+            }
+
+            .vault-folder-hint {
+                display: block;
+                color: var(--muted);
+                font-size: 12px;
+                margin-top: 2px;
+            }
+
+            .vault-extraction-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                padding: 4px 10px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.26);
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+                color: var(--blue);
+                background: rgba(228, 238, 255, 0.88);
+            }
+
+            .vault-extraction-pill.is-working::before {
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: var(--blue);
+                box-shadow: 0 0 0 rgba(29, 103, 242, 0.36);
+                animation: vaultExtractionPulse 1.05s ease-in-out infinite;
+            }
+
+            .vault-extraction-pill.is-done {
+                color: var(--green-ink);
+                border-color: rgba(21, 128, 61, 0.34);
+                background: rgba(219, 245, 232, 0.94);
+            }
+
+            .vault-extraction-pill.is-done::before {
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: #16a34a;
+            }
+
+            .vault-extraction-pill.is-error {
+                color: #b91c1c;
+                border-color: rgba(185, 28, 28, 0.34);
+                background: rgba(254, 226, 226, 0.95);
+            }
+
+            .vault-extraction-placeholder {
+                background: linear-gradient(90deg, rgba(236, 242, 252, 0.65), rgba(226, 235, 250, 0.88), rgba(236, 242, 252, 0.65));
+                background-size: 220% 100%;
+                animation: vaultExtractionSweep 1.2s ease-in-out infinite;
+            }
+
+            .vault-extraction-placeholder td {
+                color: transparent;
+                user-select: none;
             }
 
             .vault-top-card {
@@ -21555,6 +21633,10 @@
                 padding: 20px;
             }
 
+            .vault-organize-show-panel h4 {
+                margin-bottom: 6px;
+            }
+
             .vault-organize-track {
                 height: 8px;
                 border-radius: 999px;
@@ -21571,9 +21653,53 @@
                 animation: vaultOrganizePulse 1s ease-in-out infinite alternate;
             }
 
+            .vault-organize-live {
+                display: grid;
+                gap: 8px;
+                margin-bottom: 12px;
+                max-height: 120px;
+                overflow: auto;
+            }
+
+            .vault-organize-live-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: var(--ink-soft);
+                opacity: 0;
+                transform: translateY(6px);
+                animation: vaultOrganizeRowIn 0.36s ease forwards;
+            }
+
+            .vault-organize-live-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--blue);
+                box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.35);
+                animation: vaultExtractionPulse 1.05s ease-in-out infinite;
+            }
+
             @keyframes vaultOrganizePulse {
                 from { opacity: 0.7; }
                 to { opacity: 1; }
+            }
+
+            @keyframes vaultExtractionPulse {
+                0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.36); }
+                65% { box-shadow: 0 0 0 8px rgba(29, 103, 242, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0); }
+            }
+
+            @keyframes vaultExtractionSweep {
+                0% { background-position: 0% 50%; }
+                100% { background-position: 100% 50%; }
+            }
+
+            @keyframes vaultOrganizeRowIn {
+                0% { opacity: 0; transform: translateY(6px); }
+                100% { opacity: 1; transform: translateY(0); }
             }
 
             @media (max-width: 1080px) {
@@ -25221,14 +25347,15 @@
                                 </div>
                             </div>
                             <div class="vault-layout">
-                                <section>
-                                    <section class="ch-companies-table-wrap" style="margin-top: 12px;">
+                                <section class="vault-documents-panel">
+                                    <section class="ch-companies-table-wrap">
                                         <table class="ch-table" aria-label="Vault documents">
-                                            <thead>
+                                            <thead id="vaultFilesTableHead">
                                                 <tr>
                                                     <th>Document</th>
                                                     <th>Folder</th>
                                                     <th>Tags</th>
+                                                    <th>Extraction</th>
                                                     <th>Uploaded</th>
                                                 </tr>
                                             </thead>
@@ -25237,7 +25364,7 @@
                                     </section>
                                 </section>
                                 <aside>
-                                    <section class="detail-panel" id="vaultActivityPanel" style="padding: 12px;" hidden>
+                                    <section class="detail-panel" id="vaultActivityPanel" style="padding: 12px; margin-top: 12px;" hidden>
                                         <h4>Vault activity</h4>
                                         <p class="detail-meta">Upload history and Jenius organizing activity.</p>
                                         <div class="vault-activity-list" id="vaultActivityList"></div>
@@ -25282,7 +25409,23 @@
                             <h4>Jenius is organizing your workspace</h4>
                             <p class="detail-meta" id="vaultOrganizeMeta">Creating folders and placing files…</p>
                             <div class="vault-organize-track"><span id="vaultOrganizeProgress"></span></div>
+                            <div class="vault-organize-live" id="vaultOrganizeLive"></div>
                             <div class="vault-activity-list" id="vaultOrganizeActivityList"></div>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="vaultPreviewModal" hidden>
+                        <section class="company-secretarial-modal-panel vault-upload-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vaultPreviewModalTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Vault file</p>
+                                    <h4 id="vaultPreviewModalTitle">Document preview</h4>
+                                    <p class="detail-meta" id="vaultPreviewModalSummary">Review extracted details and source content.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="vaultPreviewModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="vault-preview-content" id="vaultPreviewContent">Select a file from a folder to open its preview.</div>
                         </section>
                     </div>
                     <div class="company-secretarial-modal" id="yePrepWorkspaceConfirmModal" hidden>
@@ -26629,6 +26772,7 @@
             const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
             const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
             const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
+            const PRODUCT_RELEASES_KEY = `${STORAGE_KEY}:product-releases`;
             const RISK_ASSESSMENTS_KEY = `${STORAGE_KEY}:risk-assessments`;
             const BANK_SA100_DISALLOWANCES_KEY = `${STORAGE_KEY}:bank-sa100-disallowances`;
             const BANK_SA100_MILEAGE_ENTRIES_KEY = `${STORAGE_KEY}:bank-sa100-mileage-entries`;
@@ -26771,8 +26915,11 @@
             let vaultUploadModalOpen = false;
             let vaultUploadAnalysisRows = [];
             let vaultPendingUploadFiles = [];
+            let vaultProcessingRows = [];
+            let vaultExtractionActive = false;
             let vaultActivityPanelOpen = false;
             let vaultSearchPanelOpen = false;
+            let vaultPreviewModalOpen = false;
             let vatAiReviewModalOpen = false;
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
@@ -27051,7 +27198,7 @@
             let settingsUsageSelection = null;
             let settingsUsageInspectorModalOpen = false;
             let productReleasesLoading = false;
-            let productReleasesData = { generatedAt: "", deployments: [] };
+            let productReleasesData = loadProductReleasesHistory();
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
@@ -28282,6 +28429,64 @@
                     localStorage.setItem(RISK_ASSESSMENTS_KEY, JSON.stringify({ records: riskAssessments.slice(0, 2000) }));
                 } catch (error) {
                     console.warn("Unable to persist risk assessments", error);
+                }
+            }
+
+            function normaliseProductReleaseRecord(record) {
+                if (!record || typeof record !== "object") return null;
+                const deployedAt = String(record.deployedAt || record.createdAt || record.updatedAt || "").trim();
+                const deploymentId = String(record.deploymentId || record.id || "").trim();
+                const commitSha = String(record.commitSha || "").trim();
+                const title = String(record.title || record.summary || "").trim();
+                const source = String(record.source || "").trim();
+                const details = Array.isArray(record.details)
+                    ? record.details.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 24)
+                    : [];
+                const dedupeId = String(record.releaseId || "").trim()
+                    || deploymentId
+                    || `${deployedAt}:${commitSha}:${title}`.trim();
+                if (!dedupeId) return null;
+                return {
+                    ...record,
+                    releaseId: dedupeId,
+                    deploymentId,
+                    deployedAt,
+                    commitSha,
+                    title,
+                    summary: String(record.summary || "").trim(),
+                    source,
+                    details
+                };
+            }
+
+            function normaliseProductReleasesPayload(payload) {
+                const source = payload && typeof payload === "object" ? payload : {};
+                const rows = Array.isArray(source.deployments)
+                    ? source.deployments.map((record) => normaliseProductReleaseRecord(record)).filter(Boolean)
+                    : [];
+                const sorted = rows
+                    .sort((left, right) => dateSortValue(right.deployedAt || right.createdAt || right.updatedAt || "") - dateSortValue(left.deployedAt || left.createdAt || left.updatedAt || ""));
+                return {
+                    generatedAt: String(source.generatedAt || "").trim(),
+                    deployments: sorted.slice(0, 240)
+                };
+            }
+
+            function loadProductReleasesHistory() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(PRODUCT_RELEASES_KEY) || "{}");
+                    return normaliseProductReleasesPayload(stored);
+                } catch {
+                    try { localStorage.removeItem(PRODUCT_RELEASES_KEY); } catch { /* ignore */ }
+                    return { generatedAt: "", deployments: [] };
+                }
+            }
+
+            function persistProductReleasesHistory() {
+                try {
+                    localStorage.setItem(PRODUCT_RELEASES_KEY, JSON.stringify(normaliseProductReleasesPayload(productReleasesData)));
+                } catch (error) {
+                    console.warn("Unable to persist product releases history", error);
                 }
             }
 
@@ -60379,16 +60584,7 @@
                 const analytics = payload.analytics || {};
                 const ai = payload.ai || {};
                 const hero = document.getElementById("insightsHeroCard");
-                if (hero) hero.classList.toggle("is-loading", Boolean(insightsLoading && !insightsData));
-                const heroChip = document.getElementById("insightsHeroChip");
-                if (heroChip) {
-                    heroChip.textContent = insightsLoading
-                        ? "Refreshing now"
-                        : (ai.status === "ready" ? "OpenAI live" : "Local analytics");
-                }
-                document.getElementById("insightsMeta").textContent = analytics.generatedAt
-                    ? `System briefing generated ${formatDate(analytics.generatedAt)} · ${ai.status === "ready" ? "OpenAI powered" : "Local analytics"}`
-                    : "Whole-system AI analysis covering debtor book, bank extraction, month-end, Jashflow and platform status.";
+                if (hero) hero.hidden = true;
                 if (insightsLoading && !insightsData) {
                     target.innerHTML = `<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Jenius AI is analysing the platform data</strong><p>Building a whole-system briefing across credit control, banking, ME reporting and operational status.</p></div>`;
                     return;
@@ -60615,7 +60811,6 @@
                 const statusCounts = analytics.statusCounts || [];
                 const monthly = insightMonthlyRows(analytics);
                 const topCustomers = analytics.topCustomers || [];
-                const briefingLines = aiBriefingLines(ai, analytics);
                 const conversations = (ai.conversations || []).filter((item) => item && (item.question || item.answer)).slice(0, 4);
                 const monthlyRecent = monthly.slice(-6);
                 const topCustomerRows = topCustomers.slice(0, 8).map((customer) => ({
@@ -60625,44 +60820,7 @@
                 const calendar = companyCalendarSummary();
                 const calendarToneClass = calendar.tone === "error" ? "is-error" : calendar.tone === "warning" ? "is-warning" : "is-live";
                 const calendarRows = calendar.events.slice(0, 4);
-                const totalOutstanding = Number(totals.totalOutstanding ?? totals.totalDue ?? totals.accountsReceivable ?? totals.totalOpen ?? 0);
-                const overdueValue = Number(totals.totalOverdue ?? totals.overdueValue ?? 0);
-                const overdueShare = totalOutstanding > 0 ? (overdueValue / totalOutstanding) * 100 : 0;
-                const oldestOverdueDays = insightRiskInvoices(analytics).reduce((max, invoice) => Math.max(max, Number(invoice.overdueDays || 0)), 0);
-                const latestCollectionRatio = Number((monthly[monthly.length - 1] || {}).collectionRatio || 0);
-                const workflowValue = statusCounts.reduce((sum, row) => sum + Number(row.value || 0), 0);
-                const focusRows = [
-                    { label: "Open ledger", value: formatCurrency(totalOutstanding), detail: `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices` },
-                    { label: "Overdue exposure", value: formatPercent(overdueShare), detail: `${formatCurrency(overdueValue)} overdue` },
-                    { label: "Oldest overdue", value: `${oldestOverdueDays.toLocaleString("en-GB")} days`, detail: oldestOverdueDays ? "Longest unpaid balance age" : "No overdue balances" },
-                    { label: "Collection ratio", value: formatPercent(latestCollectionRatio), detail: "Most recent month" },
-                    { label: "Workflow pressure", value: formatCurrency(workflowValue), detail: "Legal, notices and plans" },
-                ];
                 return `<div class="insights-home">
-                    <section class="insights-home-overview">
-                        <section class="insight-chart ai-summary-card home-briefing-surface insights-home-section" id="insightsBriefingSection">
-                            <div class="ai-summary-head">
-                                <span>AI Copilot Briefing</span>
-                                <mark>${escapeHTML(ai.status === "ready" ? "OpenAI" : "Local")}</mark>
-                            </div>
-                            <h3>${escapeHTML(ai.summary || "Whole system operational briefing")}</h3>
-                            <ol class="copilot-briefing-lines">${briefingLines.map((line) => `<li>${escapeHTML(line)}</li>`).join("")}</ol>
-                            ${ai.narrative ? `<p class="ai-summary-note">${escapeHTML(ai.narrative)}</p>` : ""}
-                            <div class="home-quick-actions" aria-label="Quick jump navigation">
-                                <button class="home-scroll-chip" data-insights-scroll="#insightsExposureSection" type="button">Exposure</button>
-                                <button class="home-scroll-chip" data-insights-scroll="#insightsConversationsSection" type="button">Discussions</button>
-                            </div>
-                            <div class="home-focus-grid" aria-label="Operational focus metrics">
-                                ${focusRows.map((row) => `
-                                    <article class="home-focus-card">
-                                        <span>${escapeHTML(row.label)}</span>
-                                        <strong>${escapeHTML(row.value)}</strong>
-                                        <p>${escapeHTML(row.detail)}</p>
-                                    </article>
-                                `).join("")}
-                            </div>
-                        </section>
-                    </section>
                     <section class="insight-chart insights-home-section company-calendar-card" id="insightsCompanyCalendarSection">
                         <div class="company-calendar-header">
                             <span>Company Calendar</span>
@@ -66390,6 +66548,87 @@
                 return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
             }
 
+            function vaultRowsForDisplay() {
+                return [...vaultProcessingRows, ...(Array.isArray(vaultFiles) ? vaultFiles : [])];
+            }
+
+            function vaultFolderSummaryRows(rows) {
+                const folders = new Map();
+                rows.forEach((row) => {
+                    const folder = String(row?.folder || "Inbox").trim() || "Inbox";
+                    if (!folders.has(folder)) {
+                        folders.set(folder, {
+                            folder,
+                            fileCount: 0,
+                            latestUploadedAt: "",
+                            extractingCount: 0,
+                            readyCount: 0,
+                            failedCount: 0,
+                        });
+                    }
+                    const bucket = folders.get(folder);
+                    bucket.fileCount += 1;
+                    const uploadedAt = String(row?.uploadedAt || "");
+                    if (uploadedAt && (!bucket.latestUploadedAt || uploadedAt > bucket.latestUploadedAt)) {
+                        bucket.latestUploadedAt = uploadedAt;
+                    }
+                    const status = String(row?.extractionStatus || "ready");
+                    if (status === "extracting") bucket.extractingCount += 1;
+                    else if (status === "failed") bucket.failedCount += 1;
+                    else bucket.readyCount += 1;
+                });
+                return Array.from(folders.values()).sort((left, right) => left.folder.localeCompare(right.folder, "en-GB", { sensitivity: "base" }));
+            }
+
+            function renderVaultExtractionBadge(status, extractingCount = 0) {
+                const mode = String(status || "").toLowerCase();
+                if (mode === "extracting") {
+                    const label = extractingCount > 1 ? `${extractingCount} extracting` : "Extracting";
+                    return `<span class="vault-extraction-pill is-working">${escapeHTML(label)}</span>`;
+                }
+                if (mode === "failed") {
+                    return '<span class="vault-extraction-pill is-error">Needs attention</span>';
+                }
+                return '<span class="vault-extraction-pill is-done">Extracted</span>';
+            }
+
+            function buildVaultExtractionAnimationEvents(stagedRows, uploadedRows) {
+                const staged = Array.isArray(stagedRows) ? stagedRows : [];
+                const uploaded = Array.isArray(uploadedRows) ? uploadedRows : [];
+                const events = [];
+                const createdFolders = new Set();
+                staged.forEach((row, index) => {
+                    const sourceName = String(row?.originalName || row?.displayName || "Document");
+                    const target = uploaded.find((item) => String(item?.originalName || "").trim().toLowerCase() === sourceName.trim().toLowerCase())
+                        || uploaded[index]
+                        || {};
+                    const finalName = String(target?.displayName || row?.displayName || sourceName);
+                    const finalFolder = String(target?.folder || row?.folder || "Inbox");
+                    events.push({
+                        message: `Extracted ${sourceName}`,
+                        detail: "Reading content and metadata",
+                    });
+                    if (finalName && finalName !== sourceName) {
+                        events.push({
+                            message: `Renamed to ${finalName}`,
+                            detail: "Applied AI naming standard",
+                        });
+                    }
+                    if (!createdFolders.has(finalFolder)) {
+                        createdFolders.add(finalFolder);
+                        events.push({
+                            message: `Created folder ${finalFolder}`,
+                            detail: "New destination added to Vault",
+                        });
+                    }
+                    events.push({
+                        message: `Moved ${finalName} into ${finalFolder}`,
+                        detail: "File organisation complete",
+                    });
+                });
+                return events;
+            }
+
             async function refreshVaultData({ silent = false } = {}) {
                 vaultLoading = true;
                 if (!silent) renderVaultScreen();
@@ -66501,30 +66740,43 @@
                 const meta = document.getElementById("vaultOrganizeMeta");
                 const progress = document.getElementById("vaultOrganizeProgress");
                 const activityList = document.getElementById("vaultOrganizeActivityList");
-                if (!show || !meta || !progress || !activityList) return;
-                const rows = Array.isArray(activities) ? activities.slice(0, 8) : [];
+                const live = document.getElementById("vaultOrganizeLive");
+                if (!show || !meta || !progress || !activityList || !live) return;
+                const rows = Array.isArray(activities) ? activities.filter(Boolean).slice(0, 24) : [];
+                if (!rows.length) return;
                 show.hidden = false;
                 activityList.innerHTML = "";
+                live.innerHTML = "";
                 progress.style.width = "0%";
                 for (let index = 0; index < rows.length; index += 1) {
                     const row = rows[index];
                     progress.style.width = `${Math.round(((index + 1) / rows.length) * 100)}%`;
                     meta.textContent = row?.message || "Organizing workspace…";
+                    live.insertAdjacentHTML("afterbegin", `
+                        <div class="vault-organize-live-row">
+                            <span class="vault-organize-live-dot" aria-hidden="true"></span>
+                            <span>${escapeHTML(row?.message || "Processing file")}</span>
+                        </div>
+                    `);
                     activityList.insertAdjacentHTML("beforeend", `
                         <article class="vault-activity-item">
                             <strong>${escapeHTML(row?.message || "Activity")}</strong>
                             <small>${escapeHTML(row?.detail || "")}</small>
                         </article>
                     `);
-                    await new Promise((resolve) => window.setTimeout(resolve, 260));
+                    await new Promise((resolve) => window.setTimeout(resolve, 340));
                 }
-                await new Promise((resolve) => window.setTimeout(resolve, 480));
+                await new Promise((resolve) => window.setTimeout(resolve, 650));
                 show.hidden = true;
             }
 
             async function confirmVaultUpload() {
                 if (!vaultPendingUploadFiles.length) {
                     showToast("No files selected for upload.", "error");
+                    return;
+                }
+                if (vaultExtractionActive) {
+                    showToast("Vault extraction is already running in the background.", "error");
                     return;
                 }
                 const form = new FormData();
@@ -66541,22 +66793,42 @@
                     };
                 });
                 form.append("manifest", JSON.stringify(manifest));
-                try {
-                    const payload = await requestFormData(api.endpoints.vaultUpload, form);
-                    vaultUploadModalOpen = false;
-                    vaultPendingUploadFiles = [];
-                    vaultUploadAnalysisRows = [];
-                    renderVaultUploadModal();
-                    vaultFiles = Array.isArray(payload?.files) ? payload.files : [];
-                    vaultFolders = Array.isArray(payload?.folders) ? payload.folders : [];
-                    vaultTags = Array.isArray(payload?.tags) ? payload.tags : [];
-                    vaultActivities = Array.isArray(payload?.activities) ? payload.activities : [];
-                    await runVaultOrganizeShow(vaultActivities);
-                    showToast(`Uploaded ${Number(payload?.uploadedCount || 0).toLocaleString("en-GB")} files to Vault.`, "success");
-                    renderVaultScreen();
-                } catch (error) {
-                    showToast(error?.message || "Unable to upload files to Vault.", "error");
-                }
+                const nowIso = new Date().toISOString();
+                const stagedRows = (vaultUploadAnalysisRows || []).map((row, index) => ({
+                    id: `vault-processing-${Date.now()}-${index}`,
+                    originalName: row.originalName || "",
+                    displayName: row.suggestedName || row.originalName || "Document",
+                    folder: row.suggestedFolder || "Inbox",
+                    summary: row.summary || "Extracting document details…",
+                    tags: Array.isArray(row.tags) ? row.tags : [],
+                    uploadedAt: nowIso,
+                    extractionStatus: "extracting",
+                }));
+                vaultProcessingRows = stagedRows;
+                vaultExtractionActive = true;
+                vaultUploadModalOpen = false;
+                vaultPendingUploadFiles = [];
+                vaultUploadAnalysisRows = [];
+                renderVaultUploadModal();
+                renderVaultScreen();
+
+                (async () => {
+                    try {
+                        const payload = await requestFormData(api.endpoints.vaultUpload, form);
+                        vaultFiles = Array.isArray(payload?.files) ? payload.files : [];
+                        vaultFolders = Array.isArray(payload?.folders) ? payload.folders : [];
+                        vaultTags = Array.isArray(payload?.tags) ? payload.tags : [];
+                        vaultActivities = Array.isArray(payload?.activities) ? payload.activities : [];
+                        await runVaultOrganizeShow(vaultActivities);
+                        showToast(`Uploaded ${Number(payload?.uploadedCount || 0).toLocaleString("en-GB")} files to Vault.`, "success");
+                    } catch (error) {
+                        showToast(error?.message || "Unable to upload files to Vault.", "error");
+                    } finally {
+                        vaultProcessingRows = [];
+                        vaultExtractionActive = false;
+                        await refreshVaultData({ silent: true });
+                    }
+                })();
             }
 
             function buildVaultFacetCounts(rows, accessor) {
@@ -66583,6 +66855,7 @@
 
             function renderVaultScreen() {
                 const summary = document.getElementById("vaultSummary");
+                const filesHead = document.getElementById("vaultFilesTableHead");
                 const filesBody = document.getElementById("vaultFilesTableBody");
                 const searchInput = document.getElementById("vaultSearchInput");
                 const folderFilter = document.getElementById("vaultFolderFilterSelect");
@@ -66597,13 +66870,19 @@
                 const input = document.getElementById("vaultUploadInput");
                 const activityToggle = document.getElementById("vaultActivityToggleButton");
                 const activityPanel = document.getElementById("vaultActivityPanel");
-                if (!summary || !filesBody || !searchInput || !folderFilter || !tagFilter || !searchToggleButton || !searchToggleLabel || !searchCollapse || !filterChipRow || !topCard || !uploadButton || !refreshButton || !input || !activityToggle || !activityPanel) return;
+                if (!summary || !filesHead || !filesBody || !searchInput || !folderFilter || !tagFilter || !searchToggleButton || !searchToggleLabel || !searchCollapse || !filterChipRow || !topCard || !uploadButton || !refreshButton || !input || !activityToggle || !activityPanel) return;
+
+                const displayRows = vaultRowsForDisplay();
+                const activeFilterCount = [vaultSearchTerm, vaultFolderFilter, vaultTagFilter].filter((value) => String(value || "").trim()).length;
+                const isFolderDefaultView = activeFilterCount === 0;
+                const extractingCount = displayRows.filter((row) => String(row?.extractionStatus || "") === "extracting").length;
 
                 summary.textContent = vaultLoading
                     ? "Loading Vault files and activity…"
-                    : `${(vaultFiles || []).length.toLocaleString("en-GB")} file${(vaultFiles || []).length === 1 ? "" : "s"} shown · ${(vaultFolders || []).length.toLocaleString("en-GB")} folders · ${(vaultTags || []).length.toLocaleString("en-GB")} tags`;
+                    : extractingCount
+                        ? `${extractingCount.toLocaleString("en-GB")} file${extractingCount === 1 ? "" : "s"} extracting in background · folders will update automatically`
+                        : `${(vaultFiles || []).length.toLocaleString("en-GB")} file${(vaultFiles || []).length === 1 ? "" : "s"} shown · ${(vaultFolders || []).length.toLocaleString("en-GB")} folders · ${(vaultTags || []).length.toLocaleString("en-GB")} tags`;
                 if (searchInput.value !== vaultSearchTerm) searchInput.value = vaultSearchTerm;
-                const activeFilterCount = [vaultSearchTerm, vaultFolderFilter, vaultTagFilter].filter((value) => String(value || "").trim()).length;
                 if (!vaultSearchPanelOpen && activeFilterCount) vaultSearchPanelOpen = true;
                 topCard.classList.toggle("is-search-open", vaultSearchPanelOpen);
                 searchCollapse.setAttribute("aria-hidden", vaultSearchPanelOpen ? "false" : "true");
@@ -66614,8 +66893,8 @@
                         ? `Search (${activeFilterCount})`
                         : "Search";
 
-                const folderCounts = buildVaultFacetCounts(vaultFiles, (file) => [file.folder || "Inbox"]);
-                const tagCounts = buildVaultFacetCounts(vaultFiles, (file) => Array.isArray(file.tags) ? file.tags : []);
+                const folderCounts = buildVaultFacetCounts(displayRows, (file) => [file.folder || "Inbox"]);
+                const tagCounts = buildVaultFacetCounts(displayRows, (file) => Array.isArray(file.tags) ? file.tags : []);
                 const folderValues = mergeVaultFacetValues([...(vaultFolders || []), ...folderCounts.keys()], folderCounts);
                 const tagValues = mergeVaultFacetValues([...(vaultTags || []), ...tagCounts.keys()], tagCounts);
                 folderFilter.innerHTML = ['<option value="">📁 All folders</option>', ...folderValues.map((item) => `<option value="${escapeHTML(item)}">📁 ${escapeHTML(item)}${folderCounts.get(item) ? ` (${Number(folderCounts.get(item) || 0).toLocaleString("en-GB")})` : ""}</option>`)].join("");
@@ -66728,18 +67007,64 @@
                 renderVaultActivityList();
                 renderVaultUploadModal();
 
-                if (!vaultFiles.length) {
-                    filesBody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">Vault</p><h4>No files yet</h4><p>Upload files to auto-rename, tag, organize into folders, and make them searchable by text.</p></div></td></tr>';
+                if (!displayRows.length && !vaultExtractionActive) {
+                    filesHead.innerHTML = `<tr><th>Folder</th><th>Files</th><th>Status</th><th>Last updated</th><th>Action</th></tr>`;
+                    filesBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Vault</p><h4>No files yet</h4><p>Upload files and Jenius will create folders and organise them after extraction.</p></div></td></tr>';
                     return;
                 }
-                filesBody.innerHTML = vaultFiles.map((file) => {
+
+                if (vaultExtractionActive && !vaultFiles.length) {
+                    filesHead.innerHTML = `<tr><th>Folder</th><th>Files</th><th>Status</th><th>Last updated</th><th>Action</th></tr>`;
+                    filesBody.innerHTML = Array.from({ length: Math.max(3, vaultProcessingRows.length || 0) }).map(() => `
+                        <tr class="vault-extraction-placeholder">
+                            <td>Preparing folders</td>
+                            <td>0 files</td>
+                            <td>${renderVaultExtractionBadge("extracting")}</td>
+                            <td>${escapeHTML(formatDateTime(new Date().toISOString()))}</td>
+                            <td>Loading</td>
+                        </tr>
+                    `).join("");
+                    return;
+                }
+
+                if (isFolderDefaultView) {
+                    const folders = vaultFolderSummaryRows(displayRows);
+                    filesHead.innerHTML = `<tr><th>Folder</th><th>Files</th><th>Status</th><th>Last updated</th><th>Action</th></tr>`;
+                    filesBody.innerHTML = folders.map((row) => {
+                        const status = row.failedCount ? "failed" : row.extractingCount ? "extracting" : "ready";
+                        return `
+                            <tr class="vault-folder-row" data-vault-folder-open="${escapeHTML(row.folder)}">
+                                <td><span class="vault-folder-name">${escapeHTML(row.folder)}</span><small class="vault-folder-hint">${escapeHTML(row.extractingCount ? "Files are still being extracted and organised." : "Folder ready to open.")}</small></td>
+                                <td>${escapeHTML(`${row.fileCount.toLocaleString("en-GB")} file${row.fileCount === 1 ? "" : "s"}`)}</td>
+                                <td>${renderVaultExtractionBadge(status, row.extractingCount)}</td>
+                                <td>${escapeHTML(formatDateTime(row.latestUploadedAt || ""))}</td>
+                                <td><button class="ghost-button" type="button" data-vault-open-folder="${escapeHTML(row.folder)}">Open folder</button></td>
+                            </tr>
+                        `;
+                    }).join("");
+                    filesBody.querySelectorAll("[data-vault-open-folder], [data-vault-folder-open]").forEach((node) => {
+                        node.addEventListener("click", () => {
+                            const folder = String(node.dataset.vaultOpenFolder || node.dataset.vaultFolderOpen || "");
+                            if (!folder) return;
+                            vaultFolderFilter = folder;
+                            vaultSearchPanelOpen = true;
+                            refreshVaultData({ silent: true });
+                        });
+                    });
+                    return;
+                }
+
+                filesHead.innerHTML = `<tr><th>Document</th><th>Folder</th><th>Tags</th><th>Extraction</th><th>Uploaded</th></tr>`;
+                filesBody.innerHTML = displayRows.map((file) => {
                     const tags = Array.isArray(file.tags) ? file.tags.filter(Boolean) : [];
                     const description = String(file.summary || "").trim() || "No description available.";
+                    const extractionStatus = String(file.extractionStatus || "ready");
                     return `
-                        <tr data-vault-file-row="${escapeHTML(file.id || "")}">
+                        <tr data-vault-file-row="${escapeHTML(file.id || "")}" ${extractionStatus === "extracting" ? 'class="vault-extraction-placeholder"' : ""}>
                             <td><strong>${escapeHTML(file.displayName || file.originalName || "Document")}</strong><small class="vault-doc-description">${escapeHTML(description)}</small></td>
                             <td>${escapeHTML(file.folder || "Inbox")}</td>
                             <td>${escapeHTML(tags.join(", ") || "--")}</td>
+                            <td>${renderVaultExtractionBadge(extractionStatus)}</td>
                             <td>${escapeHTML(formatDateTime(file.uploadedAt || ""))}</td>
                         </tr>
                     `;
@@ -68734,11 +69059,8 @@
                                 : normalisedSource === "git_push"
                                     ? "GIT PUSH"
                                     : String(row.source || "RAILWAY").toUpperCase();
-                            const summaryText = String(row.summary || "").trim();
-                            const detailRows = Array.isArray(row.details)
-                                ? row.details.map((item) => String(item || "").trim()).filter(Boolean)
-                                : [];
-                            const commitText = String(row.commitSha || "").trim();
+                            const summaryText = productReleaseHumanSummary(row);
+                            const detailRows = productReleaseHumanDetails(row);
                             return `
                                 <li>
                                     <div class="release-deployment-head">
@@ -68746,9 +69068,8 @@
                                         <span class="release-deployment-meta">${escapeHTML(deployedAt ? formatDeveloperLogStamp(deployedAt) : "--")} · ${escapeHTML(sourceLabel)}</span>
                                     </div>
                                     ${summaryText ? `<div class="release-deployment-meta">${escapeHTML(summaryText)}</div>` : ""}
-                                    ${(commitText || detailRows.length) ? `
+                                    ${detailRows.length ? `
                                         <ul>
-                                            ${commitText ? `<li>Commit: ${escapeHTML(commitText.slice(0, 12))}</li>` : ""}
                                             ${detailRows.map((line) => `<li>${escapeHTML(line)}</li>`).join("")}
                                         </ul>
                                     ` : ""}
@@ -68765,7 +69086,22 @@
                 renderProductReleasesDeployments();
                 try {
                     const payload = await requestJSON(`${api.endpoints.settingsReleases}?limit=120`);
-                    productReleasesData = payload || productReleasesData;
+                    const incoming = normaliseProductReleasesPayload(payload);
+                    const existingRows = Array.isArray(productReleasesData?.deployments) ? productReleasesData.deployments : [];
+                    const mergedById = new Map();
+                    [...incoming.deployments, ...existingRows].forEach((row) => {
+                        const normalised = normaliseProductReleaseRecord(row);
+                        if (!normalised?.releaseId) return;
+                        if (!mergedById.has(normalised.releaseId)) mergedById.set(normalised.releaseId, normalised);
+                    });
+                    const mergedRows = Array.from(mergedById.values())
+                        .sort((left, right) => dateSortValue(right.deployedAt || right.createdAt || right.updatedAt || "") - dateSortValue(left.deployedAt || left.createdAt || left.updatedAt || ""))
+                        .slice(0, 240);
+                    productReleasesData = {
+                        generatedAt: incoming.generatedAt || new Date().toISOString(),
+                        deployments: mergedRows
+                    };
+                    persistProductReleasesHistory();
                 } catch (error) {
                     console.error("Unable to load deployment releases", error);
                     showToast(error?.message || "Unable to load deployment releases", "error");
@@ -68773,6 +69109,47 @@
                     productReleasesLoading = false;
                     renderProductReleasesDeployments();
                 }
+            }
+
+            function productReleaseHumanSummary(row = {}) {
+                const summary = String(row.summary || "").trim();
+                if (summary) {
+                    const lowered = summary.toLowerCase();
+                    if (lowered.includes("runtime deployment")) return "Production deployment published to Railway runtime.";
+                    return summary;
+                }
+                const source = String(row.source || "").toLowerCase();
+                if (source === "git_push") return "New code was deployed from a Git push.";
+                if (source === "runtime") return "Production runtime deployment published.";
+                return "Deployment published successfully.";
+            }
+
+            function productReleaseHumanDetails(row = {}) {
+                const details = Array.isArray(row.details)
+                    ? row.details.map((item) => String(item || "").trim()).filter(Boolean)
+                    : [];
+                const lines = [];
+                const commitSha = String(row.commitSha || "").trim();
+                if (commitSha) lines.push(`Code version ${commitSha.slice(0, 12)} is now live.`);
+                details.forEach((detail) => {
+                    const line = detail.replace(/\s+/g, " ").trim();
+                    if (!line) return;
+                    if (/^commit:/i.test(line)) return;
+                    if (/^deployment id:/i.test(line)) {
+                        lines.push("Railway deployment reference recorded.");
+                        return;
+                    }
+                    if (/^service id:/i.test(line)) {
+                        lines.push("Published to the configured production service.");
+                        return;
+                    }
+                    if (/^environment id:/i.test(line)) {
+                        lines.push("Production environment release has been updated.");
+                        return;
+                    }
+                    lines.push(line);
+                });
+                return lines.slice(0, 4);
             }
 
             async function loadSettingsUsage(force = false) {
@@ -69596,6 +69973,7 @@
                 localStorage.removeItem(LETTER_TEMPLATES_KEY);
                 localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
                 localStorage.removeItem(PRACTICE_PACK_HISTORY_KEY);
+                localStorage.removeItem(PRODUCT_RELEASES_KEY);
                 statePersistenceDisabled = false;
                 syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
