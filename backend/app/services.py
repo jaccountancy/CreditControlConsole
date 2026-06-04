@@ -5013,16 +5013,22 @@ def dashboard_payload(tenant_id: str | None = None) -> dict:
                 FROM sync_runs
                 WHERE provider = %s
                   AND status = %s
+                  AND (%s::text IS NULL OR tenant_id = %s::text OR tenant_id IS NULL OR tenant_id = '')
                 ORDER BY completed_at DESC NULLS LAST, created_at DESC
                 LIMIT 1
                 """,
-                ("xero", "completed"),
+                ("xero", "completed", tenant_id, tenant_id),
             )
             latest_sync = cursor.fetchone()
         connection.commit()
 
+    latest_invoice_sync = summary["as_of"]
+    latest_completed_sync = (latest_sync or {}).get("completed_at")
+    if latest_completed_sync and (latest_invoice_sync is None or latest_completed_sync > latest_invoice_sync):
+        latest_invoice_sync = latest_completed_sync
+
     return {
-        "as_of": summary["as_of"] or (latest_sync or {}).get("completed_at"),
+        "as_of": latest_invoice_sync,
         "invoice_count": summary["invoice_count"] or 0,
         "total_receivables": float(customer_summary["total_receivables"] or 0),
         "total_overdue": float(customer_summary["total_overdue"] or 0),
