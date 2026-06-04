@@ -25052,6 +25052,7 @@
                 "confirmation-statements": "Confirmation Statements",
                 "client-auth-register": "Client Register",
                 "sa100-prep": "SA100 Prep",
+                "ye-prep": "YE Prep",
                 "vat-return-prepare": "VAT Return Prepare",
                 "company-secretarial": "Company Secretarial",
                 "hmrc-64-8s": "HMRC 64-8s",
@@ -25078,6 +25079,7 @@
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
                 "client-auth-register": "Access the shared client register and auth-code directory from one standalone screen.",
                 "sa100-prep": "Start and review self-assessment preparation workspaces from bank categorisation through draft SA100 computations.",
+                "ye-prep": "Review connected Xero workspaces used for year-end preparation and client setup.",
                 "vat-return-prepare": "Prepare VAT return workspaces with period checks, draft outputs, and filing readiness.",
                 "company-secretarial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
                 "hmrc-64-8s": "Track HMRC 64-8 authority requests, evidence and status updates.",
@@ -28660,6 +28662,7 @@
                 if (activeView === "client-auth-register") return "client-auth-register";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
                 if (activeView === "sa100-prep") return "sa100-prep";
+                if (activeView === "ye-prep") return "ye-prep";
                 if (activeView === "vat-return-prepare") return "vat-return-prepare";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
                 if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
@@ -28824,6 +28827,7 @@
                 if (isIgnitionView()) return "ignition";
                 if (activeView === "me-report") return "me";
                 if (activeView === "sa100-prep") return "practice";
+                if (activeView === "ye-prep") return "practice";
                 if (activeView === "practice-packs") return "practice";
                 if (activeView === "settings") return "settings";
                 if (activeView === "insights") return "insights";
@@ -28949,12 +28953,13 @@
                 setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 setElementVisible(document.getElementById("sa100PrepScreen"), activeView === "sa100-prep");
+                setElementVisible(document.getElementById("yePrepScreen"), activeView === "ye-prep");
                 setElementVisible(document.getElementById("vatReturnPrepareScreen"), activeView === "vat-return-prepare");
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "vat-return-prepare", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -29023,6 +29028,16 @@
                 scrollConsoleToTop();
             }
 
+            function openYePrepScreen() {
+                activeView = "ye-prep";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+                loadSupplierReconciliation();
+            }
+
             function openVatReturnPrepareScreen() {
                 activeView = "vat-return-prepare";
                 syncActiveViewShell();
@@ -29051,6 +29066,7 @@
                 if (section === "ignition") return openIgnitionScreen();
                 if (section === "me-report") return openMeReportScreen();
                 if (section === "sa100-prep") return openSa100PrepScreen();
+                if (section === "ye-prep") return openYePrepScreen();
                 if (section === "vat-return-prepare") return openVatReturnPrepareScreen();
                 if (section === "practice-packs") return openPracticePackScreen();
                 if (section === "settings") return openSettingsScreen();
@@ -29194,6 +29210,7 @@
                 "supplier-reconciliation",
                 "confirmation-statements",
                 "sa100-prep",
+                "ye-prep",
                 "vat-return-prepare",
                 "company-secretarial",
                 "company-secreterial",
@@ -29306,6 +29323,7 @@
                 ignition: "credit-control-ignition",
                 "me-report": "credit-control-me-report",
                 "sa100-prep": "credit-control-sa100-prep",
+                "ye-prep": "credit-control-ye-prep",
                 "vat-return-prepare": "credit-control-vat-return-prepare",
                 "practice-packs": "credit-control-practice-packs",
                 settings: "credit-control-settings",
@@ -55931,6 +55949,7 @@
                     "ignition-clients": "Ignition Client Register",
                     "me-report": "Monthly Flows",
                     "sa100-prep": "SA100 Prep",
+                    "ye-prep": "YE Prep",
                     "vat-return-prepare": "VAT Return Prepare",
                     "practice-packs": "Practice Packs"
                 }[view] || "Console";
@@ -55958,6 +55977,9 @@
                 if (activeView === "sa100-prep") {
                     const workspace = sa100PrepWorkspaces.find((item) => item.id === selectedSa100WorkspaceId) || null;
                     return workspace ? `${workspace.clientName} · ${workspace.taxYear}` : "Self-assessment prep";
+                }
+                if (activeView === "ye-prep") {
+                    return `${supplierReconciliationXeroConnections().length.toLocaleString("en-GB")} connected Xero workspace${supplierReconciliationXeroConnections().length === 1 ? "" : "s"}`;
                 }
                 if (activeView === "vat-return-prepare") {
                     const vatEntry = selectedVatReturnEntry(vatReturnQueueRows());
@@ -56617,6 +56639,7 @@
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "me-report") activeNavSection = "me-report";
                 else if (activeView === "sa100-prep") activeNavSection = "sa100-prep";
+                else if (activeView === "ye-prep") activeNavSection = "ye-prep";
                 else if (activeView === "vat-return-prepare") activeNavSection = "vat-return-prepare";
                 else if (activeView === "practice-packs") activeNavSection = "practice-packs";
                 else if (activeView === "settings") activeNavSection = "settings";
@@ -60288,6 +60311,50 @@
                     `).join("");
             }
 
+            function renderYePrepScreen() {
+                const summary = document.getElementById("yePrepSummary");
+                const body = document.getElementById("yePrepWorkspaceBody");
+                const refreshButton = document.getElementById("yePrepRefreshButton");
+                if (!summary || !body) return;
+
+                if (refreshButton && refreshButton.dataset.yePrepWired !== "true") {
+                    refreshButton.dataset.yePrepWired = "true";
+                    refreshButton.addEventListener("click", () => {
+                        loadSupplierReconciliation(true);
+                    });
+                }
+
+                const connections = supplierReconciliationXeroConnections();
+                const connectedClients = supplierReconciliationConnectedClients();
+                if (supplierReconciliationLoading && !connections.length) {
+                    summary.textContent = "Loading connected Xero workspaces.";
+                    body.innerHTML = '<tr><td colspan="5">Loading workspace data...</td></tr>';
+                    return;
+                }
+
+                if (!connections.length) {
+                    summary.textContent = "No connected Xero workspaces found.";
+                    body.innerHTML = '<tr><td colspan="5">Connect Xero workspaces to see year-end preparation workspaces here.</td></tr>';
+                    return;
+                }
+
+                summary.textContent = `${connections.length.toLocaleString("en-GB")} connected Xero workspace${connections.length === 1 ? "" : "s"} available for year-end preparation.`;
+                body.innerHTML = connections.map((connection) => {
+                    const tenantId = String(connection?.tenantId || "").trim();
+                    const workspaceClients = connectedClients.filter((client) => String(client?.tenantId || "") === tenantId);
+                    const lastUpdated = String(connection?.updatedAt || connection?.createdAt || "").trim();
+                    return `
+                        <tr>
+                            <td><strong>${escapeHTML(connection?.tenantName || tenantId || "Workspace")}</strong></td>
+                            <td><small>${escapeHTML(tenantId || "-")}</small></td>
+                            <td>${escapeHTML(connection?.tenantType || "Organisation")}</td>
+                            <td>${workspaceClients.length.toLocaleString("en-GB")}</td>
+                            <td>${escapeHTML(lastUpdated ? formatDate(lastUpdated) : "Recently")}</td>
+                        </tr>
+                    `;
+                }).join("");
+            }
+
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
                 practicePackHistory = loadPracticePackHistory();
@@ -60556,6 +60623,7 @@
                 } else {
                     console.warn("SA100 prep renderer is unavailable in this build.");
                 }
+                renderYePrepScreen();
                 renderVatReturnPrepareScreen();
                 renderPracticePackScreen();
                 renderClientScreen();
