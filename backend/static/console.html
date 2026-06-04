@@ -253,10 +253,12 @@
                 line-height: 1.1;
             }
             .settings-nav-group-label {
+                --group-accent: var(--blue);
                 width: 100%;
-                display: flex;
+                display: grid;
+                grid-template-columns: 18px minmax(0, 1fr) 8px;
                 align-items: center;
-                justify-content: space-between;
+                gap: 8px;
                 margin: 9px 0 2px;
                 padding: 8px 10px;
                 border-radius: 12px;
@@ -273,15 +275,29 @@
                 position: relative;
                 transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
             }
-            .settings-nav-group-label::before {
-                content: "";
-                width: 6px;
-                height: 6px;
-                margin-right: 8px;
-                border-radius: 999px;
-                background: currentColor;
-                opacity: 0.34;
-                flex: 0 0 auto;
+            .settings-nav-group-icon {
+                width: 18px;
+                height: 18px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 8px;
+                color: var(--group-accent);
+                background: color-mix(in srgb, var(--group-accent) 12%, #ffffff);
+                border: 1px solid color-mix(in srgb, var(--group-accent) 30%, #ffffff);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+            }
+            .settings-nav-group-icon svg {
+                width: 11px;
+                height: 11px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .settings-nav-group-text {
+                overflow-wrap: anywhere;
+                line-height: 1.12;
             }
             .settings-nav-group-label::after {
                 content: "";
@@ -294,24 +310,42 @@
                 transition: transform 0.16s ease;
             }
             .settings-nav-group-label[aria-expanded="true"] {
-                border-color: rgba(29, 103, 242, 0.26);
-                background: rgba(233, 241, 255, 0.82);
-                color: var(--blue);
+                border-color: color-mix(in srgb, var(--group-accent) 38%, #ffffff);
+                background: color-mix(in srgb, var(--group-accent) 14%, #ffffff);
+                color: var(--group-accent);
                 box-shadow: 0 8px 14px rgba(29, 103, 242, 0.1);
             }
             .settings-nav-group-label[aria-expanded="true"]::after {
                 transform: rotate(-135deg);
             }
             .settings-nav-group-label:hover {
-                border-color: rgba(29, 103, 242, 0.22);
-                color: var(--blue);
+                border-color: color-mix(in srgb, var(--group-accent) 34%, #ffffff);
+                color: var(--group-accent);
                 transform: translateY(-1px);
                 box-shadow: 0 8px 14px rgba(30, 47, 77, 0.08);
+            }
+            .settings-nav-group-label:hover .settings-nav-group-icon,
+            .settings-nav-group-label[aria-expanded="true"] .settings-nav-group-icon {
+                color: #ffffff;
+                background: var(--group-accent);
+                border-color: color-mix(in srgb, var(--group-accent) 58%, #ffffff);
             }
             .settings-nav-group-label:focus-visible {
                 outline: none;
                 border-color: rgba(29, 103, 242, 0.42);
                 box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.14);
+            }
+            .settings-nav-group-label[data-settings-group-label="connections"] {
+                --group-accent: #2d7bff;
+            }
+            .settings-nav-group-label[data-settings-group-label="practice-settings"] {
+                --group-accent: #2e9a74;
+            }
+            .settings-nav-group-label[data-settings-group-label="communications"] {
+                --group-accent: #da8d28;
+            }
+            .settings-nav-group-label[data-settings-group-label="technical-settings"] {
+                --group-accent: #6c73ff;
             }
             .settings-sidebar-card .settings-nav-group-label:first-child {
                 margin-top: 2px;
@@ -18842,6 +18876,78 @@
                 top: 0;
                 z-index: 2;
             }
+            #xeroLockFixProgressModal .company-secretarial-modal-panel {
+                width: min(860px, 100%);
+                animation: xero-lock-mismatch-modal-enter 0.22s ease-out;
+            }
+            .xero-lock-fix-live-panel {
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.92);
+                padding: 12px;
+                margin-bottom: 10px;
+            }
+            .xero-lock-fix-live-panel strong {
+                display: block;
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 900;
+            }
+            .xero-lock-fix-live-panel span {
+                display: block;
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 800;
+            }
+            #xeroLockFixProgressTableWrap {
+                max-height: min(48vh, 460px);
+                overflow: auto;
+                border-radius: 12px;
+            }
+            #xeroLockFixProgressTableBody tr.is-fixing {
+                background: rgba(233, 241, 255, 0.82);
+            }
+            #xeroLockFixProgressTableBody tr.is-fixed {
+                background: rgba(232, 248, 238, 0.92);
+            }
+            #xeroLockFixProgressTableBody tr.is-failed {
+                background: rgba(255, 231, 231, 0.9);
+            }
+            .xero-lock-fix-bg-chip {
+                position: fixed;
+                right: 22px;
+                bottom: 18px;
+                z-index: 920;
+                min-width: min(520px, calc(100vw - 28px));
+                max-width: min(560px, calc(100vw - 28px));
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 12px 14px;
+                border-radius: 14px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: rgba(255, 255, 255, 0.97);
+                box-shadow: var(--shadow);
+            }
+            .xero-lock-fix-bg-chip strong {
+                display: block;
+                font-size: 0.82rem;
+                color: var(--ink);
+            }
+            .xero-lock-fix-bg-chip span {
+                display: block;
+                margin-top: 3px;
+                font-size: 0.73rem;
+                color: var(--muted);
+                font-weight: 760;
+            }
+            .xero-lock-fix-bg-chip .detail-actions {
+                margin-left: auto;
+                flex-wrap: nowrap;
+                gap: 8px;
+            }
             @keyframes xero-mismatch-fixing-pulse {
                 0% { box-shadow: inset 0 0 0 0 rgba(29, 103, 242, 0.06); }
                 50% { box-shadow: inset 0 0 0 999px rgba(29, 103, 242, 0.08); }
@@ -18857,6 +18963,12 @@
                 }
                 #xeroLockMismatchModal .xero-lock-mismatch-toolbar {
                     top: 84px;
+                }
+                .xero-lock-fix-bg-chip {
+                    right: 12px;
+                    left: 12px;
+                    max-width: none;
+                    min-width: 0;
                 }
             }
             .xero-lock-date-flag-cell .xero-lock-fix-button {
@@ -19234,7 +19346,7 @@
                                 <span class="app-nav-copy"><strong>Settings</strong><span>Focused controls</span></span>
                             </button>
                             <div class="app-nav-submenu" role="group" aria-label="Settings sections">
-                                <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false">Connections</button>
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span><span class="settings-nav-group-text">Connections</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="data-import">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
@@ -19251,7 +19363,7 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Ignition Link</strong><span>Connection</span></span>
                                 </button>
-                                <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false">Practice Settings</button>
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m3 9 9-5 9 5"></path><path d="M4 10h16"></path><path d="M6 10v8"></path><path d="M10 10v8"></path><path d="M14 10v8"></path><path d="M18 10v8"></path><path d="M4 20h16"></path></svg></span><span class="settings-nav-group-text">Practice Settings</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="renewal-settings">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
@@ -19276,7 +19388,7 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 14h3"></path><path d="M13 14h3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Lock-Date Mapping</strong><span>Tenant company links</span></span>
                                 </button>
-                                <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false">Communications</button>
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span><span class="settings-nav-group-text">Communications</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
@@ -19293,7 +19405,7 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
                                 </button>
-                                <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false">Technical Settings</button>
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="factory-reset">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
@@ -19332,7 +19444,7 @@
                             <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
                         </div>
                         <nav class="app-nav">
-                            <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false">Connections</button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span><span class="settings-nav-group-text">Connections</span></button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="data-import">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
@@ -19349,7 +19461,7 @@
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Ignition Link</strong><span>Connection</span></span>
                             </button>
-                            <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false">Practice Settings</button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m3 9 9-5 9 5"></path><path d="M4 10h16"></path><path d="M6 10v8"></path><path d="M10 10v8"></path><path d="M14 10v8"></path><path d="M18 10v8"></path><path d="M4 20h16"></path></svg></span><span class="settings-nav-group-text">Practice Settings</span></button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="renewal-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
@@ -19374,7 +19486,7 @@
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 14h3"></path><path d="M13 14h3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Lock-Date Mapping</strong><span>Tenant company links</span></span>
                             </button>
-                            <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false">Communications</button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span><span class="settings-nav-group-text">Communications</span></button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
@@ -19391,7 +19503,7 @@
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
                             </button>
-                            <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false">Technical Settings</button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                             <button class="settings-sidebar-button danger-button settings-nav-group-item" id="settingsFactorySidebarButton" type="button" data-settings-group-item="technical-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
@@ -21445,6 +21557,48 @@
                             </div>
                         </div>
                     </div>
+                    <div class="company-secretarial-modal" id="xeroLockFixProgressModal" hidden>
+                        <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="xeroLockFixProgressTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Live processing</p>
+                                    <h4 id="xeroLockFixProgressTitle">Updating Xero Lock Dates</h4>
+                                    <p class="detail-meta" id="xeroLockFixProgressSummary">Preparing selected clients…</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="xeroLockFixProcessBackgroundButton" type="button">Process in background</button>
+                                    <button class="ghost-button" id="xeroLockFixProgressCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="xero-lock-fix-live-panel">
+                                <strong id="xeroLockFixCurrentTenant">Queued…</strong>
+                                <span id="xeroLockFixCurrentTenantMeta">Waiting to start.</span>
+                            </div>
+                            <div id="xeroLockFixProgressBar" class="xero-lock-mismatch-progress" hidden><span id="xeroLockFixProgressFill"></span></div>
+                            <div class="ch-companies-table-wrap" id="xeroLockFixProgressTableWrap">
+                                <table class="ch-table" aria-label="Xero lock-date fix progress">
+                                    <thead>
+                                        <tr>
+                                            <th>Tenant</th>
+                                            <th>Company</th>
+                                            <th>Status</th>
+                                            <th>Message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="xeroLockFixProgressTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="xero-lock-fix-bg-chip" id="xeroLockFixBackgroundChip" hidden>
+                        <div>
+                            <strong id="xeroLockFixBackgroundTitle">Xero lock-date fixes running</strong>
+                            <span id="xeroLockFixBackgroundMeta">Processing in background…</span>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" id="xeroLockFixBackgroundOpenButton" type="button">Show progress</button>
+                        </div>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="jashflowScreen" hidden>
                         <section class="detail-panel jashflow-panel" id="jashflowFormsPanel" hidden>
@@ -23325,7 +23479,7 @@
             let developerLogEntries = [];
             let developerLogDateFilter = "";
             let developerLogModeFilter = activeSettingsSection === "developer-log" ? "system" : "all";
-            let developerLogSeverityFilter = "all";
+            let developerLogSeverityFilter = activeSettingsSection === "developer-log" ? "error" : "all";
             let userActivityEntries = loadUserActivityLog();
             let lastUserActivitySignature = "";
             let lastUserActivityAt = 0;
@@ -23389,6 +23543,10 @@
             let xeroLockMismatchSearchTerm = "";
             let xeroLockMismatchStatusFilter = "all";
             let xeroLockMismatchVisibleTenantIds = [];
+            let xeroLockFixProgressTenantIds = [];
+            let xeroLockFixCurrentTenantId = "";
+            let xeroLockFixProcessingInBackground = false;
+            let xeroLockFixLastRunTotals = { fixed: 0, failed: 0, total: 0 };
             const bankStatementChartOfAccountsFallback = [
                 { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
                 { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
@@ -31508,19 +31666,137 @@
                 if (xeroLockMismatchFixing) {
                     const closeConfirmed = window.confirm("Fixes are still running. Close this window and continue in background?");
                     if (!closeConfirmed) return;
+                    xeroLockFixProcessingInBackground = true;
                 }
                 const modal = document.getElementById("xeroLockMismatchModal");
                 if (modal) modal.hidden = true;
+                renderXeroLockFixProgressUI();
             }
 
             function openXeroLockMismatchModal() {
                 const modal = document.getElementById("xeroLockMismatchModal");
                 if (!modal) return;
                 modal.hidden = false;
+                xeroLockFixProcessingInBackground = false;
                 const searchInput = document.getElementById("xeroLockMismatchSearchInput");
                 if (searchInput) {
                     searchInput.value = xeroLockMismatchSearchTerm;
                     setTimeout(() => searchInput.focus(), 0);
+                }
+                renderXeroLockFixProgressUI();
+            }
+
+            function xeroLockMismatchRowByTenantId(tenantId) {
+                return (xeroLockMismatchData.rows || []).find((row) => String(row?.tenantId || "") === String(tenantId || "")) || null;
+            }
+
+            function xeroLockFixProcessInBackground() {
+                if (!xeroLockMismatchFixing) return;
+                xeroLockFixProcessingInBackground = true;
+                const mismatchModal = document.getElementById("xeroLockMismatchModal");
+                const progressModal = document.getElementById("xeroLockFixProgressModal");
+                if (mismatchModal) mismatchModal.hidden = true;
+                if (progressModal) progressModal.hidden = true;
+                renderXeroLockFixProgressUI();
+                showToast("Bulk lock-date fixes will continue in the background.", "info");
+            }
+
+            function openXeroLockFixProgressModal() {
+                const modal = document.getElementById("xeroLockFixProgressModal");
+                if (!modal) return;
+                modal.hidden = false;
+                xeroLockFixProcessingInBackground = false;
+                renderXeroLockFixProgressUI();
+            }
+
+            function closeXeroLockFixProgressModal() {
+                if (xeroLockMismatchFixing) {
+                    xeroLockFixProcessInBackground();
+                    return;
+                }
+                const modal = document.getElementById("xeroLockFixProgressModal");
+                if (modal) modal.hidden = true;
+                renderXeroLockFixProgressUI();
+            }
+
+            function renderXeroLockFixProgressUI() {
+                const modal = document.getElementById("xeroLockFixProgressModal");
+                const summary = document.getElementById("xeroLockFixProgressSummary");
+                const currentTenantLabel = document.getElementById("xeroLockFixCurrentTenant");
+                const currentTenantMeta = document.getElementById("xeroLockFixCurrentTenantMeta");
+                const tableBody = document.getElementById("xeroLockFixProgressTableBody");
+                const progressBar = document.getElementById("xeroLockFixProgressBar");
+                const progressFill = document.getElementById("xeroLockFixProgressFill");
+                const backgroundChip = document.getElementById("xeroLockFixBackgroundChip");
+                const backgroundMeta = document.getElementById("xeroLockFixBackgroundMeta");
+                const processBackgroundButton = document.getElementById("xeroLockFixProcessBackgroundButton");
+                if (!summary || !currentTenantLabel || !currentTenantMeta || !tableBody) return;
+
+                const progress = xeroLockMismatchProgressSnapshot();
+                const totalInRun = Math.max(xeroLockFixProgressTenantIds.length, progress.total, xeroLockFixLastRunTotals.total || 0);
+                if (summary) {
+                    if (xeroLockMismatchFixing) {
+                        summary.textContent = `${progress.fixed.toLocaleString("en-GB")} fixed, ${progress.failed.toLocaleString("en-GB")} failed, ${Math.max(totalInRun - progress.fixed - progress.failed, 0).toLocaleString("en-GB")} remaining.`;
+                    } else {
+                        const finalFixed = Number(xeroLockFixLastRunTotals.fixed || progress.fixed || 0);
+                        const finalFailed = Number(xeroLockFixLastRunTotals.failed || progress.failed || 0);
+                        const finalTotal = Number(xeroLockFixLastRunTotals.total || totalInRun || 0);
+                        summary.textContent = finalTotal
+                            ? `Run complete: ${finalFixed.toLocaleString("en-GB")} fixed, ${finalFailed.toLocaleString("en-GB")} failed, ${finalTotal.toLocaleString("en-GB")} total.`
+                            : "No active lock-date fix run.";
+                    }
+                }
+
+                const activeRow = xeroLockMismatchRowByTenantId(xeroLockFixCurrentTenantId);
+                if (xeroLockMismatchFixing && activeRow) {
+                    currentTenantLabel.textContent = `Processing ${String(activeRow?.tenantName || "tenant")}`;
+                    currentTenantMeta.textContent = String(xeroLockMismatchFixState?.[xeroLockFixCurrentTenantId]?.message || "Updating Xero lock date...");
+                } else if (xeroLockMismatchFixing) {
+                    currentTenantLabel.textContent = "Preparing next tenant…";
+                    currentTenantMeta.textContent = "Queued clients are being processed one by one.";
+                } else {
+                    currentTenantLabel.textContent = "Processing complete";
+                    currentTenantMeta.textContent = "You can close this panel or review mismatch results.";
+                }
+
+                if (processBackgroundButton) {
+                    processBackgroundButton.hidden = !xeroLockMismatchFixing;
+                    processBackgroundButton.disabled = !xeroLockMismatchFixing;
+                }
+
+                if (progressBar && progressFill) {
+                    const denominator = Math.max(1, totalInRun);
+                    const percent = ((progress.fixed + progress.failed) / denominator) * 100;
+                    progressBar.hidden = !(xeroLockMismatchFixing || totalInRun > 0);
+                    progressFill.style.width = `${Math.max(0, Math.min(100, percent)).toFixed(2)}%`;
+                }
+
+                const rows = xeroLockFixProgressTenantIds
+                    .map((tenantId) => {
+                        const row = xeroLockMismatchRowByTenantId(tenantId) || {};
+                        const state = xeroLockMismatchFixState?.[tenantId] || {};
+                        const status = String(state.status || "queued");
+                        const label = status === "fixing" ? "Processing" : status === "fixed" ? "Fixed" : status === "failed" ? "Failed" : "Queued";
+                        const message = String(state.message || "Queued for fix...");
+                        return `
+                            <tr class="${xeroLockMismatchRowClass(tenantId)}">
+                                <td>${escapeHTML(String(row?.tenantName || tenantId))}</td>
+                                <td>${escapeHTML(String(row?.companyName || row?.clientName || ""))}</td>
+                                <td>${escapeHTML(label)}</td>
+                                <td>${escapeHTML(message)}</td>
+                            </tr>
+                        `;
+                    })
+                    .join("");
+                tableBody.innerHTML = rows || '<tr><td colspan="4"><div class="ch-empty-state">No active lock-date fix run.</div></td></tr>';
+
+                const shouldShowBackgroundChip = xeroLockMismatchFixing && xeroLockFixProcessingInBackground;
+                if (backgroundChip) backgroundChip.hidden = !shouldShowBackgroundChip;
+                if (backgroundMeta && shouldShowBackgroundChip) {
+                    backgroundMeta.textContent = `${progress.fixed.toLocaleString("en-GB")} fixed, ${progress.failed.toLocaleString("en-GB")} failed, ${Math.max(totalInRun - progress.fixed - progress.failed, 0).toLocaleString("en-GB")} remaining.`;
+                }
+                if (modal && !xeroLockMismatchFixing && xeroLockFixProcessingInBackground) {
+                    modal.hidden = true;
                 }
             }
 
@@ -31685,6 +31961,7 @@
                         renderXeroLockMismatchModal();
                     });
                 });
+                renderXeroLockFixProgressUI();
             }
 
             async function identifyXeroLockMismatches(force = true) {
@@ -31727,14 +32004,20 @@
                     `Apply lock-date fixes for ${selectedTenantIds.length.toLocaleString("en-GB")} selected mismatch${selectedTenantIds.length === 1 ? "" : "es"}?`
                 );
                 if (!confirmed) return;
+                xeroLockFixProcessingInBackground = false;
+                xeroLockFixProgressTenantIds = [...selectedTenantIds];
+                xeroLockFixCurrentTenantId = "";
+                xeroLockFixLastRunTotals = { fixed: 0, failed: 0, total: selectedTenantIds.length };
                 xeroLockMismatchFixing = true;
                 selectedTenantIds.forEach((tenantId) => {
                     xeroLockMismatchFixState[tenantId] = { status: "queued", message: "Queued for fix..." };
                 });
                 renderXeroLockMismatchModal();
+                openXeroLockFixProgressModal();
                 let fixedCount = 0;
                 let failedCount = 0;
                 for (const tenantId of selectedTenantIds) {
+                    xeroLockFixCurrentTenantId = tenantId;
                     xeroLockMismatchFixState[tenantId] = { status: "fixing", message: "Updating Xero lock date..." };
                     renderXeroLockMismatchModal();
                     try {
@@ -31756,13 +32039,20 @@
                     renderXeroLockMismatchModal();
                     await new Promise((resolve) => setTimeout(resolve, 120));
                 }
+                xeroLockFixCurrentTenantId = "";
                 xeroLockMismatchFixing = false;
+                xeroLockFixLastRunTotals = { fixed: fixedCount, failed: failedCount, total: selectedTenantIds.length };
+                renderXeroLockMismatchModal();
                 await loadXeroLockDateOverview(true);
                 await identifyXeroLockMismatches(true);
+                const progressModal = document.getElementById("xeroLockFixProgressModal");
+                if (progressModal && !xeroLockFixProcessingInBackground) progressModal.hidden = true;
                 showToast(
                     `Mismatch clean-up complete: ${fixedCount.toLocaleString("en-GB")} fixed${failedCount ? `, ${failedCount.toLocaleString("en-GB")} failed` : ""}.`,
                     failedCount ? "info" : "success"
                 );
+                xeroLockFixProcessingInBackground = false;
+                renderXeroLockFixProgressUI();
             }
 
             async function downloadXeroLockMismatchPdf() {
@@ -55894,6 +56184,7 @@
 
             function applyDeveloperLogDefaultFilters() {
                 developerLogModeFilter = "system";
+                developerLogSeverityFilter = "error";
             }
 
             function openDeveloperLog() {

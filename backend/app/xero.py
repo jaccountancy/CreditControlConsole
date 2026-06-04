@@ -27,6 +27,8 @@ XERO_PAGE_DELAY_SECONDS = 1.05
 XERO_STANDARD_TIMEOUT_SECONDS = 90.0
 XERO_API_REQUEST_TIMEOUT_SECONDS = 180.0
 XERO_API_PAGE_TIMEOUT_SECONDS = 225
+XERO_REFRESH_CONCURRENCY_WAIT_SECONDS = 1.8
+XERO_REFRESH_CONCURRENCY_POLL_SECONDS = 0.15
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
 XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 360
@@ -273,10 +275,21 @@ def _connection_refreshed_by_another_request(connection_id: str, previous_refres
         row
         and row.get("refresh_token")
         and row["refresh_token"] != previous_refresh_token
-        and row["expires_at"] > utcnow()
+        and row.get("access_token")
     ):
         return row
     return None
+
+
+async def _wait_for_concurrent_refresh(connection_id: str, previous_refresh_token: str) -> dict | None:
+    deadline = time.monotonic() + XERO_REFRESH_CONCURRENCY_WAIT_SECONDS
+    while True:
+        refreshed = _connection_refreshed_by_another_request(connection_id, previous_refresh_token)
+        if refreshed is not None:
+            return refreshed
+        if time.monotonic() >= deadline:
+            return None
+        await asyncio.sleep(XERO_REFRESH_CONCURRENCY_POLL_SECONDS)
 
 
 async def refresh_connection(connection_id: str) -> dict:
@@ -307,15 +320,39 @@ async def refresh_connection(connection_id: str) -> dict:
         except httpx.RequestError as exc:
             _raise_xero_request_error(exc, "token refresh")
         if response.is_error:
-            refreshed = _connection_refreshed_by_another_request(connection_id, previous_refresh_token)
+            refreshed = await _wait_for_concurrent_refresh(connection_id, previous_refresh_token)
             if refreshed is not None:
                 return refreshed
-            _raise_xero_http_error(response, "token refresh")
-        payload = response.json()
+            # If another process rotated the refresh token just before this request,
+            # retry once with the latest stored token before surfacing an error.
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT * FROM xero_connections WHERE id = %s", (connection_id,))
+                    latest_row = cursor.fetchone()
+                connection.commit()
+            if latest_row and latest_row.get("refresh_token") and latest_row["refresh_token"] != previous_refresh_token:
+                retry_response = await client.post(
+                    TOKEN_URL,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": latest_row["refresh_token"],
+                    },
+                    auth=(settings.xero_client_id, settings.xero_client_secret),
+                )
+                if retry_response.is_error:
+                    _raise_xero_http_error(retry_response, "token refresh")
+                payload = retry_response.json()
+            else:
+                _raise_xero_http_error(response, "token refresh")
+        else:
+            payload = response.json()
 
     expires_at = utcnow() + timedelta(seconds=payload["expires_in"])
+    now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            # Xero rotates refresh tokens. A single user can have multiple tenant rows
+            # with the same token, so update every row still carrying the old token.
             cursor.execute(
                 """
                 UPDATE xero_connections
@@ -323,17 +360,19 @@ async def refresh_connection(connection_id: str) -> dict:
                     refresh_token = %s,
                     expires_at = %s,
                     updated_at = %s
-                WHERE id = %s
-                RETURNING *
+                WHERE user_id = %s
+                  AND refresh_token = %s
                 """,
                 (
                     payload["access_token"],
                     payload["refresh_token"],
                     expires_at,
-                    utcnow(),
-                    connection_id,
+                    now,
+                    row["user_id"],
+                    previous_refresh_token,
                 ),
             )
+            cursor.execute("SELECT * FROM xero_connections WHERE id = %s", (connection_id,))
             updated = cursor.fetchone()
         connection.commit()
 

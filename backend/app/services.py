@@ -7650,28 +7650,69 @@ def _me_report_contact_for_user(user: dict, xero_contact_id: str, tenant_id: str
 
 
 def gmail_oauth_configured() -> bool:
-    settings = get_settings()
     placeholders = {"", "replace-me", "changeme", "change-me", "your-client-id", "your-client-secret"}
-    client_id = str(settings.gmail_client_id or "").strip()
-    client_secret = str(settings.gmail_client_secret or "").strip()
+    client_id = _gmail_client_id_value()
+    client_secret = _gmail_client_secret_value()
     return client_id.lower() not in placeholders and client_secret.lower() not in placeholders
+
+
+def _gmail_oauth_secret_value(value: str | None) -> str:
+    # Railway/env vars are sometimes pasted with wrapping quotes.
+    return str(value or "").strip().strip("\"'")
+
+
+def _gmail_env_alias_value(*keys: str) -> str:
+    for key in keys:
+        candidate = _gmail_oauth_secret_value(os.getenv(key))
+        if candidate:
+            return candidate
+    return ""
+
+
+def _gmail_client_id_value() -> str:
+    settings = get_settings()
+    return _gmail_oauth_secret_value(settings.gmail_client_id) or _gmail_env_alias_value(
+        "GMAIL_OAUTH_CLIENT_ID",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_ID",
+    )
+
+
+def _gmail_client_secret_value() -> str:
+    settings = get_settings()
+    return _gmail_oauth_secret_value(settings.gmail_client_secret) or _gmail_env_alias_value(
+        "GMAIL_OAUTH_CLIENT_SECRET",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+    )
+
+
+def _gmail_scopes_value(value: str | None) -> str:
+    return " ".join(str(value or "").replace(",", " ").split())
 
 
 def gmail_redirect_uri() -> str:
     settings = get_settings()
-    return str(settings.gmail_redirect_uri or f"{settings.base_url.rstrip('/')}/auth/gmail/callback").strip()
+    redirect_uri = _gmail_oauth_secret_value(settings.gmail_redirect_uri) or _gmail_env_alias_value(
+        "GMAIL_OAUTH_REDIRECT_URI",
+        "GOOGLE_REDIRECT_URI",
+        "GOOGLE_OAUTH_REDIRECT_URI",
+    )
+    return redirect_uri or f"{settings.base_url.rstrip('/')}/auth/gmail/callback"
 
 
 def gmail_authorize_url(state_token: str) -> str:
+    client_id = _gmail_client_id_value()
     settings = get_settings()
+    scopes = _gmail_scopes_value(settings.gmail_scopes)
     if not gmail_oauth_configured():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Gmail OAuth is not configured. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET and GMAIL_REDIRECT_URI.")
     query = urlencode(
         {
             "response_type": "code",
-            "client_id": settings.gmail_client_id,
+            "client_id": client_id,
             "redirect_uri": gmail_redirect_uri(),
-            "scope": settings.gmail_scopes,
+            "scope": scopes,
             "state": state_token,
             "access_type": "offline",
             "prompt": "consent",
@@ -7682,20 +7723,31 @@ def gmail_authorize_url(state_token: str) -> str:
 
 
 async def exchange_gmail_code_for_tokens(code: str) -> dict:
-    settings = get_settings()
+    client_id = _gmail_client_id_value()
+    client_secret = _gmail_client_secret_value()
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             GMAIL_TOKEN_URL,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "client_id": settings.gmail_client_id,
-                "client_secret": settings.gmail_client_secret,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "redirect_uri": gmail_redirect_uri(),
             },
         )
     if response.is_error:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token exchange failed: {response.text[:500]}")
+        response_text = response.text[:500]
+        if "invalid_client" in response_text.lower():
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Gmail token exchange failed: invalid_client. "
+                    "Check GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in environment settings "
+                    "(remove wrapping quotes/spaces and confirm the OAuth client still exists in Google Cloud)."
+                ),
+            )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token exchange failed: {response_text}")
     return response.json()
 
 
@@ -7762,19 +7814,29 @@ async def refresh_gmail_connection(row: dict) -> dict:
         return row
     if not row.get("refresh_token"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail needs to be reconnected before sending ME Report emails.")
-    settings = get_settings()
+    client_id = _gmail_client_id_value()
+    client_secret = _gmail_client_secret_value()
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             GMAIL_TOKEN_URL,
             data={
                 "grant_type": "refresh_token",
                 "refresh_token": row["refresh_token"],
-                "client_id": settings.gmail_client_id,
-                "client_secret": settings.gmail_client_secret,
+                "client_id": client_id,
+                "client_secret": client_secret,
             },
         )
     if response.is_error:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token refresh failed: {response.text[:500]}")
+        response_text = response.text[:500]
+        if "invalid_client" in response_text.lower():
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Gmail token refresh failed: invalid_client. "
+                    "Reconnect Gmail after verifying GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET."
+                ),
+            )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token refresh failed: {response_text}")
     payload = response.json()
     expires_at = utcnow() + timedelta(seconds=max(60, int(payload.get("expires_in") or 3600) - 60))
     with get_connection() as connection:
