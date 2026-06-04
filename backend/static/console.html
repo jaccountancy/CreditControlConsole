@@ -11142,6 +11142,89 @@
             #meReportScreen .me-report-client-toolbar p {
                 margin: 0;
             }
+            #meReportScreen .me-report-workspace-controls {
+                display: grid;
+                gap: 8px;
+            }
+            #meReportScreen .me-report-workspace-primary-actions,
+            #meReportScreen .me-report-workspace-suspended-tabs {
+                display: grid;
+                gap: 8px;
+            }
+            #meReportScreen #meReportActionList .me-report-workspace-primary-actions > .ghost-button,
+            #meReportScreen #meReportActionList .me-report-workspace-primary-actions > .primary-button {
+                width: 100%;
+                min-height: 46px;
+            }
+            #meReportScreen .me-report-workspace-controls.is-inline {
+                grid-column: 1 / -1;
+                gap: 10px;
+                margin-bottom: 8px;
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.88);
+            }
+            #meReportScreen .me-report-workspace-controls.is-inline .me-report-workspace-primary-actions,
+            #meReportScreen .me-report-workspace-controls.is-inline .me-report-workspace-suspended-tabs {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+            #meReportScreen .me-report-flow-settings-card {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(260px, 0.4fr);
+                gap: 12px;
+                align-items: start;
+                width: 100%;
+            }
+            #meReportScreen .me-report-xero-tenant-check {
+                display: grid;
+                gap: 6px;
+                padding: 12px;
+                border-radius: 14px;
+                border: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.86);
+            }
+            #meReportScreen .me-report-xero-tenant-check .eyebrow {
+                margin: 0;
+            }
+            #meReportScreen .me-report-xero-tenant-check strong {
+                font-size: 0.92rem;
+                line-height: 1.2;
+            }
+            #meReportScreen .me-report-xero-tenant-check small {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 800;
+                line-height: 1.25;
+            }
+            #meReportScreen .me-report-xero-tenant-check.is-connected {
+                border-color: rgba(39, 176, 95, 0.22);
+                background: rgba(232, 248, 238, 0.8);
+            }
+            #meReportScreen .me-report-xero-tenant-check.is-disconnected {
+                border-color: rgba(255, 83, 83, 0.26);
+                background: rgba(255, 231, 231, 0.72);
+            }
+            #meReportScreen .me-report-xero-tenant-check.is-mismatch {
+                border-color: rgba(255, 159, 47, 0.3);
+                background: rgba(255, 243, 223, 0.82);
+            }
+            #meReportScreen .me-report-flow-check-tabs {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+                gap: 8px;
+            }
+            #meReportScreen .me-report-flow-check-tabs .bank-account-card {
+                width: 100%;
+                text-align: left;
+            }
+            #meReportScreen .me-report-flow-check-panels {
+                display: grid;
+                gap: 8px;
+            }
+            #meReportScreen .me-report-flow-check-panel input[type="checkbox"] {
+                justify-self: start;
+            }
             #meReportScreen .me-report-client-controls {
                 display: flex;
                 align-items: center;
@@ -11269,6 +11352,11 @@
             #meReportScreen .me-report-client-table tbody tr:focus-visible {
                 background: rgba(233, 241, 255, 0.42);
                 outline: none;
+            }
+            @media (max-width: 980px) {
+                #meReportScreen .me-report-flow-settings-card {
+                    grid-template-columns: minmax(0, 1fr);
+                }
             }
             #meReportScreen .me-report-client-table tbody tr.is-active {
                 background: var(--blue-soft);
@@ -48127,6 +48215,45 @@
                 return String(first?.tenantId || "").trim();
             }
 
+            function renderMeReportWorkspaceControls(client = {}, options = {}) {
+                const flowStatus = meReportFlowStatus(client);
+                const locked = meReportFlowLocked(client);
+                const inline = options?.inline === true;
+                const showPrimary = options?.showPrimary !== false;
+                const showTabs = options?.showTabs !== false;
+                const tabs = [
+                    ["overview", "Overview"],
+                    ["report-insights", "Flow checks"],
+                    ["tax", "Tax"],
+                    ["dividends", "Dividends"],
+                    ["dla", "DLA"],
+                    ["alerts", "Anomalies"],
+                    ["activity-log", "Activity log"],
+                    ["flow-settings", "Flow settings"]
+                ];
+                return `
+                    <div class="me-report-workspace-controls${inline ? " is-inline" : ""}">
+                        ${showPrimary ? `
+                            <div class="me-report-workspace-primary-actions">
+                                <button class="primary-button" type="button" data-me-flow-action="start-guided" ${flowStatus === "not_started" && !locked ? "" : "disabled"}>Start guided flow</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="refresh">Refresh from Xero</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="submit-review" ${locked ? "disabled" : ""}>Submit for review</button>
+                                <button class="primary-button" type="button" data-me-flow-action="approve" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Approve and email client</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="bounceback" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Bounce back</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="move-draft" ${flowStatus !== "bounceback" ? "disabled" : ""}>Move to draft</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="download-pdf" ${flowStatus !== "completed" ? "disabled" : ""}>Download PDF</button>
+                                <button class="ghost-button" type="button" data-me-flow-action="set-loss" ${locked ? "disabled" : ""}>Set B/F loss</button>
+                            </div>
+                        ` : ""}
+                        ${showTabs ? `
+                            <div class="me-report-workspace-suspended-tabs">
+                                ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
+                            </div>
+                        ` : ""}
+                    </div>
+                `;
+            }
+
             function meReportContactOptions(tenantId = "") {
                 const contacts = Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
                 const targetTenantId = String(tenantId || "").trim();
@@ -48583,37 +48710,11 @@
                         meReportApplySavedViewState(client.id);
                         meReportLastStateClientId = client.id;
                     }
-                    const flowStatus = meReportFlowStatus(client);
-                    const locked = meReportFlowLocked(client);
-                    const tabs = [
-                        ["overview", "Overview"],
-                        ["report-insights", "Flow checks"],
-                        ["tax", "Tax"],
-                        ["dividends", "Dividends"],
-                        ["dla", "DLA"],
-                        ["alerts", "Anomalies"],
-                        ["activity-log", "Activity log"],
-                        ["flow-settings", "Flow settings"]
-                    ];
-                    actionList.innerHTML = `
-                        <button class="primary-button" type="button" data-me-flow-action="start-guided" ${flowStatus === "not_started" && !locked ? "" : "disabled"}>Start guided flow</button>
-                        <button class="ghost-button" type="button" data-me-flow-action="refresh">Refresh from Xero</button>
-                        <button class="ghost-button" type="button" data-me-flow-action="submit-review" ${locked ? "disabled" : ""}>Submit for review</button>
-                        <button class="primary-button" type="button" data-me-flow-action="approve" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Approve and email client</button>
-                        <button class="ghost-button" type="button" data-me-flow-action="bounceback" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Bounce back</button>
-                        <button class="ghost-button" type="button" data-me-flow-action="move-draft" ${flowStatus !== "bounceback" ? "disabled" : ""}>Move to draft</button>
-                        <button class="ghost-button" type="button" data-me-flow-action="download-pdf" ${flowStatus !== "completed" ? "disabled" : ""}>Download PDF</button>
-                        <button class="ghost-button" id="setMeReportTradingLossButton" type="button" ${locked ? "disabled" : ""}>Set B/F loss</button>
-                        ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
-                    `;
-                    document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
-                    actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
-                        button.addEventListener("click", () => {
-                            activeMeReportTab = button.dataset.meReportTab;
-                            meReportPersistViewStateForClient(client.id);
-                            renderMeReportScreen();
-                        });
-                    });
+                    const useFlowSettingsLayout = activeMeReportTab === "flow-settings";
+                    actionList.hidden = false;
+                    actionList.innerHTML = useFlowSettingsLayout
+                        ? renderMeReportWorkspaceControls(client, { showPrimary: false, showTabs: true })
+                        : renderMeReportWorkspaceControls(client);
                     try {
                         detail.innerHTML = `${processingBannerMarkup || ""}${renderMeReportTab(client, activeMeReportTab)}`;
                     } catch (error) {
@@ -53275,22 +53376,64 @@
             function renderMeReportFlowSettings(client = {}) {
                 const rows = meReportFlowChecklistRows(client);
                 const enabledCount = rows.filter((item) => item.enabled).length;
+                const workspaceTenantId = String(client?.tenantId || "").trim();
+                const connectedTenantId = String(state.organisation?.tenantId || meReportActiveTenantId() || "").trim();
+                const tenantMismatch = Boolean(workspaceTenantId && connectedTenantId && workspaceTenantId !== connectedTenantId);
+                const xeroConnected = state.organisation?.xeroConnected === true;
+                const organisationName = state.organisation?.name || meReportData.xero?.tenantName || "No Xero organisation connected";
+                const xeroCheckState = tenantMismatch ? "Tenant mismatch" : (xeroConnected ? "Connected" : "Not connected");
+                const xeroCheckTone = tenantMismatch ? "is-mismatch" : (xeroConnected ? "is-connected" : "is-disconnected");
+                const connectedTenantLabel = connectedTenantId || "Not available";
+                const workspaceTenantLabel = workspaceTenantId || "Not assigned";
                 return `
                     <div class="jashflow-detail-head">
-                        <div>
-                            <p class="eyebrow">Flow settings</p>
-                            <h3>${enabledCount.toLocaleString("en-GB")} required check${enabledCount === 1 ? "" : "s"} enabled</h3>
-                            <p class="detail-meta">Configure what each monthly flow must review before submit-for-review is used.</p>
+                        <div class="me-report-flow-settings-card">
+                            <div>
+                                <p class="eyebrow">Monthly flows</p>
+                                <h3>${enabledCount.toLocaleString("en-GB")} required check${enabledCount === 1 ? "" : "s"} enabled</h3>
+                                <p class="detail-meta">Configure what each monthly flow must review before submit-for-review is used.</p>
+                            </div>
+                            <aside class="me-report-xero-tenant-check ${xeroCheckTone}">
+                                <p class="eyebrow">Xero organisation check</p>
+                                <strong>${escapeHTML(organisationName)}</strong>
+                                <small>${escapeHTML(xeroCheckState)}</small>
+                                <small>Connected tenant: ${escapeHTML(connectedTenantLabel)}</small>
+                                <small>Workspace tenant: ${escapeHTML(workspaceTenantLabel)}</small>
+                            </aside>
                         </div>
                     </div>
+                    ${renderMeReportWorkspaceControls(client, { inline: true, showPrimary: true, showTabs: false })}
                     <form class="bank-flag-list" id="meReportFlowSettingsForm">
-                        ${rows.map((item) => `
-                            <label class="bank-flag-row">
-                                <strong>${escapeHTML(item.label)}</strong>
-                                <small>Key: ${escapeHTML(item.key)}</small>
-                                <input type="checkbox" data-me-flow-check="${escapeHTML(item.key)}" ${item.enabled ? "checked" : ""}>
-                            </label>
-                        `).join("")}
+                        <div class="me-report-flow-check-tabs" role="tablist" aria-label="Flow check tabs">
+                            ${rows.map((item, index) => `
+                                <button
+                                    class="bank-account-card${index === 0 ? " is-active" : ""}"
+                                    type="button"
+                                    role="tab"
+                                    aria-selected="${index === 0 ? "true" : "false"}"
+                                    data-me-flow-settings-tab="${escapeHTML(item.key)}"
+                                >
+                                    <strong>${escapeHTML(item.label)}</strong>
+                                    <span>${escapeHTML(item.key)}</span>
+                                </button>
+                            `).join("")}
+                        </div>
+                        <div class="me-report-flow-check-panels">
+                            ${rows.map((item, index) => `
+                                <label class="bank-flag-row me-report-flow-check-panel${index === 0 ? " is-active" : ""}" data-me-flow-check-panel="${escapeHTML(item.key)}" ${index === 0 ? "" : "hidden"}>
+                                    <strong>${escapeHTML(item.label)}</strong>
+                                    <small>Key: ${escapeHTML(item.key)}</small>
+                                    <input type="checkbox" data-me-flow-check="${escapeHTML(item.key)}" ${item.enabled ? "checked" : ""}>
+                                </label>
+                            `).join("")}
+                        </div>
+                        ${rows.length ? "" : `
+                            <div class="empty-state">
+                                <p class="eyebrow">No checks</p>
+                                <h4>No flow checks available</h4>
+                                <p>Add flow checks to configure review gates for this workspace.</p>
+                            </div>
+                        `}
                         <button class="primary-button" type="submit">Save flow settings</button>
                     </form>
                 `;
@@ -53412,7 +53555,39 @@
             function wireMeReportDynamicActions(client) {
                 wireMeReportKeyboardShortcuts();
                 document.querySelectorAll("[data-me-flow-action]").forEach((button) => {
-                    button.addEventListener("click", () => handleMeReportFlowAction(client, button.dataset.meFlowAction || ""));
+                    button.addEventListener("click", () => {
+                        const action = button.dataset.meFlowAction || "";
+                        if (action === "set-loss") {
+                            setMeReportBroughtForwardLoss(client.id);
+                            return;
+                        }
+                        handleMeReportFlowAction(client, action);
+                    });
+                });
+                document.querySelectorAll("[data-me-report-tab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        activeMeReportTab = button.dataset.meReportTab || "overview";
+                        selectedMeReportSubmissionId = "";
+                        meReportPersistViewStateForClient(client.id);
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-flow-settings-tab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const key = button.dataset.meFlowSettingsTab || "";
+                        const tabButtons = Array.from(document.querySelectorAll("[data-me-flow-settings-tab]"));
+                        const panels = Array.from(document.querySelectorAll("[data-me-flow-check-panel]"));
+                        tabButtons.forEach((entry) => {
+                            const active = entry.dataset.meFlowSettingsTab === key;
+                            entry.classList.toggle("is-active", active);
+                            entry.setAttribute("aria-selected", active ? "true" : "false");
+                        });
+                        panels.forEach((panel) => {
+                            const active = panel.dataset.meFlowCheckPanel === key;
+                            panel.classList.toggle("is-active", active);
+                            panel.hidden = !active;
+                        });
+                    });
                 });
                 document.getElementById("meReportFlowSettingsForm")?.addEventListener("submit", async (event) => {
                     event.preventDefault();
