@@ -2544,17 +2544,25 @@ def sync_xero_lock_date_company_records(user: dict, payload: dict | None = None)
 
 
 def _normalise_header(header: str) -> str:
-    return re.sub(r"\s+", " ", str(header or "").strip().lower())
+    text = str(header or "").strip().lower()
+    if not text:
+        return ""
+    text = re.sub(r"[_/\\-]+", " ", text)
+    text = re.sub(r"[^\w\s]+", " ", text)
+    text = re.sub(r"\be\s*mail\b", "email", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _resolve_header_map(headers: list[str]) -> dict[str, int]:
     mapping: dict[str, int] = {}
     lowered = [_normalise_header(header) for header in headers]
     for canonical, aliases in CLIENT_IMPORT_HEADER_ALIASES.items():
+        canonical_header = _normalise_header(canonical.replace("_", " "))
+        normalised_aliases = {_normalise_header(alias) for alias in aliases}
         for index, header in enumerate(lowered):
             if not header:
                 continue
-            if header == canonical.replace("_", " ") or header in aliases:
+            if header == canonical_header or header in normalised_aliases:
                 mapping[canonical] = index
                 break
     return mapping
@@ -3285,6 +3293,50 @@ def _upsert_auth_code_register_row(
     return str(inserted.get("id") or ""), "created"
 
 
+def _sync_auth_register_contacts_to_company(
+    cursor,
+    *,
+    company_number: str,
+    display_name: str,
+    client_id: str,
+    client_manager: str,
+    contact_email: str,
+    contact_phone: str,
+    client_address: str,
+    user_id: str | None,
+) -> None:
+    safe_company_number = normalise_company_number(company_number)
+    if not safe_company_number:
+        return
+    if not any(
+        (
+            str(contact_email or "").strip(),
+            str(contact_phone or "").strip(),
+            str(client_address or "").strip(),
+            str(client_id or "").strip(),
+            str(client_manager or "").strip(),
+        )
+    ):
+        return
+    _upsert_company(
+        cursor,
+        {
+            "company_number": safe_company_number,
+            "company_name": _coerce_text(display_name, 250),
+            "client_name": _coerce_text(display_name, 250),
+            "client_id": _coerce_text(client_id, 80),
+            "contact_email": _coerce_text(contact_email, 250),
+            "contact_phone": _coerce_text(contact_phone, 120),
+            "client_address": _coerce_text(client_address, 1000),
+            "assigned_staff": _coerce_text(client_manager, 120),
+            "notes": "",
+            "period_end_iso": "",
+            "due_date_iso": "",
+        },
+        user_id,
+    )
+
+
 def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict]]:
     text = _decode_upload(content)
     if not text.strip():
@@ -3330,6 +3382,9 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "displayName": display_name,
                 "clientManager": _coerce_text(row_payload.get("manager_reference") or row_payload.get("assigned_staff"), 120),
                 "clientId": _coerce_text(row_payload.get("client_id"), 80),
+                "contactEmail": _coerce_text(row_payload.get("contact_email"), 250),
+                "contactPhone": _coerce_text(row_payload.get("contact_phone"), 120),
+                "clientAddress": _coerce_text(row_payload.get("client_address"), 1000),
                 "normalisedName": normalised_name,
                 "authCode": auth_code,
             }
@@ -3359,6 +3414,17 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
                     normalised_name=row["normalisedName"],
                     auth_code=row["authCode"],
                     filename=_coerce_text(filename, 250),
+                    user_id=user_id,
+                )
+                _sync_auth_register_contacts_to_company(
+                    cursor,
+                    company_number=row["companyNumber"],
+                    display_name=row["displayName"],
+                    client_id=row.get("clientId") or "",
+                    client_manager=row.get("clientManager") or "",
+                    contact_email=row.get("contactEmail") or "",
+                    contact_phone=row.get("contactPhone") or "",
+                    client_address=row.get("clientAddress") or "",
                     user_id=user_id,
                 )
                 if action == "created":
@@ -3459,6 +3525,9 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
             "displayName": row.get("displayName") or "",
             "clientManager": row.get("clientManager") or "",
             "clientId": row.get("clientId") or "",
+            "contactEmail": row.get("contactEmail") or "",
+            "contactPhone": row.get("contactPhone") or "",
+            "clientAddress": row.get("clientAddress") or "",
             "normalisedName": row.get("normalisedName") or "",
             "authCode": row.get("authCode") or "",
         }
@@ -3471,6 +3540,9 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                     "displayName": row_payload["displayName"],
                     "clientManager": row_payload["clientManager"],
                     "clientId": row_payload["clientId"],
+                    "contactEmail": row_payload["contactEmail"],
+                    "contactPhone": row_payload["contactPhone"],
+                    "clientAddress": row_payload["clientAddress"],
                     "existingDisplayName": existing.get("display_name") or "",
                     "existingClientManager": existing.get("client_manager") or "",
                     "existingClientId": existing.get("client_id") or "",
@@ -3484,6 +3556,9 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                     "displayName": row_payload["displayName"],
                     "clientManager": row_payload["clientManager"],
                     "clientId": row_payload["clientId"],
+                    "contactEmail": row_payload["contactEmail"],
+                    "contactPhone": row_payload["contactPhone"],
+                    "clientAddress": row_payload["clientAddress"],
                 }
             )
 
@@ -3552,6 +3627,17 @@ def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes
                     normalised_name=_coerce_text(row.get("normalisedName"), 250),
                     auth_code=_coerce_text(row.get("authCode"), 80),
                     filename=filename,
+                    user_id=user_id,
+                )
+                _sync_auth_register_contacts_to_company(
+                    cursor,
+                    company_number=normalise_company_number(row.get("companyNumber")),
+                    display_name=_coerce_text(row.get("displayName"), 250),
+                    client_id=_coerce_text(row.get("clientId"), 80),
+                    client_manager=_coerce_text(row.get("clientManager"), 120),
+                    contact_email=_coerce_text(row.get("contactEmail"), 250),
+                    contact_phone=_coerce_text(row.get("contactPhone"), 120),
+                    client_address=_coerce_text(row.get("clientAddress"), 1000),
                     user_id=user_id,
                 )
                 if action == "created":
