@@ -1705,6 +1705,58 @@ ON hmrc_64_8_requests (created_by_user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS hmrc_64_8_requests_status_idx
 ON hmrc_64_8_requests (status, submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS release_updates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    details JSONB NOT NULL DEFAULT '[]'::jsonb,
+    deployment_id TEXT NOT NULL DEFAULT '',
+    commit_sha TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS deployment_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS commit_sha TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE release_updates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS release_updates_deployment_id_unique_idx
+ON release_updates (deployment_id)
+WHERE deployment_id <> '';
+
+CREATE INDEX IF NOT EXISTS release_updates_created_idx
+ON release_updates (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS release_ideas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    idea_text TEXT NOT NULL DEFAULT '',
+    context TEXT NOT NULL DEFAULT '',
+    contact_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    submitted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS idea_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS context TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new';
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS submitted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS release_ideas_status_created_idx
+ON release_ideas (status, created_at DESC);
 """
 
 
