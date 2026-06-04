@@ -26953,6 +26953,9 @@
             let vaultSearchPanelOpen = false;
             let vaultPreviewModalOpen = false;
             let vaultPreviewFileId = "";
+            const RENDER_DIAGNOSTIC_LIMIT = 8;
+            let renderDiagnostics = [];
+            let renderDiagnosticsRibbonDismissed = false;
             let vatAiReviewModalOpen = false;
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
@@ -29948,6 +29951,92 @@
                     hour: "2-digit",
                     minute: "2-digit"
                 }).format(date);
+            }
+
+            function clearRenderDiagnostics() {
+                renderDiagnostics = [];
+                renderDiagnosticsRibbonDismissed = false;
+                renderFailureDiagnosticsRibbon();
+            }
+
+            function renderFailureDiagnosticsRibbon() {
+                const ribbonId = "renderFailureDiagnosticsRibbon";
+                let ribbon = document.getElementById(ribbonId);
+                if (!renderDiagnostics.length || renderDiagnosticsRibbonDismissed) {
+                    if (ribbon) ribbon.remove();
+                    return;
+                }
+                if (!ribbon) {
+                    ribbon = document.createElement("aside");
+                    ribbon.id = ribbonId;
+                    document.body.appendChild(ribbon);
+                }
+                ribbon.setAttribute("role", "status");
+                ribbon.setAttribute("aria-live", "polite");
+                ribbon.style.cssText = [
+                    "position:fixed",
+                    "right:16px",
+                    "bottom:16px",
+                    "z-index:2147483000",
+                    "width:min(540px, calc(100vw - 24px))",
+                    "max-height:min(46vh, 420px)",
+                    "overflow:auto",
+                    "background:#ffffff",
+                    "border:1px solid rgba(255,83,83,0.38)",
+                    "border-left:4px solid #ff5353",
+                    "border-radius:14px",
+                    "box-shadow:0 12px 36px rgba(30,47,77,0.18)",
+                    "padding:10px 12px",
+                    "font-family:Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                    "color:#1e2f4d",
+                ].join(";");
+                ribbon.innerHTML = `
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+                        <strong style="font-size:13px;">Section render diagnostics</strong>
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" data-render-diag-clear="true" style="border:1px solid rgba(61,85,130,0.18); background:#f7f9ff; color:#1e2f4d; border-radius:999px; padding:5px 10px; font-size:11px; cursor:pointer;">Clear</button>
+                            <button type="button" data-render-diag-close="true" style="border:1px solid rgba(61,85,130,0.18); background:#fff; color:#1e2f4d; border-radius:999px; padding:5px 10px; font-size:11px; cursor:pointer;">Dismiss</button>
+                        </div>
+                    </div>
+                    <div style="display:grid; gap:6px;">
+                        ${renderDiagnostics.map((item) => `
+                            <article style="padding:8px; border:1px solid rgba(61,85,130,0.12); border-radius:10px; background:#fffaf9;">
+                                <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start;">
+                                    <strong style="font-size:12px; color:#7a2334;">${escapeHTML(item.source || "render")}${item.count > 1 ? ` ×${item.count}` : ""}</strong>
+                                    <small style="font-size:11px; color:#6b7894; white-space:nowrap;">${escapeHTML(formatDateTime(item.at || ""))}</small>
+                                </div>
+                                <div style="font-size:12px; margin-top:4px; line-height:1.4;">${escapeHTML(item.message || "Unknown render error")}</div>
+                            </article>
+                        `).join("")}
+                    </div>
+                `;
+                ribbon.querySelector("[data-render-diag-clear]")?.addEventListener("click", clearRenderDiagnostics);
+                ribbon.querySelector("[data-render-diag-close]")?.addEventListener("click", () => {
+                    renderDiagnosticsRibbonDismissed = true;
+                    renderFailureDiagnosticsRibbon();
+                });
+            }
+
+            function reportRenderFailure(source, error) {
+                const now = new Date();
+                const message = String(error?.message || error || "Unknown render error").trim().slice(0, 320) || "Unknown render error";
+                const key = `${String(source || "render")}|${message}`;
+                const latest = renderDiagnostics[0];
+                if (latest && latest.key === key) {
+                    latest.count = Number(latest.count || 1) + 1;
+                    latest.at = now.toISOString();
+                } else {
+                    renderDiagnostics.unshift({
+                        key,
+                        source: String(source || "render"),
+                        message,
+                        at: now.toISOString(),
+                        count: 1,
+                    });
+                }
+                renderDiagnostics = renderDiagnostics.slice(0, RENDER_DIAGNOSTIC_LIMIT);
+                renderDiagnosticsRibbonDismissed = false;
+                renderFailureDiagnosticsRibbon();
             }
 
             function addMonthsISO(months) {
@@ -67137,6 +67226,7 @@
                 } catch (error) {
                     // Keep Vault usable even if another screen renderer throws during global redraw.
                     console.error("Unable to fully render all sections while opening Vault", error);
+                    reportRenderFailure("openVaultScreen", error);
                     syncActiveViewShell();
                     renderChrome();
                     renderVaultScreen();
@@ -67852,6 +67942,7 @@
                         run();
                     } catch (error) {
                         console.error(`Render step failed: ${label}`, error);
+                        reportRenderFailure(label, error);
                     }
                 });
             }
