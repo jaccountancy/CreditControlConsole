@@ -1465,6 +1465,7 @@ CREATE TABLE IF NOT EXISTS ch_companies (
     client_name TEXT NOT NULL DEFAULT '',
     contact_email TEXT NOT NULL DEFAULT '',
     contact_phone TEXT NOT NULL DEFAULT '',
+    client_address TEXT NOT NULL DEFAULT '',
     assigned_staff_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     assigned_staff_name TEXT NOT NULL DEFAULT '',
     registered_office TEXT NOT NULL DEFAULT '',
@@ -1500,6 +1501,7 @@ ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_reference TEX
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_received_at TIMESTAMPTZ;
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_expires_at TIMESTAMPTZ;
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS workflow_review JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS client_address TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS ch_companies_filing_authority_idx ON ch_companies (filing_authority_status, filing_authority_expires_at);
 
 CREATE TABLE IF NOT EXISTS ch_auth_codes (

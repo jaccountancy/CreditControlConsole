@@ -12696,14 +12696,7 @@
                 gap: 18px;
             }
             #ignitionScreen.is-pricing-stage > .detail-hero {
-                grid-template-columns: minmax(0, 1fr);
-                align-items: end;
-            }
-            #ignitionScreen.is-pricing-stage #ignitionRenewalsMeta {
-                grid-column: 1;
-                justify-self: start;
-                align-self: end;
-                margin-top: 10px;
+                display: none;
             }
             .ignition-hero-copy {
                 display: grid;
@@ -13370,6 +13363,47 @@
                 gap: 12px;
                 flex-wrap: wrap;
             }
+            .ignition-renewals-client-comms-populate {
+                min-height: 32px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.34);
+                background: linear-gradient(135deg, rgba(29, 103, 242, 0.1), rgba(111, 140, 255, 0.14));
+                color: #1d67f2;
+                font-size: 0.7rem;
+                font-weight: 850;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                cursor: pointer;
+                transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+            }
+            .ignition-renewals-client-comms-populate:hover:not(:disabled),
+            .ignition-renewals-client-comms-populate:focus-visible:not(:disabled) {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.52);
+                background: linear-gradient(135deg, rgba(29, 103, 242, 0.16), rgba(111, 140, 255, 0.2));
+                box-shadow: 0 10px 20px rgba(29, 103, 242, 0.2);
+                outline: none;
+            }
+            .ignition-renewals-client-comms-populate:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+            .ignition-renewals-client-comms-populate.is-populating {
+                position: relative;
+                overflow: hidden;
+            }
+            .ignition-renewals-client-comms-populate.is-populating::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(112deg, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0.78) 50%, rgba(255, 255, 255, 0) 82%);
+                transform: translateX(-120%);
+                animation: renewals-ai-populate-sheen 1.05s linear infinite;
+                pointer-events: none;
+            }
             .ignition-renewals-client-comms-wrap {
                 min-height: 0;
                 border: 1px solid rgba(188, 204, 228, 0.8);
@@ -13385,25 +13419,49 @@
                 gap: 10px;
             }
             .ignition-renewals-client-comms-table {
-                min-width: 980px;
+                min-width: 920px;
             }
             .ignition-renewals-client-comms-table th:nth-child(1),
-            .ignition-renewals-client-comms-table td:nth-child(1) { width: 24%; }
+            .ignition-renewals-client-comms-table td:nth-child(1) { width: 25%; }
             .ignition-renewals-client-comms-table th:nth-child(2),
-            .ignition-renewals-client-comms-table td:nth-child(2) { width: 16%; }
+            .ignition-renewals-client-comms-table td:nth-child(2) { width: 13%; }
             .ignition-renewals-client-comms-table th:nth-child(3),
             .ignition-renewals-client-comms-table td:nth-child(3) { width: 16%; }
             .ignition-renewals-client-comms-table th:nth-child(4),
-            .ignition-renewals-client-comms-table td:nth-child(4) { width: 22%; }
+            .ignition-renewals-client-comms-table td:nth-child(4) { width: 30%; }
             .ignition-renewals-client-comms-table th:nth-child(5),
-            .ignition-renewals-client-comms-table td:nth-child(5) { width: 12%; }
-            .ignition-renewals-client-comms-table th:nth-child(6),
-            .ignition-renewals-client-comms-table td:nth-child(6) { width: 10%; }
+            .ignition-renewals-client-comms-table td:nth-child(5) { width: 16%; }
+            .ignition-renewals-client-email-value {
+                display: inline-block;
+                min-height: 1em;
+                color: #253c5f;
+                font-weight: 700;
+            }
+            .ignition-renewals-client-email-value.is-empty {
+                color: #8ea0bc;
+                font-weight: 670;
+            }
+            .ignition-renewals-client-comms-table tr.is-email-populating {
+                background: linear-gradient(90deg, rgba(29, 103, 242, 0.08), rgba(29, 103, 242, 0.02));
+            }
+            .ignition-renewals-client-comms-table tr.is-email-populated {
+                animation: renewals-row-populated 0.55s ease;
+            }
+            .ignition-renewals-client-email-value.is-revealed {
+                animation: renewals-input-reveal 0.46s cubic-bezier(.22, .61, .36, 1);
+            }
             .ignition-renewals-upload-inline {
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
                 flex-wrap: wrap;
+            }
+            .ignition-renewals-upload-native {
+                position: absolute;
+                opacity: 0;
+                pointer-events: none;
+                width: 1px;
+                height: 1px;
             }
             .ignition-renewals-upload-pill {
                 display: inline-flex;
@@ -13420,6 +13478,32 @@
                 border-color: rgba(24, 122, 72, 0.24);
                 background: rgba(227, 246, 236, 0.88);
                 color: #1f724a;
+            }
+            .ignition-renewals-upload-pill.is-action {
+                cursor: pointer;
+                border-color: rgba(29, 103, 242, 0.3);
+                background: linear-gradient(135deg, rgba(233, 241, 255, 0.95), rgba(241, 246, 255, 0.96));
+                color: #1d67f2;
+                transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+            }
+            .ignition-renewals-upload-pill.is-action:hover,
+            .ignition-renewals-upload-pill.is-action:focus-within {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.48);
+                background: linear-gradient(135deg, rgba(224, 236, 255, 0.98), rgba(236, 243, 255, 0.98));
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.14);
+            }
+            .ignition-renewals-upload-pill.is-action.is-awaiting {
+                border-style: dashed;
+                border-color: rgba(63, 85, 121, 0.28);
+                color: #3f5579;
+                background: rgba(245, 249, 255, 0.96);
+            }
+            .ignition-renewals-upload-pill.is-action.is-awaiting:hover,
+            .ignition-renewals-upload-pill.is-action.is-awaiting:focus-within {
+                border-color: rgba(29, 103, 242, 0.4);
+                color: #1d67f2;
+                background: linear-gradient(135deg, rgba(233, 241, 255, 0.94), rgba(241, 246, 255, 0.95));
             }
             .ignition-renewals-client-comms-email {
                 max-width: 920px;
@@ -18042,6 +18126,96 @@
             .ch-table tbody tr { cursor: pointer; }
             .ch-table tbody tr:hover { background: var(--blue-soft); }
             .ch-table tbody tr.is-selected { background: var(--blue-soft); }
+            .ch-table-head-button {
+                appearance: none;
+                border: 0;
+                background: transparent;
+                color: inherit;
+                font: inherit;
+                font-weight: inherit;
+                letter-spacing: inherit;
+                text-transform: inherit;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 0;
+                cursor: pointer;
+            }
+            .ch-table-head-button.is-active { color: var(--blue); }
+            .ch-table-head-sort {
+                font-size: 10px;
+                opacity: 0.8;
+            }
+            .ch-register-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                align-items: center;
+                margin-top: 10px;
+            }
+            .ch-register-toolbar input[type="search"],
+            .ch-register-toolbar select {
+                font: inherit;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .ch-register-toolbar input[type="search"] {
+                flex: 1 1 260px;
+                min-width: 220px;
+            }
+            .ch-register-toolbar-meta {
+                margin-left: auto;
+                color: var(--muted);
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .ch-review-tab-nav {
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+            .ch-review-tab-button {
+                appearance: none;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 8px 12px;
+                background: var(--surface-strong);
+                color: var(--ink);
+                font: inherit;
+                font-weight: 700;
+                cursor: pointer;
+            }
+            .ch-review-tab-button.is-active {
+                border-color: rgba(29, 103, 242, 0.32);
+                color: var(--blue);
+                background: var(--blue-soft);
+            }
+            .ch-column-editor-list {
+                display: grid;
+                gap: 8px;
+            }
+            .ch-column-editor-row {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 10px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: var(--surface-soft);
+            }
+            .ch-column-editor-actions {
+                display: inline-flex;
+                gap: 6px;
+            }
+            .ch-column-editor-actions button {
+                min-width: 34px;
+                padding: 6px 8px;
+            }
             .ch-delete-button {
                 width: 34px;
                 min-width: 34px;
@@ -19484,6 +19658,8 @@
                             <span>Refresh Data</span>
                         </button>
                         <div class="ignition-renewals-topbar-button" id="ignitionRenewalsTopbarActions" hidden>
+                            <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise renewals</button>
+                            <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
                             <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
                             <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email renewals</button>
                             <button class="ghost-button" id="openIgnitionRenewalClientCommsButton" type="button">Open client comms modal</button>
@@ -20904,19 +21080,21 @@
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
                                     <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Choose a CSV file to upload.</span>
                                 </div>
+                                <div class="ch-register-toolbar">
+                                    <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, manager, email, phone, address, source...">
+                                    <select id="chAuthCodeRegisterManagerFilter" aria-label="Filter by manager">
+                                        <option value="">All managers</option>
+                                    </select>
+                                    <select id="chAuthCodeRegisterSourceFilter" aria-label="Filter by source file">
+                                        <option value="">All source files</option>
+                                    </select>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterColumnsButton">Columns</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
+                                    <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
+                                </div>
                                 <div class="ch-companies-table-wrap">
                                     <table class="ch-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Company</th>
-                                                <th>Client ID</th>
-                                                <th>Number</th>
-                                                <th>Auth code</th>
-                                                <th>Manager</th>
-                                                <th>Source file</th>
-                                                <th>Uploaded</th>
-                                            </tr>
-                                        </thead>
+                                        <thead id="chAuthCodeRegisterTableHead"></thead>
                                         <tbody id="chAuthCodeRegisterTableBody"></tbody>
                                     </table>
                                 </div>
@@ -21336,8 +21514,6 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
-                                    <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise renewals</button>
-                                    <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
                                 </div>
                             </div>
                             <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
@@ -21552,6 +21728,7 @@
                                         <p class="detail-meta" id="ignitionRenewalClientCommsSummary">Upload each engagement letter before reviewing and sending client emails.</p>
                                     </div>
                                     <div class="detail-actions">
+                                        <button class="ignition-renewals-client-comms-populate" id="ignitionRenewalClientCommsPopulateButton" type="button">Populate</button>
                                         <button class="ghost-button" id="closeIgnitionRenewalClientCommsButton" type="button">Close</button>
                                     </div>
                                 </header>
@@ -23451,6 +23628,8 @@
             let ignitionRenewalClientCommsIndex = 0;
             let ignitionRenewalClientCommsLettersByProposal = {};
             let ignitionRenewalClientCommsDraftsByProposal = {};
+            let ignitionRenewalClientCommsPopulatedEmailByProposal = {};
+            let ignitionRenewalClientCommsEmailPopulateInFlight = false;
             let renewalSettingsUnlocking = false;
             let ignitionRenewalEmailRunId = "";
             let ignitionRenewalHistoryLoading = false;
@@ -41615,6 +41794,18 @@
                 return ignitionRenewalClientCommsDraftsByProposal[String(proposalExternalId || "").trim()] || null;
             }
 
+            function ignitionRenewalClientCommsSourceEmail(item = {}) {
+                return String(item?.clientEmail || "").trim();
+            }
+
+            function ignitionRenewalClientCommsPopulatedEmail(proposalExternalId = "") {
+                const key = String(proposalExternalId || "").trim();
+                if (!key) return undefined;
+                if (!Object.prototype.hasOwnProperty.call(ignitionRenewalClientCommsPopulatedEmailByProposal, key)) return undefined;
+                const value = ignitionRenewalClientCommsPopulatedEmailByProposal[key];
+                return typeof value === "string" ? value : "";
+            }
+
             function ignitionRenewalClientCommsDefaultSubject(item, run = null) {
                 const batchReference = ignitionRenewalBatchReferenceForRun(run || ignitionRenewalRun());
                 const clientName = String(item?.clientName || "Client").trim();
@@ -41644,6 +41835,8 @@
                 ignitionRenewalClientCommsIndex = 0;
                 ignitionRenewalClientCommsLettersByProposal = {};
                 ignitionRenewalClientCommsDraftsByProposal = {};
+                ignitionRenewalClientCommsPopulatedEmailByProposal = {};
+                ignitionRenewalClientCommsEmailPopulateInFlight = false;
             }
 
             function ignitionRenewalClientCommsEditableQueue(run = null) {
@@ -42986,8 +43179,9 @@
                 const proposalId = String(item?.proposalExternalId || "").trim();
                 if (!proposalId) return;
                 if (ignitionRenewalClientCommsDraft(proposalId)) return;
+                const populatedEmail = ignitionRenewalClientCommsPopulatedEmail(proposalId);
                 ignitionRenewalClientCommsDraftsByProposal[proposalId] = {
-                    recipientEmail: String(item?.clientEmail || "").trim(),
+                    recipientEmail: populatedEmail === undefined ? "" : populatedEmail,
                     subject: ignitionRenewalClientCommsDefaultSubject(item, run),
                     body: ignitionRenewalClientCommsDefaultBody(item, run),
                 };
@@ -43023,6 +43217,15 @@
                     ["Auto BCC", IGNITION_RENEWAL_CLIENT_COMMS_BCC],
                 ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
 
+                const populateButton = document.getElementById("ignitionRenewalClientCommsPopulateButton");
+                if (populateButton) {
+                    const showPopulate = ignitionRenewalClientCommsStage === "upload";
+                    populateButton.hidden = !showPopulate;
+                    populateButton.disabled = ignitionRenewalClientCommsEmailPopulateInFlight || !items.length;
+                    populateButton.classList.toggle("is-populating", ignitionRenewalClientCommsEmailPopulateInFlight);
+                    populateButton.textContent = ignitionRenewalClientCommsEmailPopulateInFlight ? "Populating..." : "Populate";
+                }
+
                 if (ignitionRenewalClientCommsStage === "upload") {
                     summary.textContent = "Upload an Engagement Letter for each client before moving to email review and send.";
                     backButton.textContent = "Close";
@@ -43036,9 +43239,8 @@
                                     <th>Client</th>
                                     <th>Client ID</th>
                                     <th>Email</th>
-                                    <th>Engagement Letter</th>
+                                    <th>Engagement Letter & Upload</th>
                                     <th>Status</th>
-                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -43047,24 +43249,34 @@
                                     const sent = sentIds.has(proposalId);
                                     const letter = ignitionRenewalClientCommsLetter(proposalId);
                                     const fileName = letter?.name || "";
+                                    const uploadBadgeText = sent ? "Email sent" : (fileName ? "Letter uploaded" : "");
+                                    const uploadActionLabel = sent ? "" : (fileName ? "Replace letter" : "Awaiting upload · Choose file");
+                                    const populatedEmail = ignitionRenewalClientCommsPopulatedEmail(proposalId);
+                                    const emailDisplay = populatedEmail === undefined ? "" : (populatedEmail || "No email found");
+                                    const emailClass = populatedEmail === undefined
+                                        ? "ignition-renewals-client-email-value"
+                                        : `ignition-renewals-client-email-value${populatedEmail ? "" : " is-empty"}`;
                                     return `
-                                        <tr>
+                                        <tr data-renewal-comms-proposal="${escapeHTML(proposalId)}">
                                             <td>
                                                 <strong>${escapeHTML(item.clientName || "Unknown client")}</strong>
                                                 <br><small>${escapeHTML(item.proposalName || "")}</small>
                                             </td>
                                             <td>${escapeHTML(item.clientId || "--")}</td>
-                                            <td>${escapeHTML(item.clientEmail || "No email found")}</td>
+                                            <td><span class="${emailClass}" data-renewal-comms-email-value>${escapeHTML(emailDisplay)}</span></td>
                                             <td>
                                                 <div class="ignition-renewals-upload-inline">
-                                                    <span class="ignition-renewals-upload-pill ${sent ? "is-sent" : ""}">${escapeHTML(sent ? "Email sent" : (fileName ? "Letter uploaded" : "Awaiting upload"))}</span>
+                                                    ${uploadBadgeText ? `<span class="ignition-renewals-upload-pill ${sent ? "is-sent" : ""}">${escapeHTML(uploadBadgeText)}</span>` : ""}
+                                                    ${sent ? "" : `
+                                                        <label class="ignition-renewals-upload-pill is-action ${fileName ? "" : "is-awaiting"}">
+                                                            <input class="ignition-renewals-upload-native" type="file" data-renewal-comms-upload="${escapeHTML(proposalId)}" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                                                            <span>${escapeHTML(uploadActionLabel)}</span>
+                                                        </label>
+                                                    `}
                                                     ${fileName ? `<small>${escapeHTML(fileName)}</small>` : ""}
                                                 </div>
                                             </td>
                                             <td>${escapeHTML(sent ? "Complete" : (fileName ? "Ready" : "Pending"))}</td>
-                                            <td>
-                                                <input type="file" data-renewal-comms-upload="${escapeHTML(proposalId)}" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" ${sent ? "disabled" : ""}>
-                                            </td>
                                         </tr>
                                     `;
                                 }).join("")}
@@ -43204,6 +43416,59 @@
                     contentBase64: base64,
                 };
                 renderIgnitionRenewalClientCommsModal();
+            }
+
+            async function populateIgnitionRenewalClientCommsEmails() {
+                if (ignitionRenewalClientCommsEmailPopulateInFlight || ignitionRenewalClientCommsStage !== "upload") return;
+                const run = ignitionRenewalRunById(ignitionRenewalClientCommsRunId) || ignitionRenewalRun();
+                const items = ignitionRenewalClientCommsItems(run);
+                if (!items.length) {
+                    showToast("No clients are available to populate.", "info");
+                    return;
+                }
+
+                ignitionRenewalClientCommsEmailPopulateInFlight = true;
+                renderIgnitionRenewalClientCommsModal();
+                let populatedCount = 0;
+
+                try {
+                    for (const item of items) {
+                        const proposalId = String(item?.proposalExternalId || "").trim();
+                        if (!proposalId) continue;
+                        const row = [...document.querySelectorAll("[data-renewal-comms-proposal]")]
+                            .find((entry) => String(entry.dataset.renewalCommsProposal || "") === proposalId);
+                        const emailNode = row?.querySelector("[data-renewal-comms-email-value]");
+                        const sourceEmail = ignitionRenewalClientCommsSourceEmail(item);
+
+                        if (row) row.classList.add("is-email-populating");
+                        await delay(105);
+
+                        ignitionRenewalClientCommsPopulatedEmailByProposal[proposalId] = sourceEmail || null;
+                        const existingDraft = ignitionRenewalClientCommsDraftsByProposal[proposalId];
+                        if (existingDraft && typeof existingDraft === "object") existingDraft.recipientEmail = sourceEmail;
+
+                        if (emailNode) {
+                            emailNode.textContent = sourceEmail || "No email found";
+                            emailNode.classList.toggle("is-empty", !sourceEmail);
+                            emailNode.classList.remove("is-revealed");
+                            void emailNode.offsetWidth;
+                            emailNode.classList.add("is-revealed");
+                            window.setTimeout(() => emailNode.classList.remove("is-revealed"), 440);
+                        }
+                        if (row) {
+                            row.classList.remove("is-email-populating");
+                            row.classList.add("is-email-populated");
+                            window.setTimeout(() => row.classList.remove("is-email-populated"), 560);
+                        }
+                        populatedCount += 1;
+                        await delay(135);
+                    }
+                } finally {
+                    ignitionRenewalClientCommsEmailPopulateInFlight = false;
+                    renderIgnitionRenewalClientCommsModal();
+                }
+
+                showToast(`Populated ${populatedCount.toLocaleString("en-GB")} client email${populatedCount === 1 ? "" : "s"} one by one.`, "success");
             }
 
             async function sendIgnitionRenewalClientCommsCurrentEmail() {
@@ -57807,6 +58072,8 @@
                 });
                 const closeIgnitionRenewalClientCommsButton = document.getElementById("closeIgnitionRenewalClientCommsButton");
                 if (closeIgnitionRenewalClientCommsButton) closeIgnitionRenewalClientCommsButton.addEventListener("click", closeIgnitionRenewalClientCommsModal);
+                const ignitionRenewalClientCommsPopulateButton = document.getElementById("ignitionRenewalClientCommsPopulateButton");
+                if (ignitionRenewalClientCommsPopulateButton) ignitionRenewalClientCommsPopulateButton.addEventListener("click", populateIgnitionRenewalClientCommsEmails);
                 const ignitionRenewalClientCommsBackButton = document.getElementById("ignitionRenewalClientCommsBackButton");
                 if (ignitionRenewalClientCommsBackButton) ignitionRenewalClientCommsBackButton.addEventListener("click", stepIgnitionRenewalClientCommsBack);
                 const ignitionRenewalClientCommsNextButton = document.getElementById("ignitionRenewalClientCommsNextButton");
@@ -58559,10 +58826,23 @@
                 data: {},
                 authRegisterLoading: false,
                 authRegisterUploading: false,
+                authRegisterPreviewing: false,
+                authRegisterCommitting: false,
                 authRegisterPopulating: false,
                 authRegisterLoaded: false,
                 authRegisterRows: [],
                 authRegisterLookupByNumber: new Map(),
+                authRegisterTableState: {
+                    searchTerm: "",
+                    manager: "",
+                    sourceFile: "",
+                    sortKey: "uploadedAt",
+                    sortDirection: "desc",
+                },
+                authRegisterColumnState: {
+                    order: [],
+                    hidden: [],
+                },
             };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
@@ -58629,31 +58909,229 @@
                 showToast("Raw XML exported.", "success");
             }
 
+            const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v1";
+            const AUTH_REGISTER_COLUMNS = [
+                { key: "displayName", label: "Company" },
+                { key: "clientId", label: "Client ID" },
+                { key: "companyNumber", label: "Number" },
+                { key: "authCodeHint", label: "Auth code" },
+                { key: "clientManager", label: "Manager" },
+                { key: "clientEmail", label: "Client email" },
+                { key: "clientPhone", label: "Client telephone" },
+                { key: "clientAddress", label: "Client address" },
+                { key: "sourceFilename", label: "Source file" },
+                { key: "uploadedAt", label: "Uploaded" },
+            ];
+
+            function authRegisterDefaultColumnState() {
+                return {
+                    order: AUTH_REGISTER_COLUMNS.map((column) => column.key),
+                    hidden: [],
+                };
+            }
+
+            function normaliseAuthRegisterColumnState(state) {
+                const defaults = authRegisterDefaultColumnState();
+                const allowed = new Set(defaults.order);
+                const orderInput = Array.isArray(state?.order) ? state.order.map((value) => String(value || "").trim()).filter(Boolean) : [];
+                const deduped = [];
+                const seen = new Set();
+                orderInput.forEach((key) => {
+                    if (!allowed.has(key) || seen.has(key)) return;
+                    seen.add(key);
+                    deduped.push(key);
+                });
+                defaults.order.forEach((key) => {
+                    if (seen.has(key)) return;
+                    deduped.push(key);
+                });
+                const hidden = new Set(
+                    (Array.isArray(state?.hidden) ? state.hidden : [])
+                        .map((value) => String(value || "").trim())
+                        .filter((key) => allowed.has(key))
+                );
+                return { order: deduped, hidden: Array.from(hidden) };
+            }
+
+            function loadAuthRegisterTablePreferences() {
+                const fallback = {
+                    tableState: {
+                        searchTerm: "",
+                        manager: "",
+                        sourceFile: "",
+                        sortKey: "uploadedAt",
+                        sortDirection: "desc",
+                    },
+                    columnState: authRegisterDefaultColumnState(),
+                };
+                try {
+                    const raw = localStorage.getItem(AUTH_REGISTER_TABLE_PREFS_KEY);
+                    if (!raw) return fallback;
+                    const parsed = JSON.parse(raw);
+                    const sortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === parsed?.tableState?.sortKey)
+                        ? parsed.tableState.sortKey
+                        : "uploadedAt";
+                    const sortDirection = parsed?.tableState?.sortDirection === "asc" ? "asc" : "desc";
+                    return {
+                        tableState: {
+                            searchTerm: String(parsed?.tableState?.searchTerm || ""),
+                            manager: String(parsed?.tableState?.manager || ""),
+                            sourceFile: String(parsed?.tableState?.sourceFile || ""),
+                            sortKey,
+                            sortDirection,
+                        },
+                        columnState: normaliseAuthRegisterColumnState(parsed?.columnState || {}),
+                    };
+                } catch {
+                    return fallback;
+                }
+            }
+
+            function saveAuthRegisterTablePreferences() {
+                try {
+                    localStorage.setItem(
+                        AUTH_REGISTER_TABLE_PREFS_KEY,
+                        JSON.stringify({
+                            tableState: companiesHouseSettings.authRegisterTableState || {},
+                            columnState: normaliseAuthRegisterColumnState(companiesHouseSettings.authRegisterColumnState || {}),
+                        })
+                    );
+                } catch {}
+            }
+
+            (function hydrateAuthRegisterPreferences() {
+                const prefs = loadAuthRegisterTablePreferences();
+                companiesHouseSettings.authRegisterTableState = prefs.tableState;
+                companiesHouseSettings.authRegisterColumnState = prefs.columnState;
+            })();
+
+            function authRegisterColumnState() {
+                const state = normaliseAuthRegisterColumnState(companiesHouseSettings.authRegisterColumnState || {});
+                companiesHouseSettings.authRegisterColumnState = state;
+                return state;
+            }
+
+            function authRegisterVisibleColumns() {
+                const state = authRegisterColumnState();
+                const hidden = new Set(state.hidden || []);
+                return (state.order || [])
+                    .map((key) => AUTH_REGISTER_COLUMNS.find((column) => column.key === key))
+                    .filter((column) => column && !hidden.has(column.key));
+            }
+
+            function authRegisterSortValue(row, key) {
+                if (key === "uploadedAt") {
+                    const timestamp = Date.parse(String(row?.uploadedAt || ""));
+                    return Number.isFinite(timestamp) ? timestamp : 0;
+                }
+                return String(row?.[key] || "").toLowerCase();
+            }
+
+            function filteredAuthRegisterRows(rows) {
+                const tableState = companiesHouseSettings.authRegisterTableState || {};
+                const search = String(tableState.searchTerm || "").trim().toLowerCase();
+                const manager = String(tableState.manager || "").trim().toLowerCase();
+                const sourceFile = String(tableState.sourceFile || "").trim().toLowerCase();
+                const list = (Array.isArray(rows) ? rows : []).filter((row) => {
+                    if (manager && String(row?.clientManager || "").trim().toLowerCase() !== manager) return false;
+                    if (sourceFile && String(row?.sourceFilename || "").trim().toLowerCase() !== sourceFile) return false;
+                    if (!search) return true;
+                    const searchValues = [
+                        row?.displayName,
+                        row?.clientId,
+                        row?.companyNumber,
+                        row?.authCodeHint,
+                        row?.clientManager,
+                        row?.clientEmail,
+                        row?.clientPhone,
+                        row?.clientAddress,
+                        row?.sourceFilename,
+                        row?.uploadedAt,
+                    ];
+                    return searchValues.some((value) => String(value || "").toLowerCase().includes(search));
+                });
+                const sortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === tableState.sortKey) ? tableState.sortKey : "uploadedAt";
+                const sortDirection = tableState.sortDirection === "asc" ? "asc" : "desc";
+                return list.sort((left, right) => {
+                    const leftValue = authRegisterSortValue(left, sortKey);
+                    const rightValue = authRegisterSortValue(right, sortKey);
+                    if (leftValue < rightValue) return sortDirection === "asc" ? -1 : 1;
+                    if (leftValue > rightValue) return sortDirection === "asc" ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            function authRegisterCellText(row, columnKey) {
+                if (columnKey === "uploadedAt") return row?.uploadedAt ? chFormatDateTime(row.uploadedAt) : "—";
+                if (columnKey === "authCodeHint") return row?.authCodeHint || "stored";
+                return row?.[columnKey] || "—";
+            }
+
+            function renderAuthRegisterHeader() {
+                const head = document.getElementById("chAuthCodeRegisterTableHead");
+                if (!head) return;
+                const tableState = companiesHouseSettings.authRegisterTableState || {};
+                const sortKey = tableState.sortKey || "uploadedAt";
+                const sortDirection = tableState.sortDirection === "asc" ? "asc" : "desc";
+                const columns = authRegisterVisibleColumns();
+                head.innerHTML = `<tr>${columns.map((column) => {
+                    const isActive = column.key === sortKey;
+                    const sortGlyph = isActive ? (sortDirection === "asc" ? "▲" : "▼") : "↕";
+                    return `<th><button class="ch-table-head-button ${isActive ? "is-active" : ""}" type="button" data-auth-register-sort="${escapeHTML(column.key)}">${escapeHTML(column.label)} <span class="ch-table-head-sort">${sortGlyph}</span></button></th>`;
+                }).join("")}</tr>`;
+                head.querySelectorAll("[data-auth-register-sort]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const key = String(button.getAttribute("data-auth-register-sort") || "");
+                        if (!key) return;
+                        const state = companiesHouseSettings.authRegisterTableState || {};
+                        const nextDirection = state.sortKey === key && state.sortDirection === "asc" ? "desc" : "asc";
+                        companiesHouseSettings.authRegisterTableState = { ...state, sortKey: key, sortDirection: nextDirection };
+                        saveAuthRegisterTablePreferences();
+                        renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                    });
+                });
+            }
+
             function renderAuthCodeRegisterDirectory(rows, totalCount = 0) {
                 const body = document.getElementById("chAuthCodeRegisterTableBody");
+                const managerFilter = document.getElementById("chAuthCodeRegisterManagerFilter");
+                const sourceFilter = document.getElementById("chAuthCodeRegisterSourceFilter");
+                const searchInput = document.getElementById("chAuthCodeRegisterSearch");
+                const meta = document.getElementById("chAuthCodeRegisterTableMeta");
                 if (!body) return;
                 const list = Array.isArray(rows) ? rows : [];
-                if (!list.length) {
-                    body.innerHTML = '<tr><td colspan="7" class="ch-empty-state">No auth code directory rows uploaded yet.</td></tr>';
-                    setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
-                    return;
+                renderAuthRegisterHeader();
+                const uniqueManagers = Array.from(new Set(list.map((row) => String(row?.clientManager || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+                const uniqueSources = Array.from(new Set(list.map((row) => String(row?.sourceFilename || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+                const tableState = companiesHouseSettings.authRegisterTableState || {};
+                if (searchInput && searchInput.value !== String(tableState.searchTerm || "")) {
+                    searchInput.value = String(tableState.searchTerm || "");
                 }
-                body.innerHTML = list.map((row) => {
-                    const uploadedLabel = row?.uploadedAt ? chFormatDateTime(row.uploadedAt) : "—";
-                    return `<tr>
-                        <td>${escapeHTML(row?.displayName || "—")}</td>
-                        <td>${escapeHTML(row?.clientId || "—")}</td>
-                        <td>${escapeHTML(row?.companyNumber || "—")}</td>
-                        <td>${escapeHTML(row?.authCodeHint || "stored")}</td>
-                        <td>${escapeHTML(row?.clientManager || "—")}</td>
-                        <td>${escapeHTML(row?.sourceFilename || "—")}</td>
-                        <td>${escapeHTML(uploadedLabel)}</td>
-                    </tr>`;
-                }).join("");
-                setAuthCodeRegisterStatus(
-                    `Loaded ${list.length.toLocaleString("en-GB")} rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
-                    "muted"
-                );
+                if (managerFilter) {
+                    managerFilter.innerHTML = `<option value="">All managers</option>${uniqueManagers.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
+                    managerFilter.value = tableState.manager || "";
+                }
+                if (sourceFilter) {
+                    sourceFilter.innerHTML = `<option value="">All source files</option>${uniqueSources.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
+                    sourceFilter.value = tableState.sourceFile || "";
+                }
+                const filteredRows = filteredAuthRegisterRows(list);
+                const visibleColumns = authRegisterVisibleColumns();
+                if (!filteredRows.length) {
+                    body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
+                    if (!list.length) setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
+                } else {
+                    body.innerHTML = filteredRows.map((row) => `<tr>${visibleColumns.map((column) => `<td>${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
+                }
+                if (meta) {
+                    meta.textContent = `${filteredRows.length.toLocaleString("en-GB")} shown of ${Number(totalCount || list.length).toLocaleString("en-GB")}`;
+                }
+                if (list.length) {
+                    setAuthCodeRegisterStatus(
+                        `Loaded ${filteredRows.length.toLocaleString("en-GB")} rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
+                        "muted"
+                    );
+                }
             }
 
             function applyCompaniesHouseSettings(settings) {
@@ -58860,25 +59338,30 @@
             }
 
             async function uploadAuthCodeRegisterFileHandler() {
-                if (companiesHouseSettings.authRegisterUploading || companiesHouseSettings.authRegisterPopulating) return;
+                if (
+                    companiesHouseSettings.authRegisterUploading
+                    || companiesHouseSettings.authRegisterPreviewing
+                    || companiesHouseSettings.authRegisterCommitting
+                    || companiesHouseSettings.authRegisterPopulating
+                ) return;
                 const fileInput = document.getElementById("chAuthCodeRegisterFile");
                 const file = fileInput?.files?.[0];
                 if (!file) {
                     setAuthCodeRegisterStatus("Choose a CSV file first.", "error");
                     return;
                 }
-                companiesHouseSettings.authRegisterUploading = true;
+                companiesHouseSettings.authRegisterPreviewing = true;
                 const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
                 const populateButton = document.getElementById("chAuthCodeRegisterPopulateButton");
                 const reloadButton = document.getElementById("chAuthCodeRegisterReloadButton");
                 if (uploadButton) uploadButton.disabled = true;
                 if (populateButton) populateButton.disabled = true;
                 if (reloadButton) reloadButton.disabled = true;
-                setAuthCodeRegisterStatus("Uploading auth code register…", "muted");
+                setAuthCodeRegisterStatus("Preparing directory preview…", "muted");
                 try {
                     const form = new FormData();
                     form.append("file", file);
-                    const response = await fetch(endpointURL("/api/companies-house/auth-code-register/upload"), {
+                    const response = await fetch(endpointURL("/api/companies-house/auth-code-register/preview"), {
                         method: "POST",
                         credentials: "include",
                         headers: { ...api.headers, ...panelAuthHeaders() },
@@ -58887,15 +59370,125 @@
                     if (!response.ok) {
                         const errorPayload = await response.json().catch(() => ({}));
                         const detail = errorPayload?.detail;
-                        throw new Error(typeof detail === "string" ? detail : detail?.message || `Upload failed (${response.status})`);
+                        throw new Error(typeof detail === "string" ? detail : detail?.message || `Preview failed (${response.status})`);
                     }
-                    const payload = await response.json();
-                    const result = payload?.result || {};
+                    const payload = await response.json().catch(() => ({}));
+                    const preview = payload?.preview || {};
+                    const creates = Array.isArray(preview?.creates) ? preview.creates : [];
+                    const updates = Array.isArray(preview?.updates) ? preview.updates : [];
+                    const deletes = Array.isArray(preview?.deletes) ? preview.deletes : [];
+                    const parseErrors = Array.isArray(preview?.errors) ? preview.errors : [];
+                    const tabRows = {
+                        updates,
+                        creates,
+                        deletes,
+                    };
+                    const tabColumns = {
+                        updates: [
+                            { key: "lineNumber", label: "Line", kind: "number" },
+                            { key: "displayName", label: "Company" },
+                            { key: "companyNumber", label: "Number" },
+                            { key: "clientId", label: "Client ID" },
+                            { key: "clientManager", label: "Manager" },
+                            { key: "existingDisplayName", label: "Existing company" },
+                        ],
+                        creates: [
+                            { key: "lineNumber", label: "Line", kind: "number" },
+                            { key: "displayName", label: "Company" },
+                            { key: "companyNumber", label: "Number" },
+                            { key: "clientId", label: "Client ID" },
+                            { key: "clientManager", label: "Manager" },
+                        ],
+                        deletes: [
+                            { key: "displayName", label: "Company" },
+                            { key: "companyNumber", label: "Number" },
+                            { key: "clientId", label: "Client ID" },
+                            { key: "clientManager", label: "Manager" },
+                            { key: "sourceFilename", label: "Source file" },
+                            { key: "uploadedAt", label: "Uploaded", kind: "date" },
+                        ],
+                    };
+                    let activeTab = "updates";
+                    let applyDeletes = true;
+                    const reviewDecision = await showOperationReviewDialog({
+                        eyebrow: "Client Register",
+                        title: "Review directory changes",
+                        subtitle: "Confirm creates, updates, and deletions before updating the directory.",
+                        confirmLabel: "Commit directory update",
+                        summaryChips: [
+                            `${Number(preview?.rowCount || 0).toLocaleString("en-GB")} uploaded rows`,
+                            `${updates.length.toLocaleString("en-GB")} updates`,
+                            `${creates.length.toLocaleString("en-GB")} creates`,
+                            `${deletes.length.toLocaleString("en-GB")} deletes`,
+                            `${parseErrors.length.toLocaleString("en-GB")} parse issues`,
+                        ],
+                        columns: [],
+                        rows: [{}],
+                        onRender: ({ body, confirmButton }) => {
+                            const renderTab = () => {
+                                const rows = tabRows[activeTab] || [];
+                                const columns = tabColumns[activeTab] || [];
+                                const navHtml = `
+                                    <div class="ch-review-tab-nav" role="tablist" aria-label="Directory update breakdown">
+                                        <button class="ch-review-tab-button ${activeTab === "updates" ? "is-active" : ""}" type="button" data-auth-register-tab="updates">Updated (${updates.length})</button>
+                                        <button class="ch-review-tab-button ${activeTab === "creates" ? "is-active" : ""}" type="button" data-auth-register-tab="creates">Created (${creates.length})</button>
+                                        <button class="ch-review-tab-button ${activeTab === "deletes" ? "is-active" : ""}" type="button" data-auth-register-tab="deletes">Deleted (${deletes.length})</button>
+                                    </div>
+                                `;
+                                const toolsHtml = `
+                                    <div class="operation-review-tools">
+                                        <label class="ch-checkbox-inline"><input id="chAuthRegisterApplyDeletesToggle" type="checkbox" ${applyDeletes ? "checked" : ""}> Apply deletions from this file</label>
+                                    </div>
+                                `;
+                                const errorHtml = parseErrors.length
+                                    ? `<p class="operation-review-muted">Parse issues (${parseErrors.length}): ${escapeHTML(parseErrors.slice(0, 3).map((error) => `line ${error?.lineNumber || "?"}: ${error?.reason || "unknown"}`).join(" | "))}${parseErrors.length > 3 ? " ..." : ""}</p>`
+                                    : "";
+                                if (!rows.length || !columns.length) {
+                                    body.innerHTML = `${navHtml}${toolsHtml}<div class="empty-state"><p class="eyebrow">No rows</p><h4>No ${escapeHTML(activeTab)} entries</h4><p>Nothing in this tab for the selected file.</p></div>${errorHtml}`;
+                                } else {
+                                    const header = columns.map((column) => `<th>${escapeHTML(column.label || column.key || "")}</th>`).join("");
+                                    const rowMarkup = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHTML(formatOperationReviewCell(row?.[column.key], column.kind || "text"))}</td>`).join("")}</tr>`).join("");
+                                    body.innerHTML = `${navHtml}${toolsHtml}<div class="operation-review-table-wrap"><table class="operation-review-table"><thead><tr>${header}</tr></thead><tbody>${rowMarkup}</tbody></table></div>${errorHtml}`;
+                                }
+                                body.querySelectorAll("[data-auth-register-tab]").forEach((button) => {
+                                    button.addEventListener("click", () => {
+                                        const tab = String(button.getAttribute("data-auth-register-tab") || "");
+                                        if (!tab || !Object.prototype.hasOwnProperty.call(tabRows, tab)) return;
+                                        activeTab = tab;
+                                        renderTab();
+                                    });
+                                });
+                                body.querySelector("#chAuthRegisterApplyDeletesToggle")?.addEventListener("change", (event) => {
+                                    applyDeletes = !!event?.target?.checked;
+                                });
+                                if (confirmButton) {
+                                    const hasChanges = updates.length > 0 || creates.length > 0 || (applyDeletes && deletes.length > 0);
+                                    confirmButton.disabled = !hasChanges;
+                                }
+                            };
+                            renderTab();
+                        },
+                        resultProvider: () => ({ applyDeletes }),
+                    });
+                    if (!reviewDecision) {
+                        setAuthCodeRegisterStatus("Directory update cancelled.", "muted");
+                        return;
+                    }
+                    companiesHouseSettings.authRegisterCommitting = true;
+                    setAuthCodeRegisterStatus("Committing directory update…", "muted");
+                    const commitPayload = await requestJSON("/api/companies-house/auth-code-register/commit", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            preview,
+                            applyDeletes: !!reviewDecision?.applyDeletes,
+                        }),
+                    });
+                    const result = commitPayload?.result || {};
                     setAuthCodeRegisterStatus(
-                        `Uploaded ${result.rowCount || 0} rows (${result.createdCount || 0} created, ${result.updatedCount || 0} updated, ${result.errorCount || 0} parse issues).`,
+                        `Directory updated. ${Number(result.createdCount || 0).toLocaleString("en-GB")} created, ${Number(result.updatedCount || 0).toLocaleString("en-GB")} updated, ${Number(result.deletedCount || 0).toLocaleString("en-GB")} deleted.`,
                         "success"
                     );
-                    showToast("Auth code register uploaded.", "success");
+                    showToast("Client register directory updated.", "success");
                     await loadAuthCodeRegisterDirectory(true);
                 } catch (error) {
                     console.error("Unable to upload auth code register", error);
@@ -58905,7 +59498,8 @@
                     setAuthCodeRegisterStatus(error?.message || "Unable to upload auth code register.", "error");
                     showToast(error?.message || "Unable to upload auth code register.", "error");
                 } finally {
-                    companiesHouseSettings.authRegisterUploading = false;
+                    companiesHouseSettings.authRegisterPreviewing = false;
+                    companiesHouseSettings.authRegisterCommitting = false;
                     if (uploadButton) uploadButton.disabled = !(fileInput?.files?.length);
                     if (populateButton) populateButton.disabled = false;
                     if (reloadButton) reloadButton.disabled = false;
@@ -58950,6 +59544,101 @@
                 }
             }
 
+            async function openAuthCodeRegisterColumnsDialog() {
+                const working = normaliseAuthRegisterColumnState(companiesHouseSettings.authRegisterColumnState || {});
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "Client Register",
+                    title: "Configure table columns",
+                    subtitle: "Show/hide columns and move them up or down. Preferences are saved for your account on this browser.",
+                    confirmLabel: "Save columns",
+                    summaryChips: [
+                        `${Math.max(0, AUTH_REGISTER_COLUMNS.length - (working.hidden || []).length)} visible`,
+                        `${AUTH_REGISTER_COLUMNS.length.toLocaleString("en-GB")} total`,
+                    ],
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body, summary }) => {
+                        const renderEditor = () => {
+                            const hiddenSet = new Set(working.hidden || []);
+                            summary.innerHTML = [
+                                `${Math.max(0, AUTH_REGISTER_COLUMNS.length - hiddenSet.size).toLocaleString("en-GB")} visible`,
+                                `${AUTH_REGISTER_COLUMNS.length.toLocaleString("en-GB")} total`,
+                            ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                            body.innerHTML = `
+                                <div class="ch-column-editor-list">
+                                    ${working.order.map((key, index) => {
+                                        const column = AUTH_REGISTER_COLUMNS.find((item) => item.key === key);
+                                        if (!column) return "";
+                                        return `
+                                            <div class="ch-column-editor-row" data-auth-column-row="${escapeHTML(key)}">
+                                                <label class="ch-checkbox-inline"><input type="checkbox" data-auth-column-toggle="${escapeHTML(key)}" ${hiddenSet.has(key) ? "" : "checked"}> ${escapeHTML(column.label)}</label>
+                                                <span class="operation-review-muted">${escapeHTML(key)}</span>
+                                                <span class="ch-column-editor-actions">
+                                                    <button class="ghost-button" type="button" data-auth-column-move-up="${escapeHTML(key)}" ${index <= 0 ? "disabled" : ""}>↑</button>
+                                                    <button class="ghost-button" type="button" data-auth-column-move-down="${escapeHTML(key)}" ${index >= working.order.length - 1 ? "disabled" : ""}>↓</button>
+                                                </span>
+                                            </div>
+                                        `;
+                                    }).join("")}
+                                </div>
+                            `;
+                            body.querySelectorAll("[data-auth-column-toggle]").forEach((input) => {
+                                input.addEventListener("change", (event) => {
+                                    const key = String(event.target?.getAttribute("data-auth-column-toggle") || "");
+                                    if (!key) return;
+                                    const nextHidden = new Set(working.hidden || []);
+                                    if (event.target.checked) nextHidden.delete(key);
+                                    else nextHidden.add(key);
+                                    working.hidden = Array.from(nextHidden);
+                                    renderEditor();
+                                });
+                            });
+                            const moveColumn = (key, direction) => {
+                                const index = working.order.indexOf(key);
+                                if (index < 0) return;
+                                const target = index + direction;
+                                if (target < 0 || target >= working.order.length) return;
+                                const next = [...working.order];
+                                [next[index], next[target]] = [next[target], next[index]];
+                                working.order = next;
+                                renderEditor();
+                            };
+                            body.querySelectorAll("[data-auth-column-move-up]").forEach((button) => {
+                                button.addEventListener("click", () => moveColumn(String(button.getAttribute("data-auth-column-move-up") || ""), -1));
+                            });
+                            body.querySelectorAll("[data-auth-column-move-down]").forEach((button) => {
+                                button.addEventListener("click", () => moveColumn(String(button.getAttribute("data-auth-column-move-down") || ""), 1));
+                            });
+                        };
+                        renderEditor();
+                    },
+                    resultProvider: () => normaliseAuthRegisterColumnState(working),
+                });
+                if (!decision) return;
+                companiesHouseSettings.authRegisterColumnState = normaliseAuthRegisterColumnState(decision);
+                saveAuthRegisterTablePreferences();
+                renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+            }
+
+            function resetAuthCodeRegisterFilters() {
+                companiesHouseSettings.authRegisterTableState = {
+                    ...companiesHouseSettings.authRegisterTableState,
+                    searchTerm: "",
+                    manager: "",
+                    sourceFile: "",
+                    sortKey: "uploadedAt",
+                    sortDirection: "desc",
+                };
+                const search = document.getElementById("chAuthCodeRegisterSearch");
+                const manager = document.getElementById("chAuthCodeRegisterManagerFilter");
+                const source = document.getElementById("chAuthCodeRegisterSourceFilter");
+                if (search) search.value = "";
+                if (manager) manager.value = "";
+                if (source) source.value = "";
+                saveAuthRegisterTablePreferences();
+                renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+            }
+
             function wireCompaniesHouseSettings() {
                 document.getElementById("saveCompaniesHouseSettingsButton")?.addEventListener("click", saveCompaniesHouseSettingsHandler);
                 document.getElementById("testCompaniesHouseConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
@@ -58969,6 +59658,32 @@
                     if (uploadButton) uploadButton.disabled = !hasFile;
                     if (hasFile) setAuthCodeRegisterStatus("Ready to upload selected CSV.", "muted");
                 });
+                document.getElementById("chAuthCodeRegisterSearch")?.addEventListener("input", (event) => {
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        searchTerm: String(event?.target?.value || ""),
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterManagerFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        manager: String(event?.target?.value || ""),
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterSourceFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        sourceFile: String(event?.target?.value || ""),
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterColumnsButton")?.addEventListener("click", openAuthCodeRegisterColumnsDialog);
+                document.getElementById("chAuthCodeRegisterResetFiltersButton")?.addEventListener("click", resetAuthCodeRegisterFilters);
             }
 
             const companiesHouseState = {

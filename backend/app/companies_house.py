@@ -75,8 +75,18 @@ CLIENT_IMPORT_HEADER_ALIASES = {
         "company authentication code",
         "companies house authentication code",
     },
-    "contact_email": {"contact email", "email", "primary email", "email address"},
-    "contact_phone": {"contact phone", "phone", "telephone", "phone number"},
+    "contact_email": {"contact email", "email", "primary email", "email address", "client email", "client e-mail"},
+    "contact_phone": {
+        "contact phone",
+        "phone",
+        "telephone",
+        "phone number",
+        "client telephone",
+        "client telephone number",
+        "client phone",
+        "client phone number",
+    },
+    "client_address": {"client address", "address", "postal address", "client postal address"},
     "assigned_staff": {"assigned staff", "assigned staff member", "staff", "owner", "manager", "account manager"},
     "notes": {"notes", "note", "internal notes", "comment"},
     "company_type": {"company type", "type", "legal type", "entity type"},
@@ -2819,6 +2829,8 @@ def _apply_import_enrichment_from_existing(row_payload: dict[str, str], existing
         row_payload["client_name"] = _coerce_text(existing_row.get("client_name"), 250)
     if _is_blank_text(row_payload.get("assigned_staff")):
         row_payload["assigned_staff"] = _coerce_text(existing_row.get("assigned_staff_name"), 250)
+    if _is_blank_text(row_payload.get("client_address")):
+        row_payload["client_address"] = _coerce_text(existing_row.get("client_address"), 1000)
     _import_set_date_fields(row_payload, "period_end", existing_row.get("next_made_up_to_date"))
     _import_set_date_fields(row_payload, "due_date", existing_row.get("next_due_date"))
     next_due_date = existing_row.get("next_due_date")
@@ -3063,19 +3075,21 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             client_name,
             contact_email,
             contact_phone,
+            client_address,
             assigned_staff_name,
             filing_authority_status,
             notes,
             next_made_up_to_date,
             next_due_date
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'authorised', %s, NULLIF(%s, '')::date, NULLIF(%s, '')::date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'authorised', %s, NULLIF(%s, '')::date, NULLIF(%s, '')::date)
         ON CONFLICT (company_number) DO UPDATE
         SET company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ch_companies.company_name),
             client_id = COALESCE(NULLIF(EXCLUDED.client_id, ''), ch_companies.client_id),
             client_name = COALESCE(NULLIF(EXCLUDED.client_name, ''), ch_companies.client_name),
             contact_email = COALESCE(NULLIF(EXCLUDED.contact_email, ''), ch_companies.contact_email),
             contact_phone = COALESCE(NULLIF(EXCLUDED.contact_phone, ''), ch_companies.contact_phone),
+            client_address = COALESCE(NULLIF(EXCLUDED.client_address, ''), ch_companies.client_address),
             assigned_staff_name = COALESCE(NULLIF(EXCLUDED.assigned_staff_name, ''), ch_companies.assigned_staff_name),
             notes = COALESCE(NULLIF(EXCLUDED.notes, ''), ch_companies.notes),
             next_made_up_to_date = COALESCE(EXCLUDED.next_made_up_to_date, ch_companies.next_made_up_to_date),
@@ -3090,6 +3104,7 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             data.get("client_name") or "",
             data.get("contact_email") or "",
             data.get("contact_phone") or "",
+            data.get("client_address") or "",
             data.get("assigned_staff") or "",
             data.get("notes") or "",
             data.get("period_end_iso") or "",
@@ -3375,6 +3390,210 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
     }
 
 
+def _auth_register_match_key(company_number: str, normalised_name: str) -> str:
+    number = normalise_company_number(company_number)
+    name = _coerce_text(normalised_name, 250)
+    if number:
+        return f"number:{number}"
+    return f"name:{name}"
+
+
+def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
+    rows, parse_errors = _parse_auth_code_register_csv(content)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No auth codes found in file. Include client/company name and auth code columns.",
+        )
+
+    incoming_by_key: dict[str, dict] = {}
+    for row in rows:
+        key = _auth_register_match_key(row.get("companyNumber") or "", row.get("normalisedName") or "")
+        if key in incoming_by_key:
+            parse_errors.append(
+                {
+                    "lineNumber": row.get("lineNumber"),
+                    "reason": "Duplicate auth code entry in file. Keep only one row per company number/name.",
+                }
+            )
+            continue
+        incoming_by_key[key] = row
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       company_number,
+                       normalised_name,
+                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
+                       client_id,
+                       client_manager,
+                       source_filename,
+                       uploaded_at
+                FROM ch_auth_code_register
+                ORDER BY uploaded_at DESC
+                """
+            )
+            existing_rows = cursor.fetchall() or []
+        connection.commit()
+
+    existing_by_key: dict[str, dict] = {}
+    for row in existing_rows:
+        key = _auth_register_match_key(row.get("company_number") or "", row.get("normalised_name") or "")
+        if key and key not in existing_by_key:
+            existing_by_key[key] = row
+
+    create_rows: list[dict] = []
+    update_rows: list[dict] = []
+    rows_to_upsert: list[dict] = []
+    for key, row in incoming_by_key.items():
+        existing = existing_by_key.get(key)
+        row_payload = {
+            "lineNumber": row.get("lineNumber"),
+            "companyNumber": row.get("companyNumber") or "",
+            "displayName": row.get("displayName") or "",
+            "clientManager": row.get("clientManager") or "",
+            "clientId": row.get("clientId") or "",
+            "normalisedName": row.get("normalisedName") or "",
+            "authCode": row.get("authCode") or "",
+        }
+        rows_to_upsert.append(row_payload)
+        if existing:
+            update_rows.append(
+                {
+                    "lineNumber": row_payload["lineNumber"],
+                    "companyNumber": row_payload["companyNumber"],
+                    "displayName": row_payload["displayName"],
+                    "clientManager": row_payload["clientManager"],
+                    "clientId": row_payload["clientId"],
+                    "existingDisplayName": existing.get("display_name") or "",
+                    "existingClientManager": existing.get("client_manager") or "",
+                    "existingClientId": existing.get("client_id") or "",
+                }
+            )
+        else:
+            create_rows.append(
+                {
+                    "lineNumber": row_payload["lineNumber"],
+                    "companyNumber": row_payload["companyNumber"],
+                    "displayName": row_payload["displayName"],
+                    "clientManager": row_payload["clientManager"],
+                    "clientId": row_payload["clientId"],
+                }
+            )
+
+    delete_rows: list[dict] = []
+    delete_ids: list[str] = []
+    incoming_keys = set(incoming_by_key.keys())
+    for key, existing in existing_by_key.items():
+        if key in incoming_keys:
+            continue
+        row_id = str(existing.get("id") or "")
+        if row_id:
+            delete_ids.append(row_id)
+        delete_rows.append(
+            {
+                "id": row_id,
+                "companyNumber": existing.get("company_number") or "",
+                "displayName": existing.get("display_name") or "",
+                "clientManager": existing.get("client_manager") or "",
+                "clientId": existing.get("client_id") or "",
+                "sourceFilename": existing.get("source_filename") or "",
+                "uploadedAt": existing.get("uploaded_at").isoformat() if existing.get("uploaded_at") else None,
+            }
+        )
+
+    return {
+        "filename": _coerce_text(filename, 250),
+        "rowCount": len(rows_to_upsert),
+        "createCount": len(create_rows),
+        "updateCount": len(update_rows),
+        "deleteCount": len(delete_rows),
+        "errorCount": len(parse_errors),
+        "errors": parse_errors[:200],
+        "creates": create_rows[:1000],
+        "updates": update_rows[:1000],
+        "deletes": delete_rows[:1000],
+        "rowsToUpsert": rows_to_upsert[:5000],
+        "deleteIds": delete_ids[:5000],
+    }
+
+
+def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes: bool = True) -> dict:
+    rows_to_upsert = preview.get("rowsToUpsert") or []
+    delete_ids = preview.get("deleteIds") or []
+    if not isinstance(rows_to_upsert, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid preview payload: rowsToUpsert must be a list.")
+    if not isinstance(delete_ids, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid preview payload: deleteIds must be a list.")
+    if not rows_to_upsert and not (apply_deletes and delete_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No directory changes to commit.")
+
+    user_id = user.get("id") if isinstance(user, dict) else None
+    filename = _coerce_text(preview.get("filename"), 250) or "auth-code-register.csv"
+    created_count = 0
+    updated_count = 0
+    deleted_count = 0
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in rows_to_upsert:
+                _, action = _upsert_auth_code_register_row(
+                    cursor,
+                    company_number=normalise_company_number(row.get("companyNumber")),
+                    display_name=_coerce_text(row.get("displayName"), 250),
+                    client_manager=_coerce_text(row.get("clientManager"), 120),
+                    client_id=_coerce_text(row.get("clientId"), 80),
+                    normalised_name=_coerce_text(row.get("normalisedName"), 250),
+                    auth_code=_coerce_text(row.get("authCode"), 80),
+                    filename=filename,
+                    user_id=user_id,
+                )
+                if action == "created":
+                    created_count += 1
+                else:
+                    updated_count += 1
+            if apply_deletes:
+                for delete_id in [str(value or "").strip() for value in delete_ids]:
+                    if not delete_id:
+                        continue
+                    cursor.execute("DELETE FROM ch_auth_code_register WHERE id = %s", (delete_id,))
+                    if (cursor.rowcount or 0) > 0:
+                        deleted_count += 1
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', 'bulk', 'auth_code_register_committed', %s::jsonb, %s)
+                """,
+                (
+                    json.dumps(
+                        {
+                            "filename": filename,
+                            "upsertRows": len(rows_to_upsert),
+                            "applyDeletes": bool(apply_deletes),
+                            "deleteCandidates": len(delete_ids),
+                            "created": created_count,
+                            "updated": updated_count,
+                            "deleted": deleted_count,
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+        connection.commit()
+
+    return {
+        "filename": filename,
+        "createdCount": created_count,
+        "updatedCount": updated_count,
+        "deletedCount": deleted_count,
+        "upsertCount": len(rows_to_upsert),
+        "deleteRequested": len(delete_ids) if apply_deletes else 0,
+        "applyDeletes": bool(apply_deletes),
+    }
+
+
 def list_auth_code_register(limit: int = 300) -> dict:
     safe_limit = max(20, min(int(limit or 300), 1000))
     with get_connection() as connection:
@@ -3386,10 +3605,15 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
                        client_manager,
                        client_id,
+                       c.contact_email,
+                       c.contact_phone,
+                       c.client_address,
                        code_hint,
                        source_filename,
                        uploaded_at
                 FROM ch_auth_code_register
+                LEFT JOIN ch_companies c
+                  ON c.company_number = ch_auth_code_register.company_number
                 ORDER BY uploaded_at DESC
                 LIMIT %s
                 """,
@@ -3408,6 +3632,9 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 "displayName": row.get("display_name") or "",
                 "clientManager": row.get("client_manager") or "",
                 "clientId": row.get("client_id") or "",
+                "clientEmail": row.get("contact_email") or "",
+                "clientPhone": row.get("contact_phone") or "",
+                "clientAddress": row.get("client_address") or "",
                 "authCodeHint": row.get("code_hint") or "",
                 "sourceFilename": row.get("source_filename") or "",
                 "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
@@ -3846,6 +4073,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "clientName": row.get("client_name") or "",
         "contactEmail": row.get("contact_email") or "",
         "contactPhone": row.get("contact_phone") or "",
+        "clientAddress": row.get("client_address") or "",
         "assignedStaffName": row.get("assigned_staff_name") or "",
         "registeredOffice": row.get("registered_office") or "",
         "companyStatus": row.get("company_status") or "",
@@ -3900,10 +4128,10 @@ def list_companies(filters: dict | None = None) -> list[dict]:
     search = (filters.get("search") or "").strip().lower()
     if search:
         where_clauses.append(
-            "(LOWER(c.company_name) LIKE %s OR LOWER(c.client_name) LIKE %s OR LOWER(c.company_number) LIKE %s)"
+            "(LOWER(c.company_name) LIKE %s OR LOWER(c.client_name) LIKE %s OR LOWER(c.company_number) LIKE %s OR LOWER(c.contact_email) LIKE %s OR LOWER(c.contact_phone) LIKE %s OR LOWER(c.client_address) LIKE %s)"
         )
         like = f"%{search}%"
-        params.extend([like, like, like])
+        params.extend([like, like, like, like, like, like])
 
     internal_status = (filters.get("internalStatus") or "").strip()
     if internal_status and internal_status != "all":
@@ -5217,6 +5445,8 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
         updates["contact_email"] = _coerce_text(payload.get("contactEmail"), 250)
     if "contactPhone" in payload:
         updates["contact_phone"] = _coerce_text(payload.get("contactPhone"), 80)
+    if "clientAddress" in payload:
+        updates["client_address"] = _coerce_text(payload.get("clientAddress"), 1000)
     if "clientName" in payload:
         updates["client_name"] = _coerce_text(payload.get("clientName"), 250)
     if "clientId" in payload:

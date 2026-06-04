@@ -29,6 +29,7 @@ from .auth import (
     xero_authorize_url,
 )
 from .companies_house import (
+    commit_auth_code_register_import,
     bulk_raise_submission_invoices,
     bulk_submit_confirmation_statements,
     commit_clients_import,
@@ -44,6 +45,7 @@ from .companies_house import (
     list_imports as list_companies_house_imports,
     list_submission_attempts,
     parse_clients_import,
+    preview_auth_code_register_csv,
     populate_auth_codes_from_register,
     populate_xero_lock_date_company_numbers,
     replay_dead_letter_submissions,
@@ -1215,6 +1217,28 @@ async def api_companies_house_auth_code_register_upload(
 ):
     content = await file.read()
     result = upload_auth_code_register_csv(user, content, file.filename or "auth-code-register.csv")
+    return {"status": "ok", "result": result}
+
+
+@app.post("/api/companies-house/auth-code-register/preview")
+async def api_companies_house_auth_code_register_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    content = await file.read()
+    preview = preview_auth_code_register_csv(content, file.filename or "auth-code-register.csv")
+    return {"status": "ok", "preview": preview}
+
+
+@app.post("/api/companies-house/auth-code-register/commit")
+async def api_companies_house_auth_code_register_commit(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    preview = payload.get("preview") or {}
+    apply_deletes = bool(payload.get("applyDeletes", True))
+    result = commit_auth_code_register_import(user, preview, apply_deletes=apply_deletes)
     return {"status": "ok", "result": result}
 
 
