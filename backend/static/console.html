@@ -1916,12 +1916,14 @@
                 font-weight: 950;
             }
             .insights-topbar-summary {
-                flex: 1 1 760px;
-                min-width: min(740px, 100%);
-                max-width: 1080px;
+                flex: 0 1 auto;
+                min-width: 0;
+                width: auto;
+                max-width: min(460px, 100%);
+                margin-left: auto;
                 order: 20;
                 display: grid;
-                grid-template-columns: repeat(4, minmax(120px, 1fr));
+                grid-template-columns: minmax(0, 1fr);
                 gap: 8px;
                 padding: 8px;
                 border: 1px solid rgba(61, 85, 130, 0.13);
@@ -2041,18 +2043,19 @@
                 animation-delay: calc(var(--insight-tile-index, 0) * 58ms);
             }
             .insights-stats-card {
-                width: 100%;
+                width: auto;
                 display: grid;
                 gap: 8px;
             }
             .insights-stats-toggle {
-                width: 100%;
+                width: auto;
+                max-width: 100%;
                 border: 1px solid rgba(61, 85, 130, 0.14);
                 border-radius: 12px;
                 background: rgba(255, 255, 255, 0.94);
                 color: var(--ink);
                 display: grid;
-                grid-template-columns: auto 1fr auto;
+                grid-template-columns: auto minmax(0, 1fr) auto;
                 align-items: center;
                 gap: 10px;
                 padding: 8px 10px;
@@ -2925,8 +2928,11 @@
                 min-width: min(480px, 100%);
             }
             .ledger-topbar.has-inline-status .insights-topbar-summary {
-                max-width: 760px;
-                grid-template-columns: repeat(4, minmax(84px, 1fr));
+                flex: 0 1 auto;
+                min-width: 0;
+                max-width: min(460px, 100%);
+                margin-left: auto;
+                grid-template-columns: minmax(0, 1fr);
             }
             .ledger-topbar.has-inline-status .bad-debt-topbar-summary {
                 flex: 1 1 clamp(540px, 54vw, 900px);
@@ -3014,9 +3020,11 @@
                 padding: 7px 10px;
             }
             .ledger-topbar.is-topbar-dense .insights-topbar-summary {
-                flex-basis: 430px;
-                min-width: min(430px, 100%);
-                grid-template-columns: repeat(4, minmax(76px, 1fr));
+                flex-basis: auto;
+                min-width: 0;
+                max-width: min(420px, 100%);
+                margin-left: auto;
+                grid-template-columns: minmax(0, 1fr);
             }
             .ledger-topbar.is-topbar-dense .insights-topbar-summary article {
                 padding: 7px 10px;
@@ -54779,6 +54787,9 @@
                         else reasons.push(`Current outstanding balance is ${formatCurrency(invoice.amountDue || 0)}.`);
                         const card = document.createElement("article");
                         card.className = "bad-debt-ai-card";
+                        const writtenOff = invoiceWriteOffRaised(invoice);
+                        const blockReason = badDebtBlockReason(invoice);
+                        const eligible = !writtenOff && !blockReason;
                         card.innerHTML = `
                             <div class="bad-debt-ai-head">
                                 <strong>${escapeHTML(invoice.customerName || "Unnamed client")} · ${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
@@ -54786,7 +54797,18 @@
                             </div>
                             <p class="bad-debt-ai-meta">Due ${escapeHTML(formatDate(invoice.dueDate))} · ${overdueDays.toLocaleString("en-GB")} days overdue</p>
                             <ul class="bad-debt-ai-reasons">${reasons.map((reason) => `<li>${escapeHTML(reason)}</li>`).join("")}</ul>
+                            <div class="detail-actions">
+                                <button class="primary-button" type="button" data-bad-debt-write-now="${escapeHTML(invoice.id || "")}" ${eligible && !isOperationRunning ? "" : "disabled"}>${eligible ? "Write Off Now" : escapeHTML(writtenOff ? "Already written off" : (blockReason || "Not eligible"))}</button>
+                            </div>
                         `;
+                        const writeNowButton = card.querySelector("[data-bad-debt-write-now]");
+                        if (writeNowButton) {
+                            writeNowButton.addEventListener("click", async () => {
+                                selectedBadDebtInvoiceIds = new Set([String(invoice.id || "")].filter(Boolean));
+                                await raiseBadDebtWriteOffs();
+                                renderBadDebtScreen();
+                            });
+                        }
                         suggestionWrap.appendChild(card);
                     });
                     target.appendChild(suggestionWrap);
