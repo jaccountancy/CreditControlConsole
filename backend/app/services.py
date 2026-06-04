@@ -13238,6 +13238,652 @@ async def mark_me_report_purchases_paid_personally(user: dict, client_id: str, p
     return me_report_payload(user)
 
 
+def _me_report_juk_invoice_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _me_report_juk_invoice_key(value) -> str:
+    text = re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+    return text[:120]
+
+
+def _me_report_juk_invoice_amount(payload: dict) -> Decimal:
+    candidates = (
+        payload.get("amount"),
+        payload.get("total"),
+        payload.get("total_amount"),
+        payload.get("gross_amount"),
+        payload.get("amount_due"),
+        payload.get("balance"),
+        payload.get("outstanding_amount"),
+        payload.get("invoice_total"),
+    )
+    for candidate in candidates:
+        amount = _money(candidate)
+        if amount != Decimal("0.00"):
+            return abs(amount)
+    return Decimal("0.00")
+
+
+def _me_report_juk_invoice_tax(payload: dict) -> Decimal:
+    candidates = (
+        payload.get("tax"),
+        payload.get("tax_amount"),
+        payload.get("total_tax"),
+        payload.get("tax_total"),
+    )
+    for candidate in candidates:
+        amount = _money(candidate)
+        if amount != Decimal("0.00"):
+            return abs(amount)
+    return Decimal("0.00")
+
+
+def _me_report_juk_invoice_client_name(payload: dict) -> str:
+    client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+    customer = payload.get("customer") if isinstance(payload.get("customer"), dict) else {}
+    return (
+        _me_report_juk_invoice_text(payload.get("client_name"))
+        or _me_report_juk_invoice_text(payload.get("clientName"))
+        or _me_report_juk_invoice_text(payload.get("client_display_name"))
+        or _me_report_juk_invoice_text(client.get("name"))
+        or _me_report_juk_invoice_text(client.get("display_name"))
+        or _me_report_juk_invoice_text(client.get("business_name"))
+        or _me_report_juk_invoice_text(customer.get("name"))
+        or _me_report_juk_invoice_text(customer.get("display_name"))
+        or _me_report_juk_invoice_text(customer.get("business_name"))
+    )
+
+
+def _me_report_juk_invoice_number(payload: dict) -> str:
+    return (
+        _me_report_juk_invoice_text(payload.get("invoice_number"))
+        or _me_report_juk_invoice_text(payload.get("invoiceNumber"))
+        or _me_report_juk_invoice_text(payload.get("number"))
+        or _me_report_juk_invoice_text(payload.get("invoice_no"))
+        or _me_report_juk_invoice_text(payload.get("invoiceNo"))
+    )
+
+
+def _me_report_juk_invoice_reference(payload: dict) -> str:
+    return (
+        _me_report_juk_invoice_text(payload.get("reference"))
+        or _me_report_juk_invoice_text(payload.get("external_reference"))
+        or _me_report_juk_invoice_text(payload.get("externalReference"))
+        or _me_report_juk_invoice_text(payload.get("id"))
+    )
+
+
+def _me_report_juk_invoice_issue_date(payload: dict) -> str:
+    return (
+        _me_report_juk_invoice_text(payload.get("issue_date"))
+        or _me_report_juk_invoice_text(payload.get("invoice_date"))
+        or _me_report_juk_invoice_text(payload.get("date"))
+        or _me_report_juk_invoice_text(payload.get("created_at"))
+    )
+
+
+def _me_report_juk_invoice_due_date(payload: dict) -> str:
+    return (
+        _me_report_juk_invoice_text(payload.get("due_date"))
+        or _me_report_juk_invoice_text(payload.get("dueDate"))
+        or _me_report_juk_invoice_text(payload.get("payment_due_date"))
+    )
+
+
+def _me_report_juk_invoice_status(payload: dict) -> str:
+    return _me_report_juk_invoice_text(payload.get("status") or payload.get("state") or payload.get("payment_status")).lower()
+
+
+def _me_report_juk_invoice_candidates(user: dict, client: dict) -> list[dict]:
+    client_name = _me_report_juk_invoice_text(client.get("client_name"))
+    if not client_name:
+        return []
+    target_keys = set(_ignition_name_match_keys(client_name))
+    if not target_keys:
+        return []
+    director_keys = set()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT company_name, client_name, officers
+                FROM ch_companies
+                WHERE LOWER(TRIM(company_name)) = LOWER(TRIM(%s))
+                   OR LOWER(TRIM(client_name)) = LOWER(TRIM(%s))
+                LIMIT 40
+                """,
+                (client_name, client_name),
+            )
+            ch_rows = cursor.fetchall()
+        connection.commit()
+    for ch_row in ch_rows:
+        officers = ch_row.get("officers") if isinstance(ch_row.get("officers"), list) else []
+        for officer in officers:
+            if not isinstance(officer, dict):
+                continue
+            name = _me_report_juk_invoice_text(officer.get("name"))
+            for key in _ignition_name_match_keys(name):
+                director_keys.add(key)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT external_id, payload, source_created_at, source_updated_at, created_at
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'invoices'
+                ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+                LIMIT 4000
+                """,
+                (user["id"],),
+            )
+            records = cursor.fetchall()
+        connection.commit()
+    candidates = []
+    seen = set()
+    for record in records:
+        payload = record.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        status_text = _me_report_juk_invoice_status(payload)
+        if status_text in {"void", "voided", "deleted", "cancelled", "canceled", "draft"}:
+            continue
+        row_client_name = _me_report_juk_invoice_client_name(payload)
+        row_keys = set(_ignition_name_match_keys(row_client_name))
+        matched_via_director = False
+        if not row_keys.intersection(target_keys):
+            if director_keys and row_keys.intersection(director_keys):
+                matched_via_director = True
+            else:
+                continue
+        if not row_keys.intersection(target_keys) and not matched_via_director:
+            continue
+        total_amount = _me_report_juk_invoice_amount(payload)
+        if total_amount <= Decimal("0.00"):
+            continue
+        invoice_number = _me_report_juk_invoice_number(payload)
+        reference = _me_report_juk_invoice_reference(payload)
+        row_id = _me_report_juk_invoice_text(record.get("external_id")) or reference or invoice_number or str(uuid4())
+        dedupe_key = "|".join((
+            _me_report_juk_invoice_key(invoice_number),
+            _me_report_juk_invoice_key(reference),
+            f"{total_amount:.2f}",
+            _me_report_juk_invoice_key(_me_report_juk_invoice_issue_date(payload)),
+        ))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        candidates.append({
+            "ignitionInvoiceId": row_id[:120],
+            "invoiceNumber": invoice_number[:120],
+            "reference": reference[:160],
+            "description": _me_report_juk_invoice_text(payload.get("description") or payload.get("memo") or payload.get("note"))[:240],
+            "issueDate": _me_report_juk_invoice_issue_date(payload)[:40],
+            "dueDate": _me_report_juk_invoice_due_date(payload)[:40],
+            "currencyCode": _me_report_juk_invoice_text(payload.get("currency") or payload.get("currency_code") or payload.get("currencyCode") or "GBP")[:10] or "GBP",
+            "total": float(_money(total_amount)),
+            "taxAmount": float(_money(_me_report_juk_invoice_tax(payload))),
+            "status": status_text or "open",
+            "clientName": row_client_name[:180],
+            "matchMethod": "director_fallback" if matched_via_director else "client",
+        })
+    return candidates[:600]
+
+
+def _me_report_xero_bill_rows(invoices_payload: list[dict]) -> list[dict]:
+    rows = []
+    for invoice in invoices_payload:
+        if not isinstance(invoice, dict):
+            continue
+        row_type = str(invoice.get("Type") or "").upper()
+        row_status = str(invoice.get("Status") or "").upper()
+        if row_type != "ACCPAY" or row_status in {"DELETED", "VOIDED"}:
+            continue
+        rows.append({
+            "invoiceId": str(invoice.get("InvoiceID") or "").strip(),
+            "invoiceNumber": str(invoice.get("InvoiceNumber") or "").strip(),
+            "reference": str(invoice.get("Reference") or "").strip(),
+            "date": str(invoice.get("DateString") or invoice.get("Date") or "").strip(),
+            "total": abs(_money(invoice.get("Total"))),
+            "status": row_status or "",
+        })
+    return rows
+
+
+def _me_report_juk_match_xero_bill(ignition_invoice: dict, xero_bills: list[dict]) -> dict | None:
+    ignition_number_key = _me_report_juk_invoice_key(ignition_invoice.get("invoiceNumber"))
+    ignition_reference_key = _me_report_juk_invoice_key(ignition_invoice.get("reference"))
+    ignition_amount = abs(_money(ignition_invoice.get("total")))
+    for bill in xero_bills:
+        number_key = _me_report_juk_invoice_key(bill.get("invoiceNumber"))
+        reference_key = _me_report_juk_invoice_key(bill.get("reference"))
+        if ignition_number_key and (ignition_number_key == number_key or ignition_number_key == reference_key):
+            return bill
+        if ignition_reference_key and (ignition_reference_key == number_key or ignition_reference_key == reference_key):
+            return bill
+    if ignition_amount > Decimal("0.00"):
+        for bill in xero_bills:
+            bill_amount = abs(_money(bill.get("total")))
+            if abs(bill_amount - ignition_amount) <= Decimal("0.01"):
+                return bill
+    return None
+
+
+def _me_report_juk_bank_transaction_candidate(bank_rows: list[dict], ignition_invoice: dict) -> tuple[str, str]:
+    amount = abs(_money(ignition_invoice.get("total")))
+    invoice_number = _me_report_juk_invoice_text(ignition_invoice.get("invoiceNumber"))
+    reference = _me_report_juk_invoice_text(ignition_invoice.get("reference"))
+    search_terms = [item.lower() for item in (invoice_number, reference) if item]
+    for row in bank_rows:
+        row_id = str(row.get("BankTransactionID") or "").strip()
+        if not row_id:
+            continue
+        if bool(row.get("IsReconciled")):
+            continue
+        row_amount = _xero_bank_transaction_amount(row)
+        if abs(row_amount - amount) > Decimal("0.01"):
+            continue
+        haystack = " ".join(
+            str(row.get(key) or "")
+            for key in ("Reference", "Type", "Status")
+        ).lower()
+        if search_terms and not any(term in haystack for term in search_terms):
+            continue
+        reason = "Unreconciled spend transaction with matching amount and reference text found."
+        return row_id, reason
+    for row in bank_rows:
+        row_id = str(row.get("BankTransactionID") or "").strip()
+        if not row_id:
+            continue
+        if bool(row.get("IsReconciled")):
+            continue
+        row_amount = _xero_bank_transaction_amount(row)
+        if abs(row_amount - amount) <= Decimal("0.01"):
+            return row_id, "Unreconciled spend transaction with matching amount found."
+    for row in bank_rows:
+        row_id = str(row.get("BankTransactionID") or "").strip()
+        if not row_id:
+            continue
+        if not bool(row.get("IsReconciled")):
+            continue
+        row_amount = _xero_bank_transaction_amount(row)
+        if abs(row_amount - amount) <= Decimal("0.01"):
+            return row_id, "Reconciled spend transaction with matching amount found. Wizard will attempt to remove this posting before creating the bill."
+    return "", ""
+
+
+async def _me_report_juk_invoice_check_preview(user: dict, client: dict, connection_row: dict) -> dict:
+    ignition_invoices = _me_report_juk_invoice_candidates(user, client)
+    xero_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": 'Type=="ACCPAY"&&Status!="DELETED"&&Status!="VOIDED"', "order": "Date DESC"},
+        max_pages=12,
+    )
+    xero_bills = _me_report_xero_bill_rows(xero_invoices)
+    try:
+        bank_rows = await fetch_paginated_collection(
+            connection_row,
+            BANK_TRANSACTIONS_URL,
+            "BankTransactions",
+            params={"where": 'Type=="SPEND"&&Status!="DELETED"', "order": "Date DESC"},
+            max_pages=8,
+        )
+    except Exception:
+        bank_rows = []
+    missing_rows = []
+    matched_count = 0
+    for invoice in ignition_invoices:
+        matched = _me_report_juk_match_xero_bill(invoice, xero_bills)
+        if matched:
+            matched_count += 1
+            continue
+        suggested_transaction_id, suggested_transaction_reason = _me_report_juk_bank_transaction_candidate(bank_rows, invoice)
+        missing_rows.append({
+            **invoice,
+            "suggestedDeleteTransactionId": suggested_transaction_id,
+            "suggestedDeleteReason": suggested_transaction_reason,
+        })
+    missing_total = sum(_money(item.get("total")) for item in missing_rows)
+    return {
+        "clientId": str(client.get("id") or ""),
+        "generatedAt": _iso(utcnow()) or "",
+        "ignitionInvoiceCount": len(ignition_invoices),
+        "xeroPurchaseInvoiceCount": len(xero_bills),
+        "matchedCount": matched_count,
+        "missingCount": len(missing_rows),
+        "missingTotal": float(_money(missing_total)),
+        "missingInvoices": missing_rows[:200],
+    }
+
+
+async def me_report_juk_invoice_check(user: dict, client_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    mode = str(payload.get("mode") or "preview").strip().lower() or "preview"
+    client = _me_report_client_row(user, client_id)
+    connection_row = _me_report_xero_connection(user, client)
+    preview = await _me_report_juk_invoice_check_preview(user, client, connection_row)
+    if mode != "apply":
+        return {"check": preview}
+
+    raw_invoices = payload.get("invoices")
+    requested_rows = raw_invoices if isinstance(raw_invoices, list) else []
+    selected_ids = {
+        _me_report_juk_invoice_text(row.get("ignitionInvoiceId"))
+        for row in requested_rows
+        if isinstance(row, dict) and _me_report_juk_invoice_text(row.get("ignitionInvoiceId"))
+    }
+    if not selected_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one missing JUK invoice to post.")
+    selected_map = {
+        _me_report_juk_invoice_text(row.get("ignitionInvoiceId")): row
+        for row in requested_rows
+        if isinstance(row, dict)
+    }
+    supplier_name = _me_report_juk_invoice_text(payload.get("supplierName") or "Jaccountancy")[:120] or "Jaccountancy"
+    account_code = _me_report_juk_invoice_text(payload.get("purchaseAccountCode") or "401")[:30] or "401"
+    default_delete_nominal = bool(payload.get("deleteNominalPosting"))
+
+    xero_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": 'Type=="ACCPAY"&&Status!="DELETED"&&Status!="VOIDED"', "order": "Date DESC"},
+        max_pages=12,
+    )
+    xero_bills = _me_report_xero_bill_rows(xero_invoices)
+    missing_lookup = {
+        _me_report_juk_invoice_text(item.get("ignitionInvoiceId")): item
+        for item in preview.get("missingInvoices") or []
+        if _me_report_juk_invoice_text(item.get("ignitionInvoiceId"))
+    }
+    created = []
+    skipped_duplicates = []
+    deleted_nominal = []
+    errors = []
+
+    for ignition_invoice_id in selected_ids:
+        invoice = missing_lookup.get(ignition_invoice_id)
+        if not invoice:
+            errors.append({"ignitionInvoiceId": ignition_invoice_id, "message": "Invoice is no longer in the missing list."})
+            continue
+        duplicate_bill = _me_report_juk_match_xero_bill(invoice, xero_bills)
+        if duplicate_bill:
+            skipped_duplicates.append({
+                "ignitionInvoiceId": ignition_invoice_id,
+                "invoiceNumber": invoice.get("invoiceNumber") or "",
+                "xeroInvoiceId": duplicate_bill.get("invoiceId") or "",
+            })
+            continue
+        row_payload = selected_map.get(ignition_invoice_id) or {}
+        delete_nominal = bool(row_payload.get("deleteNominalPosting")) if "deleteNominalPosting" in row_payload else default_delete_nominal
+        suggested_transaction_id = _me_report_juk_invoice_text(row_payload.get("deleteTransactionId") or invoice.get("suggestedDeleteTransactionId"))
+        if delete_nominal and suggested_transaction_id:
+            try:
+                transaction_payload = await xero_api_get(connection_row, f"{BANK_TRANSACTIONS_URL}/{suggested_transaction_id}")
+                transaction = _me_report_xero_bank_transaction(transaction_payload)
+                if transaction:
+                    await update_bank_transaction_status(connection_row, suggested_transaction_id, "DELETED")
+                    deleted_nominal.append({
+                        "ignitionInvoiceId": ignition_invoice_id,
+                        "transactionId": suggested_transaction_id,
+                        "wasReconciled": bool(transaction.get("IsReconciled")),
+                    })
+            except Exception as exc:
+                errors.append({
+                    "ignitionInvoiceId": ignition_invoice_id,
+                    "message": f"Could not delete nominal posting {suggested_transaction_id}: {_sync_error_message(exc)}",
+                })
+                continue
+        total = abs(_money(invoice.get("total")))
+        if total <= Decimal("0.00"):
+            errors.append({"ignitionInvoiceId": ignition_invoice_id, "message": "Invoice total is zero and cannot be posted."})
+            continue
+        invoice_number = _me_report_juk_invoice_text(invoice.get("invoiceNumber") or invoice.get("reference") or ignition_invoice_id)[:120]
+        reference = _me_report_juk_invoice_text(invoice.get("reference") or invoice_number)[:120]
+        issue_date = _parse_optional_iso_date(invoice.get("issueDate")) or utcnow().date()
+        due_date = _parse_optional_iso_date(invoice.get("dueDate")) or issue_date
+        currency_code = _me_report_juk_invoice_text(invoice.get("currencyCode") or "GBP")[:10] or "GBP"
+        description = _me_report_juk_invoice_text(invoice.get("description") or f"JUK invoice {invoice_number}")[:400] or f"JUK invoice {invoice_number}"
+        invoice_payload = {
+            "Type": "ACCPAY",
+            "Contact": {"Name": supplier_name},
+            "Date": issue_date.isoformat(),
+            "DueDate": due_date.isoformat(),
+            "InvoiceNumber": invoice_number,
+            "Reference": reference,
+            "Status": "AUTHORISED",
+            "LineAmountTypes": "NoTax",
+            "CurrencyCode": currency_code,
+            "LineItems": [
+                {
+                    "Description": description,
+                    "Quantity": 1,
+                    "UnitAmount": float(total),
+                    "AccountCode": account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+        }
+        try:
+            created_payload = await create_sales_invoice(connection_row, invoice_payload)
+            created_invoice = _me_report_xero_invoice(created_payload)
+            created_row = {
+                "ignitionInvoiceId": ignition_invoice_id,
+                "invoiceNumber": invoice_number,
+                "xeroInvoiceId": _me_report_juk_invoice_text(created_invoice.get("InvoiceID") or created_invoice.get("InvoiceId")),
+                "total": float(_money(total)),
+            }
+            created.append(created_row)
+            xero_bills.append({
+                "invoiceId": created_row["xeroInvoiceId"],
+                "invoiceNumber": invoice_number,
+                "reference": reference,
+                "date": issue_date.isoformat(),
+                "total": _money(total),
+                "status": "AUTHORISED",
+            })
+        except Exception as exc:
+            errors.append({"ignitionInvoiceId": ignition_invoice_id, "message": _sync_error_message(exc)})
+
+    result = {
+        "createdCount": len(created),
+        "created": created,
+        "skippedDuplicateCount": len(skipped_duplicates),
+        "skippedDuplicates": skipped_duplicates,
+        "deletedNominalPostingCount": len(deleted_nominal),
+        "deletedNominalPostings": deleted_nominal,
+        "errorCount": len(errors),
+        "errors": errors,
+    }
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.juk_invoice_check_applied",
+        {
+            "created_count": result["createdCount"],
+            "skipped_duplicate_count": result["skippedDuplicateCount"],
+            "deleted_nominal_posting_count": result["deletedNominalPostingCount"],
+            "error_count": result["errorCount"],
+        },
+        user["id"],
+    )
+    refreshed = await _me_report_juk_invoice_check_preview(user, client, connection_row)
+    return {"check": refreshed, "result": result, "meReport": me_report_payload(user)}
+
+
+def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
+    if payload is None:
+        return None
+    if isinstance(payload, (int, float, Decimal)):
+        return _money(payload)
+    if isinstance(payload, str):
+        text = payload.strip()
+        if not text:
+            return None
+        return _money_from_report_cell(text)
+    if isinstance(payload, dict):
+        candidate_keys = (
+            "netAssets",
+            "net_assets",
+            "balanceSheetNetAssets",
+            "net_assets_total",
+            "totalNetAssets",
+            "total_net_assets",
+        )
+        for key in candidate_keys:
+            if key in payload:
+                value = _code_breaker_net_assets_value(payload.get(key))
+                if value is not None:
+                    return value
+        for value in payload.values():
+            extracted = _code_breaker_net_assets_value(value)
+            if extracted is not None:
+                return extracted
+        return None
+    if isinstance(payload, list):
+        for item in payload:
+            value = _code_breaker_net_assets_value(item)
+            if value is not None:
+                return value
+    return None
+
+
+def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
+    for line in lines:
+        label = str(line.get("label") or "").strip().lower()
+        if not label:
+            continue
+        if "net assets" in label:
+            amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+            if amounts:
+                return _money(amounts[-1])
+    assets_total = None
+    liabilities_total = None
+    for line in lines:
+        label = str(line.get("label") or "").strip().lower()
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not label or not amounts:
+            continue
+        amount = _money(amounts[-1])
+        if "total assets" in label:
+            assets_total = amount
+        elif "total liabilities" in label:
+            liabilities_total = amount
+    if assets_total is not None and liabilities_total is not None:
+        return _money(assets_total - liabilities_total)
+    return None
+
+
+async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    tenant_id = str(payload.get("tenantId") or "").strip()
+    xero_contact_id = str(payload.get("xeroContactId") or "").strip()
+    company_number = normalise_company_number(payload.get("companyNumber"))
+    as_at_raw = str(payload.get("asAtDate") or payload.get("yearEndDate") or "").strip()
+    as_at_date = _parse_optional_iso_date(as_at_raw)
+    if as_at_date is None:
+        as_at_date = utcnow().date()
+
+    if tenant_id:
+        connections = list_xero_connections_for_user(user["id"], include_fallback=True)
+        connection_row = next((row for row in connections if str(row.get("tenant_id") or "").strip() == tenant_id), None)
+        if connection_row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
+    else:
+        connection_row = get_xero_connection_for_user(user["id"])
+
+    balance_sheet_payload = await _me_xero_optional_get(
+        connection_row,
+        "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
+        {"date": as_at_date.isoformat()},
+    )
+    xero_net_assets = _code_breaker_xero_net_assets(_xero_report_lines(balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}))
+
+    ch_company = None
+    me_report_net_assets = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if company_number:
+                cursor.execute(
+                    """
+                    SELECT company_name, company_number, last_filed_date, latest_submission_completed_at, filing_history
+                    FROM ch_companies
+                    WHERE UPPER(company_number) = UPPER(%s)
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (company_number,),
+                )
+                ch_company = cursor.fetchone()
+            if xero_contact_id:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM me_report_clients
+                    WHERE user_id = %s
+                      AND xero_contact_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (user["id"], xero_contact_id),
+                )
+                me_client = cursor.fetchone()
+                if me_client:
+                    cursor.execute(
+                        """
+                        SELECT calculation
+                        FROM me_report_submissions
+                        WHERE client_id = %s
+                        ORDER BY COALESCE(completed_at, created_at) DESC
+                        LIMIT 5
+                        """,
+                        (str(me_client.get("id") or ""),),
+                    )
+                    submission_rows = cursor.fetchall() or []
+                    for row in submission_rows:
+                        calculation = row.get("calculation")
+                        extracted = _code_breaker_net_assets_value(calculation)
+                        if extracted is not None:
+                            me_report_net_assets = extracted
+                            break
+        connection.commit()
+
+    ch_net_assets = None
+    if ch_company:
+        ch_net_assets = _code_breaker_net_assets_value(ch_company.get("filing_history"))
+    if ch_net_assets is None and me_report_net_assets is not None:
+        ch_net_assets = me_report_net_assets
+
+    difference = None
+    if ch_net_assets is not None and xero_net_assets is not None:
+        difference = _money(xero_net_assets - ch_net_assets)
+
+    return {
+        "asAtDate": as_at_date.isoformat(),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "companyNumber": company_number or "",
+        "ch": {
+            "companyName": str((ch_company or {}).get("company_name") or ""),
+            "netAssets": float(ch_net_assets) if ch_net_assets is not None else None,
+            "source": "companies_house_filing_history" if ch_net_assets is not None and ch_company else ("me_report_latest_submission" if ch_net_assets is not None else "unavailable"),
+            "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
+            "latestSubmissionCompletedAt": _iso((ch_company or {}).get("latest_submission_completed_at")),
+        },
+        "xero": {
+            "netAssets": float(xero_net_assets) if xero_net_assets is not None else None,
+            "source": "xero_balance_sheet",
+        },
+        "match": {
+            "matches": bool(ch_net_assets is not None and xero_net_assets is not None and abs(_money(xero_net_assets - ch_net_assets)) <= Decimal("0.01")),
+            "difference": float(difference) if difference is not None else None,
+        },
+    }
+
+
 async def delete_me_report_unreconciled_transaction(user: dict, client_id: str, transaction_id: str) -> dict:
     client = _me_report_client_row(user, client_id)
     transaction_id = str(transaction_id or "").strip()
@@ -20070,6 +20716,118 @@ def ignition_payload(user: dict, include_dashboard: bool = True) -> dict:
         "syncRun": serialize_ignition_sync_run(active_run or latest_run),
         "activeSyncRun": serialize_ignition_sync_run(active_run),
     }
+
+
+def micro_analyzer_clients_payload(user: dict) -> dict:
+    connections = list_xero_connections_for_user(user["id"], include_fallback=True)
+    tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connections if str(row.get("tenant_id") or "").strip()]
+    if not tenant_ids:
+        return {"clients": [], "count": 0}
+
+    tenant_name_by_id = {str(row.get("tenant_id") or "").strip(): str(row.get("tenant_name") or row.get("tenant_id") or "").strip() for row in connections}
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, xero_contact_id, tenant_id
+                FROM customers
+                WHERE tenant_id = ANY(%s)
+                  AND COALESCE(TRIM(xero_contact_id), '') <> ''
+                ORDER BY name ASC
+                """,
+                (tenant_ids,),
+            )
+            customer_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'proposals'
+                ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+                LIMIT 12000
+                """,
+                (user["id"],),
+            )
+            proposal_rows = cursor.fetchall() or []
+        connection.commit()
+
+    eligible_labels = {"Micro", "Starter", "Solo", "Solo+", "Solo MTD"}
+    active_ignition_by_key: dict[str, dict] = {}
+    for row in proposal_rows:
+        proposal = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        if not proposal:
+            continue
+        if not _is_accepted_ignition_proposal(proposal):
+            continue
+        if not _ignition_proposal_client_is_active(proposal):
+            continue
+        service_name = _ignition_proposal_service_name(proposal)
+        plan_label = _plan_label_for_text(" ".join([service_name, str(proposal.get("name") or ""), str(proposal.get("reference_number") or "")]).strip())
+        if plan_label not in eligible_labels:
+            continue
+        client_name = _ignition_proposal_client_name(proposal)
+        if not client_name:
+            continue
+        candidate = {
+            "clientName": client_name,
+            "planName": plan_label,
+            "serviceName": service_name or "",
+            "proposalName": str(proposal.get("name") or proposal.get("reference_number") or "").strip(),
+            "ignitionClientId": _ignition_proposal_client_id(proposal),
+        }
+        for key in _ignition_name_match_keys(client_name):
+            if not key:
+                continue
+            existing = active_ignition_by_key.get(key)
+            if existing is None:
+                active_ignition_by_key[key] = candidate
+                continue
+            existing_priority = 1 if str(existing.get("planName") or "") == "Starter" else 0
+            incoming_priority = 1 if plan_label == "Starter" else 0
+            if incoming_priority > existing_priority:
+                active_ignition_by_key[key] = candidate
+
+    rows: list[dict] = []
+    for customer in customer_rows:
+        customer_name = str(customer.get("name") or "").strip()
+        if not customer_name:
+            continue
+        matched = None
+        for key in _ignition_name_match_keys(customer_name):
+            if key and key in active_ignition_by_key:
+                matched = active_ignition_by_key[key]
+                break
+        if not matched:
+            continue
+        rows.append(
+            {
+                "id": str(customer.get("id") or ""),
+                "clientName": matched.get("clientName") or customer_name,
+                "planName": matched.get("planName") or "",
+                "serviceName": matched.get("serviceName") or "",
+                "proposalName": matched.get("proposalName") or "",
+                "ignitionClientId": matched.get("ignitionClientId") or "",
+                "customerId": str(customer.get("id") or ""),
+                "customerName": customer_name,
+                "xeroContactId": str(customer.get("xero_contact_id") or ""),
+                "tenantId": str(customer.get("tenant_id") or ""),
+                "tenantName": tenant_name_by_id.get(str(customer.get("tenant_id") or ""), str(customer.get("tenant_id") or "")),
+            }
+        )
+
+    rows.sort(key=lambda item: (str(item.get("tenantName") or "").casefold(), str(item.get("customerName") or "").casefold()))
+    deduped: list[dict] = []
+    seen_contact_ids: set[str] = set()
+    for row in rows:
+        contact_id = str(row.get("xeroContactId") or "").strip()
+        dedupe_key = contact_id or f"{row.get('tenantId')}::{row.get('customerId')}"
+        if dedupe_key in seen_contact_ids:
+            continue
+        seen_contact_ids.add(dedupe_key)
+        deduped.append(row)
+    return {"clients": deduped, "count": len(deduped)}
 
 
 def run_ignition_sync_job(user: dict, sync_run_id: str) -> None:

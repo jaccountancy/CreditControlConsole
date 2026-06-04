@@ -24472,8 +24472,12 @@
                                         <tr>
                                             <th>Workspace</th>
                                             <th>Company no</th>
+                                            <th>Year end</th>
                                             <th>Submitted at</th>
                                             <th>Xero contact</th>
+                                            <th>CH net assets</th>
+                                            <th>Xero net assets</th>
+                                            <th>Match</th>
                                             <th>Delta status</th>
                                             <th>Action</th>
                                         </tr>
@@ -24502,7 +24506,7 @@
                                     <button class="primary-button" id="microAnalyzerRunAllButton" type="button">Analyze all</button>
                                 </div>
                             </div>
-                            <p class="late-charge-summary" id="microAnalyzerSummary">Loading Micro/Starter client list.</p>
+                            <p class="late-charge-summary" id="microAnalyzerSummary">Loading Xero-connected clients with active Ignition Micro/Starter/Solo plans.</p>
                             <section class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Micro analyzer client table">
                                     <thead>
@@ -26656,6 +26660,8 @@
             let meReportBulkPeriodDialogState = null;
             let selectedMeReportFlowIds = new Set();
             let meReportDirectorPaidPurchaseSelectionByClientId = {};
+            let meReportJukInvoiceCheckByClientId = {};
+            let meReportJukInvoiceWizardBusy = false;
             let meReportFlowGuideDialogState = null;
             let expandedMeReportCalculationKey = "";
             let expandedMeReportChartAccountKey = "";
@@ -27054,11 +27060,14 @@
                         meReportMergeContacts: config.endpoints?.meReportMergeContacts || "/api/me-report/clients/:clientId/xero/contacts/merge",
                         meReportDeleteDraftSalesInvoice: config.endpoints?.meReportDeleteDraftSalesInvoice || "/api/me-report/clients/:clientId/xero/sales-invoices/:invoiceId",
                         meReportMarkPurchasePaidPersonally: config.endpoints?.meReportMarkPurchasePaidPersonally || "/api/me-report/clients/:clientId/xero/purchases/mark-paid-personally",
+                        meReportJukInvoiceCheck: config.endpoints?.meReportJukInvoiceCheck || "/api/me-report/clients/:clientId/juk-invoice-check",
                         meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
                         meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
                         meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
+                        codeBreakerWorkspaceSnapshot: config.endpoints?.codeBreakerWorkspaceSnapshot || "/api/code-breaker/workspace-snapshot",
+                        microAnalyzerClients: config.endpoints?.microAnalyzerClients || "/api/micro-analyzer/clients",
                         insights: config.endpoints?.insights || "/api/insights",
                         companyCalendar: config.endpoints?.companyCalendar || "/api/company-calendar",
                         practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
@@ -49630,7 +49639,8 @@
                     { key: "unreconciled_flagged", label: "Unreconciled or unreconciled-looking items are flagged", enabled: true },
                     { key: "discrepancies_reviewed", label: "Discrepancies and anomalies are reviewed", enabled: true },
                     { key: "ct_estimate_checked", label: "Corporation tax estimate reviewed", enabled: true },
-                    { key: "dividend_capacity_checked", label: "Dividend availability checked", enabled: true }
+                    { key: "dividend_capacity_checked", label: "Dividend availability checked", enabled: true },
+                    { key: "juk_invoice_checked", label: "JUK invoice check completed and missing bills resolved", enabled: true }
                 ];
                 const incoming = Array.isArray(client.flowChecklist) ? client.flowChecklist : [];
                 if (!incoming.length) return defaults;
@@ -49763,6 +49773,23 @@
                                 ? `Dividend capacity available: ${formatCurrency(dividendCapacity || 0)}.`
                                 : "Dividend capacity has not been calculated yet."
                         });
+                        return;
+                    }
+                    if (item.key === "juk_invoice_checked") {
+                        const check = meReportJukInvoiceCheckByClientId[String(client.id || "")]?.check || null;
+                        const hasRun = Boolean(check && typeof check === "object" && check.generatedAt);
+                        const missingCount = Number(check?.missingCount || 0);
+                        const pass = hasRun && missingCount === 0;
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: !hasRun
+                                ? "Run JUK invoice check to compare Ignition invoices against Xero purchases."
+                                : (missingCount === 0
+                                    ? "All Ignition JUK invoices are present in Xero purchases."
+                                    : `${missingCount.toLocaleString("en-GB")} Ignition invoice${missingCount === 1 ? "" : "s"} are missing in Xero purchases.`)
+                        });
                     }
                 });
 
@@ -49822,8 +49849,9 @@
                 `).join("");
             }
 
-            function openMeReportReviewReadinessPanel(client = {}) {
+            async function openMeReportReviewReadinessPanel(client = {}) {
                 if (!client?.id) return;
+                await refreshMeReportJukInvoiceCheck(client, { silent: true });
                 meReportReviewReadyDialogState = meReportManagerReviewReadiness(client);
                 renderMeReportReviewReadinessPanel();
             }
@@ -52267,6 +52295,188 @@
                 }).slice(0, 80);
             }
 
+            function meReportJukInvoiceCheckState(clientId = "") {
+                const key = String(clientId || "");
+                if (!key) return null;
+                const state = meReportJukInvoiceCheckByClientId[key];
+                return state && typeof state === "object" ? state : null;
+            }
+
+            async function refreshMeReportJukInvoiceCheck(client = {}, options = {}) {
+                if (!client?.id) return null;
+                const clientId = String(client.id || "");
+                const key = clientId;
+                const existing = meReportJukInvoiceCheckState(clientId);
+                if (existing?.loading) return existing;
+                meReportJukInvoiceCheckByClientId[key] = { ...(existing || {}), loading: true };
+                if (!options?.silent) renderMeReportScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.meReportJukInvoiceCheck, {
+                        method: "POST",
+                        body: JSON.stringify({ mode: "preview" })
+                    }, { clientId });
+                    const check = payload?.check && typeof payload.check === "object" ? payload.check : null;
+                    meReportJukInvoiceCheckByClientId[key] = {
+                        loading: false,
+                        check,
+                        error: "",
+                    };
+                    return meReportJukInvoiceCheckByClientId[key];
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    meReportJukInvoiceCheckByClientId[key] = {
+                        loading: false,
+                        check: existing?.check || null,
+                        error: error?.message || "Unable to run JUK invoice check.",
+                    };
+                    if (!options?.silent) showToast(error?.message || "Unable to run JUK invoice check.", "error");
+                    return meReportJukInvoiceCheckByClientId[key];
+                } finally {
+                    renderMeReportScreen();
+                }
+            }
+
+            async function openMeReportJukInvoiceWizard(client = {}) {
+                if (!client?.id) return;
+                if (meReportJukInvoiceWizardBusy) return;
+                let state = meReportJukInvoiceCheckState(client.id);
+                if (!state?.check?.generatedAt) state = await refreshMeReportJukInvoiceCheck(client, { silent: true });
+                const check = state?.check || null;
+                const missingRows = Array.isArray(check?.missingInvoices) ? check.missingInvoices : [];
+                if (!missingRows.length) {
+                    showToast("No missing JUK invoices were found for this flow.", "success");
+                    return;
+                }
+                const workingRows = missingRows.map((row) => ({
+                    ignitionInvoiceId: String(row.ignitionInvoiceId || ""),
+                    invoiceNumber: String(row.invoiceNumber || row.reference || row.ignitionInvoiceId || ""),
+                    issueDate: String(row.issueDate || ""),
+                    total: Number(row.total || 0),
+                    matchMethod: String(row.matchMethod || ""),
+                    selected: true,
+                    deleteNominalPosting: Boolean(row.suggestedDeleteTransactionId),
+                    deleteTransactionId: String(row.suggestedDeleteTransactionId || ""),
+                    deleteHint: String(row.suggestedDeleteReason || ""),
+                }));
+                const wizardDecision = await showOperationReviewDialog({
+                    eyebrow: "Monthly flows",
+                    title: "JUK invoice check wizard",
+                    subtitle: "Post missing Ignition invoices as Xero purchase bills and optionally remove matched nominal postings first.",
+                    confirmLabel: "Post selected bills to Xero",
+                    cancelLabel: "Cancel",
+                    summaryChips: [
+                        `${missingRows.length.toLocaleString("en-GB")} missing invoice${missingRows.length === 1 ? "" : "s"}`,
+                        `Total ${formatCurrency(check?.missingTotal || 0)}`,
+                    ],
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body }) => {
+                        body.innerHTML = `
+                            <div class="operation-review-tools">
+                                <label>Supplier name <input id="jukInvoiceWizardSupplierName" type="text" value="Jaccountancy"></label>
+                                <label>Purchase nominal code <input id="jukInvoiceWizardAccountCode" type="text" value="401"></label>
+                            </div>
+                            <div class="operation-review-table-wrap">
+                                <table class="operation-review-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Post</th>
+                                            <th>Ignition invoice</th>
+                                            <th>Issue date</th>
+                                            <th>Total</th>
+                                            <th>Delete matched nominal posting first</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${workingRows.map((row, index) => `
+                                            <tr>
+                                                <td><input type="checkbox" data-juk-invoice-select="${index}" ${row.selected ? "checked" : ""}></td>
+                                                <td><strong>${escapeHTML(row.invoiceNumber)}</strong><br><small>${escapeHTML(row.ignitionInvoiceId)}</small>${row.matchMethod === "director_fallback" ? "<br><small>Matched via Companies House director fallback</small>" : ""}</td>
+                                                <td>${escapeHTML(formatDate(row.issueDate) || "--")}</td>
+                                                <td>${formatCurrency(row.total || 0)}</td>
+                                                <td>
+                                                    ${row.deleteTransactionId
+                                                        ? `<label><input type="checkbox" data-juk-invoice-delete-posting="${index}" ${row.deleteNominalPosting ? "checked" : ""}> Delete matched posting</label><br><small>${escapeHTML(row.deleteHint || "Matched transaction detected.")}</small>`
+                                                        : "<small>No matched nominal posting detected.</small>"
+                                                    }
+                                                </td>
+                                            </tr>
+                                        `).join("")}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                        body.querySelectorAll("[data-juk-invoice-select]").forEach((input) => {
+                            input.addEventListener("change", () => {
+                                const index = Number(input.getAttribute("data-juk-invoice-select"));
+                                if (!Number.isFinite(index) || !workingRows[index]) return;
+                                workingRows[index].selected = Boolean(input.checked);
+                            });
+                        });
+                        body.querySelectorAll("[data-juk-invoice-delete-posting]").forEach((input) => {
+                            input.addEventListener("change", () => {
+                                const index = Number(input.getAttribute("data-juk-invoice-delete-posting"));
+                                if (!Number.isFinite(index) || !workingRows[index]) return;
+                                workingRows[index].deleteNominalPosting = Boolean(input.checked);
+                            });
+                        });
+                    },
+                    resultProvider: () => ({
+                        supplierName: String(document.getElementById("jukInvoiceWizardSupplierName")?.value || "Jaccountancy").trim(),
+                        purchaseAccountCode: String(document.getElementById("jukInvoiceWizardAccountCode")?.value || "401").trim(),
+                        invoices: workingRows
+                            .filter((row) => row.selected)
+                            .map((row) => ({
+                                ignitionInvoiceId: row.ignitionInvoiceId,
+                                deleteNominalPosting: !!row.deleteNominalPosting,
+                                deleteTransactionId: row.deleteTransactionId || "",
+                            })),
+                    }),
+                });
+                if (!wizardDecision) return;
+                if (!Array.isArray(wizardDecision.invoices) || !wizardDecision.invoices.length) {
+                    showToast("Select at least one missing invoice to post.", "error");
+                    return;
+                }
+                meReportJukInvoiceWizardBusy = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.meReportJukInvoiceCheck, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            mode: "apply",
+                            supplierName: wizardDecision.supplierName || "Jaccountancy",
+                            purchaseAccountCode: wizardDecision.purchaseAccountCode || "401",
+                            invoices: wizardDecision.invoices,
+                        })
+                    }, { clientId: String(client.id || "") });
+                    if (payload?.meReport) {
+                        meReportData = normaliseMeReportPayload(payload);
+                    }
+                    meReportJukInvoiceCheckByClientId[String(client.id || "")] = {
+                        loading: false,
+                        check: payload?.check || null,
+                        error: "",
+                    };
+                    const result = payload?.result || {};
+                    const createdCount = Number(result.createdCount || 0);
+                    const deletedCount = Number(result.deletedNominalPostingCount || 0);
+                    const skippedCount = Number(result.skippedDuplicateCount || 0);
+                    const errorCount = Number(result.errorCount || 0);
+                    const summaryText = [
+                        `${createdCount.toLocaleString("en-GB")} bill${createdCount === 1 ? "" : "s"} posted`,
+                        `${deletedCount.toLocaleString("en-GB")} nominal posting${deletedCount === 1 ? "" : "s"} deleted`,
+                        `${skippedCount.toLocaleString("en-GB")} duplicate${skippedCount === 1 ? "" : "s"} skipped`,
+                    ].join(" · ");
+                    showToast(errorCount ? `${summaryText} · ${errorCount.toLocaleString("en-GB")} row${errorCount === 1 ? "" : "s"} failed` : summaryText, errorCount ? "info" : "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to apply JUK invoice wizard fixes.", "error");
+                } finally {
+                    meReportJukInvoiceWizardBusy = false;
+                    renderMeReportScreen();
+                }
+            }
+
             function meReportDirectorPaidPurchaseSelection(clientId = "") {
                 const key = String(clientId || "");
                 if (!key) return new Set();
@@ -52283,6 +52493,15 @@
                 const duplicateContacts = meReportDuplicateContactRows(client, summary);
                 const outstandingPurchases = meReportOutstandingPurchaseInvoiceRows(summary);
                 const unreconciledTransactions = meReportUnreconciledTransactionRows(summary);
+                const jukCheckState = meReportJukInvoiceCheckState(client.id);
+                const jukCheck = jukCheckState?.check || null;
+                const jukLoading = Boolean(jukCheckState?.loading);
+                const jukError = String(jukCheckState?.error || "");
+                const jukMissingCount = Number(jukCheck?.missingCount || 0);
+                const jukCheckStamp = String(jukCheck?.generatedAt || "");
+                const jukDirectorFallbackCount = Array.isArray(jukCheck?.missingInvoices)
+                    ? jukCheck.missingInvoices.filter((item) => String(item?.matchMethod || "") === "director_fallback").length
+                    : 0;
                 const rollingTurnover = meReportRolling12MonthTurnover(summary);
                 const vatThreshold = Number(summary.vatThreshold || 90000);
                 const vatRegistered = meReportVatRegistered(client, summary);
@@ -52339,6 +52558,20 @@
                                 <div class="detail-actions">
                                     <small>${selectedOutstandingCount.toLocaleString("en-GB")} purchase invoice${selectedOutstandingCount === 1 ? "" : "s"} selected.</small>
                                     <button class="primary-button" type="button" data-me-flow-mark-paid-personally ${(!selectedOutstandingCount || locked) ? "disabled" : ""}>Mark as paid personally by director</button>
+                                </div>
+                            </div>
+                            <div class="bank-flag-row">
+                                <strong>JUK invoice check</strong>
+                                <small>${jukLoading
+                                    ? "Checking Ignition invoices against Xero purchase bills..."
+                                    : (jukCheck
+                                        ? `${jukMissingCount.toLocaleString("en-GB")} missing Ignition invoice${jukMissingCount === 1 ? "" : "s"} in Xero purchases${jukDirectorFallbackCount ? ` (${jukDirectorFallbackCount.toLocaleString("en-GB")} found via director fallback)` : ""}. Last run ${escapeHTML(formatDateTime(jukCheckStamp) || "just now")}.`
+                                        : "Run this to compare Ignition invoices with Xero purchases, then post missing bills with duplicate-safe handling.")
+                                }</small>
+                                ${jukError ? `<small style="color: var(--red);">${escapeHTML(jukError)}</small>` : ""}
+                                <div class="detail-actions">
+                                    <button class="ghost-button" type="button" data-me-flow-run-juk-check ${jukLoading ? "disabled" : ""}>Run JUK invoice check</button>
+                                    <button class="primary-button" type="button" data-me-flow-open-juk-wizard ${(!jukCheck || jukLoading || jukMissingCount <= 0 || locked) ? "disabled" : ""}>Open JUK invoice wizard</button>
                                 </div>
                             </div>
                             <div class="bank-flag-row">
@@ -54582,6 +54815,12 @@
                 });
                 document.querySelectorAll("[data-me-flow-mark-paid-personally]").forEach((button) => {
                     button.addEventListener("click", () => markMeReportPurchasesPaidPersonally(client));
+                });
+                document.querySelectorAll("[data-me-flow-run-juk-check]").forEach((button) => {
+                    button.addEventListener("click", () => refreshMeReportJukInvoiceCheck(client));
+                });
+                document.querySelectorAll("[data-me-flow-open-juk-wizard]").forEach((button) => {
+                    button.addEventListener("click", () => openMeReportJukInvoiceWizard(client));
                 });
                 document.querySelectorAll("[data-me-flow-delete-unreconciled]").forEach((button) => {
                     button.addEventListener("click", () => deleteMeReportUnreconciledTransaction(client, button.dataset.meFlowDeleteUnreconciled || ""));
@@ -64248,6 +64487,229 @@
                 };
             }
 
+            function codeBreakerConnectXeroStartUrl() {
+                return String(
+                    document.getElementById("connectAdditionalXeroButton")?.getAttribute("href")
+                    || document.getElementById("headerConnectXeroButton")?.getAttribute("href")
+                    || "/auth/xero/start"
+                ).trim();
+            }
+
+            function codeBreakerCompanyByNumberOrContact(companyNumber = "", xeroContactId = "") {
+                const cleanNumber = String(companyNumber || "").trim().toUpperCase();
+                const cleanContactId = String(xeroContactId || "").trim();
+                return (Array.isArray(codeBreakerCompanies) ? codeBreakerCompanies : []).find((row) => (
+                    (cleanNumber && String(row?.companyNumber || "").trim().toUpperCase() === cleanNumber)
+                    || (cleanContactId && String(row?.xeroContactId || "").trim() === cleanContactId)
+                )) || null;
+            }
+
+            function codeBreakerExtractNetAssets(value) {
+                if (value === null || value === undefined) return null;
+                if (typeof value === "number" && Number.isFinite(value)) return value;
+                if (typeof value === "string") {
+                    const clean = value.replace(/[£,\s]/g, "").trim();
+                    if (!clean) return null;
+                    const parsed = Number(clean);
+                    return Number.isFinite(parsed) ? parsed : null;
+                }
+                if (Array.isArray(value)) {
+                    for (const item of value) {
+                        const found = codeBreakerExtractNetAssets(item);
+                        if (Number.isFinite(found)) return found;
+                    }
+                    return null;
+                }
+                if (typeof value === "object") {
+                    const keys = [
+                        "netAssets",
+                        "net_assets",
+                        "balanceSheetNetAssets",
+                        "totalNetAssets",
+                        "total_net_assets",
+                        "net_assets_total",
+                    ];
+                    for (const key of keys) {
+                        if (Object.prototype.hasOwnProperty.call(value, key)) {
+                            const found = codeBreakerExtractNetAssets(value[key]);
+                            if (Number.isFinite(found)) return found;
+                        }
+                    }
+                    for (const nested of Object.values(value)) {
+                        const found = codeBreakerExtractNetAssets(nested);
+                        if (Number.isFinite(found)) return found;
+                    }
+                }
+                return null;
+            }
+
+            function codeBreakerCompareStatus(workspace = {}) {
+                const ch = Number(workspace?.chNetAssets);
+                const xero = Number(workspace?.xeroNetAssets);
+                if (!Number.isFinite(ch) || !Number.isFinite(xero)) {
+                    return { label: "Awaiting values", className: "is-review" };
+                }
+                const delta = Math.abs(xero - ch);
+                if (delta <= 0.01) {
+                    return { label: "JOB DONE", className: "is-open" };
+                }
+                return { label: `Mismatch ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+            }
+
+            async function codeBreakerWorkspaceSnapshot(payload = {}) {
+                const response = await requestJSON(api.endpoints.codeBreakerWorkspaceSnapshot, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                });
+                return response?.result || {};
+            }
+
+            async function openCodeBreakerWorkspaceSetupDialog() {
+                const connections = codeBreakerConnections();
+                const fallbackCompany = [...(Array.isArray(codeBreakerCompanies) ? codeBreakerCompanies : [])]
+                    .sort((left, right) => dateSortValue(right?.latestSubmissionCompletedAt || right?.latestSubmissionAt || right?.lastFiledDate || "") - dateSortValue(left?.latestSubmissionCompletedAt || left?.latestSubmissionAt || left?.lastFiledDate || ""))[0] || null;
+                const fallbackCustomer = codeBreakerCustomersForTenant(connections[0]?.tenantId || "")[0] || null;
+                const draft = {
+                    clientName: String(fallbackCompany?.clientName || fallbackCompany?.companyName || fallbackCustomer?.name || "").trim(),
+                    tenantId: String(connections[0]?.tenantId || "").trim(),
+                    xeroContactId: String(fallbackCustomer?.xeroContactId || fallbackCustomer?.contactId || "").trim(),
+                    companyNumber: String(fallbackCompany?.companyNumber || "").trim().toUpperCase(),
+                    yearEndDate: String(fallbackCompany?.lastFiledDate || fallbackCompany?.latestSubmissionCompletedAt || "").slice(0, 10),
+                    submittedAt: String(fallbackCompany?.latestSubmissionCompletedAt || fallbackCompany?.latestSubmissionAt || "").slice(0, 10),
+                };
+
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "Code Breaker",
+                    title: "Set up workspace",
+                    subtitle: "Confirm Xero client and Companies House details. Defaults use the most recently submitted set of accounts.",
+                    confirmLabel: "Create workspace",
+                    cancelLabel: "Cancel",
+                    summaryChips: [
+                        draft.yearEndDate ? `Year end ${formatDate(draft.yearEndDate)}` : "Year end pending",
+                        draft.submittedAt ? `Submitted ${formatDate(draft.submittedAt)}` : "Submission date pending",
+                    ],
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body }) => {
+                        const render = () => {
+                            const tenantClients = codeBreakerCustomersForTenant(draft.tenantId);
+                            const match = codeBreakerBestMatchByName(draft.clientName);
+                            if ((!draft.xeroContactId || !tenantClients.some((row) => String(row?.xeroContactId || row?.contactId || "") === draft.xeroContactId)) && match?.customer) {
+                                draft.xeroContactId = String(match.customer?.xeroContactId || match.customer?.contactId || "");
+                            }
+                            const companyMatch = codeBreakerCompanyByNumberOrContact(draft.companyNumber, draft.xeroContactId) || match?.company || null;
+                            if (!draft.companyNumber && companyMatch?.companyNumber) draft.companyNumber = String(companyMatch.companyNumber || "").toUpperCase();
+                            if (!draft.yearEndDate) draft.yearEndDate = String(companyMatch?.lastFiledDate || "").slice(0, 10);
+                            if (!draft.submittedAt) draft.submittedAt = String(companyMatch?.latestSubmissionCompletedAt || companyMatch?.latestSubmissionAt || "").slice(0, 10);
+                            body.innerHTML = `
+                                <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
+                                    <label>Client / workspace name
+                                        <input id="codeBreakerSetupModalClientName" type="text" value="${escapeHTML(draft.clientName)}" placeholder="Start typing client name">
+                                    </label>
+                                    <label>Xero connection
+                                        <select id="codeBreakerSetupModalTenant">
+                                            ${connections.length
+                                                ? connections.map((row) => `<option value="${escapeHTML(String(row.tenantId || ""))}" ${String(row.tenantId || "") === draft.tenantId ? "selected" : ""}>${escapeHTML(String(row.tenantName || row.tenantId || "Xero tenant"))}</option>`).join("")
+                                                : '<option value="">No Xero connections</option>'}
+                                        </select>
+                                    </label>
+                                    <label>Xero client
+                                        <select id="codeBreakerSetupModalContact">
+                                            ${tenantClients.length
+                                                ? tenantClients.map((row) => {
+                                                    const contactId = String(row?.xeroContactId || row?.contactId || "");
+                                                    const label = String(row?.name || row?.clientName || row?.companyName || "Unnamed client");
+                                                    return `<option value="${escapeHTML(contactId)}" ${contactId === draft.xeroContactId ? "selected" : ""}>${escapeHTML(label)}</option>`;
+                                                }).join("")
+                                                : '<option value="">No Xero clients available</option>'}
+                                        </select>
+                                    </label>
+                                    <label>Companies House number
+                                        <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
+                                    </label>
+                                    <label>Year end date (assumed latest filed)
+                                        <input id="codeBreakerSetupModalYearEndDate" type="date" value="${escapeHTML(draft.yearEndDate)}">
+                                    </label>
+                                    <label>Submission date
+                                        <input id="codeBreakerSetupModalSubmittedAt" type="date" value="${escapeHTML(draft.submittedAt)}">
+                                    </label>
+                                </form>
+                            `;
+                            body.querySelector("#codeBreakerSetupModalClientName")?.addEventListener("input", (event) => {
+                                draft.clientName = String(event.target?.value || "");
+                                render();
+                            });
+                            body.querySelector("#codeBreakerSetupModalTenant")?.addEventListener("change", (event) => {
+                                draft.tenantId = String(event.target?.value || "");
+                                draft.xeroContactId = "";
+                                render();
+                            });
+                            body.querySelector("#codeBreakerSetupModalContact")?.addEventListener("change", (event) => {
+                                draft.xeroContactId = String(event.target?.value || "");
+                            });
+                            body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
+                                draft.companyNumber = String(event.target?.value || "").trim().toUpperCase();
+                            });
+                            body.querySelector("#codeBreakerSetupModalYearEndDate")?.addEventListener("change", (event) => {
+                                draft.yearEndDate = String(event.target?.value || "");
+                            });
+                            body.querySelector("#codeBreakerSetupModalSubmittedAt")?.addEventListener("change", (event) => {
+                                draft.submittedAt = String(event.target?.value || "");
+                            });
+                        };
+                        render();
+                    },
+                    resultProvider: () => ({
+                        clientName: String(draft.clientName || "").trim(),
+                        tenantId: String(draft.tenantId || "").trim(),
+                        xeroContactId: String(draft.xeroContactId || "").trim(),
+                        companyNumber: String(draft.companyNumber || "").trim().toUpperCase(),
+                        yearEndDate: String(draft.yearEndDate || "").trim(),
+                        submittedAt: String(draft.submittedAt || "").trim(),
+                    }),
+                });
+
+                if (!decision) return false;
+                if (!decision.clientName || !decision.tenantId || !decision.xeroContactId || !decision.companyNumber || !decision.yearEndDate) {
+                    showToast("Complete client, Xero, company number, and year end date before saving.", "error");
+                    return false;
+                }
+
+                let snapshot = null;
+                try {
+                    snapshot = await codeBreakerWorkspaceSnapshot({
+                        tenantId: decision.tenantId,
+                        xeroContactId: decision.xeroContactId,
+                        companyNumber: decision.companyNumber,
+                        asAtDate: decision.yearEndDate,
+                    });
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    showToast(error?.message || "Unable to read net asset values for this setup.", "error");
+                }
+
+                const now = new Date().toISOString();
+                codeBreakerWorkspaces.unshift({
+                    id: `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    clientName: decision.clientName,
+                    xeroTenantId: decision.tenantId,
+                    xeroTenantName: String((connections.find((row) => String(row?.tenantId || "") === decision.tenantId) || {}).tenantName || "").trim(),
+                    xeroContactId: decision.xeroContactId,
+                    companyNumber: decision.companyNumber,
+                    yearEndDate: decision.yearEndDate,
+                    submittedAt: decision.submittedAt || decision.yearEndDate,
+                    chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
+                    xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : null,
+                    netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null,
+                    createdAt: now,
+                    updatedAt: now,
+                });
+                persistCodeBreakerWorkspaces();
+                showToast("Code Breaker workspace created.", "success");
+                renderCodeBreakerScreen();
+                return true;
+            }
+
             async function refreshCodeBreakerData() {
                 if (!state?.organisation?.xeroConnected) {
                     codeBreakerCompanies = [];
@@ -64294,9 +64756,13 @@
                     : `No invoice changes detected after ${formatDate(analysis.submittedAt)}.`;
                 const recommendations = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];
                 const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
+                const compare = codeBreakerCompareStatus(workspace);
                 output.innerHTML = `
                     <div class="key-metrics-grid">
                         <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
+                        <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
+                        <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                        <article class="key-metric-card"><span>Net asset match</span><strong>${escapeHTML(compare.label)}</strong></article>
                         <article class="key-metric-card"><span>Post-filing changes</span><strong>${Number(analysis.changedCount || 0).toLocaleString("en-GB")}</strong></article>
                         <article class="key-metric-card"><span>Net delta</span><strong>${escapeHTML(formatCurrency(analysis.netDelta || 0))}</strong></article>
                     </div>
@@ -64323,6 +64789,22 @@
                 const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
                 if (!workspace) return;
                 selectedCodeBreakerWorkspaceId = workspace.id;
+                try {
+                    const snapshot = await codeBreakerWorkspaceSnapshot({
+                        tenantId: workspace.xeroTenantId,
+                        xeroContactId: workspace.xeroContactId,
+                        companyNumber: workspace.companyNumber,
+                        asAtDate: workspace.yearEndDate || workspace.submittedAt,
+                    });
+                    workspace.chNetAssets = Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : (workspace.chNetAssets ?? null);
+                    workspace.xeroNetAssets = Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : (workspace.xeroNetAssets ?? null);
+                    workspace.netAssetsDifference = Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null;
+                    workspace.updatedAt = new Date().toISOString();
+                    persistCodeBreakerWorkspaces();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    console.warn("Unable to refresh Code Breaker net asset snapshot", error);
+                }
                 const customer = codeBreakerCustomersForTenant(workspace.xeroTenantId).find((row) => String(row?.xeroContactId || row?.contactId || "") === String(workspace.xeroContactId || ""));
                 if (!customer) {
                     codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Unable to locate the linked Xero client in this tenant." };
@@ -64385,123 +64867,46 @@
                 const screen = document.getElementById("codeBreakerScreen");
                 if (!screen) return;
                 const summary = document.getElementById("codeBreakerSummary");
-                const setupPanel = document.getElementById("codeBreakerSetupPanel");
                 const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
-                const form = document.getElementById("codeBreakerWorkspaceForm");
-                const cancelButton = document.getElementById("codeBreakerCancelSetupButton");
-                const nameInput = document.getElementById("codeBreakerClientNameInput");
-                const tenantSelect = document.getElementById("codeBreakerTenantSelect");
-                const contactSelect = document.getElementById("codeBreakerContactSelect");
-                const companyNumberInput = document.getElementById("codeBreakerCompanyNumberInput");
-                const submittedInput = document.getElementById("codeBreakerSubmittedAtInput");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
-                if (!summary || !setupPanel || !setupButton || !refreshButton || !form || !cancelButton || !nameInput || !tenantSelect || !contactSelect || !companyNumberInput || !submittedInput || !tableBody) return;
+                if (!summary || !setupButton || !refreshButton || !tableBody) return;
 
-                const connections = codeBreakerConnections();
-                const activeTenant = String(tenantSelect.value || connections[0]?.tenantId || "").trim();
-                tenantSelect.innerHTML = connections.length
-                    ? connections.map((row) => `<option value="${escapeHTML(String(row.tenantId || ""))}" ${String(row.tenantId || "") === activeTenant ? "selected" : ""}>${escapeHTML(String(row.tenantName || row.tenantId || "Xero tenant"))}</option>`).join("")
-                    : '<option value="">No Xero connections</option>';
-                const customers = codeBreakerCustomersForTenant(tenantSelect.value || activeTenant);
-                const selectedContact = String(contactSelect.value || "").trim();
-                contactSelect.innerHTML = customers.length
-                    ? customers.map((row) => {
-                        const contactId = String(row?.xeroContactId || row?.contactId || "");
-                        const label = String(row?.name || row?.clientName || row?.companyName || "Unnamed client");
-                        return `<option value="${escapeHTML(contactId)}" ${contactId === selectedContact ? "selected" : ""}>${escapeHTML(label)}</option>`;
-                    }).join("")
-                    : '<option value="">No Xero contacts</option>';
-
-                setupPanel.hidden = !codeBreakerSetupOpen;
-                setupButton.textContent = codeBreakerSetupOpen ? "Hide setup" : "Set up workspace";
+                setupButton.textContent = "Set up workspace";
                 summary.textContent = `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspace${(codeBreakerWorkspaces || []).length === 1 ? "" : "s"} configured.`;
 
                 if (setupButton.dataset.cbWired !== "true") {
                     setupButton.dataset.cbWired = "true";
-                    setupButton.addEventListener("click", () => {
-                        codeBreakerSetupOpen = !codeBreakerSetupOpen;
-                        renderCodeBreakerScreen();
+                    setupButton.addEventListener("click", async () => {
+                        const connectUrl = codeBreakerConnectXeroStartUrl();
+                        if (connectUrl) {
+                            window.open(connectUrl, "_blank", "noopener,noreferrer");
+                            showToast("Authorize any additional Xero connections, then confirm workspace setup details.", "info");
+                        }
+                        await openCodeBreakerWorkspaceSetupDialog();
                     });
                 }
                 if (refreshButton.dataset.cbWired !== "true") {
                     refreshButton.dataset.cbWired = "true";
                     refreshButton.addEventListener("click", () => refreshCodeBreakerData());
                 }
-                if (cancelButton.dataset.cbWired !== "true") {
-                    cancelButton.dataset.cbWired = "true";
-                    cancelButton.addEventListener("click", () => {
-                        codeBreakerSetupOpen = false;
-                        renderCodeBreakerScreen();
-                    });
-                }
-                if (tenantSelect.dataset.cbWired !== "true") {
-                    tenantSelect.dataset.cbWired = "true";
-                    tenantSelect.addEventListener("change", renderCodeBreakerScreen);
-                }
-                if (nameInput.dataset.cbWired !== "true") {
-                    nameInput.dataset.cbWired = "true";
-                    nameInput.addEventListener("input", () => {
-                        const match = codeBreakerBestMatchByName(nameInput.value);
-                        if (match.customer && !companyNumberInput.value) {
-                            contactSelect.value = String(match.customer?.xeroContactId || match.customer?.contactId || "");
-                        }
-                        if (match.company) {
-                            if (!companyNumberInput.value) companyNumberInput.value = String(match.company?.companyNumber || "").toUpperCase();
-                            if (!submittedInput.value) {
-                                const submitted = String(match.company?.latestSubmissionCompletedAt || match.company?.latestSubmissionAt || "").slice(0, 10);
-                                if (submitted) submittedInput.value = submitted;
-                            }
-                        }
-                    });
-                }
-                if (form.dataset.cbWired !== "true") {
-                    form.dataset.cbWired = "true";
-                    form.addEventListener("submit", (event) => {
-                        event.preventDefault();
-                        const clientName = String(nameInput.value || "").trim();
-                        const xeroTenantId = String(tenantSelect.value || "").trim();
-                        const xeroContactId = String(contactSelect.value || "").trim();
-                        const companyNumber = String(companyNumberInput.value || "").trim().toUpperCase();
-                        const submittedAt = String(submittedInput.value || "").trim();
-                        if (!clientName || !xeroContactId || !companyNumber || !submittedAt) {
-                            showToast("Enter client name, Xero contact, company number, and submitted date.", "error");
-                            return;
-                        }
-                        const xeroTenantName = String((connections.find((row) => String(row?.tenantId || "") === xeroTenantId) || {}).tenantName || "").trim();
-                        const now = new Date().toISOString();
-                        codeBreakerWorkspaces.unshift({
-                            id: `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                            clientName,
-                            xeroTenantId,
-                            xeroTenantName,
-                            xeroContactId,
-                            companyNumber,
-                            submittedAt,
-                            createdAt: now,
-                            updatedAt: now,
-                        });
-                        persistCodeBreakerWorkspaces();
-                        codeBreakerSetupOpen = false;
-                        nameInput.value = "";
-                        companyNumberInput.value = "";
-                        submittedInput.value = "";
-                        showToast("Code Breaker workspace created.", "success");
-                        renderCodeBreakerScreen();
-                    });
-                }
 
                 if (!codeBreakerWorkspaces.length) {
-                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No workspaces</p><h4>Create a Code Breaker workspace</h4><p>Set up a workspace to compare post-submission Xero changes against filed accounts.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">No workspaces</p><h4>Create a Code Breaker workspace</h4><p>Set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
                 } else {
                     tableBody.innerHTML = codeBreakerWorkspaces.map((workspace) => {
                         const status = codeBreakerWorkspaceStatus(workspace);
+                        const compare = codeBreakerCompareStatus(workspace);
                         return `
                             <tr>
                                 <td><strong>${escapeHTML(workspace.clientName || "Workspace")}</strong><small>${escapeHTML(workspace.xeroTenantName || workspace.xeroTenantId || "")}</small></td>
                                 <td>${escapeHTML(workspace.companyNumber || "--")}</td>
+                                <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(workspace.xeroContactId || "--")}</td>
+                                <td>${Number.isFinite(Number(workspace.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</td>
+                                <td>${Number.isFinite(Number(workspace.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</td>
+                                <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
                                 <td>
                                     <button class="ghost-button" type="button" data-code-breaker-run="${escapeHTML(workspace.id)}">Run</button>
@@ -64528,62 +64933,27 @@
                 renderCodeBreakerAnalysis(selectedWorkspace);
             }
 
-            function microAnalyzerClientRows() {
-                const candidates = ignitionRenewalCandidates();
-                const rows = candidates.filter((item) => {
-                    const combined = `${item?.planName || ""} ${item?.serviceName || ""} ${item?.proposalName || ""}`.toLowerCase();
-                    return /\bmicro\b|\bstarter\b/.test(combined);
-                });
-                const byClientName = new Map();
-                rows.forEach((row) => {
-                    const key = String(row?.clientName || "").trim().toLowerCase();
-                    if (!key || byClientName.has(key)) return;
-                    byClientName.set(key, row);
-                });
-                return Array.from(byClientName.values());
-            }
-
-            function microAnalyzerMatchCustomer(clientName = "") {
-                const clean = String(clientName || "").trim().toLowerCase();
-                if (!clean) return null;
-                const customers = Array.isArray(state?.customers) ? state.customers : [];
-                let best = null;
-                let bestScore = 0;
-                customers.forEach((row) => {
-                    const rowName = String(row?.name || "").trim().toLowerCase();
-                    if (!rowName) return;
-                    let score = 0;
-                    if (rowName === clean) score = 120;
-                    else if (rowName.includes(clean) || clean.includes(rowName)) score = 92;
-                    else {
-                        const left = new Set(clean.replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean));
-                        const right = new Set(rowName.replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean));
-                        const overlap = [...left].filter((token) => right.has(token)).length;
-                        score = Math.round((overlap / Math.max(left.size, right.size, 1)) * 100);
-                    }
-                    if (score > bestScore) {
-                        best = row;
-                        bestScore = score;
-                    }
-                });
-                return bestScore >= 45 ? best : null;
-            }
-
-            function refreshMicroAnalyzerRows() {
+            async function refreshMicroAnalyzerRows() {
                 microAnalyzerLoading = true;
                 renderMicroAnalyzerScreen();
-                const rows = microAnalyzerClientRows();
-                microAnalyzerRows = rows.map((row) => {
-                    const customer = microAnalyzerMatchCustomer(row?.clientName || "");
-                    const planName = String(row?.planName || row?.serviceName || row?.proposalName || "Micro/Starter").trim();
-                    return {
-                        id: String(row?.id || row?.clientId || row?.clientName || ""),
-                        clientName: String(row?.clientName || "Client"),
-                        planName,
-                        customerId: String(customer?.id || ""),
-                        customerName: String(customer?.name || ""),
-                    };
-                });
+                try {
+                    const payload = await requestJSON(api.endpoints.microAnalyzerClients);
+                    const rows = Array.isArray(payload?.clients) ? payload.clients : [];
+                    microAnalyzerRows = rows.map((row) => ({
+                        id: String(row?.xeroContactId || row?.customerId || row?.id || row?.clientName || ""),
+                        clientName: String(row?.clientName || row?.customerName || "Client"),
+                        planName: String(row?.planName || "Micro/Starter/Solo"),
+                        customerId: String(row?.customerId || row?.id || ""),
+                        customerName: String(row?.customerName || row?.clientName || ""),
+                        xeroContactId: String(row?.xeroContactId || ""),
+                        tenantId: String(row?.tenantId || ""),
+                        tenantName: String(row?.tenantName || ""),
+                    }));
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to load Micro Analyzer client list.", "error");
+                    microAnalyzerRows = [];
+                }
                 microAnalyzerLoading = false;
                 renderMicroAnalyzerScreen();
             }
@@ -64660,8 +65030,8 @@
                 const runAllButton = document.getElementById("microAnalyzerRunAllButton");
                 if (!summary || !tableBody || !refreshButton || !runAllButton) return;
                 summary.textContent = microAnalyzerLoading
-                    ? "Loading Micro/Starter clients from Ignition..."
-                    : `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Micro/Starter clients loaded.`;
+                    ? "Loading Xero-connected clients with active Ignition Micro/Starter/Solo plans..."
+                    : `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Xero-connected Micro/Starter/Solo clients loaded.`;
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
                     refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
@@ -64677,11 +65047,11 @@
                     });
                 }
                 if (microAnalyzerLoading) {
-                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Reading Ignition client plans</h4><p>Fetching Micro/Starter plan candidates and matching Xero clients.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Reading active Ignition plans</h4><p>Filtering Xero-connected organisations to clients on Micro, Starter, or Solo plans.</p></div></td></tr>';
                     return;
                 }
                 if (!microAnalyzerRows.length) {
-                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Micro/Starter clients found</h4><p>Sync Ignition renewals to load plan-level client rows first.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No matching clients found</h4><p>No Xero-connected organisations currently match active Ignition Micro/Starter/Solo plans.</p></div></td></tr>';
                     return;
                 }
                 tableBody.innerHTML = microAnalyzerRows.map((row) => {
@@ -64696,7 +65066,7 @@
                         <tr>
                             <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(row.id)}</small></td>
                             <td>${escapeHTML(row.planName || "Micro/Starter")}</td>
-                            <td>${row.customerId ? `<strong>${escapeHTML(row.customerName || row.customerId)}</strong><small>${escapeHTML(row.customerId)}</small>` : '<span class="ch-pill is-warn">No match</span>'}</td>
+                            <td>${row.customerId ? `<strong>${escapeHTML(row.customerName || row.customerId)}</strong><small>${escapeHTML(row.tenantName || row.tenantId || row.customerId)}</small>` : '<span class="ch-pill is-warn">No match</span>'}</td>
                             <td>${escapeHTML(vatLabel)}</td>
                             <td>
                                 <button class="ghost-button" type="button" data-micro-analyze="${escapeHTML(row.id)}">Analyze</button>
@@ -70031,29 +70401,52 @@
                 }
             }
 
-            async function populateAuthCodesFromDirectoryHandler() {
+            async function populateAuthCodesFromDirectoryHandler(options = {}) {
                 if (companiesHouseSettings.authRegisterUploading || companiesHouseSettings.authRegisterPopulating) return;
                 companiesHouseSettings.authRegisterPopulating = true;
+                const forceOverwrite = !!options.force;
+                const companyIds = Array.isArray(options.companyIds) ? options.companyIds.filter((value) => String(value || "").trim()) : [];
                 const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
                 const populateButton = document.getElementById("chAuthCodeRegisterPopulateButton");
                 const reloadButton = document.getElementById("chAuthCodeRegisterReloadButton");
+                const subnavPopulateButton = document.getElementById("chPopulateAuthCodesFromSubnavButton");
                 if (uploadButton) uploadButton.disabled = true;
                 if (populateButton) populateButton.disabled = true;
                 if (reloadButton) reloadButton.disabled = true;
-                setAuthCodeRegisterStatus("Populating missing company auth codes from directory…", "muted");
+                if (subnavPopulateButton) subnavPopulateButton.disabled = true;
+                setAuthCodeRegisterStatus(
+                    companyIds.length
+                        ? `Populating auth codes for ${companyIds.length.toLocaleString("en-GB")} selected compan${companyIds.length === 1 ? "y" : "ies"}…`
+                        : "Populating missing company auth codes from directory…",
+                    "muted"
+                );
                 try {
                     const payload = await requestJSON("/api/companies-house/auth-code-register/populate", {
                         method: "POST",
-                        body: JSON.stringify({}),
+                        body: JSON.stringify({
+                            companyIds,
+                            force: forceOverwrite,
+                        }),
                     });
                     const result = payload?.result || {};
                     setAuthCodeRegisterStatus(
-                        `Populate complete: ${Number(result.populatedCount || 0).toLocaleString("en-GB")} populated, ${Number(result.skippedCount || 0).toLocaleString("en-GB")} skipped.`,
-                        "success"
+                        `Populate complete: ${Number(result.populatedCount || 0).toLocaleString("en-GB")} populated, ${Number(result.skippedCount || 0).toLocaleString("en-GB")} skipped${Number(result.overwrittenCount || 0) ? `, ${Number(result.overwrittenCount || 0).toLocaleString("en-GB")} overwritten` : ""}.`,
+                        Number(result.populatedCount || 0) > 0 ? "success" : "muted"
                     );
                     companiesHouseState.tabLoaded.companies = false;
-                    showToast("Missing auth codes populated from directory.", "success");
-                    if (companiesHouseState.activeTab === "companies") loadCompaniesHouseCompanies(true);
+                    if (Number(result.populatedCount || 0) > 0) {
+                        showToast(
+                            `Auth code populate complete: ${Number(result.populatedCount || 0)} updated, ${Number(result.skippedCount || 0)} skipped.`,
+                            "success"
+                        );
+                    } else {
+                        showToast(
+                            `No auth codes were populated. ${Number(result.skippedCount || 0)} compan${Number(result.skippedCount || 0) === 1 ? "y was" : "ies were"} skipped.`,
+                            "info"
+                        );
+                    }
+                    if (companiesHouseState.activeTab === "companies") await loadCompaniesHouseCompanies(true);
+                    return result;
                 } catch (error) {
                     console.error("Unable to populate auth codes from directory", error);
                     if (error instanceof AuthRequiredError) {
@@ -70061,11 +70454,13 @@
                     }
                     setAuthCodeRegisterStatus(error?.message || "Unable to populate auth codes.", "error");
                     showToast(error?.message || "Unable to populate auth codes.", "error");
+                    throw error;
                 } finally {
                     companiesHouseSettings.authRegisterPopulating = false;
                     if (uploadButton) uploadButton.disabled = !(document.getElementById("chAuthCodeRegisterFile")?.files?.length);
                     if (populateButton) populateButton.disabled = false;
                     if (reloadButton) reloadButton.disabled = false;
+                    if (subnavPopulateButton) subnavPopulateButton.disabled = false;
                 }
             }
 
@@ -73223,8 +73618,12 @@
                 });
                 document.getElementById("chTopbarSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 document.getElementById("chPopulateAuthCodesFromSubnavButton")?.addEventListener("click", async () => {
-                    await populateAuthCodesFromDirectoryHandler();
-                    if (companiesHouseState.activeTab === "companies") loadCompaniesHouseCompanies(true);
+                    const selectedCompanyIds = Array.from(companiesHouseState.selectedCompanyIds || []).filter(Boolean);
+                    await populateAuthCodesFromDirectoryHandler({
+                        companyIds: selectedCompanyIds,
+                        force: false,
+                    });
+                    if (companiesHouseState.activeTab === "companies") await loadCompaniesHouseCompanies(true);
                 });
                 document.getElementById("chCompaniesReloadButton")?.addEventListener("click", () => loadCompaniesHouseCompanies(true));
                 document.getElementById("chCompaniesSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);

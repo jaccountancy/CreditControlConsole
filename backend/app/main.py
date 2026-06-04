@@ -81,6 +81,7 @@ from .services import (
     add_bank_statement_client,
     create_bad_debt_write_offs,
     create_bank_statement_account,
+    code_breaker_workspace_snapshot,
     create_late_payment_charges,
     company_calendar_payload,
     create_payment_plan,
@@ -111,6 +112,7 @@ from .services import (
     insights_payload,
     ignition_payload,
     ignition_renewals_payload,
+    micro_analyzer_clients_payload,
     generate_risk_assessments_payload,
     build_risk_assessments_zip_payload,
     preview_risk_assessments_xero_payload,
@@ -205,6 +207,7 @@ from .services import (
     merge_me_report_duplicate_contact,
     merge_me_report_contacts,
     delete_me_report_draft_sales_invoice,
+    me_report_juk_invoice_check,
     mark_me_report_purchases_paid_personally,
     delete_me_report_unreconciled_transaction,
     queue_bank_statement_retry,
@@ -1346,6 +1349,16 @@ async def api_companies_house_auth_code_register_populate(
     return {"status": "ok", "result": result}
 
 
+@app.post("/api/code-breaker/workspace-snapshot")
+async def api_code_breaker_workspace_snapshot(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    result = await code_breaker_workspace_snapshot(user, payload)
+    return {"status": "ok", "result": result}
+
+
 @app.get("/api/company-secretarial/filings")
 def api_company_secretarial_list(
     limit: int = Query(500, ge=20, le=2000),
@@ -1835,6 +1848,11 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "renewals": ignition_renewals_payload(user)}
 
 
+@app.get("/api/micro-analyzer/clients")
+def api_micro_analyzer_clients(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **micro_analyzer_clients_payload(user)}
+
+
 @app.post("/api/ignition/renewals/populate-client-ids")
 def api_populate_ignition_renewal_client_ids(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **populate_ignition_renewal_candidate_client_ids(user)}
@@ -2116,6 +2134,12 @@ async def api_delete_me_report_draft_sales_invoice(client_id: str, invoice_id: s
 async def api_mark_me_report_purchases_paid_personally(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "meReport": await mark_me_report_purchases_paid_personally(user, client_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/me-report/clients/{client_id}/juk-invoice-check")
+async def api_me_report_juk_invoice_check(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await me_report_juk_invoice_check(user, client_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.delete("/api/me-report/clients/{client_id}/xero/unreconciled-transactions/{transaction_id}")
