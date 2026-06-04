@@ -18827,13 +18827,22 @@
                 background: rgba(29, 103, 242, 0.12);
                 overflow: hidden;
             }
-            #xeroLockMismatchProgressBar span {
+            #xeroLockMismatchProgressBar span,
+            #xeroLockFixProgressBar span {
                 display: block;
                 height: 100%;
                 width: 0%;
                 border-radius: inherit;
                 background: linear-gradient(90deg, #1d67f2, #27b05f);
                 transition: width 0.35s ease;
+            }
+            #xeroLockFixProgressBar {
+                height: 8px;
+                width: 100%;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.12);
+                overflow: hidden;
+                margin-bottom: 10px;
             }
             #xeroLockMismatchTableBody tr {
                 transition: background-color 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
@@ -58288,12 +58297,43 @@
                         if (event.target?.id === "xeroLockMismatchModal") closeXeroLockMismatchModal();
                     });
                 }
+                const xeroLockFixProgressModal = document.getElementById("xeroLockFixProgressModal");
+                if (xeroLockFixProgressModal && xeroLockFixProgressModal.dataset.lockDateWired !== "true") {
+                    xeroLockFixProgressModal.dataset.lockDateWired = "true";
+                    xeroLockFixProgressModal.addEventListener("click", (event) => {
+                        if (event.target?.id === "xeroLockFixProgressModal") closeXeroLockFixProgressModal();
+                    });
+                }
+                const xeroLockFixProcessBackgroundButton = document.getElementById("xeroLockFixProcessBackgroundButton");
+                if (xeroLockFixProcessBackgroundButton && xeroLockFixProcessBackgroundButton.dataset.lockDateWired !== "true") {
+                    xeroLockFixProcessBackgroundButton.dataset.lockDateWired = "true";
+                    xeroLockFixProcessBackgroundButton.addEventListener("click", xeroLockFixProcessInBackground);
+                }
+                const xeroLockFixProgressCloseButton = document.getElementById("xeroLockFixProgressCloseButton");
+                if (xeroLockFixProgressCloseButton && xeroLockFixProgressCloseButton.dataset.lockDateWired !== "true") {
+                    xeroLockFixProgressCloseButton.dataset.lockDateWired = "true";
+                    xeroLockFixProgressCloseButton.addEventListener("click", closeXeroLockFixProgressModal);
+                }
+                const xeroLockFixBackgroundOpenButton = document.getElementById("xeroLockFixBackgroundOpenButton");
+                if (xeroLockFixBackgroundOpenButton && xeroLockFixBackgroundOpenButton.dataset.lockDateWired !== "true") {
+                    xeroLockFixBackgroundOpenButton.dataset.lockDateWired = "true";
+                    xeroLockFixBackgroundOpenButton.addEventListener("click", () => {
+                        openXeroLockFixProgressModal();
+                        const mismatchModal = document.getElementById("xeroLockMismatchModal");
+                        if (mismatchModal) mismatchModal.hidden = true;
+                    });
+                }
                 if (document.body.dataset.lockDateMismatchEscWired !== "true") {
                     document.body.dataset.lockDateMismatchEscWired = "true";
                     document.addEventListener("keydown", (event) => {
                         if (event.key !== "Escape") return;
-                        const modal = document.getElementById("xeroLockMismatchModal");
-                        if (!modal || modal.hidden) return;
+                        const mismatchModal = document.getElementById("xeroLockMismatchModal");
+                        const progressModal = document.getElementById("xeroLockFixProgressModal");
+                        if (progressModal && !progressModal.hidden) {
+                            closeXeroLockFixProgressModal();
+                            return;
+                        }
+                        if (!mismatchModal || mismatchModal.hidden) return;
                         closeXeroLockMismatchModal();
                     });
                 }
