@@ -21588,6 +21588,23 @@
                 color: var(--ink);
             }
 
+            .vault-doc-description {
+                display: block;
+                margin-top: 3px;
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1.4;
+                font-weight: 600;
+            }
+
+            tr[data-vault-file-row] {
+                cursor: pointer;
+            }
+
+            tr[data-vault-file-row]:hover td {
+                background: rgba(29, 103, 242, 0.05);
+            }
+
             .vault-activity-list {
                 max-height: 540px;
                 overflow: auto;
@@ -21610,6 +21627,10 @@
 
             .vault-upload-modal-panel {
                 width: min(1080px, 96vw);
+            }
+
+            .vault-activity-modal-panel {
+                width: min(920px, 96vw);
             }
 
             .vault-upload-table {
@@ -25374,17 +25395,25 @@
                                         </table>
                                     </section>
                                 </section>
-                                <aside>
-                                    <section class="detail-panel" id="vaultActivityPanel" style="padding: 12px; margin-top: 12px;" hidden>
-                                        <h4>Vault activity</h4>
-                                        <p class="detail-meta">Upload history and Jenius organizing activity.</p>
-                                        <div class="vault-activity-list" id="vaultActivityList"></div>
-                                    </section>
-                                </aside>
                             </div>
                         </section>
                     </section>
                     <input id="vaultUploadInput" type="file" multiple hidden>
+                    <div class="company-secretarial-modal" id="vaultActivityModal" hidden>
+                        <section class="company-secretarial-modal-panel vault-activity-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vaultActivityModalTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Vault activity</p>
+                                    <h4 id="vaultActivityModalTitle">Upload history and AI organization</h4>
+                                    <p class="detail-meta">Track uploads, extraction steps, tagging, and folder routing in one place.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="vaultActivityModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="vault-activity-list" id="vaultActivityList"></div>
+                        </section>
+                    </div>
                     <div class="company-secretarial-modal" id="vaultUploadModal" hidden>
                         <section class="company-secretarial-modal-panel vault-upload-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vaultUploadModalTitle">
                             <div class="company-secretarial-modal-head">
@@ -25433,6 +25462,8 @@
                                     <p class="detail-meta" id="vaultPreviewModalSummary">Review extracted details and source content.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="vaultPreviewModalDownloadButton" type="button">Download</button>
+                                    <button class="ghost-button" id="vaultPreviewModalDeleteButton" type="button">Delete file</button>
                                     <button class="ghost-button" id="vaultPreviewModalCloseButton" type="button">Close</button>
                                 </div>
                             </div>
@@ -26920,6 +26951,7 @@
             let vaultActivityPanelOpen = false;
             let vaultSearchPanelOpen = false;
             let vaultPreviewModalOpen = false;
+            let vaultPreviewFileId = "";
             let vatAiReviewModalOpen = false;
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
@@ -28060,6 +28092,7 @@
                         vaultAnalyze: config.endpoints?.vaultAnalyze || "/api/vault/analyze",
                         vaultUpload: config.endpoints?.vaultUpload || "/api/vault/upload",
                         vaultFileContent: config.endpoints?.vaultFileContent || "/api/vault/files/:fileId/content",
+                        vaultFileDelete: config.endpoints?.vaultFileDelete || "/api/vault/files/:fileId",
                         insights: config.endpoints?.insights || "/api/insights",
                         companyCalendar: config.endpoints?.companyCalendar || "/api/company-calendar",
                         practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
@@ -66888,55 +66921,184 @@
 
             function renderVaultUploadModal() {
                 const modal = document.getElementById("vaultUploadModal");
-                const body = document.getElementById("vaultUploadModalBody");
-                const summary = document.getElementById("vaultUploadModalSummary");
-                const confirmButton = document.getElementById("vaultUploadConfirmButton");
-                const closeButton = document.getElementById("vaultUploadModalCloseButton");
-                if (!modal || !body || !summary || !confirmButton || !closeButton) return;
-                modal.hidden = !vaultUploadModalOpen;
-                if (!vaultUploadModalOpen) return;
-                summary.textContent = vaultUploadAnalysisRows.length
-                    ? `${vaultUploadAnalysisRows.length.toLocaleString("en-GB")} files analyzed. Confirm upload and let Jenius organize the workspace.`
-                    : "Analyzing files…";
-                body.innerHTML = vaultUploadAnalysisRows.map((row) => `
-                    <tr>
-                        <td><strong>${escapeHTML(row.originalName || "")}</strong><small>${escapeHTML(formatVaultFileSize(row.sizeBytes))}</small></td>
-                        <td>${escapeHTML(row.suggestedName || row.originalName || "")}</td>
-                        <td>${escapeHTML(row.suggestedFolder || "Inbox")}</td>
-                        <td>${escapeHTML(row.summary || "No summary yet.")}</td>
-                        <td>${escapeHTML((Array.isArray(row.tags) ? row.tags : []).join(", ") || row.source || "unknown")}</td>
-                    </tr>
-                `).join("") || '<tr><td colspan="5">Analyzing files…</td></tr>';
-                if (confirmButton.dataset.vaultWired !== "true") {
-                    confirmButton.dataset.vaultWired = "true";
-                    confirmButton.addEventListener("click", confirmVaultUpload);
-                }
-                if (closeButton.dataset.vaultWired !== "true") {
-                    closeButton.dataset.vaultWired = "true";
-                    closeButton.addEventListener("click", () => {
-                        vaultUploadModalOpen = false;
-                        renderVaultUploadModal();
-                    });
-                }
+                if (!modal) return;
+                modal.hidden = true;
+                vaultUploadModalOpen = false;
             }
 
             async function openVaultUploadModalFromFiles(fileList) {
                 const files = Array.from(fileList || []).filter(Boolean);
                 if (!files.length) return;
-                vaultPendingUploadFiles = files;
-                vaultUploadAnalysisRows = [];
-                vaultUploadModalOpen = true;
-                renderVaultUploadModal();
-                const form = new FormData();
-                files.forEach((file) => form.append("files", file, file.name || "document"));
+                if (vaultExtractionActive) {
+                    showToast("Vault extraction is already running in the background.", "error");
+                    return;
+                }
+
+                const nowIso = new Date().toISOString();
+                const stagedRows = files.map((file, index) => ({
+                    id: `vault-processing-${Date.now()}-${index}`,
+                    originalName: file.name || "document",
+                    displayName: file.name || "Document",
+                    folder: "Processing queue",
+                    summary: "Uploading and analyzing document…",
+                    tags: [],
+                    uploadedAt: nowIso,
+                    extractionStatus: "extracting",
+                }));
+                vaultProcessingRows = stagedRows;
+                vaultExtractionActive = true;
+                vaultFiles = [...stagedRows, ...vaultFiles];
+                renderVaultScreen();
+                showToast(`${files.length.toLocaleString("en-GB")} file${files.length === 1 ? "" : "s"} uploading to Vault.`, "success");
+
+                let analysisRows = [];
                 try {
-                    const payload = await requestFormData(api.endpoints.vaultAnalyze, form);
-                    vaultUploadAnalysisRows = Array.isArray(payload?.analyses) ? payload.analyses : [];
-                    renderVaultUploadModal();
+                    const analyzeForm = new FormData();
+                    files.forEach((file) => analyzeForm.append("files", file, file.name || "document"));
+                    const analyzePayload = await requestFormData(api.endpoints.vaultAnalyze, analyzeForm);
+                    analysisRows = Array.isArray(analyzePayload?.analyses) ? analyzePayload.analyses : [];
                 } catch (error) {
-                    vaultUploadModalOpen = false;
-                    renderVaultUploadModal();
-                    showToast(error?.message || "Unable to analyze vault files.", "error");
+                    showToast(error?.message || "Unable to analyze vault files. Continuing with default folder routing.", "error");
+                }
+
+                const manifest = {};
+                (analysisRows || []).forEach((row) => {
+                    if (!row?.sha256) return;
+                    manifest[row.sha256] = {
+                        name: row.suggestedName || row.originalName || "document",
+                        folder: row.suggestedFolder || "Inbox",
+                        summary: row.summary || "",
+                        source: row.source || "unknown",
+                        tags: Array.isArray(row.tags) ? row.tags : [],
+                    };
+                });
+
+                const uploadForm = new FormData();
+                files.forEach((file) => uploadForm.append("files", file, file.name || "document"));
+                uploadForm.append("manifest", JSON.stringify(manifest));
+
+                (async () => {
+                    try {
+                        const payload = await requestFormData(api.endpoints.vaultUpload, uploadForm);
+                        vaultActivities = Array.isArray(payload?.activities) ? payload.activities : [];
+                        await runVaultOrganizeShow(vaultActivities);
+                        await new Promise((resolve) => window.setTimeout(resolve, 4000));
+                        vaultFiles = Array.isArray(payload?.files) ? payload.files : [];
+                        vaultFolders = Array.isArray(payload?.folders) ? payload.folders : [];
+                        vaultTags = Array.isArray(payload?.tags) ? payload.tags : [];
+                        showToast(`Uploaded ${Number(payload?.uploadedCount || files.length).toLocaleString("en-GB")} files to Vault.`, "success");
+                    } catch (error) {
+                        showToast(error?.message || "Unable to upload files to Vault.", "error");
+                        await refreshVaultData({ silent: true });
+                    } finally {
+                        vaultProcessingRows = [];
+                        vaultExtractionActive = false;
+                        renderVaultScreen();
+                    }
+                })();
+            }
+
+            function vaultFileContentUrl(fileId) {
+                return endpointURL(api.endpoints.vaultFileContent, { fileId: String(fileId || "") });
+            }
+
+            async function deleteVaultFile(fileId) {
+                const targetId = String(fileId || "").trim();
+                if (!targetId) return;
+                const target = (vaultFiles || []).find((row) => String(row?.id || "") === targetId);
+                const targetName = target?.displayName || target?.originalName || "this file";
+                const confirmed = window.confirm(`Delete ${targetName}? This cannot be undone.`);
+                if (!confirmed) return;
+                try {
+                    const payload = await requestJSON(endpointURL(api.endpoints.vaultFileDelete, { fileId: targetId }), {
+                        method: "DELETE",
+                    });
+                    vaultFiles = Array.isArray(payload?.files) ? payload.files : [];
+                    vaultFolders = Array.isArray(payload?.folders) ? payload.folders : [];
+                    vaultTags = Array.isArray(payload?.tags) ? payload.tags : [];
+                    vaultActivities = Array.isArray(payload?.activities) ? payload.activities : [];
+                    vaultPreviewModalOpen = false;
+                    vaultPreviewFileId = "";
+                    renderVaultScreen();
+                    renderVaultPreviewModal();
+                    showToast(`${targetName} deleted from Vault.`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to delete Vault file.", "error");
+                }
+            }
+
+            function renderVaultPreviewModal() {
+                const modal = document.getElementById("vaultPreviewModal");
+                const title = document.getElementById("vaultPreviewModalTitle");
+                const summary = document.getElementById("vaultPreviewModalSummary");
+                const content = document.getElementById("vaultPreviewContent");
+                const closeButton = document.getElementById("vaultPreviewModalCloseButton");
+                const downloadButton = document.getElementById("vaultPreviewModalDownloadButton");
+                const deleteButton = document.getElementById("vaultPreviewModalDeleteButton");
+                if (!modal || !title || !summary || !content || !closeButton || !downloadButton || !deleteButton) return;
+
+                const file = (vaultFiles || []).find((row) => String(row?.id || "") === String(vaultPreviewFileId || ""));
+                const isOpen = Boolean(vaultPreviewModalOpen && file);
+                modal.hidden = !isOpen;
+                if (!isOpen) return;
+
+                title.textContent = file.displayName || file.originalName || "Document preview";
+                summary.textContent = `${file.folder || "Inbox"} · ${formatDateTime(file.uploadedAt || "") || "Recently uploaded"}`;
+                const safeName = escapeHTML(file.displayName || file.originalName || "Document");
+                const safeSummary = escapeHTML(String(file.summary || "").trim() || "No description available.");
+                const safeTags = escapeHTML((Array.isArray(file.tags) ? file.tags.join(", ") : "").trim() || "--");
+                const fileUrl = vaultFileContentUrl(file.id);
+                const safeUrl = escapeHTML(fileUrl);
+                content.innerHTML = `
+                    <div class="vault-preview-frame">
+                        <div class="vault-preview-content">
+                            <p><strong>${safeName}</strong></p>
+                            <p class="vault-doc-description">${safeSummary}</p>
+                            <p><strong>Tags:</strong> ${safeTags}</p>
+                            <p><strong>Folder:</strong> ${escapeHTML(file.folder || "Inbox")}</p>
+                            <p><a href="${safeUrl}" target="_blank" rel="noopener">Open source file</a></p>
+                            <iframe src="${safeUrl}" title="${safeName}" style="width:100%; min-height:460px; border:1px solid var(--line); border-radius:12px; background:#fff;"></iframe>
+                        </div>
+                    </div>
+                `;
+
+                if (closeButton.dataset.vaultWired !== "true") {
+                    closeButton.dataset.vaultWired = "true";
+                    closeButton.addEventListener("click", () => {
+                        vaultPreviewModalOpen = false;
+                        vaultPreviewFileId = "";
+                        renderVaultPreviewModal();
+                    });
+                }
+                if (downloadButton.dataset.vaultWired !== "true") {
+                    downloadButton.dataset.vaultWired = "true";
+                    downloadButton.addEventListener("click", () => {
+                        const current = (vaultFiles || []).find((row) => String(row?.id || "") === String(vaultPreviewFileId || ""));
+                        if (!current?.id) return;
+                        const anchor = document.createElement("a");
+                        anchor.href = vaultFileContentUrl(current.id);
+                        anchor.download = String(current.displayName || current.originalName || "vault-document");
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        anchor.remove();
+                    });
+                }
+                if (deleteButton.dataset.vaultWired !== "true") {
+                    deleteButton.dataset.vaultWired = "true";
+                    deleteButton.addEventListener("click", async () => {
+                        const currentId = String(vaultPreviewFileId || "");
+                        if (!currentId) return;
+                        await deleteVaultFile(currentId);
+                    });
+                }
+                if (modal.dataset.vaultWired !== "true") {
+                    modal.dataset.vaultWired = "true";
+                    modal.addEventListener("click", (event) => {
+                        if (event.target !== modal) return;
+                        vaultPreviewModalOpen = false;
+                        vaultPreviewFileId = "";
+                        renderVaultPreviewModal();
+                    });
                 }
             }
 
@@ -67074,8 +67236,9 @@
                 const refreshButton = document.getElementById("vaultRefreshButton");
                 const input = document.getElementById("vaultUploadInput");
                 const activityToggle = document.getElementById("vaultActivityToggleButton");
-                const activityPanel = document.getElementById("vaultActivityPanel");
-                if (!summary || !filesHead || !filesBody || !searchInput || !folderFilter || !tagFilter || !searchToggleButton || !searchToggleLabel || !searchCollapse || !filterChipRow || !topCard || !uploadButton || !refreshButton || !input || !activityToggle || !activityPanel) return;
+                const activityModal = document.getElementById("vaultActivityModal");
+                const activityModalCloseButton = document.getElementById("vaultActivityModalCloseButton");
+                if (!summary || !filesHead || !filesBody || !searchInput || !folderFilter || !tagFilter || !searchToggleButton || !searchToggleLabel || !searchCollapse || !filterChipRow || !topCard || !uploadButton || !refreshButton || !input || !activityToggle || !activityModal || !activityModalCloseButton) return;
 
                 const displayRows = vaultRowsForDisplay();
                 const activeFilterCount = [vaultSearchTerm, vaultFolderFilter, vaultTagFilter].filter((value) => String(value || "").trim()).length;
@@ -67166,7 +67329,22 @@
                 if (activityToggle.dataset.vaultWired !== "true") {
                     activityToggle.dataset.vaultWired = "true";
                     activityToggle.addEventListener("click", () => {
-                        vaultActivityPanelOpen = !vaultActivityPanelOpen;
+                        vaultActivityPanelOpen = true;
+                        renderVaultScreen();
+                    });
+                }
+                if (activityModalCloseButton.dataset.vaultWired !== "true") {
+                    activityModalCloseButton.dataset.vaultWired = "true";
+                    activityModalCloseButton.addEventListener("click", () => {
+                        vaultActivityPanelOpen = false;
+                        renderVaultScreen();
+                    });
+                }
+                if (activityModal.dataset.vaultWired !== "true") {
+                    activityModal.dataset.vaultWired = "true";
+                    activityModal.addEventListener("click", (event) => {
+                        if (event.target !== activityModal) return;
+                        vaultActivityPanelOpen = false;
                         renderVaultScreen();
                     });
                 }
@@ -67208,9 +67386,10 @@
                     });
                 }
 
-                activityPanel.hidden = !vaultActivityPanelOpen;
+                activityModal.hidden = !vaultActivityPanelOpen;
                 renderVaultActivityList();
                 renderVaultUploadModal();
+                renderVaultPreviewModal();
 
                 if (!displayRows.length && !vaultExtractionActive) {
                     filesHead.innerHTML = `<tr><th>Folder</th><th>Files</th><th>Status</th><th>Last updated</th><th>Action</th></tr>`;
@@ -67274,6 +67453,20 @@
                         </tr>
                     `;
                 }).join("");
+                filesBody.querySelectorAll("[data-vault-file-row]").forEach((rowNode) => {
+                    rowNode.addEventListener("click", () => {
+                        const targetId = String(rowNode.dataset.vaultFileRow || "").trim();
+                        const targetFile = displayRows.find((item) => String(item?.id || "") === targetId);
+                        if (!targetId || !targetFile) return;
+                        if (String(targetFile.extractionStatus || "").toLowerCase() === "extracting") {
+                            showToast("This file is still processing and will open once extraction finishes.", "info");
+                            return;
+                        }
+                        vaultPreviewFileId = targetId;
+                        vaultPreviewModalOpen = true;
+                        renderVaultPreviewModal();
+                    });
+                });
             }
 
             function wireRiskAssessmentControls() {

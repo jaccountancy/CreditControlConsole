@@ -211,6 +211,7 @@ from .services import (
     mark_me_report_purchases_paid_personally,
     delete_me_report_unreconciled_transaction,
     vault_analyze_files,
+    vault_delete_file,
     vault_file_content,
     vault_payload,
     vault_upload_files,
@@ -1913,6 +1914,11 @@ def api_vault_file_content(file_id: str, user: dict = Depends(require_panel_user
     file_bytes, filename, content_type = vault_file_content(user, file_id)
     safe_name = str(filename or "file").replace('"', "'")
     return Response(content=file_bytes, media_type=content_type, headers={"Content-Disposition": f'inline; filename="{safe_name}"'})
+
+
+@app.delete("/api/vault/files/{file_id}")
+def api_vault_delete_file(file_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **vault_delete_file(user, file_id)}
 
 
 @app.post("/api/ignition/renewals/populate-client-ids")

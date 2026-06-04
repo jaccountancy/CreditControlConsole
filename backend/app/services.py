@@ -21311,6 +21311,33 @@ def vault_file_content(user: dict, file_id: str) -> tuple[bytes, str, str]:
     return storage_path.read_bytes(), str(row.get("displayName") or row.get("originalName") or "file"), _vault_content_type(str(row.get("displayName") or row.get("originalName") or ""), row.get("contentType"))
 
 
+def vault_delete_file(user: dict, file_id: str) -> dict:
+    index_payload = _vault_load_index(user["id"])
+    file_rows = list(index_payload.get("files") or [])
+    target_id = str(file_id or "").strip()
+    if not target_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vault file id is required.")
+    target_row = next((item for item in file_rows if str(item.get("id") or "") == target_id), None)
+    if not target_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vault file not found.")
+
+    storage_name = str(target_row.get("storagePath") or "")
+    if storage_name:
+        storage_path = _vault_files_dir(user["id"]) / storage_name
+        try:
+            if storage_path.exists():
+                storage_path.unlink()
+        except OSError:
+            pass
+
+    display_name = str(target_row.get("displayName") or target_row.get("originalName") or "file")
+    folder_name = str(target_row.get("folder") or "Inbox")
+    index_payload["files"] = [item for item in file_rows if str(item.get("id") or "") != target_id]
+    _vault_activity(index_payload, "delete", f"Deleted {display_name}", f"Removed from {folder_name}.", target_id)
+    _vault_save_index(user["id"], index_payload)
+    return {"deletedFileId": target_id, **vault_payload(user)}
+
+
 def run_ignition_sync_job(user: dict, sync_run_id: str) -> None:
     try:
         asyncio.run(run_ignition_sync(user, sync_run_id))
