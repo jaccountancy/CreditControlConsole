@@ -65928,25 +65928,87 @@
                 const searchInput = document.getElementById("vaultSearchInput");
                 const folderFilter = document.getElementById("vaultFolderFilterSelect");
                 const tagFilter = document.getElementById("vaultTagFilterSelect");
+                const searchToggleButton = document.getElementById("vaultSearchToggleButton");
+                const searchToggleLabel = document.getElementById("vaultSearchToggleLabel");
+                const searchCollapse = document.getElementById("vaultSearchCollapse");
+                const filterChipRow = document.getElementById("vaultFilterChipRow");
+                const topCard = document.getElementById("vaultTopCard");
                 const uploadButton = document.getElementById("vaultUploadButton");
                 const refreshButton = document.getElementById("vaultRefreshButton");
                 const input = document.getElementById("vaultUploadInput");
                 const activityToggle = document.getElementById("vaultActivityToggleButton");
                 const activityPanel = document.getElementById("vaultActivityPanel");
-                if (!summary || !filesBody || !searchInput || !folderFilter || !tagFilter || !uploadButton || !refreshButton || !input || !activityToggle || !activityPanel) return;
+                if (!summary || !filesBody || !searchInput || !folderFilter || !tagFilter || !searchToggleButton || !searchToggleLabel || !searchCollapse || !filterChipRow || !topCard || !uploadButton || !refreshButton || !input || !activityToggle || !activityPanel) return;
 
                 summary.textContent = vaultLoading
                     ? "Loading Vault files and activity…"
                     : `${(vaultFiles || []).length.toLocaleString("en-GB")} file${(vaultFiles || []).length === 1 ? "" : "s"} shown · ${(vaultFolders || []).length.toLocaleString("en-GB")} folders · ${(vaultTags || []).length.toLocaleString("en-GB")} tags`;
                 if (searchInput.value !== vaultSearchTerm) searchInput.value = vaultSearchTerm;
-                folderFilter.innerHTML = ['<option value="">All folders</option>', ...vaultFolders.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)].join("");
+                const activeFilterCount = [vaultSearchTerm, vaultFolderFilter, vaultTagFilter].filter((value) => String(value || "").trim()).length;
+                if (!vaultSearchPanelOpen && activeFilterCount) vaultSearchPanelOpen = true;
+                topCard.classList.toggle("is-search-open", vaultSearchPanelOpen);
+                searchCollapse.setAttribute("aria-hidden", vaultSearchPanelOpen ? "false" : "true");
+                searchToggleButton.setAttribute("aria-expanded", vaultSearchPanelOpen ? "true" : "false");
+                searchToggleLabel.textContent = vaultSearchPanelOpen
+                    ? "Hide search"
+                    : activeFilterCount
+                        ? `Search (${activeFilterCount})`
+                        : "Search";
+
+                const folderCounts = buildVaultFacetCounts(vaultFiles, (file) => [file.folder || "Inbox"]);
+                const tagCounts = buildVaultFacetCounts(vaultFiles, (file) => Array.isArray(file.tags) ? file.tags : []);
+                const folderValues = mergeVaultFacetValues([...(vaultFolders || []), ...folderCounts.keys()], folderCounts);
+                const tagValues = mergeVaultFacetValues([...(vaultTags || []), ...tagCounts.keys()], tagCounts);
+                folderFilter.innerHTML = ['<option value="">📁 All folders</option>', ...folderValues.map((item) => `<option value="${escapeHTML(item)}">📁 ${escapeHTML(item)}${folderCounts.get(item) ? ` (${Number(folderCounts.get(item) || 0).toLocaleString("en-GB")})` : ""}</option>`)].join("");
                 folderFilter.value = vaultFolderFilter || "";
-                tagFilter.innerHTML = ['<option value="">All tags</option>', ...vaultTags.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)].join("");
+                tagFilter.innerHTML = ['<option value=""># All tags</option>', ...tagValues.map((item) => `<option value="${escapeHTML(item)}">#${escapeHTML(item)}${tagCounts.get(item) ? ` (${Number(tagCounts.get(item) || 0).toLocaleString("en-GB")})` : ""}</option>`)].join("");
                 tagFilter.value = vaultTagFilter || "";
+
+                const folderChips = folderValues.filter((item) => Number(folderCounts.get(item) || 0) > 0).slice(0, 4);
+                const tagChips = tagValues.filter((item) => Number(tagCounts.get(item) || 0) > 0).slice(0, 6);
+                const hasFacetChips = folderChips.length || tagChips.length;
+                filterChipRow.hidden = !hasFacetChips;
+                if (hasFacetChips) {
+                    filterChipRow.innerHTML = [
+                        `<button class="vault-filter-chip ${!vaultFolderFilter && !vaultTagFilter ? "is-active" : ""}" type="button" data-vault-chip-clear="true">All</button>`,
+                        ...folderChips.map((item) => `<button class="vault-filter-chip ${vaultFolderFilter === item ? "is-active" : ""}" type="button" data-vault-chip-folder="${escapeHTML(item)}">📁 ${escapeHTML(item)}</button>`),
+                        ...tagChips.map((item) => `<button class="vault-filter-chip ${vaultTagFilter === item ? "is-active" : ""}" type="button" data-vault-chip-tag="${escapeHTML(item)}">#${escapeHTML(item)}</button>`)
+                    ].join("");
+                    filterChipRow.querySelectorAll("[data-vault-chip-clear]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            vaultFolderFilter = "";
+                            vaultTagFilter = "";
+                            refreshVaultData({ silent: true });
+                        });
+                    });
+                    filterChipRow.querySelectorAll("[data-vault-chip-folder]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            vaultFolderFilter = String(button.dataset.vaultChipFolder || "");
+                            vaultSearchPanelOpen = true;
+                            refreshVaultData({ silent: true });
+                        });
+                    });
+                    filterChipRow.querySelectorAll("[data-vault-chip-tag]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            vaultTagFilter = String(button.dataset.vaultChipTag || "");
+                            vaultSearchPanelOpen = true;
+                            refreshVaultData({ silent: true });
+                        });
+                    });
+                } else {
+                    filterChipRow.innerHTML = "";
+                }
 
                 if (uploadButton.dataset.vaultWired !== "true") {
                     uploadButton.dataset.vaultWired = "true";
                     uploadButton.addEventListener("click", () => input.click());
+                }
+                if (searchToggleButton.dataset.vaultWired !== "true") {
+                    searchToggleButton.dataset.vaultWired = "true";
+                    searchToggleButton.addEventListener("click", () => {
+                        vaultSearchPanelOpen = !vaultSearchPanelOpen;
+                        renderVaultScreen();
+                    });
                 }
                 if (refreshButton.dataset.vaultWired !== "true") {
                     refreshButton.dataset.vaultWired = "true";
@@ -65961,8 +66023,15 @@
                 }
                 if (searchInput.dataset.vaultWired !== "true") {
                     searchInput.dataset.vaultWired = "true";
+                    searchInput.addEventListener("focus", () => {
+                        if (!vaultSearchPanelOpen) {
+                            vaultSearchPanelOpen = true;
+                            renderVaultScreen();
+                        }
+                    });
                     searchInput.addEventListener("input", () => {
                         vaultSearchTerm = String(searchInput.value || "").trim();
+                        vaultSearchPanelOpen = true;
                         refreshVaultData({ silent: true });
                     });
                 }
@@ -65970,6 +66039,7 @@
                     folderFilter.dataset.vaultWired = "true";
                     folderFilter.addEventListener("change", () => {
                         vaultFolderFilter = String(folderFilter.value || "");
+                        vaultSearchPanelOpen = true;
                         refreshVaultData({ silent: true });
                     });
                 }
@@ -65977,6 +66047,7 @@
                     tagFilter.dataset.vaultWired = "true";
                     tagFilter.addEventListener("change", () => {
                         vaultTagFilter = String(tagFilter.value || "");
+                        vaultSearchPanelOpen = true;
                         refreshVaultData({ silent: true });
                     });
                 }
