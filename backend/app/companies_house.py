@@ -1392,7 +1392,7 @@ def _build_ch_submission_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "MD5"
+    ET.SubElement(auth, "Method").text = "CHMD5"
     ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
@@ -1540,7 +1540,7 @@ def _build_ch_status_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "MD5"
+    ET.SubElement(auth, "Method").text = "CHMD5"
     ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
