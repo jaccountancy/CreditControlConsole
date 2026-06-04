@@ -23601,6 +23601,7 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="yePrepBackToCustomersButton" type="button" hidden>Back to customers</button>
                                     <button class="ghost-button" id="yePrepRefreshButton" type="button">Refresh</button>
+                                    <button class="ghost-button" id="yePrepAiReviewButton" type="button" hidden>AI Review</button>
                                     <button class="primary-button" id="yePrepSyncButton" type="button" hidden>Sync from Xero</button>
                                 </div>
                             </div>
@@ -23727,6 +23728,60 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="yePrepAiReviewModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="yePrepAiReviewTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">YE Prep AI Review</p>
+                                    <h4 id="yePrepAiReviewTitle">Year-end risk and evidence checklist</h4>
+                                    <p class="detail-meta" id="yePrepAiReviewSummary">Analyzing transactions, balances and filing context for year-end risks.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="yePrepAiReviewRefreshButton" type="button">Refresh analysis</button>
+                                    <button class="ghost-button" id="yePrepAiReviewCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="detail-panel" style="padding: 0;">
+                                <div class="ch-companies-table-wrap" style="margin-bottom: 10px;">
+                                    <table class="ch-table" aria-label="YE Prep AI review checklist">
+                                        <thead>
+                                            <tr>
+                                                <th>Area</th>
+                                                <th>Flag</th>
+                                                <th>What AI found</th>
+                                                <th>Evidence required</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="yePrepAiReviewBody"></tbody>
+                                    </table>
+                                </div>
+                                <article class="me-report-insight-card" style="margin-top: 0;">
+                                    <div class="me-report-card-heading-row">
+                                        <div>
+                                            <p class="eyebrow">Mileage Model</p>
+                                            <h3>Mileage claim calculator</h3>
+                                            <p class="detail-meta">Uses 45p/25p rates before 6 April 2026 and 55p/25p from 6 April 2026 onward.</p>
+                                        </div>
+                                    </div>
+                                    <form id="yePrepMileageForm" class="settings-form-grid" style="padding: 0;">
+                                        <label>
+                                            Trip date
+                                            <input id="yePrepMileageDate" type="date">
+                                        </label>
+                                        <label>
+                                            Business miles
+                                            <input id="yePrepMileageMiles" type="number" min="0" step="1" placeholder="20000">
+                                        </label>
+                                        <label>
+                                            Claim amount
+                                            <input id="yePrepMileageClaimAmount" type="text" readonly placeholder="£0.00">
+                                        </label>
+                                    </form>
+                                    <p class="detail-meta" id="yePrepMileageSummary" style="margin-top: 10px;">Enter miles and date to calculate claim.</p>
+                                </article>
+                            </section>
+                        </section>
+                    </div>
                     <div class="company-secretarial-modal" id="vatAiReviewModal" hidden>
                         <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vatAiReviewTitle">
                             <div class="company-secretarial-modal-head">
@@ -25076,6 +25131,9 @@
             let selectedVatReturnKey = "";
             let vatReturnDetailTab = "transactions";
             let vatAiReviewModalOpen = false;
+            let yePrepAiReviewModalOpen = false;
+            let yePrepAiReviewLoading = false;
+            let yePrepAiReviewRows = [];
             let vatFinaliseModalOpen = false;
             let vatClientApprovalModalOpen = false;
             const vatReturnTransactionCache = new Map();
@@ -26092,6 +26150,7 @@
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
+                        yePrepAiReview: config.endpoints?.yePrepAiReview || "/api/ye-prep/review",
                         allocation: config.endpoints?.allocation || "/api/customers/:customerId/allocations",
                         promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
                         paymentPlan: config.endpoints?.paymentPlan || "/api/customers/:customerId/payment-plans",
