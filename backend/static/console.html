@@ -12043,6 +12043,18 @@
             }
             #supplierReconciliationScreen .bank-statement-workspace {
                 min-height: 0;
+                grid-template-columns: minmax(340px, 1.05fr) minmax(340px, 1.05fr) minmax(520px, 1.6fr);
+                align-items: start;
+            }
+            @media (max-width: 1680px) {
+                #supplierReconciliationScreen .bank-statement-workspace {
+                    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) minmax(420px, 1.25fr);
+                }
+            }
+            @media (max-width: 1320px) {
+                #supplierReconciliationScreen .bank-statement-workspace {
+                    grid-template-columns: minmax(0, 1fr);
+                }
             }
             #supplierReconciliationScreen .supplier-recon-submitted-shell {
                 margin-top: 0;
@@ -25136,7 +25148,7 @@
                                 <table class="ch-table" aria-label="VAT return queue">
                                     <thead>
                                         <tr>
-                                            <th>Client</th>
+                                            <th>Client workspace</th>
                                             <th>Period end</th>
                                             <th>Deadline</th>
                                             <th>Status</th>
@@ -40786,13 +40798,13 @@
                     });
                 setSupplierReconciliationTopbarActions(`
                         <div class="supplier-reconciliation-topbar-main">
+                            <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
+                                <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">↩ Submitted Statements</button>
+                            </div>
                             <button class="ghost-button" id="supplierReconciliationBackToListButton" type="button">Back to client workspaces</button>
                             <button class="ghost-button danger-button" id="supplierReconciliationDeleteWorkspaceButton" type="button">Delete workspace</button>
                             <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
                             <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
-                            <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
-                                <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
-                            </div>
                         </div>
                     <div class="supplier-reconciliation-topbar-secondary">
                         <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${supplierReconciliationWorkspaceTenantId ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
@@ -40805,7 +40817,7 @@
                 clientList.innerHTML = `
                     <div class="jashflow-detail-head">
                         <div>
-                            <p class="eyebrow">Supplier workspace</p>
+                            <p class="eyebrow">Client Workspace</p>
                             <h3>${escapeHTML(supplierReconciliationWorkspaceTenantName || "Client workspace")}</h3>
                             <p class="detail-meta">${escapeHTML(supplierReconciliationWorkspaceTenantId || "Connected tenant")}</p>
                         </div>
@@ -40999,7 +41011,7 @@
                         detail.innerHTML = `
                             <div class="jashflow-detail-head">
                                 <div>
-                                    <p class="eyebrow">Supplier Workspace</p>
+                                    <p class="eyebrow">Client Workspace</p>
                                     <h3>Extracted supplier records</h3>
                                     <p class="detail-meta">Each uploaded statement can populate supplier contact and bank details for this workspace.</p>
                                 </div>
@@ -49684,6 +49696,11 @@
                 if (!tbody) return;
                 const baseClients = meReportVisibleClients();
                 const clients = filteredMeReportClients();
+                const contactsById = new Map(
+                    meReportContactOptions()
+                        .map((contact) => [String(contact?.xeroContactId || "").trim(), contact])
+                        .filter(([contactId]) => contactId)
+                );
                 const summary = document.getElementById("meReportClientTableSummary");
                 if (summary) {
                     summary.textContent = baseClients.length
@@ -49738,6 +49755,15 @@
                         : `${String(client.bookkeepingFrequency || "Monthly")} cycle`;
                     const deadlineCopy = deadlineAt ? meReportDateDisplay(deadlineAt) : "--";
                     const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email connected";
+                    const contact = contactsById.get(String(client.xeroContactId || "").trim()) || null;
+                    const workspace = xeroWorkspaceLabel(
+                        client.tenantName || contact?.tenantName || "",
+                        client.tenantId || contact?.tenantId || "",
+                        "Xero workspace pending"
+                    );
+                    const clientMeta = [workspace];
+                    if (client.xeroContactId) clientMeta.push(String(client.xeroContactId));
+                    if (email && email !== "No Xero email connected") clientMeta.push(email);
                     return `
                         <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
                             <td>
@@ -49751,7 +49777,7 @@
                             ${meReportClientColumnVisible("client") ? `<td>
                                 <div class="me-report-client-name-cell">
                                     <span class="me-report-client-table-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
-                                    <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(email)}</small></div>
+                                    <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(clientMeta.join(" · ") || email)}</small></div>
                                 </div>
                             </td>` : ""}
                             ${meReportClientColumnVisible("clientId") ? `<td><strong>${escapeHTML(client.clientId || client.id || "--")}</strong><small>Client ID</small></td>` : ""}
@@ -49982,6 +50008,15 @@
                 return String(first?.tenantId || "").trim();
             }
 
+            function xeroWorkspaceLabel(tenantName = "", tenantId = "", fallback = "Xero workspace") {
+                const cleanTenantName = String(tenantName || "").trim();
+                const cleanTenantId = String(tenantId || "").trim();
+                if (cleanTenantName && cleanTenantId && cleanTenantName !== cleanTenantId) {
+                    return `${cleanTenantName} (${cleanTenantId})`;
+                }
+                return cleanTenantName || cleanTenantId || fallback;
+            }
+
             function renderMeReportWorkspaceControls(client = {}, options = {}) {
                 const flowStatus = meReportFlowStatus(client);
                 const locked = meReportFlowLocked(client);
@@ -50064,6 +50099,8 @@
                         xeroContactId: contactId,
                         name: String(company?.companyName || company?.clientName || contact?.name || "Unnamed client"),
                         email: String(company?.contactEmail || contact?.email || ""),
+                        tenantId: String(contact?.tenantId || "").trim(),
+                        tenantName: String(contact?.tenantName || "").trim(),
                     });
                 });
                 return Array.from(candidatesByContactId.values()).sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""), "en", { sensitivity: "base" }));
@@ -50231,7 +50268,10 @@
                 }
                 select.disabled = false;
                 select.innerHTML = contacts.map((contact) => {
-                    const label = `${contact.name || "Unnamed contact"}${contact.email ? ` - ${contact.email}` : ""}`;
+                    const workspace = xeroWorkspaceLabel(contact.tenantName || "", contact.tenantId || "", "Xero workspace");
+                    const label = [contact.name || "Unnamed contact", workspace, contact.email || ""]
+                        .filter(Boolean)
+                        .join(" - ");
                     return `<option value="${escapeHTML(contact.xeroContactId || "")}">${escapeHTML(label)}</option>`;
                 }).join("");
                 if (contacts.some((contact) => contact.xeroContactId === currentValue)) {
@@ -51065,12 +51105,16 @@
                             const checked = selectedIds.has(contactId);
                             const label = String(contact?.name || "Unnamed client");
                             const email = String(contact?.email || "");
+                            const workspace = xeroWorkspaceLabel(contact?.tenantName || "", contact?.tenantId || "", "Xero workspace");
+                            const detailParts = [workspace];
+                            if (contactId) detailParts.push(contactId);
+                            if (email) detailParts.push(email);
                             return `
                                 <button class="me-report-bulk-client-card${checked ? " is-selected" : ""}" type="button" data-me-report-bulk-client="${escapeHTML(contactId)}" aria-pressed="${checked ? "true" : "false"}">
                                     <span class="me-report-bulk-client-icon" aria-hidden="true">✓</span>
                                     <span class="me-report-bulk-client-copy">
                                         <strong>${escapeHTML(label)}</strong>
-                                        <small>${escapeHTML(email || contactId || "Xero-linked client")}</small>
+                                        <small>${escapeHTML(detailParts.join(" · ") || "Xero-linked client")}</small>
                                     </span>
                                 </button>
                             `;
@@ -63991,9 +64035,11 @@
                     summary.textContent = `${rows.length.toLocaleString("en-GB")} VAT return${rows.length === 1 ? "" : "s"} ready or due${overdueCount ? ` · ${overdueCount.toLocaleString("en-GB")} overdue` : ""}${awaitingReviewCount ? ` · ${awaitingReviewCount.toLocaleString("en-GB")} awaiting review` : ""}${awaitingClientCount ? ` · ${awaitingClientCount.toLocaleString("en-GB")} awaiting client approval` : ""}.`;
                     queueBody.innerHTML = rows.map((row) => {
                         const status = vatEffectiveStatus(row);
+                        const workspace = xeroWorkspaceLabel(row.tenantName || "", row.tenantId || "", "Xero workspace");
+                        const workspaceMeta = [workspace, row.xeroContactId || ""].filter(Boolean).join(" · ");
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(row.xeroContactId)}</small></td>
+                                <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(workspaceMeta || "Xero workspace")}</small></td>
                                 <td>${escapeHTML(formatDate(row.periodEndISO))}</td>
                                 <td>${escapeHTML(formatDate(row.deadlineISO))}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
@@ -65535,9 +65581,11 @@
                     customerTableBody.innerHTML = rows.map((row) => {
                         const yearEnds = yePrepYearEndsForCustomer(row);
                         const lockCheck = yePrepLockCheckForCustomer(row);
+                        const workspace = xeroWorkspaceLabel(row.connected?.tenantName || "", row.connected?.tenantId || "", "Xero workspace");
+                        const workspaceMeta = [workspace, row.connected?.xeroContactId || row.customer?.xeroContactId || ""].filter(Boolean).join(" · ");
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(row.companyName || "Client workspace")}</strong><small>${escapeHTML(row.connected?.xeroContactId || row.customer?.xeroContactId || "No Xero contact")}</small></td>
+                                <td><strong>${escapeHTML(row.companyName || "Client workspace")}</strong><small>${escapeHTML(workspaceMeta || "No Xero workspace mapped")}</small></td>
                                 <td>${escapeHTML(row.companyNumber || "—")}</td>
                                 <td>${escapeHTML(row.manager || "Client Manager")}</td>
                                 <td><span class="ch-pill ${lockCheck.className || "is-info"}">${yearEnds.length.toLocaleString("en-GB")} year end${yearEnds.length === 1 ? "" : "s"}</span></td>
