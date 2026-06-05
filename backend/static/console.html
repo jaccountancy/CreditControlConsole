@@ -7628,6 +7628,37 @@
                 justify-content: flex-end;
                 align-content: flex-start;
                 max-width: min(100%, 920px);
+                gap: 10px;
+            }
+            #vatReturnPrepareScreen .detail-actions .ghost-button,
+            #vatReturnPrepareScreen .detail-actions .primary-button {
+                min-height: 42px;
+                border-radius: 999px;
+                padding: 0 16px;
+                font-weight: 850;
+                letter-spacing: 0.01em;
+                box-shadow: 0 4px 12px rgba(23, 44, 79, 0.06);
+            }
+            #vatReturnPrepareScreen #vatReturnBackButton {
+                margin-right: auto;
+                background: rgba(255, 255, 255, 0.94);
+            }
+            #vatReturnPrepareScreen #vatReturnAiReviewButton {
+                border-color: rgba(29, 103, 242, 0.4);
+                background: linear-gradient(155deg, rgba(29, 103, 242, 0.16), rgba(124, 166, 255, 0.12));
+                color: #1846ad;
+            }
+            #vatReturnPrepareScreen #vatReturnAiReviewButton:hover:not(:disabled) {
+                border-color: rgba(29, 103, 242, 0.55);
+                background: linear-gradient(155deg, rgba(29, 103, 242, 0.22), rgba(124, 166, 255, 0.18));
+                transform: translateY(-1px);
+            }
+            #vatReturnPrepareScreen #vatReturnRefreshButton {
+                border-color: rgba(39, 94, 214, 0.34);
+            }
+            #vatReturnPrepareScreen #vatReturnFinaliseButton {
+                border-color: rgba(21, 128, 61, 0.32);
+                color: #166534;
             }
             .status-badge {
                 padding: 12px 14px;
@@ -8114,6 +8145,46 @@
                 border-radius: 26px;
                 background: rgba(255, 255, 255, 0.72);
                 border: 1px solid var(--line);
+            }
+            .key-metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+            .key-metric-card {
+                padding: 13px 14px;
+                border-radius: 14px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.92);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+                min-width: 0;
+            }
+            .key-metric-card span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                line-height: 1.3;
+            }
+            .key-metric-card strong {
+                display: block;
+                margin-top: 6px;
+                color: var(--ink);
+                font-size: 1.02rem;
+                font-weight: 900;
+                line-height: 1.25;
+                overflow-wrap: anywhere;
+            }
+            #vatReturnPrepareScreen .key-metrics-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+            #vatReturnPrepareScreen .key-metric-card {
+                background:
+                    radial-gradient(140% 120% at 0% 0%, rgba(46, 114, 255, 0.08), rgba(255, 255, 255, 0) 62%),
+                    rgba(255, 255, 255, 0.94);
             }
             .client-screen .detail-panel {
                 padding: 16px;
@@ -25188,7 +25259,7 @@
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
                                     <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Refresh</button>
-                                    <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Suggest No VAT Invoice Requests</button>
+                                    <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Jenius AI</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
                                     <button class="primary-button" id="vatReturnExportNoVatButton" type="button" hidden>Export No VAT Report</button>
                                 </div>
@@ -25608,8 +25679,8 @@
                             <div class="company-secretarial-modal-head">
                                 <div>
                                     <p class="eyebrow">AI Review</p>
-                                    <h4 id="vatAiReviewTitle">No VAT invoice-request suggestions</h4>
-                                    <p class="detail-meta" id="vatAiReviewSummary">Review suggested no‑VAT transactions that likely need VAT invoice evidence from the client.</p>
+                                    <h4 id="vatAiReviewTitle">Jenius AI VAT return review</h4>
+                                    <p class="detail-meta" id="vatAiReviewSummary">Review VAT coding issues, duplicate-risk rows, and quick-fix suggestions.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="vatAiReviewApplyConfirmedButton" type="button">Export Confirmed List</button>
@@ -25617,7 +25688,7 @@
                                 </div>
                             </div>
                             <div class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="VAT no-VAT AI suggestions">
+                                <table class="ch-table" aria-label="VAT AI review suggestions">
                                     <thead>
                                         <tr>
                                             <th>Transaction</th>
@@ -64383,13 +64454,28 @@
             }
 
             function vatWarningsFromTransactions(transactions = []) {
-                return (transactions || []).flatMap((row) => {
+                const rows = Array.isArray(transactions) ? transactions : [];
+                const duplicateKeyCounts = new Map();
+                rows.forEach((row) => {
+                    const parsedDate = parseDateValue(row?.date);
+                    const dateKey = parsedDate ? isoDateOnly(parsedDate) : String(row?.date || "").trim();
+                    const netKey = Math.abs(Number(row?.netAmount || 0)).toFixed(2);
+                    const taxKey = Math.abs(Number(row?.taxAmount || 0)).toFixed(2);
+                    const referenceKey = String(row?.reference || row?.description || "").trim().toLowerCase();
+                    const duplicateKey = `${dateKey}|${netKey}|${taxKey}|${referenceKey}`;
+                    duplicateKeyCounts.set(duplicateKey, Number(duplicateKeyCounts.get(duplicateKey) || 0) + 1);
+                });
+                return rows.flatMap((row) => {
                     const transactionId = vatTransactionId(row);
                     const netAmount = Number(row?.netAmount || 0);
                     const taxAmount = Number(row?.taxAmount || 0);
                     const vatCode = String(row?.taxCode || "").toLowerCase();
                     const source = `${row?.sourceType || ""} ${row?.transactionType || ""} ${row?.documentType || ""}`.toLowerCase();
                     const issues = [];
+                    const parsedDate = parseDateValue(row?.date);
+                    const dateKey = parsedDate ? isoDateOnly(parsedDate) : String(row?.date || "").trim();
+                    const duplicateKey = `${dateKey}|${Math.abs(netAmount).toFixed(2)}|${Math.abs(taxAmount).toFixed(2)}|${String(row?.reference || row?.description || "").trim().toLowerCase()}`;
+                    const duplicateCount = Number(duplicateKeyCounts.get(duplicateKey) || 0);
 
                     const looksLikeSpendMoney = /spend|bank payment|cash|expense claim|card payment/.test(source);
                     const looksLikeBill = /bill|purchase invoice|accounts payable|ap invoice/.test(source);
@@ -64419,6 +64505,14 @@
                             proposedTaxCode: "INPUT2"
                         });
                     }
+                    if (duplicateCount > 1) {
+                        issues.push({
+                            severity: "Medium",
+                            issue: `Possible duplicate posting: ${duplicateCount.toLocaleString("en-GB")} matching lines share date/reference/net/VAT values.`,
+                            amount: Math.abs(netAmount) + Math.abs(taxAmount),
+                            proposedTaxCode: "",
+                        });
+                    }
                     return issues.map((warning) => ({
                         id: `${transactionId}:${warning.severity}:${warning.issue}`,
                         transactionId,
@@ -64444,6 +64538,7 @@
                     reason: warning.issue || "Review VAT coding",
                     proposedTaxCode: warning.proposedTaxCode || "",
                     proposedAccountCode: warning.proposedAccountCode || "",
+                    severity: warning.severity || "Medium",
                     status: "pending"
                 }));
             }
@@ -64481,14 +64576,23 @@
                             reference: String(item?.reference || "").trim(),
                             description: String(item?.description || "").trim(),
                             reason: String(item?.reason || "Potential VAT reclaim if VAT invoice is available.").trim(),
-                            proposedTaxCode: "",
-                            proposedAccountCode: "",
+                            proposedTaxCode: String(item?.proposedTaxCode || "").trim(),
+                            proposedAccountCode: String(item?.proposedAccountCode || "").trim(),
+                            severity: String(item?.severity || "Medium").trim(),
                             confidence: String(item?.confidence || "medium").trim().toLowerCase(),
                             status: String(item?.status || "pending").trim().toLowerCase() || "pending",
                         }))
                         .filter((item) => item.transactionId);
-                    vatReturnAiSuggestionsByKey[entryKey] = mapped;
-                    return mapped;
+                    const localChecks = vatAiSuggestionsForEntry(entry, transactions);
+                    const mergedById = new Map();
+                    [...mapped, ...localChecks].forEach((item) => {
+                        const key = String(item?.id || "");
+                        if (!key) return;
+                        if (!mergedById.has(key)) mergedById.set(key, item);
+                    });
+                    const merged = Array.from(mergedById.values());
+                    vatReturnAiSuggestionsByKey[entryKey] = merged;
+                    return merged;
                 } catch (error) {
                     console.error("Unable to load AI no-VAT suggestions", error);
                     const fallback = ensureVatAiSuggestions(entry, transactions);
@@ -64499,6 +64603,19 @@
             function setVatAiSuggestionStatus(entryKey, suggestionId, status = "pending") {
                 const suggestions = Array.isArray(vatReturnAiSuggestionsByKey[entryKey]) ? vatReturnAiSuggestionsByKey[entryKey] : [];
                 vatReturnAiSuggestionsByKey[entryKey] = suggestions.map((item) => item.id === suggestionId ? { ...item, status } : item);
+            }
+
+            function applyVatAiSuggestionFix(entry, suggestion = {}) {
+                if (!entry?.key || !suggestion?.transactionId) return false;
+                const nextEdit = {};
+                if (suggestion.proposedTaxCode) nextEdit.taxCode = String(suggestion.proposedTaxCode || "").trim();
+                if (suggestion.proposedAccountCode) nextEdit.accountCode = String(suggestion.proposedAccountCode || "").trim();
+                if (!Object.keys(nextEdit).length) return false;
+                upsertVatTransactionEdit(entry.key, suggestion.transactionId, nextEdit);
+                setVatAiSuggestionStatus(entry.key, suggestion.id, "applied");
+                vatReturnDetailTab = "transactions";
+                renderVatReturnPrepareScreen();
+                return true;
             }
 
             function closeVatAiReviewModal() {
@@ -64518,9 +64635,9 @@
                 if (!vatAiReviewModalOpen || !entry?.key) return;
                 const entryKey = entry.key;
                 const suggestions = ensureVatAiSuggestions(entry, transactions);
-                const confirmed = suggestions.filter((item) => item.status === "confirmed").length;
+                const confirmed = suggestions.filter((item) => item.status === "confirmed" || item.status === "applied").length;
                 const rejected = suggestions.filter((item) => item.status === "rejected").length;
-                summary.textContent = `${suggestions.length.toLocaleString("en-GB")} suggestion${suggestions.length === 1 ? "" : "s"} · ${confirmed.toLocaleString("en-GB")} confirmed · ${rejected.toLocaleString("en-GB")} rejected`;
+                summary.textContent = `${suggestions.length.toLocaleString("en-GB")} suggestion${suggestions.length === 1 ? "" : "s"} · ${confirmed.toLocaleString("en-GB")} confirmed/applied · ${rejected.toLocaleString("en-GB")} rejected`;
                 if (closeButton.dataset.vatWired !== "true") {
                     closeButton.dataset.vatWired = "true";
                     closeButton.addEventListener("click", closeVatAiReviewModal);
@@ -64537,7 +64654,7 @@
                         const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!currentEntry?.key) return;
                         const currentSuggestions = Array.isArray(vatReturnAiSuggestionsByKey[currentEntry.key]) ? vatReturnAiSuggestionsByKey[currentEntry.key] : [];
-                        const confirmed = currentSuggestions.filter((suggestion) => suggestion.status === "confirmed");
+                        const confirmed = currentSuggestions.filter((suggestion) => suggestion.status === "confirmed" || suggestion.status === "applied");
                         if (!confirmed.length) {
                             showToast("No confirmed no-VAT suggestions to export", "info");
                             return;
@@ -64567,23 +64684,45 @@
                     return;
                 }
                 body.innerHTML = suggestions.map((suggestion) => {
-                    const statusClass = suggestion.status === "confirmed" ? "is-open" : suggestion.status === "rejected" ? "is-overdue" : "is-due";
+                    const statusClass = suggestion.status === "confirmed" || suggestion.status === "applied"
+                        ? "is-open"
+                        : suggestion.status === "rejected"
+                            ? "is-overdue"
+                            : "is-due";
+                    const suggestedChanges = [];
+                    if (suggestion.proposedTaxCode) suggestedChanges.push(`Tax code → ${suggestion.proposedTaxCode}`);
+                    if (suggestion.proposedAccountCode) suggestedChanges.push(`Account code → ${suggestion.proposedAccountCode}`);
+                    const hasQuickFix = Boolean(suggestion.proposedTaxCode || suggestion.proposedAccountCode);
                     return `
                         <tr>
                             <td><strong>${escapeHTML(suggestion.reference || "Transaction")}</strong><small>${escapeHTML(suggestion.description || "")}</small></td>
                             <td>
-                                <div>Request VAT invoice evidence</div>
+                                <div>${escapeHTML(suggestedChanges.join(" · ") || "Review transaction coding")}</div>
                                 ${suggestion.confidence ? `<small>Confidence: ${escapeHTML(String(suggestion.confidence).toUpperCase())}</small>` : ""}
+                                ${suggestion.severity ? `<small>Severity: ${escapeHTML(String(suggestion.severity).toUpperCase())}</small>` : ""}
                             </td>
                             <td>${escapeHTML(suggestion.reason || "")}</td>
                             <td><span class="lock-status-pill ${statusClass}">${escapeHTML(suggestion.status)}</span></td>
                             <td>
+                                ${hasQuickFix ? `<button class="ghost-button" type="button" data-vat-ai-apply="${escapeHTML(suggestion.id)}">Apply fix</button>` : ""}
                                 <button class="ghost-button" type="button" data-vat-ai-confirm="${escapeHTML(suggestion.id)}">Confirm</button>
                                 <button class="ghost-button" type="button" data-vat-ai-reject="${escapeHTML(suggestion.id)}">Reject</button>
                             </td>
                         </tr>
                     `;
                 }).join("");
+                body.querySelectorAll("[data-vat-ai-apply]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const suggestion = suggestions.find((item) => item.id === button.dataset.vatAiApply);
+                        if (!suggestion) return;
+                        if (applyVatAiSuggestionFix(entry, suggestion)) {
+                            showToast("AI fix applied to VAT coding", "success");
+                        } else {
+                            showToast("No automatic fix available for this suggestion", "info");
+                        }
+                        renderVatAiReviewModal(entry, vatTransactionsWithEdits(entry, transactions));
+                    });
+                });
                 body.querySelectorAll("[data-vat-ai-confirm]").forEach((button) => {
                     button.addEventListener("click", () => {
                         setVatAiSuggestionStatus(entryKey, button.dataset.vatAiConfirm, "confirmed");
@@ -64995,7 +65134,7 @@
                             renderVatAiReviewModal(entry, transactions);
                         } finally {
                             aiReviewButton.disabled = false;
-                            aiReviewButton.textContent = originalLabel || "Suggest No VAT Invoice Requests";
+                            aiReviewButton.textContent = originalLabel || "Jenius AI";
                         }
                     });
                 }
@@ -65180,9 +65319,9 @@
 
                 if (!String(activeEntry?.clientId || "").trim()) {
                     exportButton.disabled = true;
-                    transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Client mapping required</p><h4>This Xero tenant is not mapped to a client record</h4><p>Map the tenant to a client in your workspace setup to pull VAT transactions for this period.</p></div></td></tr>';
-                    noVatBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No VAT report unavailable</p><h4>Cannot prepare no-VAT follow-up list yet</h4><p>VAT period metadata is loaded, but transactions need a mapped client contact.</p></div></td></tr>';
-                    warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No warnings</p><h4>VAT warning checks are unavailable</h4><p>Connect this tenant to a mapped client contact to run line-level VAT checks.</p></div></td></tr>';
+                    transactionsBody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Client mapping required</p><h4>Transactions cannot be loaded for this VAT period yet</h4><p>Tenant: <strong>${escapeHTML(activeEntry.tenantName || activeEntry.clientName || "Xero workspace")}</strong>. Add or refresh the tenant-to-client mapping in workspace setup, then click Refresh.</p></div></td></tr>`;
+                    noVatBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No VAT report unavailable</p><h4>No-VAT follow-up list is waiting for transaction data</h4><p>Once mapping is resolved and transactions load, this tab will list no-VAT lines for export.</p></div></td></tr>';
+                    warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">VAT checks pending</p><h4>Warning checks run after transactions are loaded</h4><p>Resolve mapping and refresh this period to enable AI VAT warning checks.</p></div></td></tr>';
                     renderVatAiReviewModal(activeEntry, []);
                     renderVatClientApprovalModal(activeEntry, []);
                     return;
