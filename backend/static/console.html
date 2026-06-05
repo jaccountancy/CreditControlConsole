@@ -8757,21 +8757,51 @@
                 margin-left: auto;
             }
             .ye-prep-workspace-confirm-panel {
-                width: min(760px, 100%);
+                width: min(1040px, 100%);
                 max-height: calc(100vh - 160px);
                 gap: 12px;
-                padding: 16px;
-                overflow: hidden;
+                padding: 18px;
+                overflow: auto;
+            }
+            .ye-prep-workspace-confirm-panel .company-secretarial-modal-head {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: start;
+                gap: 14px;
             }
             .ye-prep-workspace-confirm-panel .company-secretarial-modal-head > div:first-child {
                 display: grid;
                 gap: 4px;
+                min-width: 0;
+            }
+            .ye-prep-workspace-confirm-panel .company-secretarial-modal-head .detail-actions {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+                gap: 8px;
             }
             #yePrepWorkspaceConfirmModal .detail-panel {
                 overflow: hidden;
             }
+            .ye-prep-workspace-confirm-layout {
+                display: grid;
+                gap: 12px;
+            }
+            .ye-prep-workspace-confirm-section {
+                display: grid;
+                gap: 8px;
+                padding: 0 2px;
+            }
+            .ye-prep-workspace-confirm-section > h5 {
+                margin: 0;
+                font-size: 0.8rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #5b6d89;
+            }
             #yePrepWorkspaceConfirmModal .ch-companies-table-wrap {
-                max-height: 220px;
+                max-height: 300px;
                 overflow: auto;
             }
             #yePrepWorkspaceConfirmSummary {
@@ -8804,7 +8834,7 @@
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .ye-prep-workspace-confirm-panel {
-                    width: min(720px, 100%);
+                    width: min(940px, 100%);
                     max-height: calc(100vh - 120px);
                 }
             }
@@ -8832,7 +8862,7 @@
                     padding: 16px;
                 }
                 .ye-prep-workspace-confirm-panel .company-secretarial-modal-head {
-                    flex-direction: column;
+                    grid-template-columns: 1fr;
                 }
                 #yePrepWorkspaceConfirmModal .ch-companies-table-wrap {
                     max-height: 170px;
@@ -25484,8 +25514,10 @@
                                     <button class="primary-button" id="yePrepWorkspaceConfirmOpenButton" type="button">Open accounting period workspace</button>
                                 </div>
                             </div>
-                            <section class="detail-panel" style="padding: 0;">
-                                <div class="ch-companies-table-wrap" style="margin-top: 10px;">
+                            <section class="detail-panel ye-prep-workspace-confirm-layout" style="padding: 0;">
+                                <section class="ye-prep-workspace-confirm-section">
+                                    <h5>Accounting periods</h5>
+                                    <div class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="YE workspace Companies House periods">
                                         <thead>
                                             <tr>
@@ -25498,8 +25530,11 @@
                                         </thead>
                                         <tbody id="yePrepWorkspaceConfirmPeriodsBody"></tbody>
                                     </table>
-                                </div>
-                                <div class="ch-companies-table-wrap" style="margin-top: 10px;">
+                                    </div>
+                                </section>
+                                <section class="ye-prep-workspace-confirm-section">
+                                    <h5>Companies House context</h5>
+                                    <div class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="YE workspace Companies House context">
                                         <thead>
                                             <tr>
@@ -25509,7 +25544,8 @@
                                         </thead>
                                         <tbody id="yePrepWorkspaceConfirmContextBody"></tbody>
                                     </table>
-                                </div>
+                                    </div>
+                                </section>
                             </section>
                         </section>
                     </div>
@@ -26925,6 +26961,11 @@
             let sa100PrepView = "list";
             let sa100PrepStage = "workspace";
             let selectedVatReturnKey = "";
+            let vatReturnQueueSourceRows = [];
+            let vatReturnQueueWorkspaces = [];
+            let vatReturnQueueLoading = false;
+            let vatReturnQueueLoadedAt = "";
+            let vatReturnQueueError = "";
             let vatReturnSelectedWorkspaceTenantId = "";
             let vatReturnDetailTab = "transactions";
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
@@ -63454,7 +63495,7 @@
 
             async function loadVatReturnQueue(force = false) {
                 if (!isXeroConnected()) {
-                    vatReturnQueueRows = [];
+                    vatReturnQueueSourceRows = [];
                     vatReturnQueueWorkspaces = [];
                     vatReturnQueueLoadedAt = "";
                     vatReturnQueueError = "";
@@ -63462,20 +63503,20 @@
                     return;
                 }
                 if (vatReturnQueueLoading) return;
-                if (!force && vatReturnQueueLoadedAt && Array.isArray(vatReturnQueueRows) && vatReturnQueueRows.length) return;
+                if (!force && vatReturnQueueLoadedAt && Array.isArray(vatReturnQueueSourceRows) && vatReturnQueueSourceRows.length) return;
                 vatReturnQueueLoading = true;
                 vatReturnQueueError = "";
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
                     const payload = await requestJSON(api.endpoints.vatReturns);
-                    vatReturnQueueRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    vatReturnQueueSourceRows = Array.isArray(payload?.rows) ? payload.rows : [];
                     vatReturnQueueWorkspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
                     vatReturnQueueLoadedAt = String(payload?.fetchedAt || new Date().toISOString());
-                    if (selectedVatReturnKey && !vatReturnQueueRows.some((row) => String(row?.key || "") === selectedVatReturnKey)) {
+                    if (selectedVatReturnKey && !vatReturnQueueSourceRows.some((row) => String(row?.key || "") === selectedVatReturnKey)) {
                         selectedVatReturnKey = "";
                     }
                 } catch (error) {
-                    vatReturnQueueRows = [];
+                    vatReturnQueueSourceRows = [];
                     vatReturnQueueWorkspaces = [];
                     vatReturnQueueLoadedAt = "";
                     vatReturnQueueError = error?.message || "Unable to load VAT return periods from Xero.";
@@ -63487,7 +63528,7 @@
 
             function vatReturnAllQueueRows() {
                 if (!state.organisation?.xeroConnected) return [];
-                const rows = Array.isArray(vatReturnQueueRows) ? vatReturnQueueRows : [];
+                const rows = Array.isArray(vatReturnQueueSourceRows) ? vatReturnQueueSourceRows : [];
                 return rows
                     .map((row, index) => {
                         const periodStart = parseDateValue(row?.periodStartISO || "");
@@ -64939,7 +64980,6 @@
                         || raw.accountsDueDate
                         || raw.accountsDueOn
                         || raw.nextAccountsDueOn
-                        || raw.nextDueDate
                         || raw.deadline
                         || existing.dueDate
                         || yePrepComputedAccountsDueDate(yearEnd)
@@ -64958,7 +64998,7 @@
                 const lockCH = customer?.lockRow?.companiesHouse || {};
                 push({
                     yearEnd: lockCH?.yearEndDate,
-                    dueDate: lockCH?.accountsDueDate || lockCH?.accountsDueOn || lockCH?.nextAccountsDueOn || lockCH?.nextDueDate,
+                    dueDate: lockCH?.accountsDueDate || lockCH?.accountsDueOn || lockCH?.nextAccountsDueOn,
                     submittedAt: lockCH?.accountsFiledDate || lockCH?.lastFiledDate,
                     source: "Lock-date mapping"
                 });
@@ -64966,7 +65006,7 @@
                 const ch = chCompany || {};
                 push({
                     yearEnd: ch?.yearEndDate,
-                    dueDate: ch?.accountsDueDate || ch?.accountsDueOn || ch?.nextAccountsDueOn || ch?.nextDueDate,
+                    dueDate: ch?.accountsDueDate || ch?.accountsDueOn || ch?.nextAccountsDueOn,
                     submittedAt: ch?.accountsFiledDate || ch?.lastFiledDate,
                     source: "Companies House"
                 });
@@ -64979,7 +65019,7 @@
                 ];
                 arrays.forEach((rows) => rows.forEach((row) => push({
                     yearEnd: row?.periodEnd || row?.period_end || row?.yearEndDate || row?.accountingReferenceDate,
-                    dueDate: row?.dueDate || row?.due_on || row?.accountsDueDate || row?.accountsDueOn || row?.nextAccountsDueOn || row?.nextDueDate,
+                    dueDate: row?.dueDate || row?.due_on || row?.accountsDueDate || row?.accountsDueOn || row?.nextAccountsDueOn,
                     submittedAt: row?.submittedAt || row?.receivedOn || row?.received_on || row?.filedOn || row?.accountsFiledDate || row?.date,
                     source: "Filing history",
                 })));
