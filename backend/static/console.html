@@ -64944,11 +64944,14 @@
                 if (!isoYearEnd) return "";
                 const [year, month, day] = isoYearEnd.split("-").map((value) => Number(value || 0));
                 if (!year || !month || !day) return "";
-                const due = new Date(Date.UTC(year, month - 1, day));
-                due.setUTCMonth(due.getUTCMonth() + 9);
-                const dueYear = due.getUTCFullYear();
-                const dueMonth = String(due.getUTCMonth() + 1).padStart(2, "0");
-                const dueDay = String(due.getUTCDate()).padStart(2, "0");
+                const zeroBasedMonth = month - 1;
+                const targetMonthIndex = zeroBasedMonth + 9;
+                const dueYear = year + Math.floor(targetMonthIndex / 12);
+                const dueMonthIndex = ((targetMonthIndex % 12) + 12) % 12;
+                const lastDayOfTargetMonth = new Date(Date.UTC(dueYear, dueMonthIndex + 1, 0)).getUTCDate();
+                const dueDayValue = Math.min(day, lastDayOfTargetMonth);
+                const dueMonth = String(dueMonthIndex + 1).padStart(2, "0");
+                const dueDay = String(dueDayValue).padStart(2, "0");
                 return `${dueYear}-${dueMonth}-${dueDay}`;
             }
 
@@ -65277,7 +65280,6 @@
                     });
                 };
 
-                yePrepYearEndsForCustomer(customer).forEach((iso) => push({ yearEnd: iso, source: "Client register" }));
                 const lockCH = customer?.lockRow?.companiesHouse || {};
                 push({
                     yearEnd: lockCH?.yearEndDate,
@@ -65306,6 +65308,10 @@
                     submittedAt: row?.submittedAt || row?.receivedOn || row?.received_on || row?.filedOn || row?.accountsFiledDate || row?.date,
                     source: "Filing history",
                 })));
+
+                if (!buckets.size) {
+                    yePrepYearEndsForCustomer(customer).forEach((iso) => push({ yearEnd: iso, source: "Client register" }));
+                }
 
                 return [...buckets.values()]
                     .sort((left, right) => dateSortValue(right.yearEnd) - dateSortValue(left.yearEnd))
