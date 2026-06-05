@@ -23417,7 +23417,7 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
     matched_register_count = sum(1 for row in vat_tasks if row.get("matchedRegister", {}).get("id"))
     matched_xero_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("tenantId"))
     matched_vat_row_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("vatReturnKey"))
-    return {
+    payload = {
         "filename": filename or "bm-tasks.csv",
         "uploadedAt": _iso(utcnow()),
         "summary": {
@@ -23428,6 +23428,93 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
             "matchedVatPeriodRows": matched_vat_row_count,
         },
         "rows": vat_tasks,
+    }
+    _store_bm_tasks_vat_payload(user, payload)
+    return payload
+
+
+def _store_bm_tasks_vat_payload(user: dict, payload: dict) -> None:
+    filename = str(payload.get("filename") or "bm-tasks.csv")
+    uploaded_at = _parse_optional_iso_datetime(payload.get("uploadedAt")) or utcnow()
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ch_bm_tasks_state (
+                    user_id,
+                    filename,
+                    summary,
+                    rows,
+                    uploaded_at,
+                    updated_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s::jsonb,
+                    %s::jsonb,
+                    %s,
+                    NOW()
+                )
+                ON CONFLICT (user_id) DO UPDATE SET
+                    filename = EXCLUDED.filename,
+                    summary = EXCLUDED.summary,
+                    rows = EXCLUDED.rows,
+                    uploaded_at = EXCLUDED.uploaded_at,
+                    updated_at = NOW()
+                """,
+                (
+                    user["id"],
+                    filename,
+                    json.dumps(summary, default=_json_default),
+                    json.dumps(rows, default=_json_default),
+                    uploaded_at,
+                ),
+            )
+        connection.commit()
+
+
+def bm_tasks_vat_saved_payload(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT filename, summary, rows, uploaded_at
+                FROM ch_bm_tasks_state
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        return {
+            "filename": "",
+            "uploadedAt": "",
+            "summary": {
+                "totalRows": 0,
+                "vatOutstandingRows": 0,
+                "matchedRegisterRows": 0,
+                "matchedXeroWorkspaceRows": 0,
+                "matchedVatPeriodRows": 0,
+            },
+            "rows": [],
+        }
+    summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+    rows = row.get("rows") if isinstance(row.get("rows"), list) else []
+    return {
+        "filename": str(row.get("filename") or ""),
+        "uploadedAt": _iso(row.get("uploaded_at")) or "",
+        "summary": {
+            "totalRows": int(summary.get("totalRows") or 0),
+            "vatOutstandingRows": int(summary.get("vatOutstandingRows") or len(rows)),
+            "matchedRegisterRows": int(summary.get("matchedRegisterRows") or 0),
+            "matchedXeroWorkspaceRows": int(summary.get("matchedXeroWorkspaceRows") or 0),
+            "matchedVatPeriodRows": int(summary.get("matchedVatPeriodRows") or 0),
+        },
+        "rows": rows,
     }
 
 

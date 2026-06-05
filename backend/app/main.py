@@ -203,6 +203,7 @@ from .services import (
     bulk_send_me_report_emails,
     bulk_upload_me_report_submission_pdfs,
     bm_tasks_vat_preview_payload,
+    bm_tasks_vat_saved_payload,
     categorise_bank_statement_transactions,
     exchange_gmail_code_for_tokens,
     fetch_gmail_profile,
@@ -1335,6 +1336,12 @@ async def api_companies_house_tasks_preview(
 ):
     content = await file.read()
     payload = await bm_tasks_vat_preview_payload(user, content, file.filename or "bm-tasks.csv")
+    return {"status": "ok", **payload}
+
+
+@app.get("/api/companies-house/tasks")
+def api_companies_house_tasks(user: dict = Depends(require_panel_user)):
+    payload = bm_tasks_vat_saved_payload(user)
     return {"status": "ok", **payload}
 
 

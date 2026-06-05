@@ -73421,6 +73421,34 @@
                 node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
             }
 
+            async function loadBmTasksDirectory(force = false) {
+                if (companiesHouseSettings.bmTasksLoading) return;
+                if (!force && companiesHouseSettings.bmTasksLoadedAt && Array.isArray(companiesHouseSettings.bmTasksRows) && companiesHouseSettings.bmTasksRows.length) return;
+                companiesHouseSettings.bmTasksLoading = true;
+                try {
+                    const payload = await requestJSON("/api/companies-house/tasks");
+                    companiesHouseSettings.bmTasksRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    companiesHouseSettings.bmTasksFilename = String(payload?.filename || "");
+                    companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || "");
+                    companiesHouseSettings.bmTasksSummary = payload?.summary || {};
+                    renderBmTasksTable();
+                    const count = Number(companiesHouseSettings.bmTasksSummary?.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0);
+                    if (count > 0) {
+                        setBmTasksStatus(
+                            `${count.toLocaleString("en-GB")} outstanding VAT task row${count === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "saved BM tasks CSV"}.`,
+                            "muted"
+                        );
+                    }
+                } catch (error) {
+                    console.error("Unable to load saved BM tasks", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                } finally {
+                    companiesHouseSettings.bmTasksLoading = false;
+                }
+            }
+
             function bmTaskStatusLabel(value) {
                 const key = String(value || "").trim().toLowerCase();
                 return ({
@@ -74298,6 +74326,7 @@
                     );
                     renderAuthCodeRegisterDirectory(rows, totalCount);
                     companiesHouseSettings.authRegisterLoaded = true;
+                    await loadBmTasksDirectory(force);
                 } catch (error) {
                     console.error("Unable to load auth code directory", error);
                     if (error instanceof AuthRequiredError) {

@@ -1618,6 +1618,21 @@ ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_type TEXT NOT 
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);
 
+CREATE TABLE IF NOT EXISTS ch_bm_tasks_state (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL DEFAULT '',
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    rows JSONB NOT NULL DEFAULT '[]'::jsonb,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE TABLE IF NOT EXISTS ch_drafts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,
