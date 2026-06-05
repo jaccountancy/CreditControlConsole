@@ -18063,6 +18063,7 @@
             #meReportLossPanel,
             #meReportReviewReadyPanel,
             #meReportBulkPeriodPanel,
+            #meReportBulkTenantDeployPanel,
             #meReportFlowGuidePanel {
                 z-index: 260;
             }
@@ -18258,6 +18259,9 @@
                 width: min(980px, 100%);
             }
             .me-report-bulk-period-card {
+                width: min(760px, 100%);
+            }
+            .me-report-bulk-tenant-deploy-card {
                 width: min(760px, 100%);
             }
             .me-report-flow-guide-card {
@@ -18611,6 +18615,54 @@
                 gap: 14px;
                 padding: 20px 24px 24px;
                 overflow: auto;
+            }
+            .me-report-bulk-tenant-deploy-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-bulk-period-confirm,
+            .me-report-bulk-tenant-confirm {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 10px;
+                align-items: start;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .me-report-bulk-period-confirm input,
+            .me-report-bulk-tenant-confirm input {
+                margin-top: 2px;
+                width: 18px;
+                height: 18px;
+                accent-color: var(--blue);
+            }
+            .me-report-bulk-period-confirm strong,
+            .me-report-bulk-period-confirm small,
+            .me-report-bulk-tenant-confirm strong,
+            .me-report-bulk-tenant-confirm small {
+                display: block;
+            }
+            .me-report-bulk-period-confirm strong,
+            .me-report-bulk-tenant-confirm strong {
+                font-size: 0.9rem;
+                font-weight: 900;
+                color: var(--ink);
+            }
+            .me-report-bulk-period-confirm small,
+            .me-report-bulk-tenant-confirm small {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 760;
+            }
+            .me-report-bulk-period-selectors,
+            .me-report-bulk-tenant-selectors {
+                display: grid;
+                gap: 10px;
             }
             .me-report-flow-guide-body {
                 display: grid;
@@ -26661,6 +26713,51 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="meReportBulkTenantDeployPanel" aria-modal="true" role="dialog" aria-labelledby="meReportBulkTenantDeployTitle" hidden>
+                    <div class="developer-log-card me-report-bulk-tenant-deploy-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportBulkTenantDeployForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportBulkTenantDeployTitle">Deploy monthly flows</h3>
+                                    <p id="meReportBulkTenantDeploySummary">Choose the period and Xero tenants to include in this deployment.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportBulkTenantDeployPanelButton" type="button">Close</button>
+                                    <button class="primary-button" id="confirmMeReportBulkTenantDeployButton" type="submit">Deploy selected tenants</button>
+                                </div>
+                            </div>
+                            <div class="me-report-bulk-tenant-deploy-body">
+                                <label class="me-report-bulk-tenant-confirm" for="meReportBulkTenantConfirmInput">
+                                    <input id="meReportBulkTenantConfirmInput" type="checkbox">
+                                    <div>
+                                        <strong id="meReportBulkTenantQuestion">Deploy flows for the previous month</strong>
+                                        <small>Tick to confirm this period and tenant selection before deployment.</small>
+                                    </div>
+                                </label>
+                                <p class="me-report-bulk-period-summary" id="meReportBulkTenantComputedSummary">Deadline for this period is the 15th of the following month.</p>
+                                <div class="me-report-bulk-period-grid">
+                                    <label class="bank-account-field" for="meReportBulkTenantPeriodStartInput">
+                                        <span class="bank-field-label"><span>Period start</span><small>DD/MM/YYYY</small></span>
+                                        <input id="meReportBulkTenantPeriodStartInput" type="date">
+                                    </label>
+                                    <label class="bank-account-field" for="meReportBulkTenantPeriodEndInput">
+                                        <span class="bank-field-label"><span>Period end</span><small>DD/MM/YYYY</small></span>
+                                        <input id="meReportBulkTenantPeriodEndInput" type="date">
+                                    </label>
+                                </div>
+                                <div class="me-report-bulk-tenant-selectors">
+                                    <div class="developer-log-actions">
+                                        <button class="ghost-button" id="meReportBulkSelectAllTenantsButton" type="button">Select all</button>
+                                        <button class="ghost-button" id="meReportBulkClearTenantsButton" type="button">Clear</button>
+                                    </div>
+                                    <p class="detail-meta" id="meReportBulkTenantSelectionSummary">Select Xero tenants for deployment.</p>
+                                    <div class="me-report-bulk-match-list" id="meReportBulkTenantSelectionList"></div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="meReportFlowGuidePanel" aria-modal="true" role="dialog" aria-labelledby="meReportFlowGuideTitle" hidden>
                     <div class="developer-log-card me-report-flow-guide-card">
                         <form class="stack-form bank-account-dialog-form" id="meReportFlowGuideForm" novalidate>
@@ -27767,6 +27864,7 @@
             let meReportCtCompsUploading = false;
             let meReportReviewReadyDialogState = null;
             let meReportBulkPeriodDialogState = null;
+            let meReportBulkTenantDeployDialogState = null;
             let selectedMeReportFlowIds = new Set();
             let meReportDirectorPaidPurchaseSelectionByClientId = {};
             let meReportJukInvoiceCheckByClientId = {};
@@ -51548,6 +51646,163 @@
                 renderMeReportBulkPeriodPanel();
             }
 
+            function meReportDefaultBulkTenantDeployState() {
+                const defaults = meReportDefaultBulkPeriod();
+                const tenants = meReportOrganisationConnections()
+                    .map((connection) => ({
+                        tenantId: String(connection?.tenantId || "").trim(),
+                        tenantName: String(connection?.tenantName || "").trim(),
+                        tenantType: String(connection?.tenantType || "").trim()
+                    }))
+                    .filter((connection) => connection.tenantId);
+                return {
+                    periodStart: defaults.periodStart,
+                    periodEnd: defaults.periodEnd,
+                    deadlineAt: defaults.deadlineAt,
+                    confirmedDeploy: false,
+                    tenants,
+                    selectedTenantIds: tenants.map((tenant) => tenant.tenantId)
+                };
+            }
+
+            function renderMeReportBulkTenantDeployPanel() {
+                const state = meReportBulkTenantDeployDialogState;
+                const panel = document.getElementById("meReportBulkTenantDeployPanel");
+                const confirmInput = document.getElementById("meReportBulkTenantConfirmInput");
+                const question = document.getElementById("meReportBulkTenantQuestion");
+                const summary = document.getElementById("meReportBulkTenantComputedSummary");
+                const submit = document.getElementById("confirmMeReportBulkTenantDeployButton");
+                const startInput = document.getElementById("meReportBulkTenantPeriodStartInput");
+                const endInput = document.getElementById("meReportBulkTenantPeriodEndInput");
+                const tenantsSummary = document.getElementById("meReportBulkTenantSelectionSummary");
+                const tenantsList = document.getElementById("meReportBulkTenantSelectionList");
+                if (!panel || !confirmInput || !question || !summary || !submit || !startInput || !endInput || !state) return;
+
+                panel.hidden = false;
+                startInput.value = String(state.periodStart || "");
+                endInput.value = String(state.periodEnd || "");
+                const startDate = new Date(state.periodStart);
+                const endDate = new Date(state.periodEnd);
+                const validRange = !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && startDate <= endDate;
+                const deadline = state.deadlineAt || meReportBulkPeriodDeadline(state.periodEnd);
+                state.deadlineAt = deadline;
+                const monthLabel = !Number.isNaN(startDate.getTime())
+                    ? startDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+                    : "Selected period";
+                question.textContent = `Deploy flows for ${monthLabel}?`;
+                confirmInput.checked = !!state.confirmedDeploy;
+                summary.textContent = validRange
+                    ? `${monthLabel} period: ${meReportDateDisplay(state.periodStart)} to ${meReportDateDisplay(state.periodEnd)}. Deadline is ${meReportDateDisplay(deadline)} (15th of the following month).`
+                    : "Choose a valid period where start date is before end date.";
+
+                const selectedIds = new Set((state.selectedTenantIds || []).map((item) => String(item || "")));
+                const tenants = Array.isArray(state.tenants) ? state.tenants : [];
+                const selectedCount = tenants.filter((tenant) => selectedIds.has(String(tenant.tenantId || ""))).length;
+                submit.disabled = meReportBulkUploading || !validRange || !state.confirmedDeploy || selectedCount === 0;
+
+                if (tenantsSummary) {
+                    if (!tenants.length) {
+                        tenantsSummary.textContent = "No connected Xero organisation tenants are available.";
+                    } else {
+                        tenantsSummary.textContent = `${selectedCount.toLocaleString("en-GB")} of ${tenants.length.toLocaleString("en-GB")} connected Xero tenant${tenants.length === 1 ? "" : "s"} selected.`;
+                    }
+                }
+
+                if (!tenantsList) return;
+                if (!tenants.length) {
+                    tenantsList.innerHTML = '<div class="empty-state"><p class="eyebrow">No tenants</p><h4>No connected Xero tenants found</h4><p>Connect an additional Xero tenant before deploying monthly flows.</p></div>';
+                    return;
+                }
+                tenantsList.innerHTML = tenants.map((tenant) => {
+                    const tenantId = String(tenant.tenantId || "");
+                    const checked = selectedIds.has(tenantId);
+                    const label = xeroWorkspaceLabel(tenant.tenantName || "", tenantId || "", "Xero workspace");
+                    const tenantType = String(tenant.tenantType || "Organisation").trim();
+                    return `
+                        <button class="me-report-bulk-client-card${checked ? " is-selected" : ""}" type="button" data-me-report-bulk-tenant="${escapeHTML(tenantId)}" aria-pressed="${checked ? "true" : "false"}">
+                            <span class="me-report-bulk-client-icon" aria-hidden="true">✓</span>
+                            <span class="me-report-bulk-client-copy">
+                                <strong>${escapeHTML(label)}</strong>
+                                <small>${escapeHTML(`${tenantType} · ${tenantId}`)}</small>
+                            </span>
+                        </button>
+                    `;
+                }).join("");
+                tenantsList.querySelectorAll("[data-me-report-bulk-tenant]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        if (!meReportBulkTenantDeployDialogState) return;
+                        const tenantId = String(event.currentTarget.dataset.meReportBulkTenant || "");
+                        const current = new Set((meReportBulkTenantDeployDialogState.selectedTenantIds || []).map((item) => String(item || "")));
+                        if (current.has(tenantId)) current.delete(tenantId);
+                        else current.add(tenantId);
+                        meReportBulkTenantDeployDialogState.selectedTenantIds = Array.from(current);
+                        renderMeReportBulkTenantDeployPanel();
+                    });
+                });
+            }
+
+            function selectAllMeReportBulkTenants(selected = true) {
+                if (!meReportBulkTenantDeployDialogState) return;
+                const tenants = Array.isArray(meReportBulkTenantDeployDialogState.tenants)
+                    ? meReportBulkTenantDeployDialogState.tenants
+                    : [];
+                meReportBulkTenantDeployDialogState.selectedTenantIds = selected
+                    ? tenants.map((tenant) => String(tenant?.tenantId || "")).filter(Boolean)
+                    : [];
+                renderMeReportBulkTenantDeployPanel();
+            }
+
+            function syncMeReportBulkTenantDeployInputs() {
+                if (!meReportBulkTenantDeployDialogState) return;
+                const startValue = String(document.getElementById("meReportBulkTenantPeriodStartInput")?.value || "").trim();
+                const endValue = String(document.getElementById("meReportBulkTenantPeriodEndInput")?.value || "").trim();
+                meReportBulkTenantDeployDialogState.periodStart = startValue;
+                meReportBulkTenantDeployDialogState.periodEnd = endValue;
+                meReportBulkTenantDeployDialogState.deadlineAt = meReportBulkPeriodDeadline(endValue);
+                meReportBulkTenantDeployDialogState.confirmedDeploy = !!document.getElementById("meReportBulkTenantConfirmInput")?.checked;
+                renderMeReportBulkTenantDeployPanel();
+            }
+
+            function openMeReportBulkTenantDeployPanel() {
+                meReportBulkTenantDeployDialogState = meReportDefaultBulkTenantDeployState();
+                renderMeReportBulkTenantDeployPanel();
+            }
+
+            function closeMeReportBulkTenantDeployPanel() {
+                const panel = document.getElementById("meReportBulkTenantDeployPanel");
+                if (panel) panel.hidden = true;
+                meReportBulkTenantDeployDialogState = null;
+            }
+
+            async function confirmMeReportBulkTenantDeploy(event) {
+                if (event) event.preventDefault();
+                if (!meReportBulkTenantDeployDialogState) return;
+                const config = {
+                    periodStart: String(meReportBulkTenantDeployDialogState.periodStart || ""),
+                    periodEnd: String(meReportBulkTenantDeployDialogState.periodEnd || ""),
+                    deadlineAt: String(meReportBulkTenantDeployDialogState.deadlineAt || "")
+                };
+                const selectedTenantIds = Array.isArray(meReportBulkTenantDeployDialogState.selectedTenantIds)
+                    ? meReportBulkTenantDeployDialogState.selectedTenantIds.map((item) => String(item || "")).filter(Boolean)
+                    : [];
+                const startDate = new Date(config.periodStart);
+                const endDate = new Date(config.periodEnd);
+                if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+                    showToast("Select a valid period before deploying flows", "error");
+                    return;
+                }
+                if (!meReportBulkTenantDeployDialogState.confirmedDeploy) {
+                    showToast("Tick the confirmation box before deploying flows", "error");
+                    return;
+                }
+                if (!selectedTenantIds.length) {
+                    showToast("Select at least one Xero tenant before deploying flows", "error");
+                    return;
+                }
+                closeMeReportBulkTenantDeployPanel();
+                await bulkDeployMeReportFlowsAcrossTenants(config, selectedTenantIds);
+            }
+
             function meReportFlowGuideDefaultState(client = {}) {
                 const defaults = meReportDefaultBulkPeriod();
                 const periodStart = String(client.flowPeriodStart || defaults.periodStart || "");
@@ -56990,15 +57245,21 @@
                 }
             }
 
-            async function bulkDeployMeReportFlowsAcrossTenants(periodConfig = null) {
+            async function bulkDeployMeReportFlowsAcrossTenants(periodConfig = null, selectedTenantIds = null) {
+                const selectedTenantSet = Array.isArray(selectedTenantIds)
+                    ? new Set(selectedTenantIds.map((tenantId) => String(tenantId || "").trim()).filter(Boolean))
+                    : null;
                 const workspaceConnections = meReportOrganisationConnections()
                     .map((connection) => ({
                         tenantId: String(connection?.tenantId || "").trim(),
                         tenantName: String(connection?.tenantName || "").trim()
                     }))
-                    .filter((connection) => connection.tenantId);
+                    .filter((connection) => (
+                        connection.tenantId
+                        && (!selectedTenantSet || selectedTenantSet.has(connection.tenantId))
+                    ));
                 if (!workspaceConnections.length) {
-                    showToast("No connected Xero organisation tenants available for bulk deployment.", "error");
+                    showToast("No selected Xero organisation tenants are available for bulk deployment.", "error");
                     return;
                 }
                 const defaults = meReportDefaultBulkPeriod();
@@ -57114,34 +57375,13 @@
                 }
             }
 
-            async function openMeReportBulkTenantDeploy() {
+            function openMeReportBulkTenantDeploy() {
                 const workspaceCount = meReportOrganisationConnections().length;
                 if (!workspaceCount) {
                     showToast("Connect at least one Xero organisation tenant first.", "error");
                     return;
                 }
-                const defaults = meReportDefaultBulkPeriod();
-                const startInput = window.prompt("Bulk deploy period start (YYYY-MM-DD)", defaults.periodStart || "");
-                if (startInput === null) return;
-                const endInput = window.prompt("Bulk deploy period end (YYYY-MM-DD)", defaults.periodEnd || "");
-                if (endInput === null) return;
-                const periodStart = String(startInput || "").trim();
-                const periodEnd = String(endInput || "").trim();
-                const startDate = new Date(periodStart);
-                const endDate = new Date(periodEnd);
-                if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
-                    showToast("Enter a valid period range before bulk deploying flows", "error");
-                    return;
-                }
-                const confirmation = window.confirm(
-                    `Deploy monthly flows across ${workspaceCount.toLocaleString("en-GB")} connected Xero tenant${workspaceCount === 1 ? "" : "s"} for ${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}?`
-                );
-                if (!confirmation) return;
-                await bulkDeployMeReportFlowsAcrossTenants({
-                    periodStart,
-                    periodEnd,
-                    deadlineAt: meReportBulkPeriodDeadline(periodEnd),
-                });
+                openMeReportBulkTenantDeployPanel();
             }
 
             async function confirmMeReportBulkPeriod(event) {
@@ -72484,6 +72724,16 @@
                 document.getElementById("meReportBulkPeriodPanel")?.addEventListener("click", (event) => {
                     if (event.target.id === "meReportBulkPeriodPanel") closeMeReportBulkPeriodPanel();
                 });
+                document.getElementById("meReportBulkTenantDeployForm")?.addEventListener("submit", confirmMeReportBulkTenantDeploy);
+                document.getElementById("meReportBulkTenantConfirmInput")?.addEventListener("change", syncMeReportBulkTenantDeployInputs);
+                document.getElementById("meReportBulkTenantPeriodStartInput")?.addEventListener("change", syncMeReportBulkTenantDeployInputs);
+                document.getElementById("meReportBulkTenantPeriodEndInput")?.addEventListener("change", syncMeReportBulkTenantDeployInputs);
+                document.getElementById("meReportBulkSelectAllTenantsButton")?.addEventListener("click", () => selectAllMeReportBulkTenants(true));
+                document.getElementById("meReportBulkClearTenantsButton")?.addEventListener("click", () => selectAllMeReportBulkTenants(false));
+                document.getElementById("closeMeReportBulkTenantDeployPanelButton")?.addEventListener("click", closeMeReportBulkTenantDeployPanel);
+                document.getElementById("meReportBulkTenantDeployPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportBulkTenantDeployPanel") closeMeReportBulkTenantDeployPanel();
+                });
                 document.getElementById("meReportFlowGuideForm")?.addEventListener("submit", confirmMeReportFlowGuideStep);
                 document.getElementById("meReportFlowGuideBackButton")?.addEventListener("click", previousMeReportFlowGuideStep);
                 document.getElementById("closeMeReportFlowGuidePanelButton")?.addEventListener("click", closeMeReportFlowGuidePanel);
@@ -72496,6 +72746,9 @@
                     }
                     if (event.key === "Escape" && !document.getElementById("meReportBulkPeriodPanel")?.hidden) {
                         closeMeReportBulkPeriodPanel();
+                    }
+                    if (event.key === "Escape" && !document.getElementById("meReportBulkTenantDeployPanel")?.hidden) {
+                        closeMeReportBulkTenantDeployPanel();
                     }
                     if (event.key === "Escape" && !document.getElementById("meReportFlowGuidePanel")?.hidden) {
                         closeMeReportFlowGuidePanel();
