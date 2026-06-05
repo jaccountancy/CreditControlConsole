@@ -25291,7 +25291,7 @@
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
                                     <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Refresh</button>
-                                    <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>AI Review VAT Return</button>
+                                    <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Suggest No VAT Invoice Requests</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
                                     <button class="primary-button" id="vatReturnExportNoVatButton" type="button" hidden>Export No VAT Report</button>
                                 </div>
@@ -25711,16 +25711,16 @@
                             <div class="company-secretarial-modal-head">
                                 <div>
                                     <p class="eyebrow">AI Review</p>
-                                    <h4 id="vatAiReviewTitle">VAT return review suggestions</h4>
-                                    <p class="detail-meta" id="vatAiReviewSummary">Review and confirm suggested tax/account code changes before applying.</p>
+                                    <h4 id="vatAiReviewTitle">No VAT invoice-request suggestions</h4>
+                                    <p class="detail-meta" id="vatAiReviewSummary">Review suggested no‑VAT transactions that likely need VAT invoice evidence from the client.</p>
                                 </div>
                                 <div class="detail-actions">
-                                    <button class="ghost-button" id="vatAiReviewApplyConfirmedButton" type="button">Apply Confirmed</button>
+                                    <button class="ghost-button" id="vatAiReviewApplyConfirmedButton" type="button">Export Confirmed List</button>
                                     <button class="ghost-button" id="vatAiReviewCloseButton" type="button">Close</button>
                                 </div>
                             </div>
                             <div class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="VAT AI review suggestions">
+                                <table class="ch-table" aria-label="VAT no-VAT AI suggestions">
                                     <thead>
                                         <tr>
                                             <th>Transaction</th>
@@ -26989,6 +26989,7 @@
             const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
             const PRODUCT_RELEASES_KEY = `${STORAGE_KEY}:product-releases`;
             const RISK_ASSESSMENTS_KEY = `${STORAGE_KEY}:risk-assessments`;
+            const VAT_ARCHIVED_PERIODS_KEY = `${STORAGE_KEY}:vat-archived-periods`;
             const BANK_SA100_DISALLOWANCES_KEY = `${STORAGE_KEY}:bank-sa100-disallowances`;
             const BANK_SA100_MILEAGE_ENTRIES_KEY = `${STORAGE_KEY}:bank-sa100-mileage-entries`;
             const BANK_SA100_MANUAL_INVOICES_KEY = `${STORAGE_KEY}:bank-sa100-manual-invoices`;
@@ -27111,6 +27112,7 @@
             let selectedVatReturnKey = "";
             let vatReturnQueueSourceRows = [];
             let vatReturnQueueWorkspaces = [];
+            let vatReturnQueueSource = "xero";
             let vatReturnQueueLoading = false;
             let vatReturnQueueLoadedAt = "";
             let vatReturnQueueError = "";
@@ -27158,6 +27160,7 @@
             const vatReturnAiSuggestionsByKey = {};
             const vatReturnWorkflowByKey = {};
             const vatClientApprovalDraftByKey = {};
+            let vatArchivedPeriodsByKey = loadVatArchivedPeriods();
             let activeNavSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
                 ? persistedUIState.activeNavSection
                 : "home";
@@ -28196,6 +28199,7 @@
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
                         vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
+                        vatNoVatSuggestions: config.endpoints?.vatNoVatSuggestions || "/api/customers/:customerId/vat-returns/:periodEnd/no-vat-suggestions",
                         yePrepAiReview: config.endpoints?.yePrepAiReview || "/api/ye-prep/review",
                         allocation: config.endpoints?.allocation || "/api/customers/:customerId/allocations",
                         promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
@@ -28369,6 +28373,46 @@
                     }
                     return {};
                 }
+            }
+
+            function normaliseVatArchivedPeriodRecord(record) {
+                if (!record || typeof record !== "object") return null;
+                const tenantId = String(record.tenantId || "").trim();
+                const periodEndISO = String(record.periodEndISO || "").trim();
+                if (!tenantId || !periodEndISO) return null;
+                return {
+                    key: `${tenantId}|${periodEndISO}`,
+                    tenantId,
+                    tenantName: String(record.tenantName || "").trim(),
+                    periodStartISO: String(record.periodStartISO || "").trim(),
+                    periodEndISO,
+                    deadlineISO: String(record.deadlineISO || "").trim(),
+                    clientName: String(record.clientName || "").trim(),
+                    clientId: String(record.clientId || "").trim(),
+                    archivedAt: String(record.archivedAt || new Date().toISOString()),
+                    lockReason: String(record.lockReason || "Marked as submitted because this VAT period is no longer present in the latest task CSV.").trim(),
+                };
+            }
+
+            function loadVatArchivedPeriods() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(VAT_ARCHIVED_PERIODS_KEY) || "{}");
+                    if (!stored || typeof stored !== "object") return {};
+                    return Object.fromEntries(
+                        Object.entries(stored)
+                            .map(([key, value]) => [String(key), normaliseVatArchivedPeriodRecord(value)])
+                            .filter(([, value]) => Boolean(value))
+                    );
+                } catch {
+                    try { localStorage.removeItem(VAT_ARCHIVED_PERIODS_KEY); } catch {}
+                    return {};
+                }
+            }
+
+            function persistVatArchivedPeriods() {
+                try {
+                    localStorage.setItem(VAT_ARCHIVED_PERIODS_KEY, JSON.stringify(vatArchivedPeriodsByKey || {}));
+                } catch {}
             }
 
             function normalisePracticePackAssignmentRecord(record) {
@@ -63992,6 +64036,9 @@
             function vatEffectiveStatus(entry) {
                 const base = vatReturnStatusForDeadline(entry?.deadlineISO || "");
                 const workflow = vatWorkflowForEntry(entry?.key || "");
+                if (entry?.lockedByTaskClosure) {
+                    return { label: "Submitted · Task list closed", className: "is-open" };
+                }
                 if (workflow.stage === "awaiting-review") {
                     return { label: "Awaiting Internal Review", className: "is-due" };
                 }
@@ -64007,10 +64054,160 @@
                 return base;
             }
 
+            function vatPeriodStartISOFromPeriodEnd(periodEndISO) {
+                const periodEnd = parseDateValue(periodEndISO);
+                if (!periodEnd) return "";
+                const start = new Date(periodEnd.getFullYear(), periodEnd.getMonth() - 2, 1);
+                return isoDateOnly(start);
+            }
+
+            function vatQueuePayloadFromBmTasks() {
+                const rows = Array.isArray(companiesHouseSettings?.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [];
+                if (!rows.length) return null;
+                const customerByTenant = new Map(
+                    (Array.isArray(state?.customers) ? state.customers : [])
+                        .map((customer) => [String(customer?.tenantId || "").trim(), customer])
+                        .filter(([tenantId]) => tenantId)
+                );
+                const queueRowsByTenantPeriod = new Map();
+                const workspacesByTenant = new Map();
+
+                rows.forEach((taskRow, index) => {
+                    const xeroMatch = taskRow?.xeroMatch || {};
+                    const tenantId = String(xeroMatch?.tenantId || "").trim();
+                    const periodEndISO = String(taskRow?.vatPeriodEndISO || xeroMatch?.periodEndISO || "").trim();
+                    if (!tenantId || !periodEndISO) return;
+                    const periodEndDate = parseDateValue(periodEndISO);
+                    if (!periodEndDate) return;
+                    const periodEndDateISO = isoDateOnly(periodEndDate);
+                    const periodStartISO = vatPeriodStartISOFromPeriodEnd(periodEndDateISO);
+                    const deadlineRaw = String(taskRow?.deadlineISO || xeroMatch?.deadlineISO || "").trim();
+                    const deadlineDate = parseDateValue(deadlineRaw);
+                    const fallbackDeadline = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 1, periodEndDate.getDate());
+                    fallbackDeadline.setDate(fallbackDeadline.getDate() + 7);
+                    const deadlineISO = isoDateOnly(deadlineDate || fallbackDeadline);
+                    const mappedCustomer = customerByTenant.get(tenantId) || null;
+                    const mappedClientId = String(mappedCustomer?.id || "").trim();
+                    const mappedClientName = String(mappedCustomer?.name || "").trim();
+                    const tenantName = String(xeroMatch?.tenantName || taskRow?.clientName || tenantId).trim();
+                    const clientName = mappedClientName || String(taskRow?.clientName || tenantName || tenantId).trim();
+                    const taskIdentifier = String(taskRow?.taskId || taskRow?.id || index + 1).trim();
+                    const archiveKey = `${tenantId}|${periodEndDateISO}`;
+                    const archivedRecord = vatArchivedPeriodsByKey[archiveKey] || null;
+                    const rowStatus = archivedRecord
+                        ? "Submitted"
+                        : String(taskRow?.taskProgress || bmTaskStatusLabel(taskRow?.status) || "Open").trim();
+                    const dedupeKey = `${tenantId}|${periodEndDateISO}`;
+                    const existing = queueRowsByTenantPeriod.get(dedupeKey);
+                    const nextRow = {
+                        key: existing?.key || `bm:${tenantId}:${periodEndDateISO}:${taskIdentifier || index + 1}`,
+                        taxReturnId: taskIdentifier,
+                        status: rowStatus,
+                        submitted: Boolean(archivedRecord),
+                        periodStartISO,
+                        periodEndISO: periodEndDateISO,
+                        deadlineISO,
+                        fetchedAt: new Date().toISOString(),
+                        filedAt: "",
+                        amountDue: 0,
+                        tenantId,
+                        tenantName,
+                        clientId: mappedClientId,
+                        clientName,
+                        hasMappedClient: Boolean(mappedClientId),
+                        lockedByTaskClosure: Boolean(archivedRecord),
+                        lockMessage: archivedRecord?.lockReason || "",
+                    };
+                    if (!existing || (!existing.clientId && nextRow.clientId)) {
+                        queueRowsByTenantPeriod.set(dedupeKey, nextRow);
+                    }
+
+                    if (!workspacesByTenant.has(tenantId)) {
+                        workspacesByTenant.set(tenantId, {
+                            tenantId,
+                            tenantName,
+                            tenantType: "ORGANISATION",
+                            clientId: mappedClientId,
+                            clientName,
+                            periodCount: 0,
+                            submittedCount: 0,
+                            outstandingCount: 0,
+                            error: "",
+                        });
+                    }
+                    const workspace = workspacesByTenant.get(tenantId);
+                    if (!workspace.error) workspace.error = String(xeroMatch?.workspaceError || "").trim();
+                });
+
+                Object.values(vatArchivedPeriodsByKey || {}).forEach((archivedRecord) => {
+                    const key = `${String(archivedRecord?.tenantId || "").trim()}|${String(archivedRecord?.periodEndISO || "").trim()}`;
+                    if (!key || queueRowsByTenantPeriod.has(key)) return;
+                    const tenantId = String(archivedRecord?.tenantId || "").trim();
+                    const periodEndISO = String(archivedRecord?.periodEndISO || "").trim();
+                    const periodStartISO = String(archivedRecord?.periodStartISO || "").trim() || vatPeriodStartISOFromPeriodEnd(periodEndISO);
+                    if (!tenantId || !periodEndISO) return;
+                    queueRowsByTenantPeriod.set(key, {
+                        key: `bm:${tenantId}:${periodEndISO}:submitted`,
+                        taxReturnId: "",
+                        status: "Submitted",
+                        submitted: true,
+                        periodStartISO,
+                        periodEndISO,
+                        deadlineISO: String(archivedRecord?.deadlineISO || "").trim(),
+                        fetchedAt: new Date().toISOString(),
+                        filedAt: String(archivedRecord?.archivedAt || ""),
+                        amountDue: 0,
+                        tenantId,
+                        tenantName: String(archivedRecord?.tenantName || tenantId).trim(),
+                        clientId: String(archivedRecord?.clientId || "").trim(),
+                        clientName: String(archivedRecord?.clientName || archivedRecord?.tenantName || tenantId).trim(),
+                        hasMappedClient: Boolean(String(archivedRecord?.clientId || "").trim()),
+                        lockedByTaskClosure: true,
+                        lockMessage: String(archivedRecord?.lockReason || "Marked as submitted because this VAT period is no longer present in the latest task CSV.").trim(),
+                    });
+                    if (!workspacesByTenant.has(tenantId)) {
+                        workspacesByTenant.set(tenantId, {
+                            tenantId,
+                            tenantName: String(archivedRecord?.tenantName || tenantId).trim(),
+                            tenantType: "ORGANISATION",
+                            clientId: String(archivedRecord?.clientId || "").trim(),
+                            clientName: String(archivedRecord?.clientName || archivedRecord?.tenantName || tenantId).trim(),
+                            periodCount: 0,
+                            submittedCount: 0,
+                            outstandingCount: 0,
+                            error: "",
+                        });
+                    }
+                });
+
+                const queueRows = Array.from(queueRowsByTenantPeriod.values()).sort((left, right) => {
+                    const leftPeriod = dateSortValue(left?.periodEndISO || "");
+                    const rightPeriod = dateSortValue(right?.periodEndISO || "");
+                    if (leftPeriod !== rightPeriod) return rightPeriod - leftPeriod;
+                    return String(left?.clientName || "").localeCompare(String(right?.clientName || ""));
+                });
+                queueRows.forEach((queueRow) => {
+                    const workspace = workspacesByTenant.get(String(queueRow?.tenantId || "").trim());
+                    if (!workspace) return;
+                    workspace.periodCount += 1;
+                    if (queueRow.submitted) workspace.submittedCount += 1;
+                    else workspace.outstandingCount += 1;
+                });
+                const workspaces = Array.from(workspacesByTenant.values())
+                    .sort((left, right) => String(left.tenantName || left.tenantId || "").localeCompare(String(right.tenantName || right.tenantId || "")));
+                if (!queueRows.length && !workspaces.length) return null;
+                return {
+                    rows: queueRows,
+                    workspaces,
+                    fetchedAt: new Date().toISOString(),
+                };
+            }
+
             async function loadVatReturnQueue(force = false) {
                 if (!isXeroConnected()) {
                     vatReturnQueueSourceRows = [];
                     vatReturnQueueWorkspaces = [];
+                    vatReturnQueueSource = "xero";
                     vatReturnQueueLoadedAt = "";
                     vatReturnQueueError = "";
                     if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
@@ -64022,16 +64219,29 @@
                 vatReturnQueueError = "";
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
+                    const bmPayload = vatQueuePayloadFromBmTasks();
+                    if (bmPayload) {
+                        vatReturnQueueSourceRows = Array.isArray(bmPayload?.rows) ? bmPayload.rows : [];
+                        vatReturnQueueWorkspaces = Array.isArray(bmPayload?.workspaces) ? bmPayload.workspaces : [];
+                        vatReturnQueueLoadedAt = String(bmPayload?.fetchedAt || new Date().toISOString());
+                        vatReturnQueueSource = "bm-tasks";
+                        if (selectedVatReturnKey && !vatReturnQueueSourceRows.some((row) => String(row?.key || "") === selectedVatReturnKey)) {
+                            selectedVatReturnKey = "";
+                        }
+                        return;
+                    }
                     const payload = await requestJSON(api.endpoints.vatReturns);
                     vatReturnQueueSourceRows = Array.isArray(payload?.rows) ? payload.rows : [];
                     vatReturnQueueWorkspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
                     vatReturnQueueLoadedAt = String(payload?.fetchedAt || new Date().toISOString());
+                    vatReturnQueueSource = "xero";
                     if (selectedVatReturnKey && !vatReturnQueueSourceRows.some((row) => String(row?.key || "") === selectedVatReturnKey)) {
                         selectedVatReturnKey = "";
                     }
                 } catch (error) {
                     vatReturnQueueSourceRows = [];
                     vatReturnQueueWorkspaces = [];
+                    vatReturnQueueSource = "xero";
                     vatReturnQueueLoadedAt = "";
                     vatReturnQueueError = error?.message || "Unable to load VAT return periods from Xero.";
                 } finally {
@@ -64066,6 +64276,8 @@
                             periodEndISO: String(row?.periodEndISO || ""),
                             deadlineISO: String(row?.deadlineISO || ""),
                             xeroContactId: String(row?.xeroContactId || ""),
+                            lockedByTaskClosure: Boolean(row?.lockedByTaskClosure),
+                            lockMessage: String(row?.lockMessage || ""),
                         };
                     })
                     .filter((row) => row.tenantId && row.periodEndISO);
@@ -64356,6 +64568,44 @@
                 return created;
             }
 
+            async function loadVatAiSuggestions(entry, transactions = [], force = false) {
+                const entryKey = String(entry?.key || "");
+                if (!entryKey || !entry?.clientId || !entry?.periodEndISO) return ensureVatAiSuggestions(entry, transactions);
+                const existing = Array.isArray(vatReturnAiSuggestionsByKey[entryKey]) ? vatReturnAiSuggestionsByKey[entryKey] : [];
+                if (!force && existing.length) return existing;
+                try {
+                    const requestPath = endpointURL(
+                        api.endpoints.vatNoVatSuggestions,
+                        { customerId: entry.clientId, periodEnd: entry.periodEndISO }
+                    );
+                    const query = new URLSearchParams();
+                    if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
+                    if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                    if (force) query.set("refresh", "true");
+                    const payload = await requestJSON(query.toString() ? `${requestPath}?${query.toString()}` : requestPath);
+                    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+                    const mapped = suggestions
+                        .map((item) => ({
+                            id: String(item?.id || `${item?.transactionId || Math.random().toString(36).slice(2)}:vat-invoice`),
+                            transactionId: String(item?.transactionId || "").trim(),
+                            reference: String(item?.reference || "").trim(),
+                            description: String(item?.description || "").trim(),
+                            reason: String(item?.reason || "Potential VAT reclaim if VAT invoice is available.").trim(),
+                            proposedTaxCode: "",
+                            proposedAccountCode: "",
+                            confidence: String(item?.confidence || "medium").trim().toLowerCase(),
+                            status: String(item?.status || "pending").trim().toLowerCase() || "pending",
+                        }))
+                        .filter((item) => item.transactionId);
+                    vatReturnAiSuggestionsByKey[entryKey] = mapped;
+                    return mapped;
+                } catch (error) {
+                    console.error("Unable to load AI no-VAT suggestions", error);
+                    const fallback = ensureVatAiSuggestions(entry, transactions);
+                    return fallback;
+                }
+            }
+
             function setVatAiSuggestionStatus(entryKey, suggestionId, status = "pending") {
                 const suggestions = Array.isArray(vatReturnAiSuggestionsByKey[entryKey]) ? vatReturnAiSuggestionsByKey[entryKey] : [];
                 vatReturnAiSuggestionsByKey[entryKey] = suggestions.map((item) => item.id === suggestionId ? { ...item, status } : item);
@@ -64397,19 +64647,29 @@
                         const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!currentEntry?.key) return;
                         const currentSuggestions = Array.isArray(vatReturnAiSuggestionsByKey[currentEntry.key]) ? vatReturnAiSuggestionsByKey[currentEntry.key] : [];
-                        let applied = 0;
-                        currentSuggestions.forEach((suggestion) => {
-                            if (suggestion.status !== "confirmed") return;
-                            upsertVatTransactionEdit(currentEntry.key, suggestion.transactionId, {
-                                ...(suggestion.proposedTaxCode ? { taxCode: suggestion.proposedTaxCode } : {}),
-                                ...(suggestion.proposedAccountCode ? { accountCode: suggestion.proposedAccountCode } : {})
-                            });
-                            applied += 1;
-                        });
-                        if (applied) showToast(`${applied.toLocaleString("en-GB")} AI suggestion${applied === 1 ? "" : "s"} applied`, "success");
-                        else showToast("No confirmed suggestions to apply", "info");
-                        closeVatAiReviewModal();
-                        renderVatReturnPrepareScreen();
+                        const confirmed = currentSuggestions.filter((suggestion) => suggestion.status === "confirmed");
+                        if (!confirmed.length) {
+                            showToast("No confirmed no-VAT suggestions to export", "info");
+                            return;
+                        }
+                        const rows = [
+                            ["Date", "Reference", "Description", "Reason", "Confidence", "Action"],
+                            ...confirmed.map((suggestion) => {
+                                const related = (transactions || []).find((row) => vatTransactionId(row) === suggestion.transactionId) || {};
+                                return [
+                                    related.date || "",
+                                    suggestion.reference || related.reference || "",
+                                    suggestion.description || related.description || "",
+                                    suggestion.reason || "Request VAT invoice evidence",
+                                    String(suggestion.confidence || "medium").toUpperCase(),
+                                    "Request VAT invoice from client",
+                                ];
+                            }),
+                        ];
+                        const clientSlug = String(currentEntry.clientName || "client").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "client";
+                        const period = currentEntry.periodEndISO || "period";
+                        downloadBankCsv(`${clientSlug}-vat-invoice-requests-${period}.csv`, rows);
+                        showToast(`${confirmed.length.toLocaleString("en-GB")} confirmed no-VAT suggestion${confirmed.length === 1 ? "" : "s"} exported`, "success");
                     });
                 }
                 if (!suggestions.length) {
@@ -64422,9 +64682,8 @@
                         <tr>
                             <td><strong>${escapeHTML(suggestion.reference || "Transaction")}</strong><small>${escapeHTML(suggestion.description || "")}</small></td>
                             <td>
-                                ${suggestion.proposedTaxCode ? `<div>Tax code → <strong>${escapeHTML(suggestion.proposedTaxCode)}</strong></div>` : ""}
-                                ${suggestion.proposedAccountCode ? `<div>Account code → <strong>${escapeHTML(suggestion.proposedAccountCode)}</strong></div>` : ""}
-                                ${(!suggestion.proposedTaxCode && !suggestion.proposedAccountCode) ? "<div>No code change proposed</div>" : ""}
+                                <div>Request VAT invoice evidence</div>
+                                ${suggestion.confidence ? `<small>Confidence: ${escapeHTML(String(suggestion.confidence).toUpperCase())}</small>` : ""}
                             </td>
                             <td>${escapeHTML(suggestion.reason || "")}</td>
                             <td><span class="lock-status-pill ${statusClass}">${escapeHTML(suggestion.status)}</span></td>
@@ -64607,6 +64866,7 @@
 
             async function ensureVatReturnTransactions(entry, force = false, options = {}) {
                 if (!entry?.key || !entry?.clientId) return;
+                if (entry?.lockedByTaskClosure) force = false;
                 if (!force && vatReturnTransactionCache.has(entry.key)) return;
                 if (vatReturnTransactionLoading.has(entry.key)) return;
                 vatReturnTransactionLoading.add(entry.key);
@@ -64623,6 +64883,7 @@
                     const query = new URLSearchParams();
                     if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
                     if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                    if (force) query.set("refresh", "true");
                     const payload = await requestJSON(query.toString() ? `${requestPath}?${query.toString()}` : requestPath);
                     const sourceRows = Array.isArray(payload?.transactions) ? payload.transactions : (Array.isArray(payload) ? payload : []);
                     let transactions = sourceRows.map((row) => normaliseVatTransaction(row));
@@ -64669,7 +64930,7 @@
                 vatFinaliseModalOpen = false;
                 vatClientApprovalModalOpen = false;
                 renderVatReturnPrepareScreen();
-                ensureVatReturnTransactions(entry, false, { silent: true });
+                if (!entry.lockedByTaskClosure) ensureVatReturnTransactions(entry, false, { silent: true });
             }
 
             function closeVatReturnEntry() {
@@ -64785,6 +65046,11 @@
                 if (refreshButton.dataset.vatWired !== "true") {
                     refreshButton.dataset.vatWired = "true";
                     refreshButton.addEventListener("click", async () => {
+                        const entryBeforeRefresh = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (entryBeforeRefresh?.lockedByTaskClosure) {
+                            showToast("This VAT period is marked submitted from task list closure and is view-only.", "info");
+                            return;
+                        }
                         refreshButton.disabled = true;
                         const originalLabel = refreshButton.textContent;
                         refreshButton.textContent = "Syncing Xero...";
@@ -64821,13 +65087,26 @@
                 }
                 if (aiReviewButton.dataset.vatWired !== "true") {
                     aiReviewButton.dataset.vatWired = "true";
-                    aiReviewButton.addEventListener("click", () => {
+                    aiReviewButton.addEventListener("click", async () => {
                         const entry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!entry) return;
+                        if (entry.lockedByTaskClosure) {
+                            showToast("This VAT period is view-only because it has been marked submitted from task closure.", "info");
+                            return;
+                        }
                         const cache = vatReturnTransactionCache.get(entry.key) || {};
                         const transactions = vatTransactionsWithEdits(entry, cache.transactions || []);
-                        vatAiReviewModalOpen = true;
-                        renderVatAiReviewModal(entry, transactions);
+                        aiReviewButton.disabled = true;
+                        const originalLabel = aiReviewButton.textContent;
+                        try {
+                            aiReviewButton.textContent = "Building suggestions...";
+                            await loadVatAiSuggestions(entry, transactions, true);
+                            vatAiReviewModalOpen = true;
+                            renderVatAiReviewModal(entry, transactions);
+                        } finally {
+                            aiReviewButton.disabled = false;
+                            aiReviewButton.textContent = originalLabel || "Suggest No VAT Invoice Requests";
+                        }
                     });
                 }
                 if (finaliseButton.dataset.vatWired !== "true") {
@@ -64835,6 +65114,10 @@
                     finaliseButton.addEventListener("click", () => {
                         const entry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!entry) return;
+                        if (entry.lockedByTaskClosure) {
+                            showToast("This VAT period is view-only and cannot be finalised again.", "info");
+                            return;
+                        }
                         vatFinaliseModalOpen = true;
                         renderVatFinaliseModal(entry);
                     });
@@ -64949,13 +65232,14 @@
                         const status = vatEffectiveStatus(row);
                         const workspace = xeroWorkspaceLabel(row.tenantName || "", row.tenantId || "", "Xero workspace");
                         const workspaceMeta = [workspace, row.xeroContactId || ""].filter(Boolean).join(" · ");
+                        const actionLabel = row.lockedByTaskClosure ? "View workspace" : "Open return";
                         return `
                             <tr>
                                 <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(workspaceMeta || "Xero workspace")}</small></td>
                                 <td>${escapeHTML(formatDate(row.periodEndISO))}</td>
                                 <td>${escapeHTML(formatDate(row.deadlineISO))}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
-                                <td><button class="primary-button" type="button" data-vat-return-open="${escapeHTML(row.key)}">Open return</button></td>
+                                <td><button class="primary-button" type="button" data-vat-return-open="${escapeHTML(row.key)}">${escapeHTML(actionLabel)}</button></td>
                             </tr>
                         `;
                     }).join("");
@@ -64980,6 +65264,7 @@
                 const cache = vatReturnTransactionCache.get(activeEntry.key) || null;
                 const isLoading = vatReturnTransactionLoading.has(activeEntry.key);
                 const status = vatEffectiveStatus(activeEntry);
+                const isLockedWorkspace = Boolean(activeEntry?.lockedByTaskClosure);
                 const rawTransactions = Array.isArray(cache?.transactions) ? cache.transactions : [];
                 const transactions = vatTransactionsWithEdits(activeEntry, rawTransactions);
                 const noVatRows = vatNoVatTransactions(transactions);
@@ -64989,7 +65274,7 @@
                     ensureXeroAccountsForJashflow(false);
                 }
 
-                summary.textContent = `${activeEntry.clientName} · VAT period ending ${formatDate(activeEntry.periodEndISO)} · ${status.label}.`;
+                summary.textContent = `${activeEntry.clientName} · VAT period ending ${formatDate(activeEntry.periodEndISO)} · ${status.label}${isLockedWorkspace ? ` · ${activeEntry.lockMessage || "View-only workspace."}` : ""}.`;
                 metrics.innerHTML = `
                     <article class="key-metric-card"><span>Period start</span><strong>${escapeHTML(formatDate(activeEntry.periodStartISO))}</strong></article>
                     <article class="key-metric-card"><span>Period end</span><strong>${escapeHTML(formatDate(activeEntry.periodEndISO))}</strong></article>
@@ -64999,6 +65284,9 @@
                     <article class="key-metric-card"><span>No VAT net total</span><strong>${formatCurrency(noVatNetTotal)}</strong></article>
                     <article class="key-metric-card"><span>Data source</span><strong>${escapeHTML(cache?.source || (isLoading ? "Loading Xero..." : "Pending"))}</strong></article>
                 `;
+                refreshButton.disabled = isLockedWorkspace;
+                aiReviewButton.disabled = isLockedWorkspace;
+                finaliseButton.disabled = isLockedWorkspace;
 
                 if (!String(activeEntry?.clientId || "").trim()) {
                     exportButton.disabled = true;
@@ -65022,7 +65310,7 @@
                 if (isLoading && !transactions.length) {
                     transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT transactions</h4><p>Transactions are loading from Xero for this VAT period.</p></div></td></tr>';
                 } else if (!transactions.length) {
-                    transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No transactions</p><h4>No VAT transactions found in this period</h4><p>Refresh after a Xero sync if transactions are expected.</p></div></td></tr>';
+                    transactionsBody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No transactions</p><h4>No VAT transactions found in this period</h4><p>${isLockedWorkspace ? "This workspace is view-only because the period was marked submitted when it dropped from the latest task CSV." : "Refresh after a Xero sync if transactions are expected."}</p></div></td></tr>`;
                 } else {
                     const accountOptions = vatAccountCodeOptions();
                     const taxOptions = vatTaxCodeOptions();
@@ -65043,25 +65331,27 @@
                                     <td>${escapeHTML(row.description || "Transaction")}</td>
                                     <td>${formatCurrency(row.netAmount || 0)}</td>
                                     <td>${formatCurrency(row.taxAmount || 0)}</td>
-                                    <td><select data-vat-account-code="${escapeHTML(id)}">${accountOptionsMarkup}</select></td>
-                                    <td><select data-vat-tax-code="${escapeHTML(id)}">${taxOptionsMarkup}</select></td>
+                                    <td>${isLockedWorkspace ? escapeHTML(accountValue || "—") : `<select data-vat-account-code="${escapeHTML(id)}">${accountOptionsMarkup}</select>`}</td>
+                                    <td>${isLockedWorkspace ? escapeHTML(taxValue || "—") : `<select data-vat-tax-code="${escapeHTML(id)}">${taxOptionsMarkup}</select>`}</td>
                                 </tr>
                             `;
                         }).join("");
-                    transactionsBody.querySelectorAll("[data-vat-account-code]").forEach((select) => {
-                        select.addEventListener("change", () => {
-                            const transactionId = select.dataset.vatAccountCode || "";
-                            upsertVatTransactionEdit(activeEntry.key, transactionId, { accountCode: select.value || "" });
-                            renderVatReturnPrepareScreen();
+                    if (!isLockedWorkspace) {
+                        transactionsBody.querySelectorAll("[data-vat-account-code]").forEach((select) => {
+                            select.addEventListener("change", () => {
+                                const transactionId = select.dataset.vatAccountCode || "";
+                                upsertVatTransactionEdit(activeEntry.key, transactionId, { accountCode: select.value || "" });
+                                renderVatReturnPrepareScreen();
+                            });
                         });
-                    });
-                    transactionsBody.querySelectorAll("[data-vat-tax-code]").forEach((select) => {
-                        select.addEventListener("change", () => {
-                            const transactionId = select.dataset.vatTaxCode || "";
-                            upsertVatTransactionEdit(activeEntry.key, transactionId, { taxCode: select.value || "" });
-                            renderVatReturnPrepareScreen();
+                        transactionsBody.querySelectorAll("[data-vat-tax-code]").forEach((select) => {
+                            select.addEventListener("change", () => {
+                                const transactionId = select.dataset.vatTaxCode || "";
+                                upsertVatTransactionEdit(activeEntry.key, transactionId, { taxCode: select.value || "" });
+                                renderVatReturnPrepareScreen();
+                            });
                         });
-                    });
+                    }
                 }
 
                 if (cache?.error) {
@@ -73228,6 +73518,119 @@
                 });
             }
 
+            function bmTaskVatPeriodKey(row = {}) {
+                const xero = row?.xeroMatch || {};
+                const tenantId = String(xero?.tenantId || "").trim();
+                const periodEndISO = String(row?.vatPeriodEndISO || xero?.periodEndISO || "").trim();
+                if (!tenantId || !periodEndISO) return "";
+                return `${tenantId}|${periodEndISO}`;
+            }
+
+            function reconcileVatArchivedPeriodsFromBmTasks(previousRows = [], nextRows = []) {
+                const previousByKey = new Map();
+                (Array.isArray(previousRows) ? previousRows : []).forEach((row) => {
+                    const key = bmTaskVatPeriodKey(row);
+                    if (key && !previousByKey.has(key)) previousByKey.set(key, row);
+                });
+                const nextKeys = new Set(
+                    (Array.isArray(nextRows) ? nextRows : [])
+                        .map((row) => bmTaskVatPeriodKey(row))
+                        .filter(Boolean)
+                );
+                let changed = false;
+                previousByKey.forEach((row, key) => {
+                    if (nextKeys.has(key)) return;
+                    if (vatArchivedPeriodsByKey[key]) return;
+                    const xero = row?.xeroMatch || {};
+                    const record = normaliseVatArchivedPeriodRecord({
+                        tenantId: String(xero?.tenantId || "").trim(),
+                        tenantName: String(xero?.tenantName || "").trim(),
+                        periodStartISO: String(row?.xeroMatch?.periodStartISO || "").trim(),
+                        periodEndISO: String(row?.vatPeriodEndISO || xero?.periodEndISO || "").trim(),
+                        deadlineISO: String(row?.deadlineISO || xero?.deadlineISO || "").trim(),
+                        clientName: String(row?.clientName || "").trim(),
+                        clientId: String(row?.xeroMatch?.clientId || "").trim(),
+                        lockReason: "Marked as submitted because this VAT period is no longer present in the latest task CSV.",
+                    });
+                    if (!record) return;
+                    vatArchivedPeriodsByKey[key] = record;
+                    changed = true;
+                });
+                if (changed) persistVatArchivedPeriods();
+            }
+
+            function bmTaskIdentityKey(row = {}) {
+                const xero = row?.xeroMatch || {};
+                const taskId = String(row?.taskId || row?.id || "").trim();
+                if (taskId) return taskId;
+                return [
+                    String(row?.clientName || "").trim().toLowerCase(),
+                    String(row?.taskName || "").trim().toLowerCase(),
+                    String(row?.vatPeriodEndISO || xero?.periodEndISO || "").trim(),
+                    String(xero?.tenantId || "").trim(),
+                ].join("|");
+            }
+
+            function bmTaskChangeRow(row = {}, changeType = "") {
+                const xero = row?.xeroMatch || {};
+                return {
+                    change: changeType,
+                    client: String(row?.clientName || "").trim() || "Unknown client",
+                    task: String(row?.taskName || "").trim() || "VAT task",
+                    periodEnd: String(row?.vatPeriodEndISO || xero?.periodEndISO || "").trim(),
+                    deadline: String(row?.deadlineISO || xero?.deadlineISO || "").trim(),
+                    assignee: String(row?.assigneeName || "").trim() || "Unassigned",
+                    workspace: String(xero?.tenantName || xero?.tenantId || "").trim() || "No workspace",
+                };
+            }
+
+            async function confirmBmTaskCsvChanges(previousRows = [], nextRows = []) {
+                const previousById = new Map();
+                (Array.isArray(previousRows) ? previousRows : []).forEach((row) => {
+                    const id = bmTaskIdentityKey(row);
+                    if (id && !previousById.has(id)) previousById.set(id, row);
+                });
+                const nextById = new Map();
+                (Array.isArray(nextRows) ? nextRows : []).forEach((row) => {
+                    const id = bmTaskIdentityKey(row);
+                    if (id && !nextById.has(id)) nextById.set(id, row);
+                });
+
+                const completed = [];
+                previousById.forEach((row, id) => {
+                    if (!nextById.has(id)) completed.push(bmTaskChangeRow(row, "Marked completed"));
+                });
+                const added = [];
+                nextById.forEach((row, id) => {
+                    if (!previousById.has(id)) added.push(bmTaskChangeRow(row, "Added"));
+                });
+                const reviewRows = [...completed, ...added];
+                if (!reviewRows.length) return true;
+
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "BM Task Update",
+                    title: "Confirm VAT task changes from CSV",
+                    subtitle: "Review which tasks are being marked completed (missing from the latest CSV) and which are being added.",
+                    confirmLabel: "Apply CSV update",
+                    cancelLabel: "Cancel update",
+                    summaryChips: [
+                        `${completed.length.toLocaleString("en-GB")} marked completed`,
+                        `${added.length.toLocaleString("en-GB")} added`,
+                    ],
+                    columns: [
+                        { key: "change", label: "Change" },
+                        { key: "client", label: "Client" },
+                        { key: "task", label: "Task" },
+                        { key: "periodEnd", label: "Period end", kind: "date" },
+                        { key: "deadline", label: "Deadline", kind: "date" },
+                        { key: "assignee", label: "Assignee" },
+                        { key: "workspace", label: "Workspace" },
+                    ],
+                    rows: reviewRows,
+                });
+                return Boolean(decision);
+            }
+
             function filteredBmTasksRows(rows) {
                 const list = Array.isArray(rows) ? rows : [];
                 const filters = companiesHouseSettings.bmTasksFilters || {};
@@ -73308,12 +73711,22 @@
                         activeView = "vat-return-prepare";
                         activeNavSection = "vat-return-prepare";
                         const xero = match.xeroMatch || {};
-                        vatReturnSelectedWorkspaceTenantId = String(xero.tenantId || "").trim();
+                        const desiredTenantId = String(xero.tenantId || "").trim();
+                        const desiredPeriodEndISO = String(match?.vatPeriodEndISO || xero?.periodEndISO || "").trim();
+                        vatReturnSelectedWorkspaceTenantId = desiredTenantId;
                         selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
                         renderAll();
                         try {
                             await loadVatReturnQueue(true);
-                            const selected = selectedVatReturnEntry(vatReturnQueueRows());
+                            let selected = selectedVatReturnEntry(vatReturnQueueRows());
+                            if (!selected) {
+                                const queueRows = vatReturnQueueRows();
+                                selected = queueRows.find((row) => {
+                                    return String(row?.tenantId || "").trim() === desiredTenantId
+                                        && String(row?.periodEndISO || "").trim() === desiredPeriodEndISO;
+                                }) || queueRows.find((row) => String(row?.tenantId || "").trim() === desiredTenantId) || null;
+                                if (selected?.key) selectedVatReturnKey = String(selected.key);
+                            }
                             if (selected) await ensureVatReturnTransactions(selected, true);
                             else renderVatReturnPrepareScreen();
                         } catch (error) {
@@ -74323,7 +74736,16 @@
                         throw new Error(typeof detail === "string" ? detail : detail?.message || `BM tasks upload failed (${response.status})`);
                     }
                     const payload = await response.json().catch(() => ({}));
-                    companiesHouseSettings.bmTasksRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    const previousBmRows = Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [];
+                    const nextBmRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    const confirmed = await confirmBmTaskCsvChanges(previousBmRows, nextBmRows);
+                    if (!confirmed) {
+                        setBmTasksStatus("BM tasks CSV update cancelled before applying changes.", "muted");
+                        showToast("BM task CSV update cancelled.", "info");
+                        return;
+                    }
+                    reconcileVatArchivedPeriodsFromBmTasks(previousBmRows, nextBmRows);
+                    companiesHouseSettings.bmTasksRows = nextBmRows;
                     companiesHouseSettings.bmTasksFilename = String(payload?.filename || file.name || "");
                     companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || new Date().toISOString());
                     companiesHouseSettings.bmTasksSummary = payload?.summary || {};

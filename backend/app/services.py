@@ -150,6 +150,7 @@ RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
+VAT_INCREMENTAL_REFRESH_OVERLAP = timedelta(minutes=2)
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
@@ -23307,6 +23308,12 @@ def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, 
         if invoice_day < period_start_ordinal or invoice_day > period_end_ordinal:
             continue
         invoice_id = str(invoice.get("InvoiceID") or "").strip()
+        invoice_updated_at = _parse_optional_iso_datetime(
+            invoice.get("UpdatedDateUTC")
+            or invoice.get("UpdatedDate")
+            or invoice.get("LastUpdated")
+            or invoice.get("ModifiedDate")
+        )
         reference = str(invoice.get("InvoiceNumber") or invoice_id).strip()
         line_items = invoice.get("LineItems") or []
         if not isinstance(line_items, list) or not line_items:
@@ -23336,9 +23343,324 @@ def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, 
                 "sourceType": "xero-invoice-line",
                 "transactionType": str(invoice.get("Type") or "").strip(),
                 "documentType": "invoice",
+                "xeroInvoiceId": invoice_id,
+                "lineIndex": index,
+                "xeroUpdatedAt": _iso(invoice_updated_at),
             }
             rows.append(row)
     return rows
+
+
+def _normalise_vat_transaction_rows(rows: list[dict]) -> list[dict]:
+    normalised: list[dict] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        transaction_id = str(row.get("id") or "").strip()
+        if not transaction_id:
+            continue
+        normalised.append(
+            {
+                "id": transaction_id,
+                "date": str(row.get("date") or "").strip(),
+                "reference": str(row.get("reference") or "").strip(),
+                "description": str(row.get("description") or "").strip(),
+                "netAmount": float(_money(row.get("netAmount"))),
+                "taxAmount": float(_money(row.get("taxAmount"))),
+                "grossAmount": float(_money(row.get("grossAmount"))),
+                "taxCode": str(row.get("taxCode") or "").strip(),
+                "accountCode": str(row.get("accountCode") or "").strip(),
+                "sourceType": str(row.get("sourceType") or "").strip(),
+                "transactionType": str(row.get("transactionType") or "").strip(),
+                "documentType": str(row.get("documentType") or "").strip(),
+                "xeroInvoiceId": str(row.get("xeroInvoiceId") or "").strip(),
+                "lineIndex": int(row.get("lineIndex") or 0),
+                "xeroUpdatedAt": str(row.get("xeroUpdatedAt") or "").strip(),
+            }
+        )
+    return normalised
+
+
+def _load_cached_vat_period_transactions(
+    user_id: str,
+    tenant_id: str,
+    customer_id: str,
+    period_start: date,
+    period_end: date,
+) -> tuple[list[dict], dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT transaction_id,
+                       transaction_date,
+                       reference,
+                       description,
+                       net_amount,
+                       tax_amount,
+                       gross_amount,
+                       tax_code,
+                       account_code,
+                       source_type,
+                       transaction_type,
+                       document_type,
+                       xero_invoice_id,
+                       line_index,
+                       xero_updated_at,
+                       fetched_at
+                FROM vat_return_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND customer_id = %s
+                  AND period_start = %s
+                  AND period_end = %s
+                ORDER BY transaction_date DESC NULLS LAST, reference ASC, line_index ASC, transaction_id ASC
+                """,
+                (user_id, tenant_id, customer_id, period_start, period_end),
+            )
+            rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT MAX(fetched_at) AS last_fetched_at,
+                       MAX(xero_updated_at) AS latest_xero_updated_at
+                FROM vat_return_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND customer_id = %s
+                  AND period_start = %s
+                  AND period_end = %s
+                """,
+                (user_id, tenant_id, customer_id, period_start, period_end),
+            )
+            meta_row = cursor.fetchone() or {}
+        connection.commit()
+
+    cached_rows = [
+        {
+            "id": str(row.get("transaction_id") or ""),
+            "date": _iso(row.get("transaction_date")) or "",
+            "reference": str(row.get("reference") or ""),
+            "description": str(row.get("description") or ""),
+            "netAmount": float(_money(row.get("net_amount") or 0)),
+            "taxAmount": float(_money(row.get("tax_amount") or 0)),
+            "grossAmount": float(_money(row.get("gross_amount") or 0)),
+            "taxCode": str(row.get("tax_code") or ""),
+            "accountCode": str(row.get("account_code") or ""),
+            "sourceType": str(row.get("source_type") or ""),
+            "transactionType": str(row.get("transaction_type") or ""),
+            "documentType": str(row.get("document_type") or ""),
+            "xeroInvoiceId": str(row.get("xero_invoice_id") or ""),
+            "lineIndex": int(row.get("line_index") or 0),
+            "xeroUpdatedAt": _iso(row.get("xero_updated_at")) or "",
+        }
+        for row in rows
+    ]
+    cache_meta = {
+        "lastFetchedAt": _iso(meta_row.get("last_fetched_at")) or "",
+        "latestXeroUpdatedAt": _iso(meta_row.get("latest_xero_updated_at")) or "",
+    }
+    return cached_rows, cache_meta
+
+
+def _replace_cached_vat_period_transactions(
+    user_id: str,
+    tenant_id: str,
+    customer_id: str,
+    period_start: date,
+    period_end: date,
+    rows: list[dict],
+) -> None:
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM vat_return_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND customer_id = %s
+                  AND period_start = %s
+                  AND period_end = %s
+                """,
+                (user_id, tenant_id, customer_id, period_start, period_end),
+            )
+            for row in _normalise_vat_transaction_rows(rows):
+                cursor.execute(
+                    """
+                    INSERT INTO vat_return_transactions (
+                        user_id,
+                        tenant_id,
+                        customer_id,
+                        period_start,
+                        period_end,
+                        transaction_id,
+                        line_index,
+                        transaction_date,
+                        reference,
+                        description,
+                        net_amount,
+                        tax_amount,
+                        gross_amount,
+                        tax_code,
+                        account_code,
+                        source_type,
+                        transaction_type,
+                        document_type,
+                        xero_invoice_id,
+                        xero_updated_at,
+                        raw,
+                        fetched_at,
+                        updated_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                    )
+                    """,
+                    (
+                        user_id,
+                        tenant_id,
+                        customer_id,
+                        period_start,
+                        period_end,
+                        row["id"],
+                        int(row.get("lineIndex") or 0),
+                        _parse_optional_iso_date(row.get("date")),
+                        row.get("reference"),
+                        row.get("description"),
+                        _money(row.get("netAmount")),
+                        _money(row.get("taxAmount")),
+                        _money(row.get("grossAmount")),
+                        row.get("taxCode"),
+                        row.get("accountCode"),
+                        row.get("sourceType"),
+                        row.get("transactionType"),
+                        row.get("documentType"),
+                        row.get("xeroInvoiceId"),
+                        _parse_optional_iso_datetime(row.get("xeroUpdatedAt")),
+                        json.dumps(row, default=_json_default),
+                        now,
+                        now,
+                    ),
+                )
+        connection.commit()
+
+
+def _merge_cached_vat_period_transactions(
+    user_id: str,
+    tenant_id: str,
+    customer_id: str,
+    period_start: date,
+    period_end: date,
+    rows: list[dict],
+) -> None:
+    normalised = _normalise_vat_transaction_rows(rows)
+    if not normalised:
+        return
+    now = utcnow()
+    changed_invoice_ids = {row.get("xeroInvoiceId") for row in normalised if row.get("xeroInvoiceId")}
+    changed_transaction_ids = {row.get("id") for row in normalised if row.get("id")}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in normalised:
+                cursor.execute(
+                    """
+                    INSERT INTO vat_return_transactions (
+                        user_id,
+                        tenant_id,
+                        customer_id,
+                        period_start,
+                        period_end,
+                        transaction_id,
+                        line_index,
+                        transaction_date,
+                        reference,
+                        description,
+                        net_amount,
+                        tax_amount,
+                        gross_amount,
+                        tax_code,
+                        account_code,
+                        source_type,
+                        transaction_type,
+                        document_type,
+                        xero_invoice_id,
+                        xero_updated_at,
+                        raw,
+                        fetched_at,
+                        updated_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                    )
+                    ON CONFLICT (user_id, tenant_id, customer_id, period_end, transaction_id)
+                    DO UPDATE SET
+                        line_index = EXCLUDED.line_index,
+                        transaction_date = EXCLUDED.transaction_date,
+                        reference = EXCLUDED.reference,
+                        description = EXCLUDED.description,
+                        net_amount = EXCLUDED.net_amount,
+                        tax_amount = EXCLUDED.tax_amount,
+                        gross_amount = EXCLUDED.gross_amount,
+                        tax_code = EXCLUDED.tax_code,
+                        account_code = EXCLUDED.account_code,
+                        source_type = EXCLUDED.source_type,
+                        transaction_type = EXCLUDED.transaction_type,
+                        document_type = EXCLUDED.document_type,
+                        xero_invoice_id = EXCLUDED.xero_invoice_id,
+                        xero_updated_at = EXCLUDED.xero_updated_at,
+                        raw = EXCLUDED.raw,
+                        fetched_at = EXCLUDED.fetched_at,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        user_id,
+                        tenant_id,
+                        customer_id,
+                        period_start,
+                        period_end,
+                        row["id"],
+                        int(row.get("lineIndex") or 0),
+                        _parse_optional_iso_date(row.get("date")),
+                        row.get("reference"),
+                        row.get("description"),
+                        _money(row.get("netAmount")),
+                        _money(row.get("taxAmount")),
+                        _money(row.get("grossAmount")),
+                        row.get("taxCode"),
+                        row.get("accountCode"),
+                        row.get("sourceType"),
+                        row.get("transactionType"),
+                        row.get("documentType"),
+                        row.get("xeroInvoiceId"),
+                        _parse_optional_iso_datetime(row.get("xeroUpdatedAt")),
+                        json.dumps(row, default=_json_default),
+                        now,
+                        now,
+                    ),
+                )
+            if changed_invoice_ids:
+                cursor.execute(
+                    """
+                    DELETE FROM vat_return_transactions
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                      AND customer_id = %s
+                      AND period_start = %s
+                      AND period_end = %s
+                      AND xero_invoice_id = ANY(%s)
+                      AND transaction_id <> ALL(%s)
+                    """,
+                    (
+                        user_id,
+                        tenant_id,
+                        customer_id,
+                        period_start,
+                        period_end,
+                        list(changed_invoice_ids),
+                        list(changed_transaction_ids) or [""],
+                    ),
+                )
+        connection.commit()
 
 
 def _tax_return_for_period(rows: list[dict], period_end: date) -> dict | None:
@@ -23495,6 +23817,7 @@ async def customer_vat_return_transactions(
     *,
     tenant_id: str | None = None,
     period_start: str | None = None,
+    refresh: bool = False,
 ) -> dict:
     customer, connection_row = _validate_customer_xero_access(customer_id, user, tenant_id=tenant_id)
     period_end_date = _parse_optional_iso_date(period_end)
@@ -23506,14 +23829,79 @@ async def customer_vat_return_transactions(
     if period_start_date > period_end_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period start date cannot be after period end date.")
 
-    raw_invoices = await fetch_paginated_collection(
-        connection_row,
-        INVOICES_URL,
-        "Invoices",
-        params={"ContactIDs": customer.get("xero_contact_id"), "order": "Date DESC"},
-        max_pages=12,
+    tenant_id_value = str(connection_row.get("tenant_id") or "").strip()
+    customer_id_value = str(customer.get("id") or "").strip()
+    cached_rows, cache_meta = _load_cached_vat_period_transactions(
+        user["id"],
+        tenant_id_value,
+        customer_id_value,
+        period_start_date,
+        period_end_date,
     )
-    transactions = _invoice_lines_for_vat_period(raw_invoices, period_start_date, period_end_date)
+    fetch_mode = "cache"
+    fetched_from_xero = False
+    incremental_refresh = False
+
+    if refresh and cached_rows:
+        latest_cached_updated_at = _parse_optional_iso_datetime(cache_meta.get("latestXeroUpdatedAt"))
+        modified_since = None
+        if latest_cached_updated_at is not None:
+            modified_since = latest_cached_updated_at - VAT_INCREMENTAL_REFRESH_OVERLAP
+        raw_invoices = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"ContactIDs": customer.get("xero_contact_id"), "order": "Date DESC"},
+            max_pages=12,
+            modified_since=modified_since,
+        )
+        changed_transactions = _invoice_lines_for_vat_period(raw_invoices, period_start_date, period_end_date)
+        _merge_cached_vat_period_transactions(
+            user["id"],
+            tenant_id_value,
+            customer_id_value,
+            period_start_date,
+            period_end_date,
+            changed_transactions,
+        )
+        cached_rows, cache_meta = _load_cached_vat_period_transactions(
+            user["id"],
+            tenant_id_value,
+            customer_id_value,
+            period_start_date,
+            period_end_date,
+        )
+        fetch_mode = "xero_incremental"
+        fetched_from_xero = True
+        incremental_refresh = True
+    elif refresh or not cached_rows:
+        raw_invoices = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"ContactIDs": customer.get("xero_contact_id"), "order": "Date DESC"},
+            max_pages=12,
+        )
+        refreshed_transactions = _invoice_lines_for_vat_period(raw_invoices, period_start_date, period_end_date)
+        _replace_cached_vat_period_transactions(
+            user["id"],
+            tenant_id_value,
+            customer_id_value,
+            period_start_date,
+            period_end_date,
+            refreshed_transactions,
+        )
+        cached_rows, cache_meta = _load_cached_vat_period_transactions(
+            user["id"],
+            tenant_id_value,
+            customer_id_value,
+            period_start_date,
+            period_end_date,
+        )
+        fetch_mode = "xero_full"
+        fetched_from_xero = True
+
+    transactions = cached_rows
     vat_queue = await xero_vat_returns_payload(user, tenant_id=connection_row.get("tenant_id"))
     tax_return_row = _tax_return_for_period(vat_queue.get("rows") or [], period_end_date)
 
@@ -23525,7 +23913,231 @@ async def customer_vat_return_transactions(
         "periodEndISO": period_end_date.isoformat(),
         "taxReturn": tax_return_row,
         "transactions": transactions,
+        "cacheStatus": {
+            "source": fetch_mode,
+            "fetchedFromXero": fetched_from_xero,
+            "incrementalRefresh": incremental_refresh,
+            "cachedRows": len(transactions),
+            "lastFetchedAt": str(cache_meta.get("lastFetchedAt") or ""),
+            "latestXeroUpdatedAt": str(cache_meta.get("latestXeroUpdatedAt") or ""),
+        },
         "fetchedAt": _iso(utcnow()),
+    }
+
+
+VAT_NO_VAT_SUGGESTIONS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["suggestions"],
+    "properties": {
+        "suggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "transactionId",
+                    "reference",
+                    "description",
+                    "reason",
+                    "confidence",
+                ],
+                "properties": {
+                    "transactionId": {"type": "string"},
+                    "reference": {"type": "string"},
+                    "description": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                },
+            },
+        }
+    },
+}
+
+
+def _vat_no_vat_candidates(transactions: list[dict]) -> tuple[list[dict], list[dict]]:
+    excluded_pattern = re.compile(
+        r"(pension|salary|wages|paye|ni\b|national insurance|insurance|corporation tax|tax payment|vat payment|loan|director.?loan|drawings)",
+        flags=re.IGNORECASE,
+    )
+    no_vat_rows: list[dict] = []
+    excluded_rows: list[dict] = []
+    for row in transactions or []:
+        if not isinstance(row, dict):
+            continue
+        tax_amount = _money(row.get("taxAmount") or 0)
+        tax_code = str(row.get("taxCode") or "").strip().lower()
+        no_vat_code = bool(re.search(r"(no vat|none|exempt|out of scope|zero)", tax_code))
+        if tax_amount != Decimal("0.00") and not no_vat_code:
+            continue
+        description = str(row.get("description") or "").strip()
+        reference = str(row.get("reference") or "").strip()
+        account_code = str(row.get("accountCode") or "").strip()
+        combined = " ".join([description, reference, account_code])
+        if excluded_pattern.search(combined):
+            excluded_rows.append(row)
+            continue
+        if _money(row.get("netAmount") or 0) <= Decimal("0.00"):
+            continue
+        no_vat_rows.append(row)
+    return no_vat_rows, excluded_rows
+
+
+async def vat_no_vat_suggestions(
+    customer_id: str,
+    period_end: str,
+    user: dict,
+    *,
+    tenant_id: str | None = None,
+    period_start: str | None = None,
+    refresh: bool = False,
+) -> dict:
+    payload = await customer_vat_return_transactions(
+        customer_id,
+        period_end,
+        user,
+        tenant_id=tenant_id,
+        period_start=period_start,
+        refresh=refresh,
+    )
+    transactions = list(payload.get("transactions") or [])
+    candidate_rows, excluded_rows = _vat_no_vat_candidates(transactions)
+    if not candidate_rows:
+        return {
+            "customerId": str(payload.get("customerId") or ""),
+            "periodEndISO": str(payload.get("periodEndISO") or ""),
+            "suggestions": [],
+            "excludedCount": len(excluded_rows),
+            "candidateCount": 0,
+            "engine": "rule_based",
+            "generatedAt": _iso(utcnow()),
+        }
+
+    default_suggestions = [
+        {
+            "id": f"{str(row.get('id') or '').strip()}:vat-invoice",
+            "transactionId": str(row.get("id") or "").strip(),
+            "reference": str(row.get("reference") or "").strip(),
+            "description": str(row.get("description") or "").strip(),
+            "reason": "No VAT recorded. Check whether a VAT invoice exists and reclaim input VAT once evidence is received.",
+            "confidence": "medium",
+            "status": "pending",
+        }
+        for row in candidate_rows
+        if str(row.get("id") or "").strip()
+    ]
+
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return {
+            "customerId": str(payload.get("customerId") or ""),
+            "periodEndISO": str(payload.get("periodEndISO") or ""),
+            "suggestions": default_suggestions,
+            "excludedCount": len(excluded_rows),
+            "candidateCount": len(candidate_rows),
+            "engine": "rule_based",
+            "generatedAt": _iso(utcnow()),
+        }
+
+    candidate_payload = [
+        {
+            "transactionId": str(row.get("id") or "").strip(),
+            "date": str(row.get("date") or "").strip(),
+            "reference": str(row.get("reference") or "").strip(),
+            "description": str(row.get("description") or "").strip(),
+            "netAmount": float(_money(row.get("netAmount") or 0)),
+            "taxAmount": float(_money(row.get("taxAmount") or 0)),
+            "taxCode": str(row.get("taxCode") or "").strip(),
+            "accountCode": str(row.get("accountCode") or "").strip(),
+            "sourceType": str(row.get("sourceType") or "").strip(),
+            "transactionType": str(row.get("transactionType") or "").strip(),
+        }
+        for row in candidate_rows[:180]
+        if str(row.get("id") or "").strip()
+    ]
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You are a UK VAT prep copilot for accountants. "
+                            "You are given no-VAT coded purchase transactions for one VAT quarter. "
+                            "Return only transactions that likely require chasing a VAT invoice from the client, "
+                            "because VAT might be reclaimable once valid evidence is uploaded. "
+                            "Do not include payroll, pensions, insurance, loans, taxes, or clearly non-reclaimable items."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": json.dumps({"rows": candidate_payload}, default=_json_default)}],
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "vat_no_vat_suggestions",
+                "schema": VAT_NO_VAT_SUGGESTIONS_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1600,
+    }
+    try:
+        openai_payload = await _post_openai_responses(
+            request_body,
+            "vat no-vat suggestions",
+            user_id=user.get("id"),
+            feature="vat-return-prepare",
+            page="vat-return-prepare",
+        )
+        parsed = json.loads(_extract_response_text(openai_payload) or "{}")
+        raw_suggestions = parsed.get("suggestions") if isinstance(parsed, dict) else []
+        suggestions = []
+        for row in raw_suggestions or []:
+            tx_id = str(row.get("transactionId") or "").strip()
+            if not tx_id:
+                continue
+            reason = str(row.get("reason") or "").strip() or "Potential VAT reclaim if VAT invoice is available."
+            confidence = str(row.get("confidence") or "medium").strip().lower()
+            if confidence not in {"high", "medium", "low"}:
+                confidence = "medium"
+            suggestions.append(
+                {
+                    "id": f"{tx_id}:vat-invoice",
+                    "transactionId": tx_id,
+                    "reference": str(row.get("reference") or "").strip(),
+                    "description": str(row.get("description") or "").strip(),
+                    "reason": reason,
+                    "confidence": confidence,
+                    "status": "pending",
+                }
+            )
+        if suggestions:
+            return {
+                "customerId": str(payload.get("customerId") or ""),
+                "periodEndISO": str(payload.get("periodEndISO") or ""),
+                "suggestions": suggestions,
+                "excludedCount": len(excluded_rows),
+                "candidateCount": len(candidate_rows),
+                "engine": "openai",
+                "generatedAt": _iso(utcnow()),
+            }
+    except Exception as exc:
+        logger.exception("Unable to generate OpenAI VAT no-VAT suggestions: %s", exc)
+
+    return {
+        "customerId": str(payload.get("customerId") or ""),
+        "periodEndISO": str(payload.get("periodEndISO") or ""),
+        "suggestions": default_suggestions,
+        "excludedCount": len(excluded_rows),
+        "candidateCount": len(candidate_rows),
+        "engine": "rule_based",
+        "generatedAt": _iso(utcnow()),
     }
 
 
@@ -24125,6 +24737,28 @@ def _parse_optional_iso_date(value) -> date | None:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
     except ValueError:
         return None
+
+
+def _parse_optional_iso_datetime(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.startswith("/Date("):
+        match = re.search(r"/Date\((-?\d+)", text)
+        if match:
+            try:
+                return datetime.fromtimestamp(int(match.group(1)) / 1000, tz=timezone.utc)
+            except (TypeError, ValueError, OSError):
+                return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 def is_seven_day_notice_status(value: str) -> bool:

@@ -86,6 +86,7 @@ from .services import (
     company_calendar_payload,
     create_payment_plan,
     customer_vat_return_transactions,
+    vat_no_vat_suggestions,
     customer_detail,
     customer_xero_transactions,
     dashboard_payload,
@@ -2453,6 +2454,7 @@ async def api_customer_vat_return_transactions(
     period_end: str,
     tenantId: str = Query(default=""),
     periodStart: str = Query(default=""),
+    refresh: bool = Query(default=False),
     user: dict = Depends(require_panel_user),
 ):
     return await customer_vat_return_transactions(
@@ -2461,6 +2463,26 @@ async def api_customer_vat_return_transactions(
         user,
         tenant_id=tenantId or None,
         period_start=periodStart or None,
+        refresh=refresh,
+    )
+
+
+@app.get("/api/customers/{customer_id}/vat-returns/{period_end}/no-vat-suggestions")
+async def api_customer_vat_no_vat_suggestions(
+    customer_id: str,
+    period_end: str,
+    tenantId: str = Query(default=""),
+    periodStart: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    user: dict = Depends(require_panel_user),
+):
+    return await vat_no_vat_suggestions(
+        customer_id,
+        period_end,
+        user,
+        tenant_id=tenantId or None,
+        period_start=periodStart or None,
+        refresh=refresh,
     )
 
 

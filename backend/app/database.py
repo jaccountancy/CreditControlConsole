@@ -212,6 +212,69 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_id TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_number TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_amount NUMERIC(14, 2);
 
+CREATE TABLE IF NOT EXISTS vat_return_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    transaction_id TEXT NOT NULL,
+    line_index INTEGER NOT NULL DEFAULT 0,
+    transaction_date DATE,
+    reference TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    net_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    gross_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    tax_code TEXT NOT NULL DEFAULT '',
+    account_code TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL DEFAULT '',
+    transaction_type TEXT NOT NULL DEFAULT '',
+    document_type TEXT NOT NULL DEFAULT '',
+    xero_invoice_id TEXT NOT NULL DEFAULT '',
+    xero_updated_at TIMESTAMPTZ,
+    raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, customer_id, period_end, transaction_id)
+);
+
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS period_start DATE;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS period_end DATE;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS transaction_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS line_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS transaction_date DATE;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS net_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS gross_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS tax_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS account_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS transaction_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS document_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS xero_invoice_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS xero_updated_at TIMESTAMPTZ;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS raw JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE vat_return_transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS vat_return_transactions_unique_period_tx_idx
+ON vat_return_transactions (user_id, tenant_id, customer_id, period_end, transaction_id);
+
+CREATE INDEX IF NOT EXISTS vat_return_transactions_period_idx
+ON vat_return_transactions (user_id, tenant_id, customer_id, period_end, transaction_date DESC, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS vat_return_transactions_invoice_idx
+ON vat_return_transactions (user_id, tenant_id, customer_id, period_end, xero_invoice_id, updated_at DESC);
+
 UPDATE customers
 SET late_payment_charge_base_amount = historical.base_amount
 FROM (
