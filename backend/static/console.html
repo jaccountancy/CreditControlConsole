@@ -24146,18 +24146,27 @@
                                     <div>
                                         <p class="eyebrow">Client auth code directory</p>
                                         <h3>Upload and manage client register</h3>
-                                        <p class="detail-meta">Upload a CSV register of client/company auth codes, then backfill missing company auth codes from the directory.</p>
+                                        <p class="detail-meta">Upload your BM client export and BM tasks file, then match outstanding VAT tasks to client register rows and Xero VAT workspaces.</p>
                                     </div>
                                 </div>
                                 <div class="ch-import-dropzone">
-                                    Upload auth code CSV
+                                    Upload Client export CSV file
                                     <input id="chAuthCodeRegisterFile" type="file" accept=".csv,text/csv">
+                                </div>
+                                <div class="ch-import-dropzone" style="margin-top: 10px;">
+                                    Upload BM tasks file
+                                    <input id="chBmTasksFile" type="file" accept=".csv,text/csv">
                                 </div>
                                 <div class="ch-settings-actions">
                                     <button class="primary-button" type="button" id="chAuthCodeRegisterUploadButton" disabled>Upload directory file</button>
+                                    <button class="primary-button" type="button" id="chBmTasksUploadButton" disabled>Upload BM tasks file</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterPopulateButton">Populate missing company auth codes</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
                                     <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Choose a CSV file to upload.</span>
+                                </div>
+                                <div class="page-pills" id="chRegisterDataTabs" style="margin: 8px 0 2px;">
+                                    <button class="page-pill is-active" type="button" data-ch-register-tab="clients">Client table</button>
+                                    <button class="page-pill" type="button" data-ch-register-tab="tasks">Outstanding tasks table</button>
                                 </div>
                                 <div class="ch-register-toolbar">
                                     <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, manager, email, phone, address, source...">
@@ -24171,12 +24180,47 @@
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
                                 </div>
-                                <div class="ch-companies-table-wrap">
+                                <div class="ch-companies-table-wrap" id="chAuthCodeRegisterTableWrap">
                                     <table class="ch-table">
                                         <thead id="chAuthCodeRegisterTableHead"></thead>
                                         <tbody id="chAuthCodeRegisterTableBody"></tbody>
                                     </table>
                                 </div>
+                                <div class="ch-register-toolbar" id="chBmTasksToolbar" hidden>
+                                    <input id="chBmTasksSearch" type="search" placeholder="Search task, client, period end, assignee, progress...">
+                                    <select id="chBmTasksAssigneeFilter" aria-label="Filter by assignee">
+                                        <option value="">All assignees</option>
+                                    </select>
+                                    <select id="chBmTasksStatusFilter" aria-label="Filter by status">
+                                        <option value="">All statuses</option>
+                                        <option value="records_requested">Records requested</option>
+                                        <option value="awaiting_approval">Awaiting approval</option>
+                                        <option value="in_review">In review</option>
+                                        <option value="query">Query</option>
+                                        <option value="open">Open</option>
+                                    </select>
+                                    <button class="ghost-button" type="button" id="chBmTasksResetFiltersButton">Reset</button>
+                                    <span class="ch-register-toolbar-meta" id="chBmTasksTableMeta">0 rows</span>
+                                </div>
+                                <div class="ch-companies-table-wrap" id="chBmTasksTableWrap" hidden>
+                                    <table class="ch-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>VAT task</th>
+                                                <th>Period end</th>
+                                                <th>Deadline</th>
+                                                <th>Status</th>
+                                                <th>Assignee</th>
+                                                <th>Register match</th>
+                                                <th>Xero match</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="chBmTasksTableBody"></tbody>
+                                    </table>
+                                </div>
+                                <p class="settings-help is-muted" id="chBmTasksStatus">Upload a BM tasks CSV to extract outstanding VAT submissions.</p>
                             </section>
                         </section>
                     </section>
@@ -34772,6 +34816,8 @@
                 closeToolbarMenus();
                 renderAll();
                 loadAuthCodeRegisterDirectory();
+                setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
+                renderBmTasksTable();
                 scrollConsoleToTop();
             }
 
@@ -72849,6 +72895,17 @@
                     order: [],
                     hidden: [],
                 },
+                registerDataTab: "clients",
+                bmTasksRows: [],
+                bmTasksLoading: false,
+                bmTasksLoadedAt: "",
+                bmTasksFilename: "",
+                bmTasksSummary: {},
+                bmTasksFilters: {
+                    searchTerm: "",
+                    assignee: "",
+                    status: "",
+                },
             };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
@@ -72865,6 +72922,147 @@
                 node.textContent = message || "";
                 node.classList.remove("is-success", "is-error", "is-muted");
                 node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function setBmTasksStatus(message, tone) {
+                const node = document.getElementById("chBmTasksStatus");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-success", "is-error", "is-muted");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function bmTaskStatusLabel(value) {
+                const key = String(value || "").trim().toLowerCase();
+                return ({
+                    records_requested: "Records requested",
+                    awaiting_approval: "Awaiting approval",
+                    in_review: "In review",
+                    query: "Query",
+                    open: "Open",
+                    completed: "Completed",
+                })[key] || "Open";
+            }
+
+            function bmTaskStatusTone(value) {
+                const key = String(value || "").trim().toLowerCase();
+                if (key === "awaiting_approval" || key === "in_review") return "is-open";
+                if (key === "records_requested" || key === "query") return "is-overdue";
+                return "is-open";
+            }
+
+            function setClientRegisterDataTab(tab) {
+                const nextTab = tab === "tasks" ? "tasks" : "clients";
+                companiesHouseSettings.registerDataTab = nextTab;
+                const isTasks = nextTab === "tasks";
+                const clientToolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
+                const clientTableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
+                const taskToolbar = document.getElementById("chBmTasksToolbar");
+                const taskTableWrap = document.getElementById("chBmTasksTableWrap");
+                if (clientToolbar) clientToolbar.hidden = isTasks;
+                if (clientTableWrap) clientTableWrap.hidden = isTasks;
+                if (taskToolbar) taskToolbar.hidden = !isTasks;
+                if (taskTableWrap) taskTableWrap.hidden = !isTasks;
+                document.querySelectorAll("#chRegisterDataTabs [data-ch-register-tab]").forEach((button) => {
+                    const buttonTab = String(button.getAttribute("data-ch-register-tab") || "");
+                    button.classList.toggle("is-active", buttonTab === nextTab);
+                });
+            }
+
+            function filteredBmTasksRows(rows) {
+                const list = Array.isArray(rows) ? rows : [];
+                const filters = companiesHouseSettings.bmTasksFilters || {};
+                const search = String(filters.searchTerm || "").trim().toLowerCase();
+                const assignee = String(filters.assignee || "").trim().toLowerCase();
+                const status = String(filters.status || "").trim().toLowerCase();
+                return list.filter((row) => {
+                    if (assignee && String(row?.assigneeName || "").trim().toLowerCase() !== assignee) return false;
+                    if (status && String(row?.status || "").trim().toLowerCase() !== status) return false;
+                    if (!search) return true;
+                    const pool = [
+                        row?.clientName,
+                        row?.clientId,
+                        row?.taskId,
+                        row?.taskName,
+                        row?.taskProgress,
+                        row?.assigneeName,
+                        row?.vatPeriodEndISO,
+                        row?.deadlineISO,
+                        row?.matchedRegister?.displayName,
+                        row?.xeroMatch?.tenantName,
+                    ];
+                    return pool.some((value) => String(value || "").toLowerCase().includes(search));
+                });
+            }
+
+            function renderBmTasksTable() {
+                const body = document.getElementById("chBmTasksTableBody");
+                const searchInput = document.getElementById("chBmTasksSearch");
+                const assigneeFilter = document.getElementById("chBmTasksAssigneeFilter");
+                const statusFilter = document.getElementById("chBmTasksStatusFilter");
+                const meta = document.getElementById("chBmTasksTableMeta");
+                if (!body) return;
+                const allRows = Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [];
+                const filters = companiesHouseSettings.bmTasksFilters || {};
+                if (searchInput && searchInput.value !== String(filters.searchTerm || "")) searchInput.value = String(filters.searchTerm || "");
+                const uniqueAssignees = Array.from(new Set(allRows.map((row) => String(row?.assigneeName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+                if (assigneeFilter) {
+                    assigneeFilter.innerHTML = `<option value="">All assignees</option>${uniqueAssignees.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
+                    assigneeFilter.value = String(filters.assignee || "");
+                }
+                if (statusFilter) statusFilter.value = String(filters.status || "");
+                const rows = filteredBmTasksRows(allRows);
+                if (!rows.length) {
+                    body.innerHTML = `<tr><td colspan="9" class="ch-empty-state">${allRows.length ? "No outstanding VAT tasks match these filters." : "No BM VAT tasks loaded yet."}</td></tr>`;
+                } else {
+                    body.innerHTML = rows.map((row) => {
+                        const register = row?.matchedRegister || {};
+                        const xero = row?.xeroMatch || {};
+                        const registerLabel = register?.id
+                            ? `${register.displayName || row.clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
+                            : "No client-register match";
+                        const xeroLabel = xero?.tenantId
+                            ? `${xero.tenantName || "Matched workspace"}${xero.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
+                            : "No Xero workspace match";
+                        const hasOpenAction = Boolean(xero?.tenantId || xero?.vatReturnKey);
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(row.clientName || "Unknown client")}</strong><small>${escapeHTML(row.clientId || "")}</small></td>
+                                <td><strong>${escapeHTML(row.taskName || "VAT task")}</strong><small>${escapeHTML(row.taskProgress || "No progress note")}</small></td>
+                                <td>${escapeHTML(row.vatPeriodEndISO ? formatDate(row.vatPeriodEndISO) : "—")}</td>
+                                <td>${escapeHTML(row.deadlineISO ? formatDate(row.deadlineISO) : "—")}</td>
+                                <td><span class="lock-status-pill ${bmTaskStatusTone(row.status)}">${escapeHTML(bmTaskStatusLabel(row.status))}</span></td>
+                                <td>${escapeHTML(row.assigneeName || "Unassigned")}</td>
+                                <td>${escapeHTML(registerLabel)}</td>
+                                <td>${escapeHTML(xeroLabel)}</td>
+                                <td>${hasOpenAction ? `<button class="ghost-button" type="button" data-bm-task-open-vat="${escapeHTML(row.id || "")}">Open VAT workspace</button>` : "—"}</td>
+                            </tr>
+                        `;
+                    }).join("");
+                }
+                if (meta) meta.textContent = `${rows.length.toLocaleString("en-GB")} shown of ${allRows.length.toLocaleString("en-GB")}`;
+                body.querySelectorAll("[data-bm-task-open-vat]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const rowId = String(button.getAttribute("data-bm-task-open-vat") || "");
+                        const match = allRows.find((item) => String(item?.id || "") === rowId);
+                        if (!match) return;
+                        activeView = "vat-return-prepare";
+                        activeNavSection = "vat-return-prepare";
+                        const xero = match.xeroMatch || {};
+                        vatReturnSelectedWorkspaceTenantId = String(xero.tenantId || "").trim();
+                        selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
+                        renderAll();
+                        try {
+                            await loadVatReturnQueue(true);
+                            const selected = selectedVatReturnEntry(vatReturnQueueRows());
+                            if (selected) await ensureVatReturnTransactions(selected, true);
+                            else renderVatReturnPrepareScreen();
+                        } catch (error) {
+                            console.error("Unable to open VAT workspace from BM task row", error);
+                            showToast(error?.message || "Unable to open VAT workspace for this task row.", "error");
+                        }
+                    });
+                });
             }
 
             function updateCompaniesHouseRawXmlExportButtonState() {
@@ -73140,6 +73338,7 @@
                         "muted"
                     );
                 }
+                setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
             }
 
             function taskTrackerClientKeyForRow(row = {}) {
@@ -73836,6 +74035,62 @@
                 }
             }
 
+            async function uploadBmTasksFileHandler() {
+                if (companiesHouseSettings.bmTasksLoading) return;
+                const fileInput = document.getElementById("chBmTasksFile");
+                const file = fileInput?.files?.[0];
+                if (!file) {
+                    setBmTasksStatus("Choose a BM tasks CSV file first.", "error");
+                    return;
+                }
+                companiesHouseSettings.bmTasksLoading = true;
+                const uploadButton = document.getElementById("chBmTasksUploadButton");
+                const authUploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
+                if (uploadButton) uploadButton.disabled = true;
+                if (authUploadButton) authUploadButton.disabled = true;
+                setBmTasksStatus("Uploading BM tasks CSV and extracting outstanding VAT tasks…", "muted");
+                try {
+                    const form = new FormData();
+                    form.append("file", file);
+                    const response = await fetch(endpointURL("/api/companies-house/tasks/preview"), {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() },
+                        body: form,
+                    });
+                    if (!response.ok) {
+                        const errorPayload = await response.json().catch(() => ({}));
+                        const detail = errorPayload?.detail;
+                        throw new Error(typeof detail === "string" ? detail : detail?.message || `BM tasks upload failed (${response.status})`);
+                    }
+                    const payload = await response.json().catch(() => ({}));
+                    companiesHouseSettings.bmTasksRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    companiesHouseSettings.bmTasksFilename = String(payload?.filename || file.name || "");
+                    companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || new Date().toISOString());
+                    companiesHouseSettings.bmTasksSummary = payload?.summary || {};
+                    renderBmTasksTable();
+                    setClientRegisterDataTab("tasks");
+                    const summary = companiesHouseSettings.bmTasksSummary || {};
+                    setBmTasksStatus(
+                        `${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0).toLocaleString("en-GB")} outstanding VAT task row${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0) === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "BM tasks CSV"}.`,
+                        "success"
+                    );
+                    showToast("BM tasks loaded and VAT tasks matched.", "success");
+                } catch (error) {
+                    console.error("Unable to upload BM tasks file", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        setBmTasksStatus(error?.message || "Unable to process BM tasks file.", "error");
+                        showToast(error?.message || "Unable to process BM tasks file.", "error");
+                    }
+                } finally {
+                    companiesHouseSettings.bmTasksLoading = false;
+                    if (uploadButton) uploadButton.disabled = !(document.getElementById("chBmTasksFile")?.files?.length);
+                    if (authUploadButton) authUploadButton.disabled = !(document.getElementById("chAuthCodeRegisterFile")?.files?.length);
+                }
+            }
+
             async function openAuthCodeRegisterColumnsDialog() {
                 const working = normaliseAuthRegisterColumnState(companiesHouseSettings.authRegisterColumnState || {});
                 const decision = await showOperationReviewDialog({
@@ -73941,6 +74196,7 @@
                     saveCompaniesHouseSettingsHandler();
                 });
                 document.getElementById("chAuthCodeRegisterUploadButton")?.addEventListener("click", uploadAuthCodeRegisterFileHandler);
+                document.getElementById("chBmTasksUploadButton")?.addEventListener("click", uploadBmTasksFileHandler);
                 document.getElementById("chAuthCodeRegisterPopulateButton")?.addEventListener("click", populateAuthCodesFromDirectoryHandler);
                 document.getElementById("chAuthCodeRegisterReloadButton")?.addEventListener("click", () => loadAuthCodeRegisterDirectory(true));
                 document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
@@ -73949,6 +74205,19 @@
                     const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
                     if (uploadButton) uploadButton.disabled = !hasFile;
                     if (hasFile) setAuthCodeRegisterStatus("Ready to upload selected CSV.", "muted");
+                });
+                document.getElementById("chBmTasksFile")?.addEventListener("change", (event) => {
+                    const input = event?.target;
+                    const hasFile = !!input?.files?.length;
+                    const uploadButton = document.getElementById("chBmTasksUploadButton");
+                    if (uploadButton) uploadButton.disabled = !hasFile;
+                    if (hasFile) setBmTasksStatus("Ready to upload BM tasks CSV.", "muted");
+                });
+                document.querySelectorAll("#chRegisterDataTabs [data-ch-register-tab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const tab = String(button.getAttribute("data-ch-register-tab") || "clients");
+                        setClientRegisterDataTab(tab);
+                    });
                 });
                 document.getElementById("chAuthCodeRegisterSearch")?.addEventListener("input", (event) => {
                     companiesHouseSettings.authRegisterTableState = {
@@ -73976,6 +74245,41 @@
                 });
                 document.getElementById("chAuthCodeRegisterColumnsButton")?.addEventListener("click", openAuthCodeRegisterColumnsDialog);
                 document.getElementById("chAuthCodeRegisterResetFiltersButton")?.addEventListener("click", resetAuthCodeRegisterFilters);
+                document.getElementById("chBmTasksSearch")?.addEventListener("input", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        searchTerm: String(event?.target?.value || ""),
+                    };
+                    renderBmTasksTable();
+                });
+                document.getElementById("chBmTasksAssigneeFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        assignee: String(event?.target?.value || ""),
+                    };
+                    renderBmTasksTable();
+                });
+                document.getElementById("chBmTasksStatusFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        status: String(event?.target?.value || ""),
+                    };
+                    renderBmTasksTable();
+                });
+                document.getElementById("chBmTasksResetFiltersButton")?.addEventListener("click", () => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        searchTerm: "",
+                        assignee: "",
+                        status: "",
+                    };
+                    const search = document.getElementById("chBmTasksSearch");
+                    const assignee = document.getElementById("chBmTasksAssigneeFilter");
+                    const status = document.getElementById("chBmTasksStatusFilter");
+                    if (search) search.value = "";
+                    if (assignee) assignee.value = "";
+                    if (status) status.value = "";
+                    renderBmTasksTable();
+                });
             }
 
             const companiesHouseState = {
@@ -77224,6 +77528,11 @@
                 if (activeView === "confirmation-statements") {
                     activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                     loadCompaniesHouseSettings();
+                }
+                if (activeView === "client-auth-register") {
+                    loadAuthCodeRegisterDirectory();
+                    setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
+                    renderBmTasksTable();
                 }
                 if (activeView === "tasks") {
                     loadAuthCodeRegisterDirectory();

@@ -201,6 +201,7 @@ from .services import (
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
     bulk_upload_me_report_submission_pdfs,
+    bm_tasks_vat_preview_payload,
     categorise_bank_statement_transactions,
     exchange_gmail_code_for_tokens,
     fetch_gmail_profile,
@@ -1324,6 +1325,16 @@ async def api_companies_house_auth_code_register_preview(
     content = await file.read()
     preview = preview_auth_code_register_csv(content, file.filename or "auth-code-register.csv")
     return {"status": "ok", "preview": preview}
+
+
+@app.post("/api/companies-house/tasks/preview")
+async def api_companies_house_tasks_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    content = await file.read()
+    payload = await bm_tasks_vat_preview_payload(user, content, file.filename or "bm-tasks.csv")
+    return {"status": "ok", **payload}
 
 
 @app.post("/api/companies-house/auth-code-register/commit")

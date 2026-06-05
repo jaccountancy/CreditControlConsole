@@ -23001,6 +23001,298 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
     }
 
 
+def _bm_tasks_decode_csv(content: bytes, filename: str = "") -> str:
+    raw = content or b""
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="BM tasks CSV is empty.")
+    if len(raw) > PRACTICE_PACK_MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{filename or 'BM tasks CSV'} is too large. Upload files under 12 MB.",
+        )
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"{filename or 'BM tasks CSV'} could not be decoded as CSV text.",
+    )
+
+
+def _bm_tasks_normalise_header(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").strip().lower())
+
+
+def _bm_tasks_normalise_name_key(value: str | None) -> str:
+    text = str(value or "").lower()
+    text = re.sub(r"&", " and ", text)
+    text = re.sub(r"\b(limited|ltd|llp|plc|inc|incorporated|company|co|the)\b", " ", text)
+    text = re.sub(r"[^a-z0-9]+", "", text)
+    return text
+
+
+def _bm_tasks_column_value(row: dict, aliases: list[str]) -> str:
+    if not isinstance(row, dict) or not row:
+        return ""
+    alias_keys = {_bm_tasks_normalise_header(alias) for alias in aliases}
+    exact_key = next(
+        (key for key in row.keys() if _bm_tasks_normalise_header(key) in alias_keys),
+        "",
+    )
+    if exact_key:
+        return str(row.get(exact_key) or "").strip()
+    for key in row.keys():
+        normalised_key = _bm_tasks_normalise_header(key)
+        if any(
+            normalised_key and (normalised_key in alias_key or alias_key in normalised_key)
+            for alias_key in alias_keys
+        ):
+            return str(row.get(key) or "").strip()
+    return ""
+
+
+def _bm_tasks_yes(value: str | None) -> bool:
+    text = str(value or "").strip().lower()
+    return text in {"y", "yes", "true", "1", "completed", "done"}
+
+
+def _bm_tasks_parse_date(value: str | None) -> date | None:
+    text = str(value or "").strip()
+    if not text or text.upper() == "N/A":
+        return None
+    cleaned = re.sub(r"\s+", " ", text)
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d/%m/%y",
+        "%d-%m-%y",
+        "%Y/%m/%d",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%Y-%m-%d %H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(cleaned[:26], fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _bm_tasks_parse_vat_period_end(task_name: str | None) -> date | None:
+    text = str(task_name or "")
+    match = re.search(r"\bend\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"\bend\s+(\d{4}[/-]\d{1,2}[/-]\d{1,2})\b", text, re.IGNORECASE)
+    if not match:
+        return None
+    return _bm_tasks_parse_date(match.group(1))
+
+
+def _bm_tasks_is_vat_task(task_name: str | None) -> bool:
+    text = str(task_name or "").lower()
+    return bool(re.search(r"\bvat\b", text)) and bool(
+        re.search(r"\b(submission|return|filing|mtd|prepare|preparation)\b", text)
+    )
+
+
+def _bm_tasks_task_status(progress_text: str, completed: bool) -> str:
+    if completed:
+        return "completed"
+    progress = str(progress_text or "").strip()
+    if not progress:
+        return "open"
+    lower = progress.lower()
+    if "awaiting approval" in lower:
+        return "awaiting_approval"
+    if "review" in lower:
+        return "in_review"
+    if "records requested" in lower:
+        return "records_requested"
+    if "query" in lower:
+        return "query"
+    return "open"
+
+
+async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str = "") -> dict:
+    text = _bm_tasks_decode_csv(content, filename)
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except Exception:
+        dialect = csv.excel
+    try:
+        all_rows = [row for row in csv.reader(io.StringIO(text), dialect)]
+    except csv.Error as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"BM tasks CSV could not be parsed: {exc}") from exc
+    if not all_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="BM tasks CSV has no rows.")
+
+    headers = [str(value or "").strip() for value in all_rows[0]]
+    records = []
+    for values in all_rows[1:]:
+        if not any(str(value or "").strip() for value in values):
+            continue
+        record = {}
+        for index, header in enumerate(headers):
+            key = header or f"Column {index + 1}"
+            record[key] = str(values[index] if index < len(values) else "").strip()
+        records.append(record)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       company_number,
+                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
+                       client_id,
+                       client_manager
+                FROM ch_auth_code_register
+                ORDER BY uploaded_at DESC
+                LIMIT 4000
+                """
+            )
+            register_rows = cursor.fetchall() or []
+        connection.commit()
+
+    register_by_client_id: dict[str, dict] = {}
+    register_by_name: dict[str, dict] = {}
+    for row in register_rows:
+        client_id_key = str(row.get("client_id") or "").strip().lower()
+        if client_id_key and client_id_key not in register_by_client_id:
+            register_by_client_id[client_id_key] = row
+        name_key = _bm_tasks_normalise_name_key(row.get("display_name"))
+        if name_key and name_key not in register_by_name:
+            register_by_name[name_key] = row
+
+    vat_queue = await xero_vat_returns_payload(user)
+    vat_rows = list(vat_queue.get("rows") or [])
+    vat_workspaces = list(vat_queue.get("workspaces") or [])
+    vat_rows_by_name: dict[str, list[dict]] = defaultdict(list)
+    for row in vat_rows:
+        row_key = _bm_tasks_normalise_name_key(row.get("clientName") or row.get("tenantName"))
+        if row_key:
+            vat_rows_by_name[row_key].append(row)
+    for row_list in vat_rows_by_name.values():
+        row_list.sort(
+            key=lambda item: (
+                0 if not item.get("submitted") else 1,
+                -(date.fromisoformat(item["periodEndISO"]).toordinal() if item.get("periodEndISO") else 0),
+            )
+        )
+    vat_workspace_by_name: dict[str, dict] = {}
+    for workspace in vat_workspaces:
+        workspace_key = _bm_tasks_normalise_name_key(workspace.get("clientName") or workspace.get("tenantName"))
+        if workspace_key and workspace_key not in vat_workspace_by_name:
+            vat_workspace_by_name[workspace_key] = workspace
+
+    vat_tasks: list[dict] = []
+    total_rows = 0
+    for index, row in enumerate(records):
+        total_rows += 1
+        client_id = _bm_tasks_column_value(row, ["Client ID", "ClientId"])
+        client_name = _bm_tasks_column_value(row, ["Client Name", "ClientName", "Company Name", "Company"])
+        task_id = _bm_tasks_column_value(row, ["Task ID", "TaskId"])
+        task_name = _bm_tasks_column_value(row, ["Task Name", "Task", "Title"])
+        if not _bm_tasks_is_vat_task(task_name):
+            continue
+        completed = _bm_tasks_yes(_bm_tasks_column_value(row, ["Completed?", "Completed", "Is Completed"]))
+        if completed:
+            continue
+        progress = _bm_tasks_column_value(row, ["Task Progress", "Progress", "Status"])
+        latest_action = _bm_tasks_column_value(row, ["Latest Action Date", "Latest Action", "Action Date"])
+        progress_notes = _bm_tasks_column_value(row, ["Progress Notes", "Notes", "Latest Note"])
+        target_date_text = _bm_tasks_column_value(row, ["Target Date", "Target", "Due Date"])
+        deadline_text = _bm_tasks_column_value(row, ["Deadline", "Deadline Date"])
+        assignee = _bm_tasks_column_value(row, ["Assignee Name", "Assignee", "Owner"])
+        period_end = _bm_tasks_parse_vat_period_end(task_name)
+        target_date = _bm_tasks_parse_date(target_date_text)
+        deadline = _bm_tasks_parse_date(deadline_text)
+        client_id_key = str(client_id or "").strip().lower()
+        client_name_key = _bm_tasks_normalise_name_key(client_name)
+        register_row = register_by_client_id.get(client_id_key) or register_by_name.get(client_name_key)
+
+        vat_row_candidates = vat_rows_by_name.get(client_name_key) or []
+        matched_vat_row = None
+        if period_end:
+            matched_vat_row = next(
+                (
+                    item
+                    for item in vat_row_candidates
+                    if str(item.get("periodEndISO") or "") == period_end.isoformat()
+                ),
+                None,
+            )
+        if matched_vat_row is None and vat_row_candidates:
+            matched_vat_row = vat_row_candidates[0]
+        workspace_match = vat_workspace_by_name.get(client_name_key) or {}
+
+        vat_tasks.append(
+            {
+                "id": f"bm-vat-{index + 1}",
+                "sourceRow": index + 2,
+                "taskId": task_id,
+                "clientId": client_id,
+                "clientName": client_name,
+                "taskName": task_name,
+                "taskProgress": progress,
+                "status": _bm_tasks_task_status(progress, completed),
+                "latestActionDateISO": _iso(_bm_tasks_parse_date(latest_action)) or "",
+                "progressNotes": progress_notes,
+                "targetDateISO": _iso(target_date) or "",
+                "deadlineISO": _iso(deadline) or "",
+                "assigneeName": assignee,
+                "vatPeriodEndISO": _iso(period_end) or "",
+                "matchedRegister": {
+                    "id": str(register_row.get("id") or "") if register_row else "",
+                    "companyNumber": str(register_row.get("company_number") or "") if register_row else "",
+                    "displayName": str(register_row.get("display_name") or "") if register_row else "",
+                    "clientId": str(register_row.get("client_id") or "") if register_row else "",
+                    "clientManager": str(register_row.get("client_manager") or "") if register_row else "",
+                },
+                "xeroMatch": {
+                    "tenantId": str((matched_vat_row or {}).get("tenantId") or workspace_match.get("tenantId") or ""),
+                    "tenantName": str((matched_vat_row or {}).get("tenantName") or workspace_match.get("tenantName") or ""),
+                    "vatReturnKey": str((matched_vat_row or {}).get("key") or ""),
+                    "periodEndISO": str((matched_vat_row or {}).get("periodEndISO") or ""),
+                    "deadlineISO": str((matched_vat_row or {}).get("deadlineISO") or ""),
+                    "submitted": bool((matched_vat_row or {}).get("submitted")),
+                    "workspaceError": str(workspace_match.get("error") or ""),
+                },
+            }
+        )
+
+    vat_tasks.sort(
+        key=lambda item: (
+            0 if item.get("deadlineISO") else 1,
+            date.fromisoformat(item["deadlineISO"]).toordinal() if item.get("deadlineISO") else date.max.toordinal(),
+            str(item.get("clientName") or "").casefold(),
+            str(item.get("taskName") or "").casefold(),
+        )
+    )
+    matched_register_count = sum(1 for row in vat_tasks if row.get("matchedRegister", {}).get("id"))
+    matched_xero_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("tenantId"))
+    matched_vat_row_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("vatReturnKey"))
+    return {
+        "filename": filename or "bm-tasks.csv",
+        "uploadedAt": _iso(utcnow()),
+        "summary": {
+            "totalRows": total_rows,
+            "vatOutstandingRows": len(vat_tasks),
+            "matchedRegisterRows": matched_register_count,
+            "matchedXeroWorkspaceRows": matched_xero_count,
+            "matchedVatPeriodRows": matched_vat_row_count,
+        },
+        "rows": vat_tasks,
+    }
+
+
 def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, period_end: date) -> list[dict]:
     rows: list[dict] = []
     period_start_ordinal = period_start.toordinal()
