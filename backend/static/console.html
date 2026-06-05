@@ -22842,11 +22842,29 @@
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Xero connection</p>
-                                        <h3>Organisation connection</h3>
+                                        <h3>Master + sub-tenant connections</h3>
                                     </div>
                                     <button class="ghost-button danger-button" id="settingsDisconnectXeroButton" type="button">Disconnect Xero</button>
                                 </div>
-                                <p class="settings-help">Disconnect only when you need to connect a different Xero organisation. Imported ledger rows remain visible until the next sync replaces them.</p>
+                                <p class="settings-help">Debtor sync and contact pull uses the master tenant only. The master tenant is fixed to Jaccountancy; every other connected tenant is treated as a sub-tenant for optional push/pull workflows.</p>
+                                <div class="sync-settings-panel">
+                                    <div class="sync-settings-status" id="settingsXeroConnectionStatus">
+                                        <span>Connection status not loaded</span>
+                                        <span>Open this panel to refresh master/sub-tenant status.</span>
+                                    </div>
+                                    <div class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="Xero tenant connections">
+                                            <thead>
+                                                <tr>
+                                                    <th>Role</th>
+                                                    <th>Tenant</th>
+                                                    <th>Tenant ID</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="settingsXeroConnectionTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </section>
 
                             <section class="detail-panel settings-panel" data-settings-section="ignition-connection">
@@ -71205,6 +71223,54 @@
                 return null;
             }
 
+            function settingsXeroConnectionRows() {
+                const rows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                return rows
+                    .map((row) => ({
+                        tenantId: String(row?.tenantId || "").trim(),
+                        tenantName: String(row?.tenantName || "").trim(),
+                        isMainTenant: Boolean(row?.isMainTenant),
+                    }))
+                    .filter((row) => row.tenantId);
+            }
+
+            function renderSettingsXeroConnection() {
+                const status = document.getElementById("settingsXeroConnectionStatus");
+                const tableBody = document.getElementById("settingsXeroConnectionTableBody");
+                if (!status || !tableBody) return;
+                if (xeroLockDateLoading) {
+                    status.innerHTML = "<span>Loading Xero tenant connections…</span><span>Checking master/sub-tenant state.</span>";
+                    tableBody.innerHTML = '<tr><td colspan="3"><div class="ch-empty-state">Loading Xero tenants…</div></td></tr>';
+                    return;
+                }
+                const rows = settingsXeroConnectionRows();
+                const masterTenantName = String(xeroLockDateOverview?.mainTenantName || "jaccountancy").trim();
+                const masterRow = rows.find((row) => row.isMainTenant) || null;
+                if (!rows.length) {
+                    status.innerHTML = "<span>No Xero tenants connected</span><span>Connect Xero to load master/sub-tenant controls.</span>";
+                    tableBody.innerHTML = '<tr><td colspan="3"><div class="ch-empty-state">No connected Xero tenants.</div></td></tr>';
+                    return;
+                }
+                status.innerHTML = `
+                    <span>${masterRow ? `Master tenant active: ${escapeHTML(masterRow.tenantName || masterTenantName)}` : `Master tenant target: ${escapeHTML(masterTenantName)}`}</span>
+                    <span>${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} connected · debtor sync is pinned to the master tenant.</span>
+                `;
+                tableBody.innerHTML = rows
+                    .sort((left, right) => {
+                        const role = Number(Boolean(right.isMainTenant)) - Number(Boolean(left.isMainTenant));
+                        if (role !== 0) return role;
+                        return String(left.tenantName || left.tenantId).localeCompare(String(right.tenantName || right.tenantId));
+                    })
+                    .map((row) => `
+                        <tr>
+                            <td>${row.isMainTenant ? '<span class="ch-pill is-info">Master tenant</span>' : '<span class="ch-pill">Sub-tenant</span>'}</td>
+                            <td><strong>${escapeHTML(row.tenantName || row.tenantId)}</strong></td>
+                            <td><small>${escapeHTML(row.tenantId)}</small></td>
+                        </tr>
+                    `)
+                    .join("");
+            }
+
             const settingsSectionCopy = {
                 "data-import": {
                     eyebrow: "Data import",
@@ -71218,8 +71284,8 @@
                 },
                 "xero-connection": {
                     eyebrow: "Xero connection",
-                    title: "Xero Connection / Disconnection",
-                    meta: "Manage the linked Xero organisation without mixing it into other settings."
+                    title: "Master Xero Tenant Controls",
+                    meta: "Master tenant is fixed to Jaccountancy for debtor/contact sync; all other tenants are sub-tenant connections."
                 },
                 "ignition-connection": {
                     eyebrow: "Ignition connection",
@@ -71365,6 +71431,7 @@
                 syncSettingsNavGroups(activeSettingsSection);
                 document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
                 if (activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                if (activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 if (activeSettingsSection === "renewal-settings") renderRenewalSettings();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") renderDomainHealthPanels();
             }
@@ -71382,6 +71449,7 @@
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
                 if (activeSettingsSection === "confirmation-settings") loadCompaniesHouseSettings();
+                if (activeSettingsSection === "xero-connection") loadXeroLockDateOverview();
                 if (activeSettingsSection === "lock-date-mapping") {
                     loadXeroLockDateOverview();
                     loadXeroLockDateCHHealth();

@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     xero_client_secret: str
     xero_redirect_uri: str
     xero_scopes: str = "openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read accounting.attachments"
-    xero_primary_tenant_name: str = "Jaccountancy UK Ltd"
+    xero_primary_tenant_name: str = "jaccountancy"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
     ignition_state_ttl_seconds: int = 3600

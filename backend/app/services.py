@@ -734,6 +734,23 @@ def get_xero_connection_for_user(user_id: str) -> dict:
     return max(rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
 
 
+def get_master_xero_connection_for_user(user_id: str) -> dict:
+    rows = list_xero_connections_for_user(user_id, include_fallback=False)
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    matching_rows = [row for row in rows if _is_preferred_xero_tenant(row, preferred_tenant_name)]
+    if not matching_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Master Xero tenant '{preferred_tenant_name or 'jaccountancy'}' is not connected. "
+                "Connect the Jaccountancy tenant before using Debtors, LPC, or Bad Debt."
+            ),
+        )
+    return max(matching_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
+
+
 def xero_connection_for_user_tenant(user: dict, tenant_id: str | None = None, include_fallback: bool = True) -> dict:
     requested_tenant_id = str(tenant_id or "").strip()
     if not requested_tenant_id:
@@ -2931,7 +2948,7 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
     sync_options = normalise_sync_options(sync_options)
-    connection_row = get_xero_connection_for_user(user["id"])
+    connection_row = get_master_xero_connection_for_user(user["id"])
     _mark_stale_sync_runs(user["id"])
     rate_limit = _active_xero_rate_limit(user["id"])
     if rate_limit is not None:
@@ -3360,13 +3377,48 @@ def _normalise_pending_xero_action_payload(action_type: str, invoice_ids: list[s
 
 def _pending_xero_action_tenant_id(user: dict) -> str:
     try:
-        return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
+        return str(get_master_xero_connection_for_user(user["id"]).get("tenant_id") or "")
     except HTTPException:
         return ""
 
 
+def _assert_invoices_belong_to_tenant(invoice_ids: list[str], tenant_id: str, detail: str) -> None:
+    safe_tenant_id = str(tenant_id or "").strip()
+    if not safe_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Master Xero tenant is not connected.")
+    safe_invoice_ids: list[UUID] = []
+    try:
+        safe_invoice_ids = [UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()]
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id.") from exc
+    if not safe_invoice_ids:
+        return
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE invoices.id = ANY(%s)
+                  AND customers.tenant_id = %s
+                """,
+                (safe_invoice_ids, safe_tenant_id),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    if int(row.get("count") or 0) != len(safe_invoice_ids):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
 def queue_pending_xero_action(user: dict, action_type: str, invoice_ids: list[str], options: dict | None = None) -> dict:
     clean_invoice_ids, payload = _normalise_pending_xero_action_payload(action_type, invoice_ids, options)
+    tenant_id = _pending_xero_action_tenant_id(user)
+    _assert_invoices_belong_to_tenant(
+        clean_invoice_ids,
+        tenant_id,
+        "Pending Xero actions for LPC/Bad Debt can only be queued for invoices in the master Jaccountancy tenant.",
+    )
     now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3380,7 +3432,7 @@ def queue_pending_xero_action(user: dict, action_type: str, invoice_ids: list[st
                 RETURNING *
                 """,
                 (
-                    _pending_xero_action_tenant_id(user),
+                    tenant_id,
                     action_type,
                     json.dumps(clean_invoice_ids),
                     json.dumps(payload, default=_json_default),
@@ -4058,7 +4110,7 @@ def _make_xero_request_tracer(sync_run_id: str, user_id: str, label: str):
 
 async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
     sync_options = normalise_sync_options(sync_options)
-    connection_row = get_xero_connection_for_user(user["id"])
+    connection_row = get_master_xero_connection_for_user(user["id"])
     sync_signature = _sync_options_signature(sync_options)
     now = utcnow()
     completed_modified_since = _incremental_modified_since(user["id"])
@@ -6034,16 +6086,15 @@ def panel_payload(user: dict | None = None) -> dict:
     tenant_id = None
     if user and user.get("id"):
         try:
-            xero_connection = get_xero_connection_for_user(user["id"])
+            xero_connection = get_master_xero_connection_for_user(user["id"])
             tenant_id = xero_connection.get("tenant_id")
             xero_connected = True
         except HTTPException:
             xero_connected = False
 
+    tenant_scope = str(tenant_id or "").strip()
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            if user and user.get("id"):
-                tenant_id = _latest_synced_tenant_for_user(cursor, user["id"], tenant_id)
             cursor.execute(
                 """
                 SELECT *
@@ -6051,7 +6102,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 WHERE (%s::text IS NULL OR tenant_id = %s::text)
                 ORDER BY overdue_amount DESC, total_due DESC, name ASC
                 """,
-                (tenant_id, tenant_id),
+                (tenant_scope, tenant_scope),
             )
             customer_rows = cursor.fetchall()
             cursor.execute(
@@ -6062,7 +6113,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
                 ORDER BY due_date ASC NULLS LAST, invoice_number ASC
                 """,
-                (tenant_id, tenant_id),
+                (tenant_scope, tenant_scope),
             )
             invoice_rows = cursor.fetchall()
             if user and user.get("id"):
@@ -6106,7 +6157,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 WHERE note_rank <= %s
                 ORDER BY created_at DESC
                 """,
-                (tenant_id, tenant_id, PANEL_CUSTOMER_NOTE_LIMIT_PER_CUSTOMER),
+                (tenant_scope, tenant_scope, PANEL_CUSTOMER_NOTE_LIMIT_PER_CUSTOMER),
             )
             customer_note_rows = cursor.fetchall()
             invoice_ids = [row["id"] for row in invoice_rows]
@@ -6189,7 +6240,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 ORDER BY payment_date DESC NULLS LAST, created_at DESC
                 LIMIT %s
                 """,
-                (tenant_id, tenant_id, PANEL_PAYMENT_LIMIT),
+                (tenant_scope, tenant_scope, PANEL_PAYMENT_LIMIT),
             )
             payment_rows = cursor.fetchall()
             cursor.execute(
@@ -6204,19 +6255,19 @@ def panel_payload(user: dict | None = None) -> dict:
                   ))
                 GROUP BY customer_id
                 """,
-                (tenant_id, tenant_id),
+                (tenant_scope, tenant_scope),
             )
             credit_total_rows = cursor.fetchall()
             cache_status = _xero_cache_status(
                 cursor,
                 user["id"] if user and user.get("id") else None,
-                tenant_id,
+                tenant_scope,
                 len(customer_rows),
                 len(invoice_rows),
             )
-            posting_settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
+            posting_settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_scope)
             try:
-                database_metrics = _database_metrics(cursor, tenant_id, user["id"] if user and user.get("id") else None)
+                database_metrics = _database_metrics(cursor, tenant_scope, user["id"] if user and user.get("id") else None)
             except Exception as exc:
                 logger.exception("Unable to build database metrics")
                 connection.rollback()
@@ -6298,7 +6349,7 @@ def panel_payload(user: dict | None = None) -> dict:
             }
         )
 
-    dashboard = dashboard_payload(tenant_id)
+    dashboard = dashboard_payload(tenant_scope)
     has_cached_xero_data = bool(customers or dashboard["invoice_count"] or dashboard["as_of"])
     last_sync_label = f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync"
     if not xero_connected and dashboard["as_of"]:
@@ -28067,6 +28118,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
     if not unique_invoice_refs:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
     charge_selection_lookup = _late_payment_charge_selection_lookup(unique_invoice_refs, charge_selections)
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    master_tenant_id = str(connection_row.get("tenant_id") or "").strip()
 
     today = utcnow().date()
     local_invoice_ids = [UUID(invoice_ref) for invoice_ref in unique_invoice_refs]
@@ -28089,11 +28142,14 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                        customers.late_payment_charge_base_amount
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
-                WHERE invoices.id = ANY(%s)
-                   OR lower(invoices.xero_invoice_id) = ANY(%s)
+                WHERE (
+                    invoices.id = ANY(%s)
+                    OR lower(invoices.xero_invoice_id) = ANY(%s)
+                )
+                  AND customers.tenant_id = %s
                 ORDER BY invoices.due_date ASC NULLS LAST, invoices.invoice_number ASC
                 """,
-                (local_invoice_ids, xero_invoice_ids),
+                (local_invoice_ids, xero_invoice_ids, master_tenant_id),
             )
             invoices = cursor.fetchall()
         connection.commit()
@@ -28154,7 +28210,6 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
     if not chargeable:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for late payment charges.")
 
-    connection_row = get_xero_connection_for_user(user["id"])
     posting_settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
     late_payment_charge_account_code = posting_settings["latePaymentChargeAccountCode"]
     late_payment_charge_tax_type = posting_settings["latePaymentChargeTaxType"]
@@ -28179,9 +28234,10 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     FROM invoices
                     JOIN customers ON customers.id = invoices.customer_id
                     WHERE invoices.id = %s
+                      AND customers.tenant_id = %s
                     FOR UPDATE
                     """,
-                    (invoice["id"],),
+                    (invoice["id"], master_tenant_id),
                 )
                 locked_invoice = cursor.fetchone()
                 if locked_invoice is None:
@@ -28415,6 +28471,8 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in write-off selection.") from exc
     if not unique_invoice_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    master_tenant_id = str(connection_row.get("tenant_id") or "").strip()
 
     today = utcnow().date()
     with get_connection() as connection:
@@ -28437,9 +28495,10 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
                 WHERE invoices.id = ANY(%s)
+                  AND customers.tenant_id = %s
                 ORDER BY invoices.due_date ASC NULLS LAST, invoices.invoice_number ASC
                 """,
-                (unique_invoice_ids,),
+                (unique_invoice_ids, master_tenant_id),
             )
             invoices = cursor.fetchall()
         connection.commit()
@@ -28468,7 +28527,6 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
     if not writable:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for write-off.")
 
-    connection_row = get_xero_connection_for_user(user["id"])
     posting_settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
     account_code = posting_settings["badDebtWriteOffAccountCode"]
     created = []
