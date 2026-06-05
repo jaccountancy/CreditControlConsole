@@ -85,7 +85,9 @@ from .services import (
     create_late_payment_charges,
     company_calendar_payload,
     create_payment_plan,
+    apply_customer_vat_transaction_edits,
     customer_vat_return_transactions,
+    customer_vat_return_unreconciled_transactions,
     vat_no_vat_suggestions,
     customer_detail,
     customer_xero_transactions,
@@ -95,6 +97,7 @@ from .services import (
     delete_bank_statement_upload,
     delete_me_report_client,
     delete_me_report_submission,
+    delete_customer_vat_unreconciled_transaction,
     extract_me_report_ct_comps_loss,
     factory_reset_console,
     fix_xero_lock_date_mismatch,
@@ -2491,6 +2494,53 @@ async def api_customer_vat_no_vat_suggestions(
         period_start=periodStart or None,
         refresh=refresh,
     )
+
+
+@app.get("/api/customers/{customer_id}/vat-returns/{period_end}/unreconciled")
+async def api_customer_vat_return_unreconciled_transactions(
+    customer_id: str,
+    period_end: str,
+    tenantId: str = Query(default=""),
+    periodStart: str = Query(default=""),
+    user: dict = Depends(require_panel_user),
+):
+    return await customer_vat_return_unreconciled_transactions(
+        customer_id,
+        period_end,
+        user,
+        tenant_id=tenantId or None,
+        period_start=periodStart or None,
+    )
+
+
+@app.delete("/api/customers/{customer_id}/vat-returns/{period_end}/unreconciled/{transaction_id}")
+async def api_delete_customer_vat_unreconciled_transaction(
+    customer_id: str,
+    period_end: str,
+    transaction_id: str,
+    tenantId: str = Query(default=""),
+    periodStart: str = Query(default=""),
+    user: dict = Depends(require_panel_user),
+):
+    return await delete_customer_vat_unreconciled_transaction(
+        customer_id,
+        period_end,
+        transaction_id,
+        user,
+        tenant_id=tenantId or None,
+        period_start=periodStart or None,
+    )
+
+
+@app.post("/api/customers/{customer_id}/vat-returns/{period_end}/apply-edits")
+async def api_apply_customer_vat_transaction_edits(
+    customer_id: str,
+    period_end: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return await apply_customer_vat_transaction_edits(customer_id, period_end, user, payload)
 
 
 @app.post("/api/customers/{customer_id}/allocations")

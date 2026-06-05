@@ -25258,7 +25258,7 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
                                     <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
-                                    <button class="ghost-button" id="vatReturnRefreshButton" type="button">Refresh</button>
+                                    <button class="ghost-button" id="vatReturnRefreshButton" type="button">Pull VAT return data from Xero</button>
                                     <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Jenius AI</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
                                     <button class="primary-button" id="vatReturnExportNoVatButton" type="button" hidden>Export No VAT Report</button>
@@ -25688,18 +25688,40 @@
                                 </div>
                             </div>
                             <div class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="VAT AI review suggestions">
-                                    <thead>
-                                        <tr>
-                                            <th>Transaction</th>
-                                            <th>Suggested change</th>
-                                            <th>Reason</th>
-                                            <th>Status</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="vatAiReviewBody"></tbody>
-                                </table>
+                                <div class="page-pills" id="vatAiReviewTabs">
+                                    <button class="page-pill is-active" id="vatAiReviewTabChecks" type="button" data-vat-ai-tab="checks">AI checks</button>
+                                    <button class="page-pill" id="vatAiReviewTabUnreconciled" type="button" data-vat-ai-tab="unreconciled">Unreconciled transactions</button>
+                                </div>
+                                <section id="vatAiReviewChecksWrap">
+                                    <table class="ch-table" aria-label="VAT AI review suggestions">
+                                        <thead>
+                                            <tr>
+                                                <th>Transaction</th>
+                                                <th>Suggested change</th>
+                                                <th>Reason</th>
+                                                <th>Status</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vatAiReviewBody"></tbody>
+                                    </table>
+                                </section>
+                                <section id="vatAiReviewUnreconciledWrap" hidden>
+                                    <table class="ch-table" aria-label="VAT unreconciled transactions">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Reference</th>
+                                                <th>Description</th>
+                                                <th>Net</th>
+                                                <th>VAT</th>
+                                                <th>Gross</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vatAiReviewUnreconciledBody"></tbody>
+                                    </table>
+                                </section>
                             </div>
                         </section>
                     </div>
@@ -27117,6 +27139,7 @@
             let renderDiagnostics = [];
             let renderDiagnosticsRibbonDismissed = false;
             let vatAiReviewModalOpen = false;
+            let vatAiReviewModalTab = "checks";
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
             let yePrepAiReviewRows = [];
@@ -27127,6 +27150,8 @@
             const vatReturnTransactionLoading = new Set();
             const vatReturnManualEditsByKey = {};
             const vatReturnAiSuggestionsByKey = {};
+            const vatReturnUnreconciledByKey = {};
+            const vatReturnUnreconciledLoading = new Set();
             const vatReturnWorkflowByKey = {};
             const vatClientApprovalDraftByKey = {};
             let vatArchivedPeriodsByKey = loadVatArchivedPeriods();
@@ -28167,6 +28192,8 @@
                         vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
                         vatNoVatSuggestions: config.endpoints?.vatNoVatSuggestions || "/api/customers/:customerId/vat-returns/:periodEnd/no-vat-suggestions",
+                        vatUnreconciledTransactions: config.endpoints?.vatUnreconciledTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/unreconciled",
+                        vatApplyEdits: config.endpoints?.vatApplyEdits || "/api/customers/:customerId/vat-returns/:periodEnd/apply-edits",
                         yePrepAiReview: config.endpoints?.yePrepAiReview || "/api/ye-prep/review",
                         allocation: config.endpoints?.allocation || "/api/customers/:customerId/allocations",
                         promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
@@ -64618,8 +64645,77 @@
                 return true;
             }
 
+            async function pushVatSuggestionFixToXero(entry, suggestion = {}) {
+                if (!entry?.clientId || !entry?.periodEndISO || !suggestion?.transactionId) return false;
+                const requestPath = endpointURL(
+                    api.endpoints.vatApplyEdits,
+                    { customerId: entry.clientId, periodEnd: entry.periodEndISO }
+                );
+                const payload = await requestJSON(requestPath, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        tenantId: entry.tenantId || "",
+                        periodStart: entry.periodStartISO || "",
+                        edits: [{
+                            transactionId: suggestion.transactionId,
+                            taxCode: suggestion.proposedTaxCode || "",
+                            accountCode: suggestion.proposedAccountCode || "",
+                        }],
+                    }),
+                });
+                const rows = Array.isArray(payload?.transactions) ? payload.transactions.map((row) => normaliseVatTransaction(row)) : [];
+                vatReturnTransactionCache.set(entry.key, {
+                    fetchedAt: new Date().toISOString(),
+                    source: "xero-period-sync",
+                    transactions: rows,
+                    taxReturn: vatReturnTransactionCache.get(entry.key)?.taxReturn || null,
+                });
+                return true;
+            }
+
+            async function loadVatUnreconciledTransactions(entry, force = false) {
+                if (!entry?.key || !entry?.clientId || !entry?.periodEndISO) return [];
+                if (!force && Array.isArray(vatReturnUnreconciledByKey[entry.key])) return vatReturnUnreconciledByKey[entry.key];
+                if (vatReturnUnreconciledLoading.has(entry.key)) return vatReturnUnreconciledByKey[entry.key] || [];
+                vatReturnUnreconciledLoading.add(entry.key);
+                try {
+                    const requestPath = endpointURL(
+                        api.endpoints.vatUnreconciledTransactions,
+                        { customerId: entry.clientId, periodEnd: entry.periodEndISO }
+                    );
+                    const query = new URLSearchParams();
+                    if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
+                    if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                    const payload = await requestJSON(query.toString() ? `${requestPath}?${query.toString()}` : requestPath);
+                    const rows = Array.isArray(payload?.transactions) ? payload.transactions : [];
+                    vatReturnUnreconciledByKey[entry.key] = rows;
+                    return rows;
+                } catch (error) {
+                    console.error("Unable to load VAT unreconciled transactions", error);
+                    vatReturnUnreconciledByKey[entry.key] = [];
+                    throw error;
+                } finally {
+                    vatReturnUnreconciledLoading.delete(entry.key);
+                }
+            }
+
+            async function deleteVatUnreconciledTransaction(entry, transactionId = "") {
+                if (!entry?.clientId || !entry?.periodEndISO || !transactionId) return;
+                const requestPath = endpointURL(
+                    `${api.endpoints.vatUnreconciledTransactions}/${encodeURIComponent(transactionId)}`,
+                    { customerId: entry.clientId, periodEnd: entry.periodEndISO }
+                );
+                const query = new URLSearchParams();
+                if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
+                if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                await requestJSON(query.toString() ? `${requestPath}?${query.toString()}` : requestPath, { method: "DELETE" });
+                await loadVatUnreconciledTransactions(entry, true);
+                await ensureVatReturnTransactions(entry, true, { silent: true });
+            }
+
             function closeVatAiReviewModal() {
                 vatAiReviewModalOpen = false;
+                vatAiReviewModalTab = "checks";
                 const modal = document.getElementById("vatAiReviewModal");
                 if (modal) modal.hidden = true;
             }
@@ -64627,17 +64723,29 @@
             function renderVatAiReviewModal(entry, transactions = []) {
                 const modal = document.getElementById("vatAiReviewModal");
                 const body = document.getElementById("vatAiReviewBody");
+                const unreconciledBody = document.getElementById("vatAiReviewUnreconciledBody");
                 const summary = document.getElementById("vatAiReviewSummary");
                 const applyButton = document.getElementById("vatAiReviewApplyConfirmedButton");
                 const closeButton = document.getElementById("vatAiReviewCloseButton");
-                if (!modal || !body || !summary || !applyButton || !closeButton) return;
+                const tabsWrap = document.getElementById("vatAiReviewTabs");
+                const checksWrap = document.getElementById("vatAiReviewChecksWrap");
+                const unreconciledWrap = document.getElementById("vatAiReviewUnreconciledWrap");
+                const checksTabButton = document.getElementById("vatAiReviewTabChecks");
+                const unreconciledTabButton = document.getElementById("vatAiReviewTabUnreconciled");
+                if (!modal || !body || !unreconciledBody || !summary || !applyButton || !closeButton || !tabsWrap || !checksWrap || !unreconciledWrap || !checksTabButton || !unreconciledTabButton) return;
                 modal.hidden = !vatAiReviewModalOpen;
                 if (!vatAiReviewModalOpen || !entry?.key) return;
                 const entryKey = entry.key;
                 const suggestions = ensureVatAiSuggestions(entry, transactions);
                 const confirmed = suggestions.filter((item) => item.status === "confirmed" || item.status === "applied").length;
                 const rejected = suggestions.filter((item) => item.status === "rejected").length;
-                summary.textContent = `${suggestions.length.toLocaleString("en-GB")} suggestion${suggestions.length === 1 ? "" : "s"} · ${confirmed.toLocaleString("en-GB")} confirmed/applied · ${rejected.toLocaleString("en-GB")} rejected`;
+                const unreconciledRows = Array.isArray(vatReturnUnreconciledByKey[entryKey]) ? vatReturnUnreconciledByKey[entryKey] : [];
+                const unreconciledLoading = vatReturnUnreconciledLoading.has(entryKey);
+                summary.textContent = `${suggestions.length.toLocaleString("en-GB")} suggestion${suggestions.length === 1 ? "" : "s"} · ${confirmed.toLocaleString("en-GB")} confirmed/applied · ${rejected.toLocaleString("en-GB")} rejected · ${unreconciledRows.length.toLocaleString("en-GB")} unreconciled`;
+                checksTabButton.classList.toggle("is-active", vatAiReviewModalTab === "checks");
+                unreconciledTabButton.classList.toggle("is-active", vatAiReviewModalTab === "unreconciled");
+                checksWrap.hidden = vatAiReviewModalTab !== "checks";
+                unreconciledWrap.hidden = vatAiReviewModalTab !== "unreconciled";
                 if (closeButton.dataset.vatWired !== "true") {
                     closeButton.dataset.vatWired = "true";
                     closeButton.addEventListener("click", closeVatAiReviewModal);
@@ -64646,6 +64754,22 @@
                     modal.dataset.vatWired = "true";
                     modal.addEventListener("click", (event) => {
                         if (event.target === modal) closeVatAiReviewModal();
+                    });
+                }
+                if (tabsWrap.dataset.vatWired !== "true") {
+                    tabsWrap.dataset.vatWired = "true";
+                    tabsWrap.querySelectorAll("[data-vat-ai-tab]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            vatAiReviewModalTab = button.dataset.vatAiTab || "checks";
+                            if (vatAiReviewModalTab === "unreconciled") {
+                                try {
+                                    await loadVatUnreconciledTransactions(entry, false);
+                                } catch (error) {
+                                    showToast(error?.message || "Unable to load unreconciled transactions", "error");
+                                }
+                            }
+                            renderVatAiReviewModal(entry, transactions);
+                        });
                     });
                 }
                 if (applyButton.dataset.vatWired !== "true") {
@@ -64681,60 +64805,112 @@
                 }
                 if (!suggestions.length) {
                     body.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No suggestions</p><h4>No AI changes recommended</h4><p>This VAT return currently has no warning-driven changes to review.</p></div></td></tr>';
-                    return;
+                } else {
+                    body.innerHTML = suggestions.map((suggestion) => {
+                        const statusClass = suggestion.status === "confirmed" || suggestion.status === "applied"
+                            ? "is-open"
+                            : suggestion.status === "rejected"
+                                ? "is-overdue"
+                                : "is-due";
+                        const suggestedChanges = [];
+                        if (suggestion.proposedTaxCode) suggestedChanges.push(`Tax code → ${suggestion.proposedTaxCode}`);
+                        if (suggestion.proposedAccountCode) suggestedChanges.push(`Account code → ${suggestion.proposedAccountCode}`);
+                        const hasQuickFix = Boolean(suggestion.proposedTaxCode || suggestion.proposedAccountCode);
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(suggestion.reference || "Transaction")}</strong><small>${escapeHTML(suggestion.description || "")}</small></td>
+                                <td>
+                                    <div>${escapeHTML(suggestedChanges.join(" · ") || "Review transaction coding")}</div>
+                                    ${suggestion.confidence ? `<small>Confidence: ${escapeHTML(String(suggestion.confidence).toUpperCase())}</small>` : ""}
+                                    ${suggestion.severity ? `<small>Severity: ${escapeHTML(String(suggestion.severity).toUpperCase())}</small>` : ""}
+                                </td>
+                                <td>${escapeHTML(suggestion.reason || "")}</td>
+                                <td><span class="lock-status-pill ${statusClass}">${escapeHTML(suggestion.status)}</span></td>
+                                <td>
+                                    ${hasQuickFix ? `<button class="ghost-button" type="button" data-vat-ai-apply="${escapeHTML(suggestion.id)}">Apply fix to Xero</button>` : ""}
+                                    <button class="ghost-button" type="button" data-vat-ai-confirm="${escapeHTML(suggestion.id)}">Confirm</button>
+                                    <button class="ghost-button" type="button" data-vat-ai-reject="${escapeHTML(suggestion.id)}">Reject</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join("");
+                    body.querySelectorAll("[data-vat-ai-apply]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const suggestion = suggestions.find((item) => item.id === button.dataset.vatAiApply);
+                            if (!suggestion) return;
+                            if (!suggestion.proposedTaxCode && !suggestion.proposedAccountCode) {
+                                showToast("No automatic fix available for this suggestion", "info");
+                                return;
+                            }
+                            button.disabled = true;
+                            const originalLabel = button.textContent;
+                            button.textContent = "Applying...";
+                            try {
+                                applyVatAiSuggestionFix(entry, suggestion);
+                                await pushVatSuggestionFixToXero(entry, suggestion);
+                                setVatAiSuggestionStatus(entry.key, suggestion.id, "applied");
+                                await ensureVatReturnTransactions(entry, true, { silent: true });
+                                showToast("Fix pushed to Xero and VAT period cache refreshed", "success");
+                                renderVatAiReviewModal(entry, vatTransactionsWithEdits(entry, (vatReturnTransactionCache.get(entry.key) || {}).transactions || transactions));
+                            } catch (error) {
+                                showToast(error?.message || "Unable to push VAT fix to Xero", "error");
+                            } finally {
+                                button.disabled = false;
+                                button.textContent = originalLabel || "Apply fix to Xero";
+                            }
+                        });
+                    });
+                    body.querySelectorAll("[data-vat-ai-confirm]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            setVatAiSuggestionStatus(entryKey, button.dataset.vatAiConfirm, "confirmed");
+                            renderVatAiReviewModal(entry, transactions);
+                        });
+                    });
+                    body.querySelectorAll("[data-vat-ai-reject]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            setVatAiSuggestionStatus(entryKey, button.dataset.vatAiReject, "rejected");
+                            renderVatAiReviewModal(entry, transactions);
+                        });
+                    });
                 }
-                body.innerHTML = suggestions.map((suggestion) => {
-                    const statusClass = suggestion.status === "confirmed" || suggestion.status === "applied"
-                        ? "is-open"
-                        : suggestion.status === "rejected"
-                            ? "is-overdue"
-                            : "is-due";
-                    const suggestedChanges = [];
-                    if (suggestion.proposedTaxCode) suggestedChanges.push(`Tax code → ${suggestion.proposedTaxCode}`);
-                    if (suggestion.proposedAccountCode) suggestedChanges.push(`Account code → ${suggestion.proposedAccountCode}`);
-                    const hasQuickFix = Boolean(suggestion.proposedTaxCode || suggestion.proposedAccountCode);
-                    return `
+                if (unreconciledLoading) {
+                    unreconciledBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading unreconciled transactions</h4><p>Review and delete only if they should not remain in Xero.</p></div></td></tr>';
+                } else if (!unreconciledRows.length) {
+                    unreconciledBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Clear</p><h4>No unreconciled transactions found in this VAT period</h4><p>Nothing to delete for this quarter.</p></div></td></tr>';
+                } else {
+                    unreconciledBody.innerHTML = unreconciledRows.map((row) => `
                         <tr>
-                            <td><strong>${escapeHTML(suggestion.reference || "Transaction")}</strong><small>${escapeHTML(suggestion.description || "")}</small></td>
-                            <td>
-                                <div>${escapeHTML(suggestedChanges.join(" · ") || "Review transaction coding")}</div>
-                                ${suggestion.confidence ? `<small>Confidence: ${escapeHTML(String(suggestion.confidence).toUpperCase())}</small>` : ""}
-                                ${suggestion.severity ? `<small>Severity: ${escapeHTML(String(suggestion.severity).toUpperCase())}</small>` : ""}
-                            </td>
-                            <td>${escapeHTML(suggestion.reason || "")}</td>
-                            <td><span class="lock-status-pill ${statusClass}">${escapeHTML(suggestion.status)}</span></td>
-                            <td>
-                                ${hasQuickFix ? `<button class="ghost-button" type="button" data-vat-ai-apply="${escapeHTML(suggestion.id)}">Apply fix</button>` : ""}
-                                <button class="ghost-button" type="button" data-vat-ai-confirm="${escapeHTML(suggestion.id)}">Confirm</button>
-                                <button class="ghost-button" type="button" data-vat-ai-reject="${escapeHTML(suggestion.id)}">Reject</button>
-                            </td>
+                            <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                            <td><strong>${escapeHTML(row.reference || row.id || "—")}</strong><small>${escapeHTML(row.contactName || "")}</small></td>
+                            <td>${escapeHTML(row.description || row.type || "Transaction")}</td>
+                            <td>${formatCurrency(row.netAmount || 0)}</td>
+                            <td>${formatCurrency(row.taxAmount || 0)}</td>
+                            <td>${formatCurrency(row.grossAmount || 0)}</td>
+                            <td><button class="ghost-button danger-button" type="button" data-vat-ai-delete-unreconciled="${escapeHTML(row.id || "")}">Delete in Xero</button></td>
                         </tr>
-                    `;
-                }).join("");
-                body.querySelectorAll("[data-vat-ai-apply]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        const suggestion = suggestions.find((item) => item.id === button.dataset.vatAiApply);
-                        if (!suggestion) return;
-                        if (applyVatAiSuggestionFix(entry, suggestion)) {
-                            showToast("AI fix applied to VAT coding", "success");
-                        } else {
-                            showToast("No automatic fix available for this suggestion", "info");
-                        }
-                        renderVatAiReviewModal(entry, vatTransactionsWithEdits(entry, transactions));
+                    `).join("");
+                    unreconciledBody.querySelectorAll("[data-vat-ai-delete-unreconciled]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const transactionId = String(button.dataset.vatAiDeleteUnreconciled || "").trim();
+                            if (!transactionId) return;
+                            const confirmedDelete = window.confirm("Delete this unreconciled transaction in Xero?");
+                            if (!confirmedDelete) return;
+                            button.disabled = true;
+                            const originalLabel = button.textContent;
+                            button.textContent = "Deleting...";
+                            try {
+                                await deleteVatUnreconciledTransaction(entry, transactionId);
+                                showToast("Unreconciled transaction deleted in Xero", "success");
+                                renderVatAiReviewModal(entry, vatTransactionsWithEdits(entry, (vatReturnTransactionCache.get(entry.key) || {}).transactions || transactions));
+                            } catch (error) {
+                                showToast(error?.message || "Unable to delete unreconciled transaction", "error");
+                            } finally {
+                                button.disabled = false;
+                                button.textContent = originalLabel || "Delete in Xero";
+                            }
+                        });
                     });
-                });
-                body.querySelectorAll("[data-vat-ai-confirm]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        setVatAiSuggestionStatus(entryKey, button.dataset.vatAiConfirm, "confirmed");
-                        renderVatAiReviewModal(entry, transactions);
-                    });
-                });
-                body.querySelectorAll("[data-vat-ai-reject]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        setVatAiSuggestionStatus(entryKey, button.dataset.vatAiReject, "rejected");
-                        renderVatAiReviewModal(entry, transactions);
-                    });
-                });
+                }
             }
 
             function closeVatFinaliseModal() {
@@ -64902,6 +65078,7 @@
                 if (force) {
                     vatReturnTransactionCache.delete(entry.key);
                     delete vatReturnAiSuggestionsByKey[entry.key];
+                    delete vatReturnUnreconciledByKey[entry.key];
                 }
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
@@ -65082,7 +65259,7 @@
                         }
                         refreshButton.disabled = true;
                         const originalLabel = refreshButton.textContent;
-                        refreshButton.textContent = "Syncing Xero...";
+                        refreshButton.textContent = "Pulling VAT data...";
                         try {
                             await runXeroSync();
                             await loadVatReturnQueue(true);
@@ -65092,10 +65269,10 @@
                             } else {
                                 renderVatReturnPrepareScreen();
                             }
-                            showToast("VAT data resynced from Xero", "success");
+                            showToast("VAT period data pulled from Xero", "success");
                         } finally {
                             refreshButton.disabled = false;
-                            refreshButton.textContent = originalLabel || "Refresh";
+                            refreshButton.textContent = originalLabel || "Pull VAT return data from Xero";
                         }
                     });
                 }
@@ -65130,6 +65307,10 @@
                         try {
                             aiReviewButton.textContent = "Building suggestions...";
                             await loadVatAiSuggestions(entry, transactions, true);
+                            if (entry?.clientId) {
+                                await loadVatUnreconciledTransactions(entry, false).catch(() => []);
+                            }
+                            vatAiReviewModalTab = "checks";
                             vatAiReviewModalOpen = true;
                             renderVatAiReviewModal(entry, transactions);
                         } finally {

@@ -24149,6 +24149,255 @@ async def customer_vat_return_transactions(
     }
 
 
+def _xero_datetime_where_literal(value: date) -> str:
+    return f"DateTime({value.year}, {value.month}, {value.day})"
+
+
+async def customer_vat_return_unreconciled_transactions(
+    customer_id: str,
+    period_end: str,
+    user: dict,
+    *,
+    tenant_id: str | None = None,
+    period_start: str | None = None,
+) -> dict:
+    customer, connection_row = _validate_customer_xero_access(customer_id, user, tenant_id=tenant_id)
+    period_end_date = _parse_optional_iso_date(period_end)
+    if period_end_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period end date must be in YYYY-MM-DD format.")
+    period_start_date = _parse_optional_iso_date(period_start) if period_start else None
+    if period_start_date is None:
+        period_start_date = _vat_return_period_start_from_end(period_end_date)
+    if period_start_date > period_end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period start date cannot be after period end date.")
+
+    period_end_exclusive = period_end_date + timedelta(days=1)
+    date_where = (
+        f"(Date>={_xero_datetime_where_literal(period_start_date)}"
+        f"&&Date<{_xero_datetime_where_literal(period_end_exclusive)})"
+    )
+    where_clause = f'{date_where}&&Status!="DELETED"&&IsReconciled==false'
+    rows = await fetch_paginated_collection(
+        connection_row,
+        BANK_TRANSACTIONS_URL,
+        "BankTransactions",
+        params={"where": where_clause, "order": "Date DESC"},
+        max_pages=12,
+    )
+    transactions: list[dict] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        tx_id = str(row.get("BankTransactionID") or "").strip()
+        if not tx_id:
+            continue
+        tx_date = _parse_optional_iso_date(row.get("Date") or row.get("DateString"))
+        if tx_date is None or tx_date < period_start_date or tx_date > period_end_date:
+            continue
+        contact = row.get("Contact") if isinstance(row.get("Contact"), dict) else {}
+        line_items = row.get("LineItems") if isinstance(row.get("LineItems"), list) else []
+        line_net = sum((_money(item.get("LineAmount")) for item in line_items if isinstance(item, dict)), Decimal("0.00"))
+        net_amount = _money(line_net if line_items else row.get("SubTotal") or row.get("Total") or 0)
+        gross_amount = _money(row.get("Total") or net_amount)
+        tax_amount = _money(row.get("TotalTax") or (gross_amount - net_amount))
+        transactions.append(
+            {
+                "id": tx_id,
+                "date": tx_date.isoformat(),
+                "reference": str(row.get("Reference") or row.get("BankTransactionID") or "").strip(),
+                "description": str(row.get("Type") or "Bank transaction").strip(),
+                "status": str(row.get("Status") or "").strip(),
+                "type": str(row.get("Type") or "").strip(),
+                "contactName": str(contact.get("Name") or "").strip(),
+                "isReconciled": bool(row.get("IsReconciled")),
+                "netAmount": float(net_amount),
+                "taxAmount": float(tax_amount),
+                "grossAmount": float(gross_amount),
+            }
+        )
+    transactions.sort(
+        key=lambda item: (
+            _parse_optional_iso_date(item.get("date")) or date.min,
+            str(item.get("reference") or ""),
+        ),
+        reverse=True,
+    )
+    return {
+        "customerId": str(customer.get("id") or ""),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "periodStartISO": period_start_date.isoformat(),
+        "periodEndISO": period_end_date.isoformat(),
+        "transactions": transactions,
+        "count": len(transactions),
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
+async def delete_customer_vat_unreconciled_transaction(
+    customer_id: str,
+    period_end: str,
+    transaction_id: str,
+    user: dict,
+    *,
+    tenant_id: str | None = None,
+    period_start: str | None = None,
+) -> dict:
+    customer, connection_row = _validate_customer_xero_access(customer_id, user, tenant_id=tenant_id)
+    period_end_date = _parse_optional_iso_date(period_end)
+    if period_end_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period end date must be in YYYY-MM-DD format.")
+    period_start_date = _parse_optional_iso_date(period_start) if period_start else None
+    if period_start_date is None:
+        period_start_date = _vat_return_period_start_from_end(period_end_date)
+    transaction_id = str(transaction_id or "").strip()
+    if not transaction_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction id is required.")
+
+    payload = await xero_api_get(connection_row, f"{BANK_TRANSACTIONS_URL}/{transaction_id}")
+    rows = (payload or {}).get("BankTransactions") if isinstance(payload, dict) else []
+    transaction = rows[0] if isinstance(rows, list) and rows else {}
+    if not isinstance(transaction, dict) or not str(transaction.get("BankTransactionID") or "").strip():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank transaction not found in Xero.")
+    tx_date = _parse_optional_iso_date(transaction.get("Date") or transaction.get("DateString"))
+    if tx_date is None or tx_date < period_start_date or tx_date > period_end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bank transaction is outside this VAT period.")
+    if bool(transaction.get("IsReconciled")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This transaction is reconciled and cannot be deleted.")
+
+    await update_bank_transaction_status(connection_row, transaction_id, "DELETED")
+    record_audit_event(
+        "customer",
+        str(customer.get("id") or ""),
+        "vat_return.unreconciled_transaction_deleted",
+        {
+            "transactionId": transaction_id,
+            "periodStartISO": period_start_date.isoformat(),
+            "periodEndISO": period_end_date.isoformat(),
+            "tenantId": str(connection_row.get("tenant_id") or ""),
+        },
+        user.get("id"),
+    )
+    return {
+        "status": "ok",
+        "deletedTransactionId": transaction_id,
+        "customerId": str(customer.get("id") or ""),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+    }
+
+
+async def apply_customer_vat_transaction_edits(
+    customer_id: str,
+    period_end: str,
+    user: dict,
+    payload: dict | None = None,
+) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    tenant_id = str(payload.get("tenantId") or "").strip() or None
+    period_start = str(payload.get("periodStart") or "").strip() or None
+    edits = payload.get("edits") if isinstance(payload.get("edits"), list) else []
+    if not edits:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one VAT edit is required.")
+
+    customer, connection_row = _validate_customer_xero_access(customer_id, user, tenant_id=tenant_id)
+    transactions_payload = await customer_vat_return_transactions(
+        str(customer.get("id") or ""),
+        period_end,
+        user,
+        tenant_id=tenant_id,
+        period_start=period_start,
+        refresh=False,
+    )
+    tx_lookup = {
+        str(row.get("id") or "").strip(): row
+        for row in (transactions_payload.get("transactions") or [])
+        if isinstance(row, dict) and str(row.get("id") or "").strip()
+    }
+    invoice_updates: dict[str, list[dict]] = defaultdict(list)
+    skipped: list[dict] = []
+    for edit in edits:
+        if not isinstance(edit, dict):
+            continue
+        tx_id = str(edit.get("transactionId") or "").strip()
+        if not tx_id:
+            continue
+        current = tx_lookup.get(tx_id)
+        if not current:
+            skipped.append({"transactionId": tx_id, "reason": "Transaction was not found in the cached VAT period rows."})
+            continue
+        invoice_id = str(current.get("xeroInvoiceId") or "").strip()
+        if not invoice_id:
+            skipped.append({"transactionId": tx_id, "reason": "No Xero invoice id is available for this transaction row."})
+            continue
+        update = {
+            "transactionId": tx_id,
+            "lineIndex": int(current.get("lineIndex") or 0),
+            "taxCode": str(edit.get("taxCode") or "").strip(),
+            "accountCode": str(edit.get("accountCode") or "").strip(),
+        }
+        if not update["taxCode"] and not update["accountCode"]:
+            continue
+        invoice_updates[invoice_id].append(update)
+
+    if not invoice_updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid VAT edits were supplied for this period.")
+
+    applied = 0
+    errors: list[dict] = []
+    for invoice_id, invoice_edits in invoice_updates.items():
+        try:
+            invoice_payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{invoice_id}")
+            raw_invoice = ((invoice_payload or {}).get("Invoices") or [{}])[0]
+            line_items = raw_invoice.get("LineItems") if isinstance(raw_invoice.get("LineItems"), list) else []
+            if not line_items:
+                skipped.extend({"transactionId": item.get("transactionId") or "", "reason": "Invoice has no line items in Xero."} for item in invoice_edits)
+                continue
+            updated_any = False
+            for item in invoice_edits:
+                line_index = int(item.get("lineIndex") or 0)
+                if line_index < 0 or line_index >= len(line_items):
+                    skipped.append({"transactionId": item.get("transactionId") or "", "reason": "Line index is out of range for the current Xero invoice."})
+                    continue
+                line = line_items[line_index] if isinstance(line_items[line_index], dict) else {}
+                next_tax = str(item.get("taxCode") or "").strip()
+                next_account = str(item.get("accountCode") or "").strip()
+                if next_tax:
+                    line["TaxType"] = next_tax
+                    updated_any = True
+                if next_account:
+                    line["AccountCode"] = next_account
+                    updated_any = True
+                line_items[line_index] = line
+            if not updated_any:
+                continue
+            update_payload = {"InvoiceID": invoice_id, "LineItems": line_items}
+            await create_sales_invoice(connection_row, update_payload)
+            applied += len(invoice_edits)
+        except Exception as exc:
+            errors.append({"invoiceId": invoice_id, "message": _sync_error_message(exc)})
+
+    refreshed = await customer_vat_return_transactions(
+        str(customer.get("id") or ""),
+        period_end,
+        user,
+        tenant_id=tenant_id,
+        period_start=period_start,
+        refresh=True,
+    )
+    return {
+        "status": "ok",
+        "customerId": str(customer.get("id") or ""),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "appliedCount": applied,
+        "errorCount": len(errors),
+        "errors": errors,
+        "skipped": skipped,
+        "transactions": refreshed.get("transactions") or [],
+        "cacheStatus": refreshed.get("cacheStatus") or {},
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
 VAT_NO_VAT_SUGGESTIONS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
