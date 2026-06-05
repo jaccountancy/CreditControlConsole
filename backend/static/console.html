@@ -22294,6 +22294,7 @@
                             <div class="me-report-topbar-core-actions">
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                                 <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Create flows from Xero clients</button>
+                                <button class="ghost-button" id="bulkDeployMeReportTenantsButton" type="button">Deploy flows (all tenants)</button>
                                 <a class="ghost-button" id="connectAdditionalXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect additional Xero</a>
                                 <details class="xero-lock-columns me-report-flow-columns" id="meReportFlowColumns">
                                     <summary class="ghost-button">Columns</summary>
@@ -49434,10 +49435,78 @@
                 const monthLabel = !Number.isNaN(periodStartDate.getTime())
                     ? periodStartDate.toLocaleString("en-GB", { month: "long" })
                     : new Date(year, safeMonth - 1, 1).toLocaleString("en-GB", { month: "long" });
-                const freq = String(client.bookkeepingFrequency || "Monthly").toLowerCase() === "monthly"
+                const rawFrequency = String(client.bookkeepingFrequency || "Monthly").toLowerCase() === "monthly"
                     ? "bookkeeping"
                     : String(client.bookkeepingFrequency || "bookkeeping");
-                return `${monthLabel} ${freq} flow`;
+                const frequency = rawFrequency
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+                    .join(" ");
+                return `${monthLabel} ${frequency} Flow`;
+            }
+
+            function meReportFlowMonthLabel(client = {}) {
+                const periodStart = String(client.flowPeriodStart || "");
+                const startDate = new Date(periodStart);
+                if (!Number.isNaN(startDate.getTime())) {
+                    return `${startDate.toLocaleString("en-GB", { month: "long" })} ${startDate.getFullYear()}`;
+                }
+                const month = Number(client.flowMonth || new Date().getMonth() + 1);
+                const year = Number(client.flowYear || new Date().getFullYear());
+                const safeMonth = month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+                const monthDate = new Date(year, safeMonth - 1, 1);
+                return `${monthDate.toLocaleString("en-GB", { month: "long" })} ${monthDate.getFullYear()}`;
+            }
+
+            function meReportClientInitials(client = {}) {
+                const source = String(client.clientName || client.xeroContactName || "").trim();
+                if (!source) return "MF";
+                const words = source
+                    .replace(/[^a-zA-Z0-9\s]/g, " ")
+                    .split(/\s+/)
+                    .filter(Boolean);
+                if (!words.length) return "MF";
+                if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+                return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
+            }
+
+            function meReportFlowChecksProgress(client = {}) {
+                const rawTotal = Number(
+                    client.workflowCheckTotal
+                    || client.checklistTotal
+                    || client.summary?.workflowCheckTotal
+                    || 33
+                );
+                const total = Number.isFinite(rawTotal) && rawTotal > 0 ? Math.round(rawTotal) : 33;
+                const explicitCompleted = Number(
+                    client.workflowCheckCompleted
+                    || client.checklistCompleted
+                    || client.summary?.workflowCheckCompleted
+                    || client.summary?.checksCompleted
+                    || 0
+                );
+                if (Number.isFinite(explicitCompleted) && explicitCompleted > 0) {
+                    const completed = Math.max(0, Math.min(total, Math.round(explicitCompleted)));
+                    return { completed, total };
+                }
+                const status = meReportFlowStatus(client);
+                if (status === "completed") return { completed: total, total };
+                if (status === "awaiting_review") return { completed: Math.max(1, total - 1), total };
+                if (status === "bounceback") return { completed: Math.max(1, Math.floor(total * 0.45)), total };
+                if (status === "draft") return { completed: Math.max(1, Math.floor(total * 0.35)), total };
+                return { completed: 0, total };
+            }
+
+            function meReportFlowTimelineMeta(client = {}) {
+                const parts = [];
+                const createdAt = parseDateValue(client.createdAt);
+                const dueAt = parseDateValue(client.flowDeadlineAt);
+                const updatedAt = parseDateValue(client.lastCalculatedAt || client.lastSyncAt || client.lastReportAt);
+                if (createdAt) parts.push(`Started ${createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`);
+                if (dueAt) parts.push(`Due ${dueAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`);
+                if (updatedAt) parts.push(`Updated ${updatedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`);
+                return parts;
             }
 
             function meReportFlowManager(client = {}) {
@@ -49885,9 +49954,7 @@
                     const marker = button.querySelector("span");
                     if (marker) marker.textContent = active ? (currentSort.direction === "asc" ? "Asc" : "Desc") : "";
                 });
-                const visibleColumnCount = Object.keys(meReportClientTableDefaultColumns)
-                    .filter((key) => meReportClientColumnVisible(key))
-                    .length + 1 || 2;
+                const visibleColumnCount = 6;
 
                 const selectedIds = meReportValidSelectedFlowIds();
                 const selectedVisibleCount = clients.filter((client) => selectedIds.has(String(client?.id || ""))).length;
@@ -49902,52 +49969,55 @@
                 tbody.innerHTML = clients.map((client) => {
                     const flowStatus = meReportFlowStatus(client);
                     const flowStatusLabel = meReportFlowStatusLabel(flowStatus);
-                    const difficultyScore = meReportDifficultyScore(client);
-                    const difficultyBand = meReportDifficultyBand(difficultyScore);
-                    const latestActivityTime = meReportClientLatestActivityTime(client);
-                    const manager = meReportFlowManager(client);
                     const flowName = meReportFlowName(client);
                     const periodStart = String(client.flowPeriodStart || "");
                     const periodEnd = String(client.flowPeriodEnd || "");
-                    const deadlineAt = String(client.flowDeadlineAt || "");
-                    const periodCopy = periodStart && periodEnd
-                        ? `${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}`
-                        : `${String(client.bookkeepingFrequency || "Monthly")} cycle`;
-                    const deadlineCopy = deadlineAt ? meReportDateDisplay(deadlineAt) : "--";
-                    const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email connected";
+                    const periodCopy = periodStart && periodEnd ? `${meReportDateDisplay(periodStart)} — ${meReportDateDisplay(periodEnd)}` : "--";
                     const contact = contactsById.get(String(client.xeroContactId || "").trim()) || null;
-                    const workspace = xeroWorkspaceLabel(
-                        client.tenantName || contact?.tenantName || "",
-                        client.tenantId || contact?.tenantId || "",
-                        "Xero workspace pending"
-                    );
-                    const clientMeta = [workspace];
-                    if (client.xeroContactId) clientMeta.push(String(client.xeroContactId));
-                    if (email && email !== "No Xero email connected") clientMeta.push(email);
+                    const organisationName = String(client.clientName || client.xeroContactName || "Unnamed client");
+                    const checks = meReportFlowChecksProgress(client);
+                    const timelineMeta = meReportFlowTimelineMeta(client);
+                    const initials = meReportClientInitials(client);
+                    const rowClass = [
+                        "me-report-flow-table-row",
+                        client.id === selectedMeReportClientId ? "is-active" : "",
+                        meReportClientStatus(client) === "archived" ? "is-archived" : ""
+                    ].filter(Boolean).join(" ");
                     return `
-                        <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
-                            <td>
-                                <input
-                                    type="checkbox"
-                                    data-me-report-flow-select="${escapeHTML(client.id || "")}"
-                                    aria-label="Select flow ${escapeHTML(client.clientName || client.id || "")}"
-                                    ${selectedIds.has(String(client.id || "")) ? "checked" : ""}
-                                >
-                            </td>
-                            ${meReportClientColumnVisible("client") ? `<td>
-                                <div class="me-report-client-name-cell">
-                                    <span class="me-report-client-table-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
-                                    <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(clientMeta.join(" · ") || email)}</small></div>
+                        <tr class="${rowClass}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
+                            <td colspan="6">
+                                <div class="me-report-flow-card">
+                                    <span class="me-report-flow-select">
+                                        <input
+                                            type="checkbox"
+                                            data-me-report-flow-select="${escapeHTML(client.id || "")}"
+                                            aria-label="Select flow ${escapeHTML(organisationName || client.id || "")}"
+                                            ${selectedIds.has(String(client.id || "")) ? "checked" : ""}
+                                        >
+                                    </span>
+                                    <div class="me-report-flow-main">
+                                        <span class="me-report-flow-avatar" aria-hidden="true">${escapeHTML(initials)}</span>
+                                        <div class="me-report-flow-title-wrap">
+                                            <strong>${escapeHTML(flowName)}</strong>
+                                            <div class="me-report-flow-meta">
+                                                ${timelineMeta.map((item, index) => `<span>${escapeHTML(item)}</span>${index < timelineMeta.length - 1 ? '<span class="dot">|</span>' : ""}`).join("")}
+                                                ${timelineMeta.length ? '<span class="dot">|</span>' : ""}
+                                                <span class="bank-status-pill ${meReportFlowStatusClass(flowStatus)}">${escapeHTML(flowStatusLabel)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="me-report-flow-org">
+                                        <strong>${escapeHTML(organisationName)}</strong>
+                                    </div>
+                                    <div class="me-report-flow-period">
+                                        <strong>${escapeHTML(periodCopy)}</strong>
+                                    </div>
+                                    <div class="me-report-flow-checks">
+                                        <strong>${checks.completed.toLocaleString("en-GB")}/${checks.total.toLocaleString("en-GB")} checks</strong>
+                                    </div>
+                                    <button class="primary-button" type="button" data-me-report-open-client="${escapeHTML(client.id || "")}">View workflow</button>
                                 </div>
-                            </td>` : ""}
-                            ${meReportClientColumnVisible("clientId") ? `<td><strong>${escapeHTML(client.clientId || client.id || "--")}</strong><small>Client ID</small></td>` : ""}
-                            ${meReportClientColumnVisible("flow") ? `<td><strong>${escapeHTML(flowName)}</strong><small>${escapeHTML(periodCopy)}</small></td>` : ""}
-                            ${meReportClientColumnVisible("deadline") ? `<td><strong>${escapeHTML(deadlineCopy)}</strong><small>Flow deadline</small></td>` : ""}
-                            ${meReportClientColumnVisible("manager") ? `<td><strong>${escapeHTML(manager)}</strong><small>Client manager</small></td>` : ""}
-                            ${meReportClientColumnVisible("difficulty") ? `<td><span class="me-report-difficulty-pill is-${escapeHTML(difficultyBand)}">${difficultyScore}/10 · ${escapeHTML(meReportDifficultyLabel(difficultyScore))}</span></td>` : ""}
-                            ${meReportClientColumnVisible("status") ? `<td><span class="bank-status-pill ${meReportFlowStatusClass(flowStatus)}">${escapeHTML(flowStatusLabel)}</span></td>` : ""}
-                            ${meReportClientColumnVisible("activity") ? `<td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${meReportFlowLocked(client) ? "Figures locked for review" : "Latest activity"}</small></td>` : ""}
-                            ${meReportClientColumnVisible("action") ? `<td><button class="ghost-button" type="button" data-me-report-open-client="${escapeHTML(client.id || "")}">Open</button></td>` : ""}
+                            </td>
                         </tr>
                     `;
                 }).join("");
@@ -50198,9 +50268,6 @@
             function xeroWorkspaceLabel(tenantName = "", tenantId = "", fallback = "Xero workspace") {
                 const cleanTenantName = String(tenantName || "").trim();
                 const cleanTenantId = String(tenantId || "").trim();
-                if (cleanTenantName && cleanTenantId && cleanTenantName !== cleanTenantId) {
-                    return `${cleanTenantName} (${cleanTenantId})`;
-                }
                 return cleanTenantName || cleanTenantId || fallback;
             }
 
@@ -50667,7 +50734,7 @@
                 const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
                 ensureMeReportSelection();
                 const workspaceConnections = meReportOrganisationConnections();
-                const workspacePickerRequired = !String(meReportSelectedWorkspaceTenantId || "").trim() && workspaceConnections.length > 1;
+                const workspacePickerRequired = !allClients.length && !String(meReportSelectedWorkspaceTenantId || "").trim() && workspaceConnections.length > 1;
                 renderMeReportTopbarSummary();
                 renderTopbarIdentity();
                 renderSidebarSupportBubble();
@@ -50703,6 +50770,11 @@
                     bulkUploadButton.hidden = workspacePickerRequired;
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
                     bulkUploadButton.textContent = meReportBulkUploading ? "Creating flows..." : "Create flows from Xero clients";
+                }
+                const bulkDeployTenantsButton = document.getElementById("bulkDeployMeReportTenantsButton");
+                if (bulkDeployTenantsButton) {
+                    bulkDeployTenantsButton.disabled = meReportBulkUploading || meReportUploadProcessing || !workspaceConnections.length;
+                    bulkDeployTenantsButton.textContent = meReportBulkUploading ? "Deploying..." : "Deploy flows (all tenants)";
                 }
                 const workspaceClient = meReportWorkspaceOpen ? selectedMeReportClient() : null;
                 const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
@@ -50780,7 +50852,7 @@
                                 <tbody>
                                     ${workspaceConnections.map((connection) => `
                                         <tr>
-                                            <td><strong>${escapeHTML(connection.tenantName || connection.tenantId)}</strong><small>${escapeHTML(connection.tenantId || "")}</small></td>
+                                            <td><strong>${escapeHTML(connection.tenantName || connection.tenantId)}</strong></td>
                                             <td>${escapeHTML(connection.tenantType || "Organisation")}</td>
                                             <td><button class="primary-button" type="button" data-me-report-open-tenant="${escapeHTML(connection.tenantId || "")}">Open workspace</button></td>
                                         </tr>
@@ -50926,17 +50998,13 @@
                 tableWrap.innerHTML = `
                     <table class="me-report-client-table">
                         <thead>
-                            <tr>
+                            <tr class="me-report-flow-headline">
                                 <th><input id="meReportSelectAllFlows" type="checkbox" aria-label="Select all visible flows"></th>
-                                ${meReportClientColumnVisible("client") ? `<th>${meReportClientSortButton("client", "Client")}</th>` : ""}
-                                ${meReportClientColumnVisible("clientId") ? `<th><span>Client ID</span></th>` : ""}
-                                ${meReportClientColumnVisible("flow") ? `<th>${meReportClientSortButton("flow", "Flow")}</th>` : ""}
-                                ${meReportClientColumnVisible("deadline") ? `<th>${meReportClientSortButton("deadline", "Deadline")}</th>` : ""}
-                                ${meReportClientColumnVisible("manager") ? `<th>${meReportClientSortButton("manager", "Client manager")}</th>` : ""}
-                                ${meReportClientColumnVisible("difficulty") ? `<th>${meReportClientSortButton("difficulty", "Difficulty")}</th>` : ""}
-                                ${meReportClientColumnVisible("status") ? `<th>${meReportClientSortButton("status", "Status")}</th>` : ""}
-                                ${meReportClientColumnVisible("activity") ? `<th>${meReportClientSortButton("activity", "Last activity")}</th>` : ""}
-                                ${meReportClientColumnVisible("action") ? `<th><span>Action</span></th>` : ""}
+                                <th><span>Flow</span></th>
+                                <th><span>Organisation</span></th>
+                                <th><span>Period</span></th>
+                                <th><span>Checks</span></th>
+                                <th><span>Action</span></th>
                             </tr>
                         </thead>
                         <tbody id="meReportClientTableBody"></tbody>
@@ -56868,6 +56936,160 @@
                     meReportBulkUploadExpectedCount = 0;
                     renderMeReportScreen();
                 }
+            }
+
+            async function bulkDeployMeReportFlowsAcrossTenants(periodConfig = null) {
+                const workspaceConnections = meReportOrganisationConnections()
+                    .map((connection) => ({
+                        tenantId: String(connection?.tenantId || "").trim(),
+                        tenantName: String(connection?.tenantName || "").trim()
+                    }))
+                    .filter((connection) => connection.tenantId);
+                if (!workspaceConnections.length) {
+                    showToast("No connected Xero organisation tenants available for bulk deployment.", "error");
+                    return;
+                }
+                const defaults = meReportDefaultBulkPeriod();
+                const selectedPeriod = {
+                    periodStart: String(periodConfig?.periodStart || defaults.periodStart || ""),
+                    periodEnd: String(periodConfig?.periodEnd || defaults.periodEnd || ""),
+                    deadlineAt: String(periodConfig?.deadlineAt || defaults.deadlineAt || "")
+                };
+                const periodStartDate = new Date(selectedPeriod.periodStart);
+                const periodEndDate = new Date(selectedPeriod.periodEnd);
+                if (Number.isNaN(periodStartDate.getTime()) || Number.isNaN(periodEndDate.getTime()) || periodStartDate > periodEndDate) {
+                    showToast("Choose a valid monthly bookkeeping period before deploying flows", "error");
+                    return;
+                }
+
+                const companies = await meReportConnectedCompaniesForBulkFlows();
+                if (!companies.length) {
+                    showToast("No Xero-connected Jenius clients are available. Check Companies House links and Xero sync first.", "error");
+                    return;
+                }
+
+                meReportBulkUploading = true;
+                meReportBulkUploadStartedAt = Date.now();
+                meReportBulkUploadExpectedCount = workspaceConnections.length;
+                renderMeReportScreen();
+                let created = 0;
+                let failed = 0;
+                let skipped = 0;
+                try {
+                    const candidateRows = [];
+                    for (const workspace of workspaceConnections) {
+                        await refreshMeReportContactOptionsFromXero(workspace.tenantId);
+                        const tenantCandidates = meReportBulkFlowCandidates(companies, workspace.tenantId);
+                        tenantCandidates.forEach((candidate) => candidateRows.push({
+                            ...candidate,
+                            tenantId: String(candidate?.tenantId || workspace.tenantId || "").trim(),
+                            tenantName: String(candidate?.tenantName || workspace.tenantName || workspace.tenantId || "").trim(),
+                        }));
+                    }
+                    const existingKeys = new Set(
+                        (meReportData.clients || [])
+                            .filter((item) => meReportFlowMatchesPeriod(item, selectedPeriod))
+                            .map((item) => `${String(item?.tenantId || "").trim()}::${String(item?.xeroContactId || "").trim()}`)
+                            .filter((value) => value !== "::")
+                    );
+                    const queuedKeys = new Set();
+                    const queue = [];
+                    candidateRows.forEach((candidate) => {
+                        const tenantId = String(candidate?.tenantId || "").trim();
+                        const contactId = String(candidate?.xeroContactId || "").trim();
+                        if (!tenantId || !contactId) return;
+                        const key = `${tenantId}::${contactId}`;
+                        if (existingKeys.has(key) || queuedKeys.has(key)) {
+                            skipped += 1;
+                            return;
+                        }
+                        queuedKeys.add(key);
+                        queue.push(candidate);
+                    });
+                    if (!queue.length) {
+                        showToast("All connected tenant contacts already have monthly flows for this period.", "success");
+                        return;
+                    }
+                    meReportBulkUploadExpectedCount = queue.length;
+                    const activitySeed = Date.now();
+                    let activityCounter = 0;
+                    for (const contact of queue) {
+                        const tenantId = String(contact?.tenantId || "").trim();
+                        const tenantName = String(contact?.tenantName || tenantId).trim();
+                        const payload = {
+                            xeroContactId: contact.xeroContactId || "",
+                            tenantId,
+                            tenantName,
+                            clientName: contact.name || "",
+                            internalClientOwner: "",
+                            bookkeepingFrequency: "Monthly",
+                            reportRecipientEmail: contact.email || "",
+                            yearEndMonth: 3,
+                            broughtForwardTradingLoss: 0,
+                            flowStatus: "not_started",
+                            flowMonth: periodStartDate.getMonth() + 1,
+                            flowYear: periodStartDate.getFullYear(),
+                            flowPeriodStart: selectedPeriod.periodStart,
+                            flowPeriodEnd: selectedPeriod.periodEnd,
+                            flowDeadlineAt: selectedPeriod.deadlineAt,
+                            flowChecklist: meReportFlowChecklistRows({}),
+                            flowActivityLog: [{
+                                id: `flow-${activitySeed}-${activityCounter += 1}`,
+                                at: new Date().toISOString(),
+                                actor: "System",
+                                action: "Flow created",
+                                detail: `Flow workspace deployed for ${tenantName} (${tenantId}) from ${meReportDateDisplay(selectedPeriod.periodStart)} to ${meReportDateDisplay(selectedPeriod.periodEnd)}.`
+                            }]
+                        };
+                        try {
+                            const response = await requestJSON(api.endpoints.meReportClients, { method: "POST", body: JSON.stringify(payload) });
+                            meReportData = normaliseMeReportPayload(response);
+                            created += 1;
+                        } catch (error) {
+                            failed += 1;
+                            console.warn("Unable to deploy monthly flow for tenant contact", contact, error);
+                        }
+                    }
+                    showToast(
+                        `Bulk tenant deploy complete: ${created} created${failed ? `, ${failed} failed` : ""}${skipped ? `, ${skipped} skipped` : ""}`,
+                        failed ? "error" : "success"
+                    );
+                } finally {
+                    meReportBulkUploading = false;
+                    meReportBulkUploadStartedAt = 0;
+                    meReportBulkUploadExpectedCount = 0;
+                    renderMeReportScreen();
+                }
+            }
+
+            async function openMeReportBulkTenantDeploy() {
+                const workspaceCount = meReportOrganisationConnections().length;
+                if (!workspaceCount) {
+                    showToast("Connect at least one Xero organisation tenant first.", "error");
+                    return;
+                }
+                const defaults = meReportDefaultBulkPeriod();
+                const startInput = window.prompt("Bulk deploy period start (YYYY-MM-DD)", defaults.periodStart || "");
+                if (startInput === null) return;
+                const endInput = window.prompt("Bulk deploy period end (YYYY-MM-DD)", defaults.periodEnd || "");
+                if (endInput === null) return;
+                const periodStart = String(startInput || "").trim();
+                const periodEnd = String(endInput || "").trim();
+                const startDate = new Date(periodStart);
+                const endDate = new Date(periodEnd);
+                if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+                    showToast("Enter a valid period range before bulk deploying flows", "error");
+                    return;
+                }
+                const confirmation = window.confirm(
+                    `Deploy monthly flows across ${workspaceCount.toLocaleString("en-GB")} connected Xero tenant${workspaceCount === 1 ? "" : "s"} for ${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}?`
+                );
+                if (!confirmation) return;
+                await bulkDeployMeReportFlowsAcrossTenants({
+                    periodStart,
+                    periodEnd,
+                    deadlineAt: meReportBulkPeriodDeadline(periodEnd),
+                });
             }
 
             async function confirmMeReportBulkPeriod(event) {
@@ -72010,6 +72232,8 @@
                 if (refreshMeReportButton) refreshMeReportButton.addEventListener("click", () => loadMeReport(true));
                 const bulkUploadMeReportsButton = document.getElementById("bulkUploadMeReportsButton");
                 if (bulkUploadMeReportsButton) bulkUploadMeReportsButton.addEventListener("click", openMeReportBulkPeriodPanel);
+                const bulkDeployMeReportTenantsButton = document.getElementById("bulkDeployMeReportTenantsButton");
+                if (bulkDeployMeReportTenantsButton) bulkDeployMeReportTenantsButton.addEventListener("click", openMeReportBulkTenantDeploy);
                 const bulkSendMeReportsButton = document.getElementById("bulkSendMeReportsButton");
                 if (bulkSendMeReportsButton) bulkSendMeReportsButton.addEventListener("click", bulkSendReadyMeReports);
                 const archiveMeReportWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
