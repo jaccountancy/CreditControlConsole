@@ -99,6 +99,7 @@ DATABASE_ACTIVE_UPLOAD_CRITICAL_THRESHOLD = 8
 DATABASE_ACTIVE_ME_SYNC_WARNING_THRESHOLD = 2
 DATABASE_ACTIVE_ME_SYNC_CRITICAL_THRESHOLD = 5
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
+MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
 BANK_STATEMENT_MAX_OUTPUT_TOKENS = 24000
@@ -668,13 +669,23 @@ def record_audit_event(entity_type: str, entity_id: str, event_type: str, payloa
 
 
 def _normalised_tenant_name(value: str | None) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower()).strip()
+
+
+def _tenant_name_matches(candidate_name: str | None, target_name: str | None) -> bool:
+    candidate = _normalised_tenant_name(candidate_name)
+    target = _normalised_tenant_name(target_name)
+    if not candidate or not target:
+        return False
+    if candidate == target:
+        return True
+    return target in candidate or candidate in target
 
 
 def _is_preferred_xero_tenant(connection_row: dict, preferred_tenant_name: str | None) -> bool:
-    if not preferred_tenant_name:
-        return False
-    return _normalised_tenant_name(connection_row.get("tenant_name")) == _normalised_tenant_name(preferred_tenant_name)
+    tenant_name = connection_row.get("tenant_name")
+    preferred_names = [str(preferred_tenant_name or "").strip(), *MASTER_XERO_TENANT_HINTS]
+    return any(_tenant_name_matches(tenant_name, preferred_name) for preferred_name in preferred_names if preferred_name)
 
 
 def _xero_connection_sort_key(connection_row: dict, preferred_tenant_name: str | None = None) -> tuple[int, int, datetime, datetime]:
@@ -5250,8 +5261,26 @@ def _tenant_has_display_data(counts: dict) -> bool:
 
 
 def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: str | None = None) -> str | None:
+    cursor.execute(
+        """
+        SELECT tenant_id
+        FROM xero_connections
+        WHERE user_id = %s
+          AND tenant_id IS NOT NULL
+          AND tenant_id <> ''
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC
+        """,
+        (user_id,),
+    )
+    connected_tenant_ids = [
+        str(row.get("tenant_id") or "").strip()
+        for row in (cursor.fetchall() or [])
+        if str(row.get("tenant_id") or "").strip()
+    ]
+    connected_tenant_id_set = set(connected_tenant_ids)
+
     fallback_tenant_id = None
-    if preferred_tenant_id:
+    if preferred_tenant_id and (not connected_tenant_id_set or preferred_tenant_id in connected_tenant_id_set):
         preferred_counts = _tenant_panel_counts(cursor, preferred_tenant_id)
         if _tenant_has_display_data(preferred_counts):
             return preferred_tenant_id
@@ -5276,34 +5305,60 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
         tenant_id = row.get("tenant_id")
         if not tenant_id:
             continue
+        if connected_tenant_id_set and tenant_id not in connected_tenant_id_set:
+            continue
         tenant_counts = _tenant_panel_counts(cursor, tenant_id)
         if _tenant_has_display_data(tenant_counts):
             return tenant_id
         if tenant_counts["customer_count"] and fallback_tenant_id is None:
             fallback_tenant_id = tenant_id
-    cursor.execute(
-        """
-        SELECT customers.tenant_id,
-               COUNT(DISTINCT customers.id) AS customer_count,
-               COUNT(invoices.id) AS invoice_count,
-               BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) AS has_customer_balance,
-               MAX(COALESCE(invoices.synced_at, customers.updated_at)) AS latest_sync
-        FROM customers
-        LEFT JOIN invoices ON invoices.customer_id = customers.id
-        WHERE customers.tenant_id IS NOT NULL AND customers.tenant_id <> ''
-        GROUP BY customers.tenant_id
-        ORDER BY
-            CASE
-                WHEN COUNT(invoices.id) > 0 OR BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) THEN 0
-                ELSE 1
-            END,
-            latest_sync DESC NULLS LAST,
-            customer_count DESC
-        LIMIT 1
-        """
-    )
+    if connected_tenant_ids:
+        cursor.execute(
+            """
+            SELECT customers.tenant_id,
+                   COUNT(DISTINCT customers.id) AS customer_count,
+                   COUNT(invoices.id) AS invoice_count,
+                   BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) AS has_customer_balance,
+                   MAX(COALESCE(invoices.synced_at, customers.updated_at)) AS latest_sync
+            FROM customers
+            LEFT JOIN invoices ON invoices.customer_id = customers.id
+            WHERE customers.tenant_id = ANY(%s)
+            GROUP BY customers.tenant_id
+            ORDER BY
+                CASE
+                    WHEN COUNT(invoices.id) > 0 OR BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) THEN 0
+                    ELSE 1
+                END,
+                latest_sync DESC NULLS LAST,
+                customer_count DESC
+            LIMIT 1
+            """,
+            (connected_tenant_ids,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT customers.tenant_id,
+                   COUNT(DISTINCT customers.id) AS customer_count,
+                   COUNT(invoices.id) AS invoice_count,
+                   BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) AS has_customer_balance,
+                   MAX(COALESCE(invoices.synced_at, customers.updated_at)) AS latest_sync
+            FROM customers
+            LEFT JOIN invoices ON invoices.customer_id = customers.id
+            WHERE customers.tenant_id IS NOT NULL AND customers.tenant_id <> ''
+            GROUP BY customers.tenant_id
+            ORDER BY
+                CASE
+                    WHEN COUNT(invoices.id) > 0 OR BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) THEN 0
+                    ELSE 1
+                END,
+                latest_sync DESC NULLS LAST,
+                customer_count DESC
+            LIMIT 1
+            """
+        )
     row = cursor.fetchone()
-    if row and row.get("tenant_id"):
+    if row and row.get("tenant_id") and (not connected_tenant_id_set or row.get("tenant_id") in connected_tenant_id_set):
         return row["tenant_id"]
     return fallback_tenant_id
 
@@ -23095,6 +23150,22 @@ def _bm_tasks_parse_vat_period_end(task_name: str | None) -> date | None:
     return _bm_tasks_parse_date(match.group(1))
 
 
+def _bm_tasks_infer_vat_period_end(target_date: date | None, deadline: date | None) -> date | None:
+    for due_date in (deadline, target_date):
+        if due_date is None:
+            continue
+        # HMRC VAT deadlines are typically one month and seven days after period end.
+        offset = due_date - timedelta(days=7)
+        previous_month = offset.month - 1
+        previous_year = offset.year
+        if previous_month <= 0:
+            previous_month += 12
+            previous_year -= 1
+        previous_day = min(offset.day, monthrange(previous_year, previous_month)[1])
+        return date(previous_year, previous_month, previous_day)
+    return None
+
+
 def _bm_tasks_is_vat_task(task_name: str | None) -> bool:
     text = str(task_name or "").lower()
     return bool(re.search(r"\bvat\b", text)) and bool(
@@ -23212,9 +23283,9 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
         target_date_text = _bm_tasks_column_value(row, ["Target Date", "Target", "Due Date"])
         deadline_text = _bm_tasks_column_value(row, ["Deadline", "Deadline Date"])
         assignee = _bm_tasks_column_value(row, ["Assignee Name", "Assignee", "Owner"])
-        period_end = _bm_tasks_parse_vat_period_end(task_name)
         target_date = _bm_tasks_parse_date(target_date_text)
         deadline = _bm_tasks_parse_date(deadline_text)
+        period_end = _bm_tasks_parse_vat_period_end(task_name) or _bm_tasks_infer_vat_period_end(target_date, deadline)
         client_id_key = str(client_id or "").strip().lower()
         client_name_key = _bm_tasks_normalise_name_key(client_name)
         register_row = register_by_client_id.get(client_id_key) or register_by_name.get(client_name_key)

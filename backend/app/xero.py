@@ -35,6 +35,7 @@ XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
 XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 360
 XERO_DAILY_LIMIT_GUARD_REMAINING = 120
 XERO_HISTORY_SIGNATURE = "By Jenius AI"
+MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
     "and contact note write-back access, then try again."
@@ -424,7 +425,17 @@ def _parse_xero_connection_timestamp(value) -> datetime:
 
 
 def _normalised_tenant_name(value: str | None) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower()).strip()
+
+
+def _tenant_name_matches(candidate_name: str | None, target_name: str | None) -> bool:
+    candidate = _normalised_tenant_name(candidate_name)
+    target = _normalised_tenant_name(target_name)
+    if not candidate or not target:
+        return False
+    if candidate == target:
+        return True
+    return target in candidate or candidate in target
 
 
 def _choose_xero_connection(connections: list[dict], preferred_tenant_name: str | None = None) -> dict:
@@ -436,15 +447,14 @@ def _choose_xero_connection(connections: list[dict], preferred_tenant_name: str 
         created_at = _parse_xero_connection_timestamp(connection.get("createdDateUtc"))
         return accounting_tenant, updated_at, created_at, -index
 
-    preferred_name = _normalised_tenant_name(preferred_tenant_name)
-    if preferred_name:
-        preferred_connections = [
-            item
-            for item in enumerate(connections)
-            if _normalised_tenant_name(item[1].get("tenantName")) == preferred_name
-        ]
-        if preferred_connections:
-            return max(preferred_connections, key=connection_rank)[1]
+    preferred_names = [str(preferred_tenant_name or "").strip(), *MASTER_XERO_TENANT_HINTS]
+    preferred_connections = [
+        item
+        for item in enumerate(connections)
+        if any(_tenant_name_matches(item[1].get("tenantName"), preferred_name) for preferred_name in preferred_names if preferred_name)
+    ]
+    if preferred_connections:
+        return max(preferred_connections, key=connection_rank)[1]
 
     return max(enumerate(connections), key=connection_rank)[1]
 
