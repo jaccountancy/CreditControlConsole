@@ -7623,6 +7623,12 @@
                 align-items: flex-start;
                 gap: 18px;
             }
+            #vatReturnPrepareScreen .detail-actions {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+                align-content: flex-start;
+                max-width: min(100%, 920px);
+            }
             .status-badge {
                 padding: 12px 14px;
                 border-radius: 999px;
@@ -64452,6 +64458,10 @@
                     selectedVatReturnKey = "";
                 }
                 const rows = vatReturnQueueRows();
+                const selectedWorkspace = vatReturnSelectedWorkspaceTenantId
+                    ? workspaceRows.find((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())
+                    : null;
+                const selectedWorkspaceError = String(selectedWorkspace?.error || "").trim();
                 const activeEntry = selectedVatReturnEntry(rows);
                 const inDetail = Boolean(activeEntry);
                 const workspacePickerRequired = !String(vatReturnSelectedWorkspaceTenantId || "").trim() && workspaceRows.length > 1;
@@ -64592,12 +64602,13 @@
                         const submittedCount = Number(row?.submittedCount || tenantRows.filter((item) => item.submitted).length || 0);
                         const outstandingCount = Number(row?.outstandingCount || Math.max(workspaceLabel - submittedCount, 0));
                         const hasWorkspaceError = Boolean(String(row?.error || "").trim());
+                        const workspaceErrorText = String(row?.error || "").trim();
                         return `
                         <tr>
                             <td><strong>${escapeHTML(row.tenantName || row.clientName || row.tenantId)}</strong><small>${escapeHTML(row.tenantId || "")}</small></td>
                             <td>${escapeHTML(tenantRows[0]?.periodEndISO ? formatDate(tenantRows[0].periodEndISO) : "—")}</td>
                             <td>${escapeHTML(nextDue ? formatDate(nextDue) : "—")}</td>
-                            <td><span class="lock-status-pill ${hasWorkspaceError ? "is-overdue" : "is-open"}">${hasWorkspaceError ? "Error" : `${workspaceLabel} periods · ${submittedCount} submitted · ${outstandingCount} outstanding`}</span></td>
+                            <td><span class="lock-status-pill ${hasWorkspaceError ? "is-overdue" : "is-open"}" ${hasWorkspaceError ? `title="${escapeHTML(workspaceErrorText)}"` : ""}>${hasWorkspaceError ? "Error · API fetch failed" : `${workspaceLabel} periods · ${submittedCount} submitted · ${outstandingCount} outstanding`}</span></td>
                             <td><button class="primary-button" type="button" data-vat-workspace-open="${escapeHTML(row.tenantId || "")}">Open workspace</button></td>
                         </tr>
                     `;
@@ -64622,10 +64633,14 @@
 
                 if (!rows.length) {
                     summary.textContent = vatReturnSelectedWorkspaceTenantId
-                        ? "No VAT return rows are available for this workspace."
+                        ? (selectedWorkspaceError
+                            ? "Unable to load VAT return rows for this workspace."
+                            : "No VAT return rows are available for this workspace.")
                         : "No VAT return workspaces are currently available.";
                     queueBody.innerHTML = vatReturnSelectedWorkspaceTenantId
-                        ? '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No VAT period rows are available for this workspace</h4><p>Run a Xero sync and ensure the client register mapping exists for this tenant.</p></div></td></tr>'
+                        ? (selectedWorkspaceError
+                            ? `<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Workspace error</p><h4>Could not load VAT periods from Xero</h4><p>${escapeHTML(selectedWorkspaceError)}</p></div></td></tr>`
+                            : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No VAT period rows are available for this workspace</h4><p>Xero did not return VAT period rows for this tenant. Use Refresh and confirm VAT obligations are visible in Xero VAT Returns.</p></div></td></tr>')
                         : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-connected clients available</h4><p>Run a Xero sync or connect additional Xero organisations.</p></div></td></tr>';
                     metrics.innerHTML = "";
                     transactionsBody.innerHTML = "";
