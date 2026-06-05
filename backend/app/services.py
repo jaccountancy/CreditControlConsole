@@ -23294,26 +23294,33 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
         if name_key and name_key not in register_by_name:
             register_by_name[name_key] = row
 
-    vat_queue = await xero_vat_returns_payload(user)
-    vat_rows = list(vat_queue.get("rows") or [])
-    vat_workspaces = list(vat_queue.get("workspaces") or [])
-    vat_rows_by_name: dict[str, list[dict]] = defaultdict(list)
-    for row in vat_rows:
-        row_key = _bm_tasks_normalise_name_key(row.get("clientName") or row.get("tenantName"))
-        if row_key:
-            vat_rows_by_name[row_key].append(row)
-    for row_list in vat_rows_by_name.values():
-        row_list.sort(
-            key=lambda item: (
-                0 if not item.get("submitted") else 1,
-                -(date.fromisoformat(item["periodEndISO"]).toordinal() if item.get("periodEndISO") else 0),
-            )
-        )
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    xero_connection_rows: list[dict] = []
+    for row in source_rows:
+        row_tenant_id = str(row.get("tenant_id") or "").strip()
+        if not row_tenant_id:
+            continue
+        tenant_type = str(row.get("tenant_type") or "").strip().upper()
+        if tenant_type not in ("", "ORGANISATION", "ORGANIZATION"):
+            continue
+        xero_connection_rows.append(row)
+    xero_connection_rows = sorted(
+        xero_connection_rows,
+        key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name),
+        reverse=True,
+    )
     vat_workspace_by_name: dict[str, dict] = {}
-    for workspace in vat_workspaces:
-        workspace_key = _bm_tasks_normalise_name_key(workspace.get("clientName") or workspace.get("tenantName"))
+    for workspace in xero_connection_rows:
+        tenant_name = str(workspace.get("tenant_name") or workspace.get("tenant_id") or "").strip()
+        workspace_key = _bm_tasks_normalise_name_key(tenant_name)
         if workspace_key and workspace_key not in vat_workspace_by_name:
-            vat_workspace_by_name[workspace_key] = workspace
+            vat_workspace_by_name[workspace_key] = {
+                "tenantId": str(workspace.get("tenant_id") or "").strip(),
+                "tenantName": tenant_name,
+                "tenantType": str(workspace.get("tenant_type") or "").strip(),
+                "error": "",
+            }
 
     vat_tasks: list[dict] = []
     total_rows = 0
@@ -23341,20 +23348,28 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
         client_name_key = _bm_tasks_normalise_name_key(client_name)
         register_row = register_by_client_id.get(client_id_key) or register_by_name.get(client_name_key)
 
-        vat_row_candidates = vat_rows_by_name.get(client_name_key) or []
+        workspace_name_keys = [client_name_key]
+        register_name_key = _bm_tasks_normalise_name_key(register_row.get("display_name")) if register_row else ""
+        if register_name_key:
+            workspace_name_keys.append(register_name_key)
+        workspace_match = {}
+        for workspace_name_key in workspace_name_keys:
+            if not workspace_name_key:
+                continue
+            workspace_match = vat_workspace_by_name.get(workspace_name_key) or {}
+            if workspace_match:
+                break
         matched_vat_row = None
-        if period_end:
-            matched_vat_row = next(
-                (
-                    item
-                    for item in vat_row_candidates
-                    if str(item.get("periodEndISO") or "") == period_end.isoformat()
-                ),
-                None,
-            )
-        if matched_vat_row is None and vat_row_candidates:
-            matched_vat_row = vat_row_candidates[0]
-        workspace_match = vat_workspace_by_name.get(client_name_key) or {}
+        if workspace_match and period_end:
+            period_end_iso = period_end.isoformat()
+            matched_vat_row = {
+                "key": f"bm:{workspace_match.get('tenantId') or 'tenant'}:{period_end_iso}",
+                "tenantId": str(workspace_match.get("tenantId") or ""),
+                "tenantName": str(workspace_match.get("tenantName") or ""),
+                "periodEndISO": period_end_iso,
+                "deadlineISO": _iso(deadline) or "",
+                "submitted": False,
+            }
 
         vat_tasks.append(
             {
