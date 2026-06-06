@@ -17012,6 +17012,54 @@
                 font-size: 0.76rem;
                 font-weight: 700;
             }
+            #codeBreakerSetupModalForm {
+                display: grid;
+                grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
+                gap: 12px;
+                align-items: start;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field {
+                min-width: 0;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field-year-end {
+                grid-column: span 2;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field input,
+            #codeBreakerSetupModalForm .code-breaker-field select {
+                width: 100%;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field .operation-review-muted {
+                display: block;
+                margin-top: 8px;
+                line-height: 1.35;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field-year-end .code-breaker-year-end-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 8px;
+                align-items: center;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field-xero .ghost-button {
+                margin-top: 8px;
+                width: 100%;
+            }
+            #codeBreakerSetupModalForm .code-breaker-submitted-select {
+                margin-top: 8px;
+                width: 100%;
+            }
+            @media (max-width: 1320px) {
+                #codeBreakerSetupModalForm {
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                }
+                #codeBreakerSetupModalForm .code-breaker-field-year-end {
+                    grid-column: span 1;
+                }
+            }
+            @media (max-width: 920px) {
+                #codeBreakerSetupModalForm {
+                    grid-template-columns: 1fr;
+                }
+            }
             .ch-preflight-choice {
                 display: inline-flex;
                 align-items: center;
@@ -65991,6 +66039,14 @@
                     );
                     if (!yearEnd) return;
                     const existing = buckets.get(yearEnd) || {};
+                    const periodStart = yePrepNormaliseIsoDate(
+                        raw.periodStart
+                        || raw.period_start
+                        || raw.from
+                        || raw.startDate
+                        || existing.periodStart
+                        || ""
+                    );
                     const dueDate = yePrepNormaliseIsoDate(
                         raw.dueDate
                         || raw.due_on
@@ -66005,6 +66061,7 @@
                     const submittedAt = yePrepNormaliseIsoDate(raw.submittedAt || raw.receivedOn || raw.received_on || raw.filedOn || raw.accountsFiledDate || raw.date || existing.submittedAt || "");
                     buckets.set(yearEnd, {
                         yearEnd,
+                        periodStart,
                         dueDate,
                         submittedAt,
                         source: raw.source || existing.source || "Companies House",
@@ -66013,6 +66070,7 @@
 
                 const lockCH = customer?.lockRow?.companiesHouse || {};
                 push({
+                    periodStart: lockCH?.periodStartDate || lockCH?.periodStart || lockCH?.accountsPeriodStartDate,
                     yearEnd: lockCH?.yearEndDate,
                     dueDate: lockCH?.accountsDueDate || lockCH?.accountsDueOn || lockCH?.nextAccountsDueOn,
                     submittedAt: lockCH?.accountsFiledDate || lockCH?.lastFiledDate,
@@ -66021,6 +66079,7 @@
 
                 const ch = chCompany || {};
                 push({
+                    periodStart: ch?.periodStartDate || ch?.periodStart || ch?.accountsPeriodStartDate,
                     yearEnd: ch?.yearEndDate,
                     dueDate: ch?.accountsDueDate || ch?.accountsDueOn || ch?.nextAccountsDueOn,
                     submittedAt: ch?.accountsFiledDate || ch?.lastFiledDate,
@@ -66035,6 +66094,7 @@
                 ];
                 arrays.forEach((rows) => rows.forEach((row) => push({
                     yearEnd: row?.periodEnd || row?.period_end || row?.yearEndDate || row?.accountingReferenceDate,
+                    periodStart: row?.periodStart || row?.period_start || row?.from || row?.periodStartDate,
                     dueDate: row?.dueDate || row?.due_on || row?.accountsDueDate || row?.accountsDueOn || row?.nextAccountsDueOn,
                     submittedAt: row?.submittedAt || row?.receivedOn || row?.received_on || row?.filedOn || row?.accountsFiledDate || row?.date,
                     source: "Filing history",
@@ -67711,6 +67771,24 @@
                                     return true;
                                 });
                         };
+                        const bestCompaniesHouseMatch = (companies = [], workspaceName = "") => {
+                            if (!Array.isArray(companies) || !companies.length) return null;
+                            const target = normaliseStatus(workspaceName || "");
+                            if (!target) return companies[0] || null;
+                            const scoreFor = (company = {}) => {
+                                const name = normaliseStatus(company?.companyName || "");
+                                if (!name) return 0;
+                                if (name === target) return 1000;
+                                if (name.includes(target) || target.includes(name)) return 500;
+                                const targetTokens = target.split(/\s+/).filter(Boolean);
+                                const nameTokens = name.split(/\s+/).filter(Boolean);
+                                const overlap = targetTokens.filter((token) => nameTokens.includes(token)).length;
+                                return overlap * 10;
+                            };
+                            return companies
+                                .map((company) => ({ company, score: scoreFor(company) }))
+                                .sort((left, right) => right.score - left.score)[0]?.company || companies[0] || null;
+                        };
                         const companyNumberFromClientRegister = (row = null, workspaceName = "") => {
                             const registerRows = companySecretarialRegisterRows();
                             if (!Array.isArray(registerRows) || !registerRows.length) return "";
@@ -67773,11 +67851,6 @@
                                     }
                                 } else {
                                     draft.xeroContactId = "";
-                                    draft.companyNumber = "";
-                                    draft.periodStartDate = "";
-                                    draft.yearEndDate = "";
-                                    draft.submittedAt = "";
-                                    codeBreakerShowSubmittedAccountsPicker = false;
                                 }
                             } else {
                                 draft.clientName = "";
@@ -67794,10 +67867,10 @@
                             if (!submittedAccounts.length) codeBreakerShowSubmittedAccountsPicker = false;
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
-                                    <label>Client / workspace name
+                                    <label class="code-breaker-field code-breaker-field-client">Client / workspace name
                                         <input id="codeBreakerSetupModalClientName" type="text" value="${escapeHTML(draft.clientName)}" placeholder="Auto-filled from selected Xero connection" readonly>
                                     </label>
-                                    <label>Xero connection
+                                    <label class="code-breaker-field code-breaker-field-xero">Xero connection
                                         <select id="codeBreakerSetupModalTenant">
                                             <option value="" ${!draft.tenantId ? "selected" : ""}>Select Xero connection</option>
                                             ${connections.length
@@ -67808,22 +67881,22 @@
                                                 }).join("")
                                                 : '<option value="">No Xero connections</option>'}
                                         </select>
-                                        ${draft.tenantId ? `<button class="ghost-button" id="codeBreakerPopulateChDataButton" type="button" style="margin-top:8px;" ${codeBreakerPopulateBusy ? "disabled" : ""}>${codeBreakerPopulateBusy ? "Populating..." : "Populate CH Number and Dates"}</button>` : ""}
+                                        ${draft.tenantId ? `<button class="ghost-button" id="codeBreakerPopulateChDataButton" type="button" ${codeBreakerPopulateBusy ? "disabled" : ""}>${codeBreakerPopulateBusy ? "Populating..." : "Populate CH Number and Dates"}</button>` : ""}
                                     </label>
-                                    <label>Companies House number
+                                    <label class="code-breaker-field code-breaker-field-company-number">Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
                                         ${companyNumberHint ? `<small class="operation-review-muted">${escapeHTML(companyNumberHint)}</small>` : ""}
                                     </label>
-                                    <label>Accounting period start date
+                                    <label class="code-breaker-field code-breaker-field-period-start">Accounting period start date
                                         <input id="codeBreakerSetupModalPeriodStartDate" type="date" value="${escapeHTML(draft.periodStartDate)}" readonly>
                                     </label>
-                                    <label>Year end date (assumed latest filed)
-                                        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;">
+                                    <label class="code-breaker-field code-breaker-field-year-end">Year end date (assumed latest filed)
+                                        <div class="code-breaker-year-end-row">
                                             <input id="codeBreakerSetupModalYearEndDate" type="date" value="${escapeHTML(draft.yearEndDate)}" placeholder="" readonly>
                                             <button class="ghost-button" id="codeBreakerSetupModalYearEndChange" type="button" ${submittedAccounts.length ? "" : "disabled"}>Change</button>
                                         </div>
                                         ${codeBreakerShowSubmittedAccountsPicker && submittedAccounts.length ? `
-                                            <select id="codeBreakerSetupModalSubmittedAccountsSelect" style="margin-top:8px;">
+                                            <select id="codeBreakerSetupModalSubmittedAccountsSelect" class="code-breaker-submitted-select">
                                                 ${submittedAccounts.map((period) => {
                                                     const yearEnd = String(period?.yearEnd || "").slice(0, 10);
                                                     const submittedAt = String(period?.submittedAt || "").slice(0, 10);
@@ -67867,24 +67940,33 @@
                                     || latest?.row?.lockRow?.companiesHouse?.companyNumber
                                     || ""
                                 );
-                                draft.companyNumber = byName || byRegister || byMapping || byRow || "";
-                                if (!draft.companyNumber) {
-                                    codeBreakerPopulateBusy = false;
-                                    render();
-                                    return;
-                                }
+                                let resolvedCompanyNumber = byName || byRegister || byMapping || byRow || "";
+                                let resolvedCompany = null;
                                 try {
-                                    const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(draft.companyNumber)}`);
-                                    const companies = Array.isArray(payload?.companies) ? payload.companies : [];
-                                    const exact = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === draft.companyNumber) || companies[0] || null;
-                                    const periods = yePrepCompaniesHousePeriods(latest?.row || {}, exact || null)
+                                    if (!resolvedCompanyNumber && draft.clientName) {
+                                        const payloadByName = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(draft.clientName)}`);
+                                        const companiesByName = Array.isArray(payloadByName?.companies) ? payloadByName.companies : [];
+                                        const bestByName = bestCompaniesHouseMatch(companiesByName, draft.clientName);
+                                        resolvedCompany = bestByName || null;
+                                        resolvedCompanyNumber = normaliseCompanyNumberInput(bestByName?.companyNumber || "");
+                                    }
+                                    draft.companyNumber = resolvedCompanyNumber;
+                                    if (!resolvedCompanyNumber) {
+                                        return;
+                                    }
+                                    if (!resolvedCompany) {
+                                        const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(resolvedCompanyNumber)}`);
+                                        const companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                                        resolvedCompany = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === resolvedCompanyNumber) || companies[0] || null;
+                                    }
+                                    const periods = yePrepCompaniesHousePeriods(latest?.row || {}, resolvedCompany || null)
                                         .filter((period) => period?.submittedAt && period?.yearEnd)
                                         .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""));
                                     codeBreakerSubmittedAccountsOverride = periods;
                                     const latestSubmitted = periods[0] || null;
                                     draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
                                     draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
-                                    draft.periodStartDate = periodStartFromYearEnd(draft.yearEndDate);
+                                    draft.periodStartDate = String(latestSubmitted?.periodStart || "").slice(0, 10) || periodStartFromYearEnd(draft.yearEndDate);
                                 } catch (error) {
                                     console.warn("Unable to populate Companies House dates for Code Breaker setup", error);
                                     showToast(error?.message || "Unable to load Companies House accounting periods for this company.", "error");
