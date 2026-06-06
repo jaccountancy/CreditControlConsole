@@ -25351,7 +25351,7 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="codeBreakerSummary">Loading Code Breaker workspaces.</p>
-                            <section class="ch-companies-table-wrap">
+                            <section class="ch-companies-table-wrap" id="codeBreakerConnectionsSection">
                                 <table class="ch-table" aria-label="Code Breaker connected Xero accounts">
                                     <thead>
                                         <tr>
@@ -67635,6 +67635,8 @@
                     yearEndDate: "",
                     submittedAt: "",
                 };
+                let codeBreakerYearEndManualSelection = false;
+                let codeBreakerShowSubmittedAccountsPicker = false;
 
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Code Breaker",
@@ -67648,24 +67650,20 @@
                     columns: [],
                     rows: [{}],
                     onRender: ({ body }) => {
-                        const latestSubmittedPeriodForTenant = (tenantId = "", clientName = "") => {
+                        const selectedConnectionForTenant = (tenantId = "") => (
+                            connections.find((row) => String(row?.tenantId || "").trim() === String(tenantId || "").trim()) || null
+                        );
+                        const workspaceNameFromConnection = (tenantId = "") => {
+                            const selected = selectedConnectionForTenant(tenantId);
+                            const name = String(selected?.tenantName || "").trim();
+                            if (name) return name;
+                            return String(xeroWorkspaceLabel("", tenantId, "Xero workspace") || "").trim();
+                        };
+                        const latestSubmittedPeriodForTenant = (tenantId = "") => {
                             const rows = yePrepCustomerRows(tenantId);
                             if (!rows.length) return null;
-                            const search = normaliseStatus(clientName || "");
-                            const scopedRows = search
-                                ? rows.filter((row) => {
-                                    const names = [
-                                        row?.companyName,
-                                        row?.customer?.name,
-                                        row?.meReportClient?.clientName,
-                                        row?.lockRow?.companiesHouse?.companyName
-                                    ];
-                                    return names.some((value) => normaliseStatus(value || "") === search);
-                                })
-                                : rows;
-                            const candidates = scopedRows.length ? scopedRows : rows;
                             let best = null;
-                            candidates.forEach((row) => {
+                            rows.forEach((row) => {
                                 const periods = yePrepCompaniesHousePeriods(row, row?.lockRow?.companiesHouse || null);
                                 const submittedPeriod = periods.find((period) => period?.submittedAt) || null;
                                 const fallbackPeriod = periods[0] || null;
@@ -67679,9 +67677,24 @@
                             });
                             return best;
                         };
+                        const submittedAccountsForRow = (row = null) => {
+                            if (!row) return [];
+                            const seen = new Set();
+                            return yePrepCompaniesHousePeriods(row, row?.lockRow?.companiesHouse || null)
+                                .filter((period) => period?.submittedAt && period?.yearEnd)
+                                .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""))
+                                .filter((period) => {
+                                    const key = `${String(period.yearEnd || "")}|${String(period.submittedAt || "")}`;
+                                    if (!key || seen.has(key)) return false;
+                                    seen.add(key);
+                                    return true;
+                                });
+                        };
                         const render = () => {
+                            let submittedAccounts = [];
                             if (draft.tenantId) {
-                                const latest = latestSubmittedPeriodForTenant(draft.tenantId, draft.clientName);
+                                draft.clientName = workspaceNameFromConnection(draft.tenantId);
+                                const latest = latestSubmittedPeriodForTenant(draft.tenantId);
                                 if (latest?.row) {
                                     const companyNumber = normaliseCompanyNumberInput(
                                         latest.row?.companyNumber
@@ -67697,24 +67710,32 @@
                                         || ""
                                     ).trim();
                                     draft.companyNumber = companyNumber || "";
-                                    draft.yearEndDate = String(latest?.period?.yearEnd || "").slice(0, 10);
-                                    draft.submittedAt = String(latest?.submittedPeriod?.submittedAt || "").slice(0, 10);
+                                    submittedAccounts = submittedAccountsForRow(latest.row);
+                                    if (!codeBreakerYearEndManualSelection) {
+                                        const latestSubmitted = submittedAccounts[0] || latest?.submittedPeriod || null;
+                                        draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
+                                        draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
+                                    }
                                 } else {
                                     draft.xeroContactId = "";
                                     draft.companyNumber = "";
                                     draft.yearEndDate = "";
                                     draft.submittedAt = "";
+                                    codeBreakerShowSubmittedAccountsPicker = false;
                                 }
                             } else {
+                                draft.clientName = "";
                                 draft.xeroContactId = "";
                                 draft.companyNumber = "";
                                 draft.yearEndDate = "";
                                 draft.submittedAt = "";
+                                codeBreakerShowSubmittedAccountsPicker = false;
                             }
+                            if (!submittedAccounts.length) codeBreakerShowSubmittedAccountsPicker = false;
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
                                     <label>Client / workspace name
-                                        <input id="codeBreakerSetupModalClientName" type="text" value="${escapeHTML(draft.clientName)}" placeholder="Start typing client name">
+                                        <input id="codeBreakerSetupModalClientName" type="text" value="${escapeHTML(draft.clientName)}" placeholder="Auto-filled from selected Xero connection" readonly>
                                     </label>
                                     <label>Xero connection
                                         <select id="codeBreakerSetupModalTenant">
@@ -67732,24 +67753,50 @@
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
                                     </label>
                                     <label>Year end date (assumed latest filed)
-                                        <input id="codeBreakerSetupModalYearEndDate" type="date" value="${escapeHTML(draft.yearEndDate)}">
+                                        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;">
+                                            <input id="codeBreakerSetupModalYearEndDate" type="date" value="${escapeHTML(draft.yearEndDate)}" placeholder="" readonly>
+                                            <button class="ghost-button" id="codeBreakerSetupModalYearEndChange" type="button" ${submittedAccounts.length ? "" : "disabled"}>Change</button>
+                                        </div>
+                                        ${codeBreakerShowSubmittedAccountsPicker && submittedAccounts.length ? `
+                                            <select id="codeBreakerSetupModalSubmittedAccountsSelect" style="margin-top:8px;">
+                                                ${submittedAccounts.map((period) => {
+                                                    const yearEnd = String(period?.yearEnd || "").slice(0, 10);
+                                                    const submittedAt = String(period?.submittedAt || "").slice(0, 10);
+                                                    const selected = yearEnd === String(draft.yearEndDate || "").slice(0, 10) ? "selected" : "";
+                                                    const label = submittedAt
+                                                        ? `${formatDate(yearEnd)} · submitted ${formatDate(submittedAt)}`
+                                                        : `${formatDate(yearEnd)}`;
+                                                    return `<option value="${escapeHTML(`${yearEnd}|${submittedAt}`)}" ${selected}>${escapeHTML(label)}</option>`;
+                                                }).join("")}
+                                            </select>
+                                        ` : ""}
                                     </label>
                                 </form>
                             `;
-                            body.querySelector("#codeBreakerSetupModalClientName")?.addEventListener("input", (event) => {
-                                draft.clientName = String(event.target?.value || "");
-                                render();
-                            });
                             body.querySelector("#codeBreakerSetupModalTenant")?.addEventListener("change", (event) => {
                                 draft.tenantId = String(event.target?.value || "");
+                                draft.clientName = "";
                                 draft.xeroContactId = "";
+                                codeBreakerYearEndManualSelection = false;
+                                codeBreakerShowSubmittedAccountsPicker = false;
                                 render();
                             });
                             body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
                                 draft.companyNumber = String(event.target?.value || "").trim().toUpperCase();
                             });
-                            body.querySelector("#codeBreakerSetupModalYearEndDate")?.addEventListener("change", (event) => {
-                                draft.yearEndDate = String(event.target?.value || "");
+                            body.querySelector("#codeBreakerSetupModalYearEndChange")?.addEventListener("click", () => {
+                                if (!submittedAccounts.length) return;
+                                codeBreakerShowSubmittedAccountsPicker = !codeBreakerShowSubmittedAccountsPicker;
+                                render();
+                            });
+                            body.querySelector("#codeBreakerSetupModalSubmittedAccountsSelect")?.addEventListener("change", (event) => {
+                                const raw = String(event.target?.value || "");
+                                const [yearEnd, submittedAt] = raw.split("|");
+                                draft.yearEndDate = String(yearEnd || "").slice(0, 10);
+                                draft.submittedAt = String(submittedAt || "").slice(0, 10);
+                                codeBreakerYearEndManualSelection = true;
+                                codeBreakerShowSubmittedAccountsPicker = false;
+                                render();
                             });
                         };
                         render();
@@ -67962,11 +68009,12 @@
                 renderCodeBreakerScreen();
             }
 
-            function renderCodeBreakerConnectionsTable(tableBody) {
+            function renderCodeBreakerConnectionsTable(tableBody, connectionsSection = null) {
                 if (!tableBody) return;
                 const connections = codeBreakerConnections();
+                if (connectionsSection) connectionsSection.hidden = !connections.length;
                 if (!connections.length) {
-                    tableBody.innerHTML = '<tr><td colspan="3"><div class="empty-state"><p class="eyebrow">No Xero accounts</p><h4>No connected Xero accounts found</h4><p>Use Connect Xero tenant, complete authorization, then return here and click Refresh.</p></div></td></tr>';
+                    tableBody.innerHTML = "";
                     return;
                 }
                 const rows = [...connections]
@@ -67994,13 +68042,14 @@
                 const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
                 const connectTenantButton = document.getElementById("codeBreakerConnectTenantButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
+                const connectionsSection = document.getElementById("codeBreakerConnectionsSection");
                 const connectionsTableBody = document.getElementById("codeBreakerConnectionsTableBody");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
                 if (!summary || !setupButton || !connectTenantButton || !refreshButton || !connectionsTableBody || !tableBody) return;
 
                 setupButton.textContent = "Set up workspace";
                 summary.textContent = `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspace${(codeBreakerWorkspaces || []).length === 1 ? "" : "s"} configured.`;
-                renderCodeBreakerConnectionsTable(connectionsTableBody);
+                renderCodeBreakerConnectionsTable(connectionsTableBody, connectionsSection);
 
                 if (setupButton.dataset.cbWired !== "true") {
                     setupButton.dataset.cbWired = "true";
