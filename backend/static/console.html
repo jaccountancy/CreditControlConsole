@@ -67836,7 +67836,6 @@
                         };
                         const render = () => {
                             let submittedAccounts = codeBreakerSubmittedAccountsOverride.length ? [...codeBreakerSubmittedAccountsOverride] : [];
-                            let companyNumberHint = "";
                             if (draft.tenantId) {
                                 draft.clientName = workspaceNameFromConnection(draft.tenantId);
                                 const latest = latestSubmittedPeriodForTenant(draft.tenantId);
@@ -67862,9 +67861,6 @@
                                 draft.submittedAt = "";
                                 codeBreakerShowSubmittedAccountsPicker = false;
                             }
-                            if (draft.tenantId && !String(draft.companyNumber || "").trim()) {
-                                companyNumberHint = "No Companies House number found for this tenant in Client Register or Xero mapping. Add it in Client Register or Lock-date mapping.";
-                            }
                             if (!submittedAccounts.length) codeBreakerShowSubmittedAccountsPicker = false;
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
@@ -67886,7 +67882,6 @@
                                     </label>
                                     <label class="code-breaker-field code-breaker-field-company-number">Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
-                                        ${companyNumberHint ? `<small class="operation-review-muted">${escapeHTML(companyNumberHint)}</small>` : ""}
                                     </label>
                                     <label class="code-breaker-field code-breaker-field-period-start">Accounting period start date
                                         <input id="codeBreakerSetupModalPeriodStartDate" type="date" value="${escapeHTML(draft.periodStartDate)}" readonly>
