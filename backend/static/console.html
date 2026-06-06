@@ -67627,41 +67627,90 @@
                     }
                     connections = codeBreakerConnections();
                 }
-                const fallbackCompany = [...(Array.isArray(codeBreakerCompanies) ? codeBreakerCompanies : [])]
-                    .sort((left, right) => dateSortValue(right?.latestSubmissionCompletedAt || right?.latestSubmissionAt || right?.lastFiledDate || "") - dateSortValue(left?.latestSubmissionCompletedAt || left?.latestSubmissionAt || left?.lastFiledDate || ""))[0] || null;
-                const fallbackCustomer = codeBreakerCustomersForTenant(connections[0]?.tenantId || "")[0] || null;
                 const draft = {
-                    clientName: String(fallbackCompany?.clientName || fallbackCompany?.companyName || fallbackCustomer?.name || "").trim(),
-                    tenantId: String(connections[0]?.tenantId || "").trim(),
-                    xeroContactId: String(fallbackCustomer?.xeroContactId || fallbackCustomer?.contactId || "").trim(),
-                    companyNumber: String(fallbackCompany?.companyNumber || "").trim().toUpperCase(),
-                    yearEndDate: String(fallbackCompany?.lastFiledDate || fallbackCompany?.latestSubmissionCompletedAt || "").slice(0, 10),
-                    submittedAt: String(fallbackCompany?.latestSubmissionCompletedAt || fallbackCompany?.latestSubmissionAt || "").slice(0, 10),
+                    clientName: "",
+                    tenantId: "",
+                    xeroContactId: "",
+                    companyNumber: "",
+                    yearEndDate: "",
+                    submittedAt: "",
                 };
 
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Code Breaker",
                     title: "Set up workspace",
-                    subtitle: "Confirm Xero client and Companies House details. Defaults use the most recently submitted set of accounts.",
+                    subtitle: "Confirm Xero connection and Companies House details. Defaults use the most recently submitted set of accounts.",
                     confirmLabel: "Create workspace",
                     cancelLabel: "Cancel",
                     summaryChips: [
                         draft.yearEndDate ? `Year end ${formatDate(draft.yearEndDate)}` : "Year end pending",
-                        draft.submittedAt ? `Submitted ${formatDate(draft.submittedAt)}` : "Submission date pending",
                     ],
                     columns: [],
                     rows: [{}],
                     onRender: ({ body }) => {
+                        const latestSubmittedPeriodForTenant = (tenantId = "", clientName = "") => {
+                            const rows = yePrepCustomerRows(tenantId);
+                            if (!rows.length) return null;
+                            const search = normaliseStatus(clientName || "");
+                            const scopedRows = search
+                                ? rows.filter((row) => {
+                                    const names = [
+                                        row?.companyName,
+                                        row?.customer?.name,
+                                        row?.meReportClient?.clientName,
+                                        row?.lockRow?.companiesHouse?.companyName
+                                    ];
+                                    return names.some((value) => normaliseStatus(value || "") === search);
+                                })
+                                : rows;
+                            const candidates = scopedRows.length ? scopedRows : rows;
+                            let best = null;
+                            candidates.forEach((row) => {
+                                const periods = yePrepCompaniesHousePeriods(row, row?.lockRow?.companiesHouse || null);
+                                const submittedPeriod = periods.find((period) => period?.submittedAt) || null;
+                                const fallbackPeriod = periods[0] || null;
+                                const effectivePeriod = submittedPeriod || fallbackPeriod;
+                                if (!effectivePeriod) return;
+                                const sortKey = dateSortValue(submittedPeriod?.submittedAt || effectivePeriod?.yearEnd || "");
+                                if (!Number.isFinite(sortKey) || sortKey === Number.MAX_SAFE_INTEGER) return;
+                                if (!best || sortKey > best.sortKey) {
+                                    best = { row, period: effectivePeriod, submittedPeriod, sortKey };
+                                }
+                            });
+                            return best;
+                        };
                         const render = () => {
-                            const tenantClients = codeBreakerCustomersForTenant(draft.tenantId);
-                            const match = codeBreakerBestMatchByName(draft.clientName);
-                            if ((!draft.xeroContactId || !tenantClients.some((row) => String(row?.xeroContactId || row?.contactId || "") === draft.xeroContactId)) && match?.customer) {
-                                draft.xeroContactId = String(match.customer?.xeroContactId || match.customer?.contactId || "");
+                            if (draft.tenantId) {
+                                const latest = latestSubmittedPeriodForTenant(draft.tenantId, draft.clientName);
+                                if (latest?.row) {
+                                    const companyNumber = normaliseCompanyNumberInput(
+                                        latest.row?.companyNumber
+                                        || latest.row?.customer?.companyNumber
+                                        || latest.row?.lockRow?.mapping?.companyNumber
+                                        || latest.row?.lockRow?.companiesHouse?.companyNumber
+                                        || ""
+                                    );
+                                    draft.xeroContactId = String(
+                                        latest.row?.connected?.xeroContactId
+                                        || latest.row?.customer?.xeroContactId
+                                        || latest.row?.customer?.contactId
+                                        || ""
+                                    ).trim();
+                                    draft.companyNumber = companyNumber || "";
+                                    draft.yearEndDate = String(latest?.period?.yearEnd || "").slice(0, 10);
+                                    draft.submittedAt = String(latest?.submittedPeriod?.submittedAt || "").slice(0, 10);
+                                } else {
+                                    draft.xeroContactId = "";
+                                    draft.companyNumber = "";
+                                    draft.yearEndDate = "";
+                                    draft.submittedAt = "";
+                                }
+                            } else {
+                                draft.xeroContactId = "";
+                                draft.companyNumber = "";
+                                draft.yearEndDate = "";
+                                draft.submittedAt = "";
                             }
-                            const companyMatch = codeBreakerCompanyByNumberOrContact(draft.companyNumber, draft.xeroContactId) || match?.company || null;
-                            if (!draft.companyNumber && companyMatch?.companyNumber) draft.companyNumber = String(companyMatch.companyNumber || "").toUpperCase();
-                            if (!draft.yearEndDate) draft.yearEndDate = String(companyMatch?.lastFiledDate || "").slice(0, 10);
-                            if (!draft.submittedAt) draft.submittedAt = String(companyMatch?.latestSubmissionCompletedAt || companyMatch?.latestSubmissionAt || "").slice(0, 10);
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
                                     <label>Client / workspace name
@@ -67669,6 +67718,7 @@
                                     </label>
                                     <label>Xero connection
                                         <select id="codeBreakerSetupModalTenant">
+                                            <option value="" ${!draft.tenantId ? "selected" : ""}>Select Xero connection</option>
                                             ${connections.length
                                                 ? connections.map((row) => {
                                                     const tenantId = String(row.tenantId || "");
@@ -67678,25 +67728,11 @@
                                                 : '<option value="">No Xero connections</option>'}
                                         </select>
                                     </label>
-                                    <label>Xero client
-                                        <select id="codeBreakerSetupModalContact">
-                                            ${tenantClients.length
-                                                ? tenantClients.map((row) => {
-                                                    const contactId = String(row?.xeroContactId || row?.contactId || "");
-                                                    const label = String(row?.name || row?.clientName || row?.companyName || "Unnamed client");
-                                                    return `<option value="${escapeHTML(contactId)}" ${contactId === draft.xeroContactId ? "selected" : ""}>${escapeHTML(label)}</option>`;
-                                                }).join("")
-                                                : '<option value="">No Xero clients available</option>'}
-                                        </select>
-                                    </label>
                                     <label>Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
                                     </label>
                                     <label>Year end date (assumed latest filed)
                                         <input id="codeBreakerSetupModalYearEndDate" type="date" value="${escapeHTML(draft.yearEndDate)}">
-                                    </label>
-                                    <label>Submission date
-                                        <input id="codeBreakerSetupModalSubmittedAt" type="date" value="${escapeHTML(draft.submittedAt)}">
                                     </label>
                                 </form>
                             `;
@@ -67709,17 +67745,11 @@
                                 draft.xeroContactId = "";
                                 render();
                             });
-                            body.querySelector("#codeBreakerSetupModalContact")?.addEventListener("change", (event) => {
-                                draft.xeroContactId = String(event.target?.value || "");
-                            });
                             body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
                                 draft.companyNumber = String(event.target?.value || "").trim().toUpperCase();
                             });
                             body.querySelector("#codeBreakerSetupModalYearEndDate")?.addEventListener("change", (event) => {
                                 draft.yearEndDate = String(event.target?.value || "");
-                            });
-                            body.querySelector("#codeBreakerSetupModalSubmittedAt")?.addEventListener("change", (event) => {
-                                draft.submittedAt = String(event.target?.value || "");
                             });
                         };
                         render();
@@ -67736,7 +67766,7 @@
 
                 if (!decision) return false;
                 if (!decision.clientName || !decision.tenantId || !decision.xeroContactId || !decision.companyNumber || !decision.yearEndDate) {
-                    showToast("Complete client, Xero, company number, and year end date before saving.", "error");
+                    showToast("Complete client, Xero connection, company number, and year end date before saving.", "error");
                     return false;
                 }
 
