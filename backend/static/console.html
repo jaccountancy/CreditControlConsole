@@ -25346,10 +25346,23 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="codeBreakerSetupWorkspaceButton" type="button">Set up workspace</button>
+                                    <button class="ghost-button" id="codeBreakerConnectTenantButton" type="button">Connect Xero tenant</button>
                                     <button class="ghost-button" id="codeBreakerRefreshButton" type="button">Refresh</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="codeBreakerSummary">Loading Code Breaker workspaces.</p>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Code Breaker connected Xero accounts">
+                                    <thead>
+                                        <tr>
+                                            <th>Xero account</th>
+                                            <th>Tenant ID</th>
+                                            <th>Connection</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="codeBreakerConnectionsTableBody"></tbody>
+                                </table>
+                            </section>
                             <section class="detail-panel" id="codeBreakerSetupPanel" hidden>
                                 <h4>Set up Code Breaker workspace</h4>
                                 <form class="bank-account-form" id="codeBreakerWorkspaceForm">
@@ -67941,27 +67954,61 @@
                 renderCodeBreakerScreen();
             }
 
+            function renderCodeBreakerConnectionsTable(tableBody) {
+                if (!tableBody) return;
+                const connections = codeBreakerConnections();
+                if (!connections.length) {
+                    tableBody.innerHTML = '<tr><td colspan="3"><div class="empty-state"><p class="eyebrow">No Xero accounts</p><h4>No connected Xero accounts found</h4><p>Use Connect Xero tenant, complete authorization, then return here and click Refresh.</p></div></td></tr>';
+                    return;
+                }
+                const rows = [...connections]
+                    .sort((left, right) => xeroWorkspaceLabel(left?.tenantName, left?.tenantId, "").localeCompare(xeroWorkspaceLabel(right?.tenantName, right?.tenantId, ""), "en-GB"))
+                    .map((connection) => {
+                        const tenantId = String(connection?.tenantId || "").trim();
+                        const tenantName = xeroWorkspaceLabel(connection?.tenantName, tenantId, "Xero tenant");
+                        const tenantType = String(connection?.tenantType || "").trim();
+                        const connectionCopy = tenantType ? `${tenantType} · Connected` : "Connected";
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(tenantName)}</strong></td>
+                                <td><code>${escapeHTML(tenantId || "--")}</code></td>
+                                <td><small>${escapeHTML(connectionCopy)}</small></td>
+                            </tr>
+                        `;
+                    });
+                tableBody.innerHTML = rows.join("");
+            }
+
             function renderCodeBreakerScreen() {
                 const screen = document.getElementById("codeBreakerScreen");
                 if (!screen) return;
                 const summary = document.getElementById("codeBreakerSummary");
                 const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
+                const connectTenantButton = document.getElementById("codeBreakerConnectTenantButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
+                const connectionsTableBody = document.getElementById("codeBreakerConnectionsTableBody");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
-                if (!summary || !setupButton || !refreshButton || !tableBody) return;
+                if (!summary || !setupButton || !connectTenantButton || !refreshButton || !connectionsTableBody || !tableBody) return;
 
                 setupButton.textContent = "Set up workspace";
                 summary.textContent = `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspace${(codeBreakerWorkspaces || []).length === 1 ? "" : "s"} configured.`;
+                renderCodeBreakerConnectionsTable(connectionsTableBody);
 
                 if (setupButton.dataset.cbWired !== "true") {
                     setupButton.dataset.cbWired = "true";
                     setupButton.addEventListener("click", async () => {
-                        const connectUrl = codeBreakerConnectXeroStartUrl();
-                        if (connectUrl) {
-                            window.open(connectUrl, "_blank", "noopener,noreferrer");
-                            showToast("Authorize any additional Xero connections, then confirm workspace setup details.", "info");
-                        }
                         await openCodeBreakerWorkspaceSetupDialog();
+                    });
+                }
+                if (connectTenantButton.dataset.cbWired !== "true") {
+                    connectTenantButton.dataset.cbWired = "true";
+                    connectTenantButton.addEventListener("click", () => {
+                        const connectUrl = codeBreakerConnectXeroStartUrl();
+                        if (!connectUrl) {
+                            showToast("Xero connection URL is not configured.", "error");
+                            return;
+                        }
+                        window.location.href = connectUrl;
                     });
                 }
                 if (refreshButton.dataset.cbWired !== "true") {
