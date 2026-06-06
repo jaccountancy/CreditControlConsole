@@ -251,6 +251,7 @@ from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connec
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_PANEL_DIR = BASE_DIR.parent / "WebPanel"
+LEGACY_CONSOLE_PATH = BASE_DIR / "static" / "console.html"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
@@ -790,27 +791,40 @@ def logout():
 
 @app.get("/", response_class=HTMLResponse)
 def console_page():
-    return FileResponse(WEB_PANEL_DIR / "index.html")
+    webpanel_index = WEB_PANEL_DIR / "index.html"
+    if webpanel_index.exists():
+        return FileResponse(webpanel_index)
+    logger.warning("WebPanel index not found at %s; serving legacy console", webpanel_index)
+    return FileResponse(LEGACY_CONSOLE_PATH)
 
 
 @app.get("/styles.css")
 def webpanel_styles():
-    return FileResponse(WEB_PANEL_DIR / "styles.css")
+    styles_path = WEB_PANEL_DIR / "styles.css"
+    if styles_path.exists():
+        return FileResponse(styles_path)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="styles.css not found.")
 
 
 @app.get("/app.js")
 def webpanel_script():
-    return FileResponse(WEB_PANEL_DIR / "app.js")
+    script_path = WEB_PANEL_DIR / "app.js"
+    if script_path.exists():
+        return FileResponse(script_path)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="app.js not found.")
 
 
 @app.get("/standalone.html", response_class=HTMLResponse)
 def webpanel_standalone():
-    return FileResponse(WEB_PANEL_DIR / "standalone.html")
+    standalone_path = WEB_PANEL_DIR / "standalone.html"
+    if standalone_path.exists():
+        return FileResponse(standalone_path)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="standalone.html not found.")
 
 
 @app.get("/console", response_class=HTMLResponse)
 def legacy_console_page():
-    return FileResponse(BASE_DIR / "static" / "console.html")
+    return FileResponse(LEGACY_CONSOLE_PATH)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
