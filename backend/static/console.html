@@ -67955,15 +67955,46 @@
                                         const companies = Array.isArray(payload?.companies) ? payload.companies : [];
                                         resolvedCompany = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === resolvedCompanyNumber) || companies[0] || null;
                                     }
-                                    const periods = yePrepCompaniesHousePeriods({}, resolvedCompany || null, { includeRegisterFallback: false })
-                                        .filter((period) => period?.submittedAt && period?.yearEnd)
-                                        .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""));
-                                    codeBreakerSubmittedAccountsOverride = periods;
-                                    const latestSubmitted = periods[0] || null;
-                                    draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
-                                    draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
-                                    draft.periodStartDate = String(latestSubmitted?.periodStart || "").slice(0, 10) || periodStartFromYearEnd(draft.yearEndDate);
-                                    if (!latestSubmitted) {
+                                    const filingHistory = Array.isArray(resolvedCompany?.filingHistory) ? resolvedCompany.filingHistory : [];
+                                    const accountsPeriods = filingHistory
+                                        .map((row) => {
+                                            const category = String(row?.category || "").toLowerCase();
+                                            const type = String(row?.type || "").toUpperCase();
+                                            const isAccountsFiling = category === "accounts" || type === "AA" || type.startsWith("AA");
+                                            if (!isAccountsFiling) return null;
+                                            const yearEnd = yePrepNormaliseIsoDate(
+                                                row?.made_up_to
+                                                || row?.madeUpTo
+                                                || row?.made_up_date
+                                                || row?.period_end
+                                                || row?.periodEnd
+                                                || ""
+                                            );
+                                            const submittedAt = yePrepNormaliseIsoDate(
+                                                row?.date
+                                                || row?.submittedAt
+                                                || row?.receivedOn
+                                                || row?.received_on
+                                                || row?.filedOn
+                                                || ""
+                                            );
+                                            if (!yearEnd || !submittedAt) return null;
+                                            return {
+                                                yearEnd,
+                                                submittedAt,
+                                                periodStart: periodStartFromYearEnd(yearEnd),
+                                                source: "Companies House",
+                                            };
+                                        })
+                                        .filter(Boolean)
+                                        .sort((left, right) => dateSortValue(right.submittedAt) - dateSortValue(left.submittedAt));
+                                    codeBreakerSubmittedAccountsOverride = accountsPeriods;
+                                    const latestSubmitted = accountsPeriods[0] || null;
+                                    if (latestSubmitted) {
+                                        draft.yearEndDate = latestSubmitted.yearEnd;
+                                        draft.submittedAt = latestSubmitted.submittedAt;
+                                        draft.periodStartDate = latestSubmitted.periodStart || periodStartFromYearEnd(latestSubmitted.yearEnd);
+                                    } else {
                                         draft.periodStartDate = "";
                                         draft.yearEndDate = "";
                                         draft.submittedAt = "";
