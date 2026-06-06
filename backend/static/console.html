@@ -67639,11 +67639,14 @@
                     tenantId: "",
                     xeroContactId: "",
                     companyNumber: "",
+                    periodStartDate: "",
                     yearEndDate: "",
                     submittedAt: "",
                 };
                 let codeBreakerYearEndManualSelection = false;
                 let codeBreakerShowSubmittedAccountsPicker = false;
+                let codeBreakerPopulateBusy = false;
+                let codeBreakerSubmittedAccountsOverride = [];
 
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Code Breaker",
@@ -67684,6 +67687,17 @@
                             });
                             return best;
                         };
+                        const periodStartFromYearEnd = (yearEnd = "") => {
+                            const cleanYearEnd = String(yearEnd || "").slice(0, 10);
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanYearEnd)) return "";
+                            const [year, month, day] = cleanYearEnd.split("-").map((value) => Number(value || 0));
+                            if (!year || !month || !day) return "";
+                            const endDate = new Date(Date.UTC(year, month - 1, day));
+                            if (Number.isNaN(endDate.getTime())) return "";
+                            endDate.setUTCFullYear(endDate.getUTCFullYear() - 1);
+                            endDate.setUTCDate(endDate.getUTCDate() + 1);
+                            return endDate.toISOString().slice(0, 10);
+                        };
                         const submittedAccountsForRow = (row = null) => {
                             if (!row) return [];
                             const seen = new Set();
@@ -67714,6 +67728,22 @@
                             const matched = byClientId || byName || null;
                             return normaliseCompanyNumberInput(matched?.companyNumber || "");
                         };
+                        const companyNumberByOrganisationName = (workspaceName = "") => {
+                            const registerRows = companySecretarialRegisterRows();
+                            if (!Array.isArray(registerRows) || !registerRows.length) return "";
+                            const name = normaliseStatus(workspaceName || "");
+                            if (!name) return "";
+                            const exact = registerRows.find((item) => (
+                                normaliseStatus(item?.displayName || "") === name
+                                || normaliseStatus(item?.companyName || "") === name
+                            )) || null;
+                            if (exact) return normaliseCompanyNumberInput(exact?.companyNumber || "");
+                            const loose = registerRows.find((item) => {
+                                const candidate = normaliseStatus(item?.displayName || item?.companyName || "");
+                                return candidate && (candidate.includes(name) || name.includes(candidate));
+                            }) || null;
+                            return normaliseCompanyNumberInput(loose?.companyNumber || "");
+                        };
                         const companyNumberFromTenantMapping = (tenantId = "") => {
                             const cleanTenantId = String(tenantId || "").trim();
                             if (!cleanTenantId) return "";
@@ -67726,37 +67756,25 @@
                             );
                         };
                         const render = () => {
-                            let submittedAccounts = [];
+                            let submittedAccounts = codeBreakerSubmittedAccountsOverride.length ? [...codeBreakerSubmittedAccountsOverride] : [];
                             let companyNumberHint = "";
                             if (draft.tenantId) {
                                 draft.clientName = workspaceNameFromConnection(draft.tenantId);
                                 const latest = latestSubmittedPeriodForTenant(draft.tenantId);
                                 if (latest?.row) {
-                                    const companyNumberFromRegister = companyNumberFromClientRegister(latest.row, draft.clientName);
-                                    const companyNumberFromMapping = companyNumberFromTenantMapping(draft.tenantId);
-                                    const companyNumber = companyNumberFromRegister || companyNumberFromMapping || normaliseCompanyNumberInput(
-                                        latest.row?.companyNumber
-                                        || latest.row?.customer?.companyNumber
-                                        || latest.row?.lockRow?.mapping?.companyNumber
-                                        || latest.row?.lockRow?.companiesHouse?.companyNumber
-                                        || ""
-                                    );
                                     draft.xeroContactId = String(
                                         latest.row?.connected?.xeroContactId
                                         || latest.row?.customer?.xeroContactId
                                         || latest.row?.customer?.contactId
                                         || ""
                                     ).trim();
-                                    draft.companyNumber = companyNumber || "";
-                                    submittedAccounts = submittedAccountsForRow(latest.row);
-                                    if (!codeBreakerYearEndManualSelection) {
-                                        const latestSubmitted = submittedAccounts[0] || latest?.submittedPeriod || null;
-                                        draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
-                                        draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
+                                    if (!submittedAccounts.length) {
+                                        submittedAccounts = submittedAccountsForRow(latest.row);
                                     }
                                 } else {
                                     draft.xeroContactId = "";
                                     draft.companyNumber = "";
+                                    draft.periodStartDate = "";
                                     draft.yearEndDate = "";
                                     draft.submittedAt = "";
                                     codeBreakerShowSubmittedAccountsPicker = false;
@@ -67765,6 +67783,7 @@
                                 draft.clientName = "";
                                 draft.xeroContactId = "";
                                 draft.companyNumber = "";
+                                draft.periodStartDate = "";
                                 draft.yearEndDate = "";
                                 draft.submittedAt = "";
                                 codeBreakerShowSubmittedAccountsPicker = false;
@@ -67789,10 +67808,14 @@
                                                 }).join("")
                                                 : '<option value="">No Xero connections</option>'}
                                         </select>
+                                        ${draft.tenantId ? `<button class="ghost-button" id="codeBreakerPopulateChDataButton" type="button" style="margin-top:8px;" ${codeBreakerPopulateBusy ? "disabled" : ""}>${codeBreakerPopulateBusy ? "Populating..." : "Populate CH Number and Dates"}</button>` : ""}
                                     </label>
                                     <label>Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
                                         ${companyNumberHint ? `<small class="operation-review-muted">${escapeHTML(companyNumberHint)}</small>` : ""}
+                                    </label>
+                                    <label>Accounting period start date
+                                        <input id="codeBreakerSetupModalPeriodStartDate" type="date" value="${escapeHTML(draft.periodStartDate)}" readonly>
                                     </label>
                                     <label>Year end date (assumed latest filed)
                                         <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;">
@@ -67819,9 +67842,58 @@
                                 draft.tenantId = String(event.target?.value || "");
                                 draft.clientName = "";
                                 draft.xeroContactId = "";
+                                draft.companyNumber = "";
+                                draft.periodStartDate = "";
+                                draft.yearEndDate = "";
+                                draft.submittedAt = "";
+                                codeBreakerPopulateBusy = false;
+                                codeBreakerSubmittedAccountsOverride = [];
                                 codeBreakerYearEndManualSelection = false;
                                 codeBreakerShowSubmittedAccountsPicker = false;
                                 render();
+                            });
+                            body.querySelector("#codeBreakerPopulateChDataButton")?.addEventListener("click", async () => {
+                                if (!draft.tenantId) return;
+                                codeBreakerPopulateBusy = true;
+                                render();
+                                const latest = latestSubmittedPeriodForTenant(draft.tenantId);
+                                const byName = companyNumberByOrganisationName(draft.clientName);
+                                const byRegister = companyNumberFromClientRegister(latest?.row || null, draft.clientName);
+                                const byMapping = companyNumberFromTenantMapping(draft.tenantId);
+                                const byRow = normaliseCompanyNumberInput(
+                                    latest?.row?.companyNumber
+                                    || latest?.row?.customer?.companyNumber
+                                    || latest?.row?.lockRow?.mapping?.companyNumber
+                                    || latest?.row?.lockRow?.companiesHouse?.companyNumber
+                                    || ""
+                                );
+                                draft.companyNumber = byName || byRegister || byMapping || byRow || "";
+                                if (!draft.companyNumber) {
+                                    codeBreakerPopulateBusy = false;
+                                    render();
+                                    return;
+                                }
+                                try {
+                                    const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(draft.companyNumber)}`);
+                                    const companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                                    const exact = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === draft.companyNumber) || companies[0] || null;
+                                    const periods = yePrepCompaniesHousePeriods(latest?.row || {}, exact || null)
+                                        .filter((period) => period?.submittedAt && period?.yearEnd)
+                                        .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""));
+                                    codeBreakerSubmittedAccountsOverride = periods;
+                                    const latestSubmitted = periods[0] || null;
+                                    draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
+                                    draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
+                                    draft.periodStartDate = periodStartFromYearEnd(draft.yearEndDate);
+                                } catch (error) {
+                                    console.warn("Unable to populate Companies House dates for Code Breaker setup", error);
+                                    showToast(error?.message || "Unable to load Companies House accounting periods for this company.", "error");
+                                } finally {
+                                    codeBreakerPopulateBusy = false;
+                                    codeBreakerYearEndManualSelection = false;
+                                    codeBreakerShowSubmittedAccountsPicker = false;
+                                    render();
+                                }
                             });
                             body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
                                 draft.companyNumber = String(event.target?.value || "").trim().toUpperCase();
@@ -67836,6 +67908,7 @@
                                 const [yearEnd, submittedAt] = raw.split("|");
                                 draft.yearEndDate = String(yearEnd || "").slice(0, 10);
                                 draft.submittedAt = String(submittedAt || "").slice(0, 10);
+                                draft.periodStartDate = periodStartFromYearEnd(draft.yearEndDate);
                                 codeBreakerYearEndManualSelection = true;
                                 codeBreakerShowSubmittedAccountsPicker = false;
                                 render();
@@ -67848,6 +67921,7 @@
                         tenantId: String(draft.tenantId || "").trim(),
                         xeroContactId: String(draft.xeroContactId || "").trim(),
                         companyNumber: String(draft.companyNumber || "").trim().toUpperCase(),
+                        periodStartDate: String(draft.periodStartDate || "").trim(),
                         yearEndDate: String(draft.yearEndDate || "").trim(),
                         submittedAt: String(draft.submittedAt || "").trim(),
                     }),
