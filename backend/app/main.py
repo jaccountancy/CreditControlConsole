@@ -250,6 +250,7 @@ from .hmrc_648 import (
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+WEB_PANEL_DIR = BASE_DIR.parent / "WebPanel"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
@@ -789,6 +790,26 @@ def logout():
 
 @app.get("/", response_class=HTMLResponse)
 def console_page():
+    return FileResponse(WEB_PANEL_DIR / "index.html")
+
+
+@app.get("/styles.css")
+def webpanel_styles():
+    return FileResponse(WEB_PANEL_DIR / "styles.css")
+
+
+@app.get("/app.js")
+def webpanel_script():
+    return FileResponse(WEB_PANEL_DIR / "app.js")
+
+
+@app.get("/standalone.html", response_class=HTMLResponse)
+def webpanel_standalone():
+    return FileResponse(WEB_PANEL_DIR / "standalone.html")
+
+
+@app.get("/console", response_class=HTMLResponse)
+def legacy_console_page():
     return FileResponse(BASE_DIR / "static" / "console.html")
 
 
