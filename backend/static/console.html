@@ -66026,7 +66026,8 @@
                 return { key: "not-due", label: "Open, not yet due", className: "is-review", selectable: true };
             }
 
-            function yePrepCompaniesHousePeriods(customer = {}, chCompany = null) {
+            function yePrepCompaniesHousePeriods(customer = {}, chCompany = null, options = {}) {
+                const includeRegisterFallback = options?.includeRegisterFallback !== false;
                 const buckets = new Map();
                 const push = (raw = {}) => {
                     const yearEnd = yePrepNormaliseIsoDate(
@@ -66100,7 +66101,7 @@
                     source: "Filing history",
                 })));
 
-                if (!buckets.size) {
+                if (!buckets.size && includeRegisterFallback) {
                     yePrepYearEndsForCustomer(customer).forEach((iso) => push({ yearEnd: iso, source: "Client register" }));
                 }
 
@@ -67959,7 +67960,7 @@
                                         const companies = Array.isArray(payload?.companies) ? payload.companies : [];
                                         resolvedCompany = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === resolvedCompanyNumber) || companies[0] || null;
                                     }
-                                    const periods = yePrepCompaniesHousePeriods(latest?.row || {}, resolvedCompany || null)
+                                    const periods = yePrepCompaniesHousePeriods({}, resolvedCompany || null, { includeRegisterFallback: false })
                                         .filter((period) => period?.submittedAt && period?.yearEnd)
                                         .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""));
                                     codeBreakerSubmittedAccountsOverride = periods;
@@ -67967,6 +67968,12 @@
                                     draft.yearEndDate = String(latestSubmitted?.yearEnd || "").slice(0, 10);
                                     draft.submittedAt = String(latestSubmitted?.submittedAt || "").slice(0, 10);
                                     draft.periodStartDate = String(latestSubmitted?.periodStart || "").slice(0, 10) || periodStartFromYearEnd(draft.yearEndDate);
+                                    if (!latestSubmitted) {
+                                        draft.periodStartDate = "";
+                                        draft.yearEndDate = "";
+                                        draft.submittedAt = "";
+                                        showToast("No submitted accounts periods were returned by Companies House for this company.", "info");
+                                    }
                                 } catch (error) {
                                     console.warn("Unable to populate Companies House dates for Code Breaker setup", error);
                                     showToast(error?.message || "Unable to load Companies House accounting periods for this company.", "error");
