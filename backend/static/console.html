@@ -67627,6 +67627,13 @@
                     }
                     connections = codeBreakerConnections();
                 }
+                if (!companiesHouseSettings?.authRegisterLoaded && typeof loadAuthCodeRegisterDirectory === "function") {
+                    try {
+                        await loadAuthCodeRegisterDirectory(true);
+                    } catch (error) {
+                        console.warn("Unable to preload client register for Code Breaker setup", error);
+                    }
+                }
                 const draft = {
                     clientName: "",
                     tenantId: "",
@@ -67690,13 +67697,44 @@
                                     return true;
                                 });
                         };
+                        const companyNumberFromClientRegister = (row = null, workspaceName = "") => {
+                            const registerRows = companySecretarialRegisterRows();
+                            if (!Array.isArray(registerRows) || !registerRows.length) return "";
+                            const cleanWorkspaceName = normaliseStatus(workspaceName || "");
+                            const cleanClientId = String(row?.customer?.id || row?.connected?.id || "").trim().toLowerCase();
+                            const byClientId = cleanClientId
+                                ? registerRows.find((item) => String(item?.clientId || "").trim().toLowerCase() === cleanClientId)
+                                : null;
+                            const byName = cleanWorkspaceName
+                                ? registerRows.find((item) => (
+                                    normaliseStatus(item?.displayName || "") === cleanWorkspaceName
+                                    || normaliseStatus(item?.companyName || "") === cleanWorkspaceName
+                                ))
+                                : null;
+                            const matched = byClientId || byName || null;
+                            return normaliseCompanyNumberInput(matched?.companyNumber || "");
+                        };
+                        const companyNumberFromTenantMapping = (tenantId = "") => {
+                            const cleanTenantId = String(tenantId || "").trim();
+                            if (!cleanTenantId) return "";
+                            const rows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                            const matched = rows.find((item) => String(item?.tenantId || "").trim() === cleanTenantId) || null;
+                            return normaliseCompanyNumberInput(
+                                matched?.mapping?.companyNumber
+                                || matched?.companiesHouse?.companyNumber
+                                || ""
+                            );
+                        };
                         const render = () => {
                             let submittedAccounts = [];
+                            let companyNumberHint = "";
                             if (draft.tenantId) {
                                 draft.clientName = workspaceNameFromConnection(draft.tenantId);
                                 const latest = latestSubmittedPeriodForTenant(draft.tenantId);
                                 if (latest?.row) {
-                                    const companyNumber = normaliseCompanyNumberInput(
+                                    const companyNumberFromRegister = companyNumberFromClientRegister(latest.row, draft.clientName);
+                                    const companyNumberFromMapping = companyNumberFromTenantMapping(draft.tenantId);
+                                    const companyNumber = companyNumberFromRegister || companyNumberFromMapping || normaliseCompanyNumberInput(
                                         latest.row?.companyNumber
                                         || latest.row?.customer?.companyNumber
                                         || latest.row?.lockRow?.mapping?.companyNumber
@@ -67731,6 +67769,9 @@
                                 draft.submittedAt = "";
                                 codeBreakerShowSubmittedAccountsPicker = false;
                             }
+                            if (draft.tenantId && !String(draft.companyNumber || "").trim()) {
+                                companyNumberHint = "No Companies House number found for this tenant in Client Register or Xero mapping. Add it in Client Register or Lock-date mapping.";
+                            }
                             if (!submittedAccounts.length) codeBreakerShowSubmittedAccountsPicker = false;
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
@@ -67751,6 +67792,7 @@
                                     </label>
                                     <label>Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
+                                        ${companyNumberHint ? `<small class="operation-review-muted">${escapeHTML(companyNumberHint)}</small>` : ""}
                                     </label>
                                     <label>Year end date (assumed latest filed)
                                         <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;">
