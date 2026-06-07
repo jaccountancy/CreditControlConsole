@@ -794,12 +794,32 @@ def _normalise_ch_filing_history(payload: dict | None) -> list[dict]:
     return output[:50]
 
 
-def _first_filing_date(filing_history: list[dict]) -> date | None:
+def _is_confirmation_statement_filing(item: dict | None) -> bool:
+    if not isinstance(item, dict):
+        return False
+    filing_type = str(item.get("type") or "").strip().upper()
+    category = str(item.get("category") or "").strip().lower()
+    description = str(item.get("description") or "").strip().lower()
+    if filing_type in {"CS01", "AR01", "AR02", "AR"}:
+        return True
+    if "confirmation" in category:
+        return True
+    if "confirmation statement" in description or "confirmation-statement" in description:
+        return True
+    if "annual return" in description:
+        return True
+    return False
+
+
+def _latest_confirmation_statement_filed_date(filing_history: list[dict]) -> date | None:
+    filed_dates: list[date] = []
     for item in filing_history:
+        if not _is_confirmation_statement_filing(item):
+            continue
         filed_on = _parse_date_from_text(item.get("date"))
         if filed_on:
-            return filed_on
-    return None
+            filed_dates.append(filed_on)
+    return max(filed_dates) if filed_dates else None
 
 
 def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COMPANY_SNAPSHOT_CACHE_TTL) -> dict | None:
@@ -900,7 +920,8 @@ def _fetch_ch_company_snapshot(
         "pscs": _normalise_ch_pscs(psc_payload),
         "nextMadeUpToDate": _parse_date_from_text(confirmation.get("next_made_up_to")),
         "nextDueDate": _parse_date_from_text(confirmation.get("next_due")),
-        "lastFiledDate": _parse_date_from_text(confirmation.get("last_made_up_to")) or _first_filing_date(filing_history),
+        "lastFiledDate": _latest_confirmation_statement_filed_date(filing_history)
+        or _parse_date_from_text(confirmation.get("last_made_up_to")),
         "filingHistory": filing_history,
     }
 
@@ -5640,9 +5661,10 @@ def _workflow_review_complete(value: object) -> bool:
 
 def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     today = date.today()
+    filing_history = row.get("filing_history") if isinstance(row.get("filing_history"), list) else []
     next_due = row.get("next_due_date")
     next_made_up_to = row.get("next_made_up_to_date")
-    last_filed = row.get("last_filed_date")
+    last_filed = _latest_confirmation_statement_filed_date(filing_history) if filing_history else row.get("last_filed_date")
     if isinstance(next_due, date):
         due_in_days = (next_due - today).days
     else:
@@ -5738,12 +5760,12 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "workflowReviewComplete": workflow_review_complete,
         "nextMadeUpToDate": _date_or_none(row.get("next_made_up_to_date")),
         "nextDueDate": _date_or_none(row.get("next_due_date")),
-        "lastFiledDate": _date_or_none(row.get("last_filed_date")),
+        "lastFiledDate": _date_or_none(last_filed),
         "filedWithinLast12Months": filed_within_last_12_months,
         "submissionWarnings": submission_warnings,
         "submissionIssues": submission_issues,
         "recommendedWorkflowAction": "changes-required" if submission_issues else "no-changes",
-        "filingHistory": row.get("filing_history") or [],
+        "filingHistory": filing_history,
         "internalStatus": row.get("internal_status") or "active",
         "filingAuthorityStatus": row.get("filing_authority_status") or "pending",
         "filingAuthorityReference": row.get("filing_authority_reference") or "",
@@ -5803,11 +5825,7 @@ def list_companies(filters: dict | None = None) -> list[dict]:
 
     only_overdue = bool(filters.get("overdue"))
     if only_overdue:
-        where_clauses.append(
-            "c.next_due_date IS NOT NULL "
-            "AND c.next_due_date < CURRENT_DATE "
-            "AND (c.last_filed_date IS NULL OR c.last_filed_date < (CURRENT_DATE - INTERVAL '365 days'))"
-        )
+        where_clauses.append("c.next_due_date IS NOT NULL AND c.next_due_date < CURRENT_DATE")
 
     only_xero_connected = bool(filters.get("xeroConnected"))
     if only_xero_connected:
@@ -5890,7 +5908,13 @@ def list_companies(filters: dict | None = None) -> list[dict]:
             rows = cursor.fetchall() or []
         connection.commit()
 
-    return [_serialise_company_row(row) for row in rows]
+    serialised_rows = [_serialise_company_row(row) for row in rows]
+    if only_overdue:
+        serialised_rows = [
+            row for row in serialised_rows
+            if isinstance(row.get("dueInDays"), int) and row["dueInDays"] < 0 and not bool(row.get("filedWithinLast12Months"))
+        ]
+    return serialised_rows
 
 
 def _chunk_company_ids(company_ids: list[str]) -> list[str]:
@@ -7675,6 +7699,7 @@ def delete_company(company_id: str, user: dict) -> dict:
 
 
 def dashboard_summary() -> dict:
+    today = date.today()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -7699,6 +7724,13 @@ def dashboard_summary() -> dict:
             tile_row = cursor.fetchone() or {}
             cursor.execute(
                 """
+                SELECT next_due_date, last_filed_date, filing_history
+                FROM ch_companies
+                """
+            )
+            overdue_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
                 SELECT s.*, c.company_name, c.company_number
                 FROM ch_submissions s
                 JOIN ch_companies c ON c.id = s.company_id
@@ -7720,11 +7752,22 @@ def dashboard_summary() -> dict:
             rejected_submissions = cursor.fetchall() or []
         connection.commit()
 
+    overdue_count = 0
+    for row in overdue_rows:
+        next_due = row.get("next_due_date")
+        if not isinstance(next_due, date) or next_due >= today:
+            continue
+        filing_history = row.get("filing_history") if isinstance(row.get("filing_history"), list) else []
+        last_filed = _latest_confirmation_statement_filed_date(filing_history) if filing_history else row.get("last_filed_date")
+        if isinstance(last_filed, date) and last_filed >= (today - timedelta(days=365)):
+            continue
+        overdue_count += 1
+
     return {
         "tiles": {
             "totalCompanies": int(tile_row.get("total_companies") or 0),
             "dueSoon": int(tile_row.get("due_soon") or 0),
-            "overdue": int(tile_row.get("overdue") or 0),
+            "overdue": overdue_count,
             "missingAuth": int(tile_row.get("missing_auth") or 0),
             "readyToFile": int(tile_row.get("ready_to_file") or 0),
             "blocked": int(tile_row.get("blocked") or 0),
