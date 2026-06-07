@@ -5477,13 +5477,12 @@
                 48% { transform: translateX(40%); }
                 100% { transform: translateX(245%); }
             }
-            .invoice-table { width: 100%; border-collapse: collapse; min-width: 1080px; table-layout: fixed; }
+            .invoice-table { width: 100%; border-collapse: collapse; min-width: 920px; table-layout: fixed; }
             .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
-            .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 29%; }
-            .invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 25%; }
-            .invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 15%; }
-            .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 25%; }
-            .invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 64px; }
+            .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 40%; }
+            .invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 16%; }
+            .invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 34%; }
+            .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 74px; }
             .invoice-table th, .invoice-table td {
                 padding: 11px 16px;
                 border-bottom: 1px solid var(--line);
@@ -22946,7 +22945,6 @@
                                     <div class="toolbar-menu-section" data-ledger-options-panel="columns">
                                         <span class="toolbar-menu-section-title">Columns</span>
                                         <div class="column-toggle-list">
-                                            <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
                                             <label><input type="checkbox" data-column-toggle="clientNotes" checked> Notes</label>
                                         </div>
                                     </div>
@@ -22966,7 +22964,6 @@
                                     <tr>
                                         <th class="is-sticky select-cell"><input id="selectAllInvoices" type="checkbox" aria-label="Select all invoices for visible clients"></th>
                                         <th class="is-sticky">Client</th>
-                                        <th class="is-sticky" data-column="description">Oldest Item</th>
                                         <th class="is-sticky">Amount Due</th>
                                         <th class="is-sticky" data-column="clientNotes">Notes</th>
                                         <th class="is-sticky">Open</th>
@@ -28174,7 +28171,6 @@
             let yePrepWorkspaceConfirmCompaniesSyncing = false;
             let yePrepAutoPromptedTenantId = "";
             let visibleColumns = {
-                description: persistedUIState.visibleColumns?.description !== false,
                 clientNotes: persistedUIState.visibleColumns?.clientNotes !== false
             };
 
@@ -33083,7 +33079,7 @@
                 if (isSyncing && !paged.length) {
                     for (let index = 0; index < 5; index += 1) {
                         const row = document.createElement("tr");
-                        row.innerHTML = `<td colspan="6"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+                        row.innerHTML = `<td colspan="5"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
                         tbody.appendChild(row);
                     }
                 } else if (!paged.length) {
@@ -33100,13 +33096,12 @@
                             title: cacheGap ? "Saved ledger cache needs rebuilding" : "No ledger rows match the current filters",
                             detail: cacheGap ? state.cacheStatus.message : "Connect Xero and sync live data, or widen the search and filter settings."
                         };
-                    row.innerHTML = `<td colspan="6"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
+                    row.innerHTML = `<td colspan="5"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
                     tbody.appendChild(row);
                 } else {
                     paged.forEach((group) => {
                         const invoice = group.priorityInvoice;
                         const category = invoiceCategory(invoice);
-                        const oldestInvoice = group.oldestOpenInvoice || invoice;
                         const selectedCount = group.invoices.filter((item) => selectedInvoiceIds.has(item.id)).length;
                         const isGroupSelected = Boolean(group.invoices.length) && selectedCount === group.invoices.length;
                         const isGroupPartial = selectedCount > 0 && selectedCount < group.invoices.length;
@@ -33125,7 +33120,6 @@
                                     </div>
                                 </div>
                             </td>
-                            <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
                             <td class="amount-cell is-client-total" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong></td>
                             <td class="client-note-cell" data-column="clientNotes">${ledgerClientNoteMarkup(latestNote)}</td>
                             <td class="actions-cell"><button class="table-open-button" type="button" data-open-client>Open</button></td>
