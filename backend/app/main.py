@@ -1423,8 +1423,38 @@ async def api_code_breaker_workspace_snapshot(
     user: dict = Depends(require_panel_user),
 ):
     payload = await request.json()
-    result = await code_breaker_workspace_snapshot(user, payload)
-    return {"status": "ok", "result": result}
+    try:
+        result = await code_breaker_workspace_snapshot(user, payload)
+        return {"status": "ok", "result": result}
+    except Exception as exc:
+        logger.exception("Code Breaker workspace snapshot failed")
+        as_at_value = str((payload or {}).get("asAtDate") or (payload or {}).get("yearEndDate") or "").strip()
+        fallback_as_at = as_at_value or datetime.now(timezone.utc).date().isoformat()
+        return {
+            "status": "ok",
+            "result": {
+                "asAtDate": fallback_as_at,
+                "tenantId": str((payload or {}).get("tenantId") or ""),
+                "tenantName": "",
+                "companyNumber": str((payload or {}).get("companyNumber") or ""),
+                "ch": {
+                    "companyName": "",
+                    "netAssets": None,
+                    "source": "unavailable",
+                    "lastFiledDate": None,
+                    "latestSubmissionCompletedAt": None,
+                },
+                "xero": {
+                    "netAssets": None,
+                    "source": "unavailable",
+                },
+                "match": {
+                    "matches": False,
+                    "difference": None,
+                },
+                "error": str(exc)[:300],
+            },
+        }
 
 
 @app.get("/api/company-secretarial/filings")
