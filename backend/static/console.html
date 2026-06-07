@@ -64549,6 +64549,17 @@
                 return scopedRows.filter((row) => String(row?.tenantId || "").trim());
             }
 
+            function vatWorkspaceErrorLabel(message = "") {
+                const text = String(message || "").trim();
+                if (!text) return "Error · API fetch failed";
+                const lower = text.toLowerCase();
+                if (lower.includes("insufficient") && lower.includes("scope")) return "Error · Xero permissions missing";
+                if (lower.includes("quota") || lower.includes("rate limit") || lower.includes("limit")) return "Error · Xero API quota reached";
+                if (lower.includes("could not be reached") || lower.includes("network")) return "Error · Xero API unreachable";
+                if (lower.includes("unauthor") || lower.includes("forbidden") || lower.includes("reconnect")) return "Error · Reconnect Xero";
+                return `Error · ${text}`;
+            }
+
             function selectedVatReturnEntry(rows = vatReturnQueueRows()) {
                 if (!selectedVatReturnKey) return null;
                 return rows.find((row) => row.key === selectedVatReturnKey) || null;
@@ -65460,6 +65471,7 @@
                 backButton.hidden = !(inDetail || (!inDetail && !workspacePickerRequired && Boolean(vatReturnSelectedWorkspaceTenantId) && workspaceRows.length > 1));
                 backButton.textContent = inDetail ? "Back to return queue" : "Back to client workspaces";
                 connectXeroButton.hidden = inDetail;
+                refreshButton.hidden = !inDetail;
                 aiReviewButton.hidden = !inDetail;
                 finaliseButton.hidden = !inDetail;
                 exportButton.hidden = !inDetail;
@@ -65628,12 +65640,13 @@
                         const outstandingCount = Number(row?.outstandingCount || Math.max(workspaceLabel - submittedCount, 0));
                         const hasWorkspaceError = Boolean(String(row?.error || "").trim());
                         const workspaceErrorText = String(row?.error || "").trim();
+                        const workspaceErrorLabel = vatWorkspaceErrorLabel(workspaceErrorText);
                         return `
                         <tr>
                             <td><strong>${escapeHTML(row.tenantName || row.clientName || row.tenantId)}</strong><small>${escapeHTML(row.tenantId || "")}</small></td>
                             <td>${escapeHTML(tenantRows[0]?.periodEndISO ? formatDate(tenantRows[0].periodEndISO) : "—")}</td>
                             <td>${escapeHTML(nextDue ? formatDate(nextDue) : "—")}</td>
-                            <td><span class="lock-status-pill ${hasWorkspaceError ? "is-overdue" : "is-open"}" ${hasWorkspaceError ? `title="${escapeHTML(workspaceErrorText)}"` : ""}>${hasWorkspaceError ? "Error · API fetch failed" : `${workspaceLabel} periods · ${submittedCount} submitted · ${outstandingCount} outstanding`}</span></td>
+                            <td><span class="lock-status-pill ${hasWorkspaceError ? "is-overdue" : "is-open"}" ${hasWorkspaceError ? `title="${escapeHTML(workspaceErrorText)}"` : ""}>${hasWorkspaceError ? escapeHTML(workspaceErrorLabel) : `${workspaceLabel} periods · ${submittedCount} submitted · ${outstandingCount} outstanding`}</span></td>
                             <td><button class="primary-button" type="button" data-vat-workspace-open="${escapeHTML(row.tenantId || "")}">Open workspace</button></td>
                         </tr>
                     `;
