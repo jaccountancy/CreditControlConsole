@@ -68014,7 +68014,21 @@
                 if (delta <= 0.01) {
                     return { label: "JOB DONE", className: "is-open" };
                 }
-                return { label: `Mismatch ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+                return { label: `LUK variance ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+            }
+
+            function codeBreakerPeriodStartDate(workspace = {}) {
+                const explicit = String(workspace?.periodStartDate || "").slice(0, 10);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+                const yearEnd = String(workspace?.yearEndDate || workspace?.submittedAt || "").slice(0, 10);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(yearEnd)) return "";
+                const [year, month, day] = yearEnd.split("-").map((value) => Number(value || 0));
+                if (!year || !month || !day) return "";
+                const endDate = new Date(Date.UTC(year, month - 1, day));
+                if (Number.isNaN(endDate.getTime())) return "";
+                endDate.setUTCFullYear(endDate.getUTCFullYear() - 1);
+                endDate.setUTCDate(endDate.getUTCDate() + 1);
+                return endDate.toISOString().slice(0, 10);
             }
 
             async function codeBreakerWorkspaceSnapshot(payload = {}) {
@@ -68420,6 +68434,7 @@
                     ),
                     xeroContactId: decision.xeroContactId,
                     companyNumber: decision.companyNumber,
+                    periodStartDate: decision.periodStartDate || "",
                     yearEndDate: decision.yearEndDate,
                     submittedAt: decision.submittedAt || decision.yearEndDate,
                     chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
@@ -68476,19 +68491,21 @@
                     return;
                 }
                 meta.textContent = analysis.changedCount
-                    ? `${analysis.changedCount.toLocaleString("en-GB")} invoice changes found after ${formatDate(analysis.submittedAt)}.`
-                    : `No invoice changes detected after ${formatDate(analysis.submittedAt)}.`;
+                    ? `${analysis.changedCount.toLocaleString("en-GB")} post-submission transaction${analysis.changedCount === 1 ? "" : "s"} found in the locked filing period.`
+                    : `No post-submission transactions were found in the locked filing period.`;
                 const recommendations = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];
                 const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
                 const compare = codeBreakerCompareStatus(workspace);
                 output.innerHTML = `
                     <div class="key-metrics-grid">
                         <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
+                        <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(analysis.periodStart || ""))} to ${escapeHTML(formatDate(analysis.periodEnd || ""))}</strong></article>
                         <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
                         <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
-                        <article class="key-metric-card"><span>Net asset match</span><strong>${escapeHTML(compare.label)}</strong></article>
-                        <article class="key-metric-card"><span>Post-filing changes</span><strong>${Number(analysis.changedCount || 0).toLocaleString("en-GB")}</strong></article>
-                        <article class="key-metric-card"><span>Net delta</span><strong>${escapeHTML(formatCurrency(analysis.netDelta || 0))}</strong></article>
+                        <article class="key-metric-card"><span>Variance to clear</span><strong>${escapeHTML(compare.label)}</strong></article>
+                        <article class="key-metric-card"><span>Transactions to reverse</span><strong>${Number(analysis.changedCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article class="key-metric-card"><span>Reversal target</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>
+                        <article class="key-metric-card"><span>Target after reversals</span><strong>${escapeHTML(formatCurrency(0))}</strong></article>
                     </div>
                     <div class="detail-panel" style="margin-top:10px;">
                         <h4>Jenius AI adjustment guidance</h4>
@@ -68498,11 +68515,11 @@
                     </div>
                     <section class="ch-companies-table-wrap" style="margin-top:10px;">
                         <table class="ch-table" aria-label="Code Breaker delta rows">
-                            <thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th>Amount due</th></tr></thead>
+                            <thead><tr><th>Reference</th><th>Posted in locked period</th><th>Posted to Xero after filing</th><th>Status</th><th>Amount</th><th>Reverse by</th></tr></thead>
                             <tbody>
                                 ${rows.length
-                                    ? rows.map((row) => `<tr><td>${escapeHTML(String(row.invoiceNumber || row.id || ""))}</td><td>${escapeHTML(formatDate(row.date || ""))}</td><td>${escapeHTML(String(row.status || ""))}</td><td>${escapeHTML(formatCurrency(row.amountDue || 0))}</td></tr>`).join("")
-                                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No changes</p><h4>No post-filing movement detected</h4><p>Xero invoices currently align with the submitted period.</p></div></td></tr>'}
+                                    ? rows.map((row) => `<tr><td>${escapeHTML(String(row.invoiceNumber || row.id || ""))}</td><td>${escapeHTML(formatDate(row.postedDate || ""))}</td><td>${escapeHTML(formatDate(row.entryDate || ""))}</td><td>${escapeHTML(String(row.status || ""))}</td><td>${escapeHTML(formatCurrency(row.amount || 0))}</td><td>${escapeHTML(formatCurrency(row.reversalAmount || 0))}</td></tr>`).join("")
+                                    : '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No changes</p><h4>No post-filing movement detected</h4><p>No transactions posted after filing were found inside the locked accounting period.</p></div></td></tr>'}
                             </tbody>
                         </table>
                     </section>
@@ -68551,36 +68568,59 @@
                     || ""
                 ).slice(0, 10);
                 const submittedMs = dateSortValue(submittedAt || "");
+                const periodStart = codeBreakerPeriodStartDate(workspace);
+                const periodEnd = String(workspace?.yearEndDate || submittedAt || "").slice(0, 10);
+                const periodStartMs = dateSortValue(periodStart || "");
+                const periodEndMs = dateSortValue(periodEnd || "");
                 if (!submittedAt || !Number.isFinite(submittedMs) || submittedMs === Number.MAX_SAFE_INTEGER) {
                     codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Missing filing submission date. Set submitted date in workspace setup." };
                     renderCodeBreakerScreen();
                     return;
                 }
+                if (!periodStart || !periodEnd || !Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs) || periodStartMs === Number.MAX_SAFE_INTEGER || periodEndMs === Number.MAX_SAFE_INTEGER || periodStartMs > periodEndMs) {
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Missing accounting period dates. Set period start and year end in workspace setup." };
+                    renderCodeBreakerScreen();
+                    return;
+                }
                 const invoices = Array.isArray(customer?.invoices) ? customer.invoices : [];
                 const changedRows = invoices.filter((invoice) => {
-                    const relevantDate = invoice?.updatedAt || invoice?.xeroUpdatedAt || invoice?.invoiceDate || invoice?.createdAt || invoice?.dueDate || "";
-                    return dateSortValue(relevantDate) >= submittedMs;
+                    const postedDate = String(invoice?.invoiceDate || invoice?.date || invoice?.dueDate || "").slice(0, 10);
+                    const entryDate = String(invoice?.createdAt || invoice?.xeroUpdatedAt || invoice?.updatedAt || "").slice(0, 10);
+                    const postedMs = dateSortValue(postedDate);
+                    const entryMs = dateSortValue(entryDate);
+                    if (!Number.isFinite(postedMs) || postedMs === Number.MAX_SAFE_INTEGER) return false;
+                    if (!Number.isFinite(entryMs) || entryMs === Number.MAX_SAFE_INTEGER) return false;
+                    const inLockedPeriod = postedMs >= periodStartMs && postedMs <= periodEndMs;
+                    const postedAfterFiling = entryMs > submittedMs;
+                    return inLockedPeriod && postedAfterFiling;
                 });
-                const netDelta = changedRows.reduce((sum, row) => sum + Number(row?.amountDue || 0), 0);
+                const netDelta = changedRows.reduce((sum, row) => sum + Number(row?.total ?? row?.amountDue ?? 0), 0);
+                const reversalTarget = Number(workspace?.netAssetsDifference || 0);
                 const recommendations = [];
                 if (!changedRows.length) {
-                    recommendations.push("No post-submission invoice movement detected; no unwind journals currently required.");
+                    recommendations.push("No in-period transactions were posted after the filing submission date.");
+                    recommendations.push("If variance remains, review manual journals and non-invoice postings in Xero for this locked period.");
                 } else {
-                    recommendations.push(`Post submissions changes total ${formatCurrency(netDelta)} across ${changedRows.length.toLocaleString("en-GB")} invoice rows.`);
-                    recommendations.push("Review and reverse post-filing sales/expense invoices that fall inside the submitted period and were entered after filing.");
-                    recommendations.push("Post a correction journal in the current period to align retained earnings and tax/VAT control accounts with filed figures.");
-                    recommendations.push("Apply lock date after adjustment posting to prevent further drift from Companies House submitted accounts.");
+                    recommendations.push(`LUK variance is ${formatCurrency(reversalTarget)} and should be unwound back to ${formatCurrency(0)}.`);
+                    recommendations.push(`${changedRows.length.toLocaleString("en-GB")} transactions were posted after filing inside the locked period ${formatDate(periodStart)} to ${formatDate(periodEnd)}.`);
+                    recommendations.push(`Combined post-filing transaction value in this period: ${formatCurrency(netDelta)}.`);
+                    recommendations.push("Post contrasting reversal journals for these rows, then re-run Code Breaker to confirm variance is zero.");
                 }
                 codeBreakerAnalysisByWorkspaceId[workspace.id] = {
                     submittedAt,
+                    periodStart,
+                    periodEnd,
                     changedCount: changedRows.length,
                     netDelta,
+                    reversalTarget,
                     rows: changedRows.map((row) => ({
                         id: row?.id || "",
                         invoiceNumber: row?.invoiceNumber || row?.xeroInvoiceId || "",
-                        date: row?.updatedAt || row?.invoiceDate || row?.createdAt || "",
+                        postedDate: String(row?.invoiceDate || row?.date || row?.dueDate || "").slice(0, 10),
+                        entryDate: String(row?.createdAt || row?.xeroUpdatedAt || row?.updatedAt || "").slice(0, 10),
                         status: row?.status || "",
-                        amountDue: Number(row?.amountDue || 0),
+                        amount: Number(row?.total ?? row?.amountDue ?? 0),
+                        reversalAmount: Number((row?.total ?? row?.amountDue ?? 0) * -1),
                     })),
                     recommendations,
                 };
