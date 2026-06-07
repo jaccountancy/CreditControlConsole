@@ -5803,7 +5803,11 @@ def list_companies(filters: dict | None = None) -> list[dict]:
 
     only_overdue = bool(filters.get("overdue"))
     if only_overdue:
-        where_clauses.append("c.next_due_date IS NOT NULL AND c.next_due_date < CURRENT_DATE")
+        where_clauses.append(
+            "c.next_due_date IS NOT NULL "
+            "AND c.next_due_date < CURRENT_DATE "
+            "AND (c.last_filed_date IS NULL OR c.last_filed_date < (CURRENT_DATE - INTERVAL '365 days'))"
+        )
 
     only_xero_connected = bool(filters.get("xeroConnected"))
     if only_xero_connected:
@@ -7678,7 +7682,12 @@ def dashboard_summary() -> dict:
                 SELECT
                     COUNT(*) AS total_companies,
                     SUM(CASE WHEN c.next_due_date IS NOT NULL AND c.next_due_date BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '30 days') THEN 1 ELSE 0 END) AS due_soon,
-                    SUM(CASE WHEN c.next_due_date IS NOT NULL AND c.next_due_date < CURRENT_DATE THEN 1 ELSE 0 END) AS overdue,
+                    SUM(
+                        CASE WHEN c.next_due_date IS NOT NULL
+                              AND c.next_due_date < CURRENT_DATE
+                              AND (c.last_filed_date IS NULL OR c.last_filed_date < (CURRENT_DATE - INTERVAL '365 days'))
+                        THEN 1 ELSE 0 END
+                    ) AS overdue,
                     SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END) AS missing_auth,
                     SUM(CASE WHEN c.internal_status = 'ready_to_file' THEN 1 ELSE 0 END) AS ready_to_file,
                     SUM(CASE WHEN c.internal_status IN ('paused', 'do_not_file', 'inactive') THEN 1 ELSE 0 END) AS blocked,
