@@ -25464,6 +25464,7 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
                                     <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
+                                    <button class="ghost-button" id="vatReturnLoadTransactionsButton" type="button" hidden>Load period transactions</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Pull VAT return data from Xero</button>
                                     <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Jenius AI</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
@@ -38600,8 +38601,94 @@
                 return true;
             }
 
+            function jashflowRoundMoney(value) {
+                return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+            }
+
+            function jashflowDailyInterestRate(loan) {
+                const explicitRate = Number(loan?.dailyInterestRate || 0);
+                if (explicitRate > 0) return explicitRate;
+                const annualRate = Math.max(0, Number(loan?.annualInterestRate || 0)) / 100;
+                return annualRate > 0 ? Math.pow(1 + annualRate, 1 / 365) - 1 : 0;
+            }
+
+            function jashflowExpandedStatementRows(loan) {
+                if (!loan) return [];
+                const savedRows = jashflowTransactionRows(loan).filter((row) => !row.isVirtual);
+                if (!savedRows.length) return [];
+                const dailyRate = jashflowDailyInterestRate(loan);
+                const asOfDate = localDateKey();
+                const startDate = String(loan?.startDate || savedRows[0]?.date || asOfDate);
+                const rowsByDate = new Map();
+                savedRows.forEach((row) => {
+                    const key = String(row?.date || "");
+                    if (!rowsByDate.has(key)) rowsByDate.set(key, []);
+                    rowsByDate.get(key).push(row);
+                });
+                const sortedDates = Array.from(rowsByDate.keys()).filter(Boolean).sort();
+                let runningBalance = 0;
+                let cursorDate = startDate;
+                const expandedRows = [];
+
+                function addDailyAccrualRows(targetDate) {
+                    if (!dailyRate || !cursorDate || !targetDate || targetDate <= cursorDate) {
+                        cursorDate = targetDate > cursorDate ? targetDate : cursorDate;
+                        return;
+                    }
+                    let cursor = new Date(`${cursorDate}T12:00:00`);
+                    const end = new Date(`${targetDate}T12:00:00`);
+                    while (cursor < end) {
+                        cursor.setDate(cursor.getDate() + 1);
+                        const dayIso = cursor.toISOString().slice(0, 10);
+                        if (runningBalance <= 0) {
+                            cursorDate = dayIso;
+                            continue;
+                        }
+                        const interestAmount = jashflowRoundMoney(runningBalance * dailyRate);
+                        if (interestAmount >= 0.01) {
+                            runningBalance = jashflowRoundMoney(runningBalance + interestAmount);
+                            expandedRows.push({
+                                id: `${loan.id}:interest:${dayIso}`,
+                                date: dayIso,
+                                type: "interest",
+                                description: "Daily compound interest accrual",
+                                amount: interestAmount,
+                                debit: interestAmount,
+                                credit: 0,
+                                balance: runningBalance,
+                                createdAt: "",
+                                isVirtual: true,
+                            });
+                        }
+                        cursorDate = dayIso;
+                    }
+                }
+
+                sortedDates.forEach((dateKey) => {
+                    addDailyAccrualRows(dateKey);
+                    const dayRows = rowsByDate.get(dateKey) || [];
+                    dayRows.forEach((row) => {
+                        const debit = Number(row?.debit || Math.max(Number(row?.amount || 0), 0));
+                        const credit = Number(row?.credit || Math.max(Number(row?.amount || 0) * -1, 0));
+                        const signedAmount = jashflowRoundMoney(debit - credit);
+                        runningBalance = jashflowRoundMoney(runningBalance + signedAmount);
+                        expandedRows.push({
+                            ...row,
+                            debit,
+                            credit,
+                            balance: runningBalance,
+                            isVirtual: false,
+                        });
+                    });
+                    cursorDate = dateKey;
+                });
+
+                addDailyAccrualRows(asOfDate);
+                return expandedRows;
+            }
+
             function jashflowStatementRowsForExport(loan) {
-                return jashflowTransactionRows(loan).filter((row) => jashflowDateInRange(row, jashflowStatementFromDate, jashflowStatementToDate));
+                return jashflowExpandedStatementRows(loan).filter((row) => jashflowDateInRange(row, jashflowStatementFromDate, jashflowStatementToDate));
             }
 
             function jashflowTransactionRowsForExport(loan) {
@@ -39583,7 +39670,7 @@
             }
 
             function jashflowStatementOpeningBalance(loan, rows) {
-                const allRows = jashflowTransactionRows(loan);
+                const allRows = jashflowExpandedStatementRows(loan);
                 const beforeRows = jashflowStatementFromDate
                     ? allRows.filter((row) => String(row?.date || "") < jashflowStatementFromDate)
                     : [];
@@ -65438,11 +65525,12 @@
                 const warningsBody = document.getElementById("vatReturnWarningsBody");
                 const backButton = document.getElementById("vatReturnBackButton");
                 const refreshButton = document.getElementById("vatReturnRefreshButton");
+                const loadTransactionsButton = document.getElementById("vatReturnLoadTransactionsButton");
                 const connectXeroButton = document.getElementById("vatReturnConnectXeroButton");
                 const aiReviewButton = document.getElementById("vatReturnAiReviewButton");
                 const finaliseButton = document.getElementById("vatReturnFinaliseButton");
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
-                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !connectXeroButton || !aiReviewButton || !finaliseButton || !exportButton) return;
+                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !loadTransactionsButton || !connectXeroButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
                 const allRows = vatReturnAllQueueRows();
                 const workspaceRows = vatReturnWorkspaceRows();
@@ -65471,6 +65559,7 @@
                 backButton.hidden = !(inDetail || (!inDetail && !workspacePickerRequired && Boolean(vatReturnSelectedWorkspaceTenantId) && workspaceRows.length > 1));
                 backButton.textContent = inDetail ? "Back to return queue" : "Back to client workspaces";
                 connectXeroButton.hidden = inDetail;
+                loadTransactionsButton.hidden = !inDetail;
                 refreshButton.hidden = !inDetail;
                 aiReviewButton.hidden = !inDetail;
                 finaliseButton.hidden = !inDetail;
@@ -65531,6 +65620,35 @@
                         } finally {
                             refreshButton.disabled = false;
                             refreshButton.textContent = originalLabel || "Pull VAT return data from Xero";
+                        }
+                    });
+                }
+                if (loadTransactionsButton.dataset.vatWired !== "true") {
+                    loadTransactionsButton.dataset.vatWired = "true";
+                    loadTransactionsButton.addEventListener("click", async () => {
+                        const entry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!entry) return;
+                        if (entry?.lockedByTaskClosure) {
+                            showToast("This VAT period is view-only because it has been marked submitted from task closure.", "info");
+                            return;
+                        }
+                        if (!String(entry?.clientId || "").trim()) {
+                            showToast("This VAT period is not mapped to a client yet. Add tenant-to-client mapping first.", "info");
+                            return;
+                        }
+                        loadTransactionsButton.disabled = true;
+                        const originalLabel = loadTransactionsButton.textContent;
+                        loadTransactionsButton.textContent = "Loading transactions...";
+                        try {
+                            await ensureVatReturnTransactions(entry, true);
+                            vatReturnDetailTab = "transactions";
+                            renderVatReturnPrepareScreen();
+                            const cache = vatReturnTransactionCache.get(entry.key) || {};
+                            const rowCount = Array.isArray(cache.transactions) ? cache.transactions.length : 0;
+                            showToast(`Loaded ${rowCount.toLocaleString("en-GB")} VAT-period transaction${rowCount === 1 ? "" : "s"}.`, "success");
+                        } finally {
+                            loadTransactionsButton.disabled = false;
+                            loadTransactionsButton.textContent = originalLabel || "Load period transactions";
                         }
                     });
                 }
