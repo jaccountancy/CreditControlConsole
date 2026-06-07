@@ -68035,7 +68035,7 @@
                 const response = await requestJSON(api.endpoints.codeBreakerWorkspaceSnapshot, {
                     method: "POST",
                     body: JSON.stringify(payload),
-                });
+                }, { suppressFailurePanel: true });
                 return response?.result || {};
             }
 
@@ -68195,6 +68195,31 @@
                                 || ""
                             );
                         };
+                        const bestCustomerForTenant = (tenantId = "", workspaceName = "") => {
+                            const scoped = codeBreakerCustomersForTenant(tenantId);
+                            const tokenisedSearch = String(workspaceName || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+                            if (!tokenisedSearch) return scoped[0] || null;
+                            const score = (value = "") => {
+                                const candidate = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+                                if (!candidate) return 0;
+                                if (candidate === tokenisedSearch) return 1000;
+                                if (candidate.includes(tokenisedSearch) || tokenisedSearch.includes(candidate)) return 500;
+                                const searchTokens = new Set(tokenisedSearch.split(" ").filter(Boolean));
+                                const candidateTokens = new Set(candidate.split(" ").filter(Boolean));
+                                const overlap = [...searchTokens].filter((token) => candidateTokens.has(token)).length;
+                                return overlap;
+                            };
+                            return scoped
+                                .map((row) => ({
+                                    row,
+                                    score: Math.max(
+                                        score(row?.name),
+                                        score(row?.clientName),
+                                        score(row?.companyName)
+                                    ),
+                                }))
+                                .sort((left, right) => right.score - left.score)[0]?.row || null;
+                        };
                         const render = () => {
                             let submittedAccounts = codeBreakerSubmittedAccountsOverride.length ? [...codeBreakerSubmittedAccountsOverride] : [];
                             if (draft.tenantId) {
@@ -68211,7 +68236,8 @@
                                         submittedAccounts = submittedAccountsForRow(latest.row);
                                     }
                                 } else {
-                                    draft.xeroContactId = "";
+                                    const matchedCustomer = bestCustomerForTenant(draft.tenantId, draft.clientName);
+                                    draft.xeroContactId = String(matchedCustomer?.xeroContactId || matchedCustomer?.contactId || "").trim();
                                 }
                             } else {
                                 draft.clientName = "";
@@ -68404,8 +68430,8 @@
                 });
 
                 if (!decision) return false;
-                if (!decision.clientName || !decision.tenantId || !decision.companyNumber || !decision.yearEndDate) {
-                    showToast("Complete client, Xero connection, company number, and year end date before saving.", "error");
+                if (!decision.clientName || !decision.tenantId || !decision.companyNumber || !decision.yearEndDate || !decision.submittedAt) {
+                    showToast("Complete client, Xero connection, company number, year end date, and submitted date before saving.", "error");
                     return false;
                 }
 
@@ -68436,7 +68462,7 @@
                     companyNumber: decision.companyNumber,
                     periodStartDate: decision.periodStartDate || "",
                     yearEndDate: decision.yearEndDate,
-                    submittedAt: decision.submittedAt || decision.yearEndDate,
+                    submittedAt: decision.submittedAt || "",
                     chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
                     xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : null,
                     netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null,

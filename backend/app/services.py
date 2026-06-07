@@ -13929,42 +13929,62 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     with get_connection() as connection:
         with connection.cursor() as cursor:
             if company_number:
-                cursor.execute(
-                    """
-                    SELECT company_name, company_number, last_filed_date, latest_submission_completed_at, filing_history
-                    FROM ch_companies
-                    WHERE UPPER(company_number) = UPPER(%s)
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                    """,
-                    (company_number,),
-                )
-                ch_company = cursor.fetchone()
-            if xero_contact_id:
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM me_report_clients
-                    WHERE user_id = %s
-                      AND xero_contact_id = %s
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                    """,
-                    (user["id"], xero_contact_id),
-                )
-                me_client = cursor.fetchone()
-                if me_client:
+                try:
                     cursor.execute(
                         """
-                        SELECT calculation
-                        FROM me_report_submissions
-                        WHERE client_id = %s
-                        ORDER BY COALESCE(completed_at, created_at) DESC
-                        LIMIT 5
+                        SELECT company_name, company_number, last_filed_date, latest_submission_completed_at, filing_history
+                        FROM ch_companies
+                        WHERE UPPER(company_number) = UPPER(%s)
+                        ORDER BY updated_at DESC
+                        LIMIT 1
                         """,
-                        (str(me_client.get("id") or ""),),
+                        (company_number,),
                     )
-                    submission_rows = cursor.fetchall() or []
+                    ch_company = cursor.fetchone()
+                except Exception:
+                    # Support older production schemas where latest_submission_completed_at is unavailable.
+                    cursor.execute(
+                        """
+                        SELECT company_name, company_number, last_filed_date, filing_history
+                        FROM ch_companies
+                        WHERE UPPER(company_number) = UPPER(%s)
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                        """,
+                        (company_number,),
+                    )
+                    ch_company = cursor.fetchone()
+            if xero_contact_id:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM me_report_clients
+                        WHERE user_id = %s
+                          AND xero_contact_id = %s
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                        """,
+                        (user["id"], xero_contact_id),
+                    )
+                    me_client = cursor.fetchone()
+                except Exception:
+                    me_client = None
+                if me_client:
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT calculation
+                            FROM me_report_submissions
+                            WHERE client_id = %s
+                            ORDER BY COALESCE(completed_at, created_at) DESC
+                            LIMIT 5
+                            """,
+                            (str(me_client.get("id") or ""),),
+                        )
+                        submission_rows = cursor.fetchall() or []
+                    except Exception:
+                        submission_rows = []
                     for row in submission_rows:
                         calculation = row.get("calculation")
                         extracted = _code_breaker_net_assets_value(calculation)
