@@ -68755,9 +68755,14 @@
                     tableBody.innerHTML = codeBreakerWorkspaces.map((workspace) => {
                         const status = codeBreakerWorkspaceStatus(workspace);
                         const compare = codeBreakerCompareStatus(workspace);
+                        const workspaceName = String(workspace.clientName || "Workspace").trim();
+                        const tenantLabel = xeroWorkspaceLabel(workspace.xeroTenantName, workspace.xeroTenantId, "Xero tenant");
+                        const normalisedWorkspaceName = workspaceName.toLowerCase().replace(/\s+/g, " ").trim();
+                        const normalisedTenantLabel = String(tenantLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
+                        const showTenantLine = Boolean(normalisedTenantLabel) && normalisedTenantLabel !== normalisedWorkspaceName;
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(workspace.clientName || "Workspace")}</strong><small>${escapeHTML(xeroWorkspaceLabel(workspace.xeroTenantName, workspace.xeroTenantId, "Xero tenant"))}</small></td>
+                                <td><strong>${escapeHTML(workspaceName || "Workspace")}</strong>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
                                 <td>${escapeHTML(workspace.companyNumber || "--")}</td>
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
