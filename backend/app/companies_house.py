@@ -131,6 +131,12 @@ def _ch_md5_auth_value(value: str) -> str:
     return hashlib.md5((value or "").strip().encode("utf-8")).hexdigest().upper()
 
 
+def _ch_auth_value(method: str, presenter_auth: str) -> str:
+    if (method or "").lower() == "clear":
+        return (presenter_auth or "").strip()
+    return _ch_md5_auth_value(presenter_auth)
+
+
 def _coerce_decimal(value, field: str) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -194,6 +200,19 @@ def configured_api_key(settings_row: dict | None = None) -> str:
     row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
     decrypted = _compact_credential(_decrypt_setting_secret(row.get("api_key_encrypted"), CH_API_KEY_LABEL))
     return _validated_companies_house_api_key(decrypted)
+
+
+def configured_package_reference() -> str:
+    return _compact_credential(get_settings().companies_house_package_reference)
+
+
+def _ch_auth_method() -> str:
+    method = (get_settings().companies_house_auth_method or "").strip()
+    if method.upper() in {"MD5", "CHMD5"}:
+        return method.upper()
+    if method.lower() == "clear":
+        return "clear"
+    return "MD5"
 
 
 def _load_settings_row() -> dict | None:
@@ -262,6 +281,57 @@ def _serialise(row: dict) -> dict:
 
 def get_companies_house_settings() -> dict:
     return _serialise(_ensure_settings_row())
+
+
+def get_submission_raw_response(submission_reference: str) -> dict:
+    reference = (submission_reference or "").strip()
+    if not reference:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Submission reference is required.",
+        )
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, company_id, submission_reference, transaction_id, status,
+                       rejection_reason, response_payload, created_at, updated_at, completed_at
+                FROM ch_submissions
+                WHERE submission_reference = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (reference,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No submission found with reference {reference}.",
+        )
+    payload = row.get("response_payload") or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            payload = {"rawResponse": payload}
+    raw_response = ""
+    if isinstance(payload, dict):
+        raw_response = _xml_text(payload.get("rawResponse"))
+    return {
+        "submissionId": str(row.get("id")),
+        "submissionReference": _xml_text(row.get("submission_reference")),
+        "transactionId": _xml_text(row.get("transaction_id")),
+        "companyId": _xml_text(row.get("company_id")),
+        "status": _xml_text(row.get("status")),
+        "rejectionReason": _xml_text(row.get("rejection_reason")),
+        "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "completedAt": row.get("completed_at").isoformat() if row.get("completed_at") else None,
+        "rawResponse": raw_response,
+        "responsePayload": payload if isinstance(payload, dict) else {},
+    }
 
 
 def _connection_test_probe_company_number(overrides: dict) -> str:
@@ -1584,8 +1654,9 @@ def _build_ch_submission_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "CHMD5"
-    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    _ch_auth_method_value = _ch_auth_method()
+    ET.SubElement(auth, "Method").text = _ch_auth_method_value
+    ET.SubElement(auth, "Value").text = _ch_auth_value(_ch_auth_method_value, presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
 
@@ -1612,7 +1683,17 @@ def _build_ch_submission_xml(
         ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
-    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = _xml_text(package_reference, presenter_id)
+    package_reference_value = _xml_text(package_reference)
+    if not package_reference_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Companies House PackageReference is not configured. "
+                "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference "
+                "issued by Companies House for your software filing account before submitting."
+            ),
+        )
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = package_reference_value
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = "ConfirmationStatement"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}SubmissionNumber").text = submission_number
@@ -1733,8 +1814,9 @@ def _build_ch_status_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "CHMD5"
-    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    _ch_auth_method_value = _ch_auth_method()
+    ET.SubElement(auth, "Method").text = _ch_auth_method_value
+    ET.SubElement(auth, "Value").text = _ch_auth_value(_ch_auth_method_value, presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
     body = ET.SubElement(gov, "Body")
@@ -1783,8 +1865,9 @@ def _build_ch_status_ack_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "CHMD5"
-    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    _ch_auth_method_value = _ch_auth_method()
+    ET.SubElement(auth, "Method").text = _ch_auth_method_value
+    ET.SubElement(auth, "Value").text = _ch_auth_value(_ch_auth_method_value, presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
     body = ET.SubElement(gov, "Body")
@@ -1827,8 +1910,9 @@ def _build_ch_document_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "CHMD5"
-    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    _ch_auth_method_value = _ch_auth_method()
+    ET.SubElement(auth, "Method").text = _ch_auth_method_value
+    ET.SubElement(auth, "Value").text = _ch_auth_value(_ch_auth_method_value, presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
     body = ET.SubElement(gov, "Body")
@@ -4423,8 +4507,9 @@ def _build_secretarial_submission_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "CHMD5"
-    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    _ch_auth_method_value = _ch_auth_method()
+    ET.SubElement(auth, "Method").text = _ch_auth_method_value
+    ET.SubElement(auth, "Value").text = _ch_auth_value(_ch_auth_method_value, presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     keys = ET.SubElement(govtalk_details, "Keys")
     ET.SubElement(keys, "Key", {"Type": "CompanyNumber"}).text = company_number
@@ -4452,7 +4537,17 @@ def _build_secretarial_submission_xml(
         ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
-    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = _xml_text(package_reference, presenter_id)
+    package_reference_value = _xml_text(package_reference)
+    if not package_reference_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Companies House PackageReference is not configured. "
+                "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference "
+                "issued by Companies House for your software filing account before submitting."
+            ),
+        )
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = package_reference_value
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = form_identifier
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}SubmissionNumber").text = submission_number
@@ -5012,10 +5107,20 @@ def submit_company_secretarial_filing(user: dict, filing_id: str, payload: dict 
                 environment = _xml_text(settings_row.get("environment"), "sandbox")
                 presenter_id = configured_presenter_id(settings_row)
                 presenter_auth = decrypt_presenter_auth()
+                package_reference = configured_package_reference()
                 if not presenter_id or not presenter_auth:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Presenter ID/authentication are required for software filing.",
+                    )
+                if not package_reference:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "Companies House PackageReference is not configured. "
+                            "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference issued by "
+                            "Companies House for your software filing account before submitting."
+                        ),
                     )
                 if not row.get("company_id"):
                     raise HTTPException(
@@ -5039,7 +5144,7 @@ def submit_company_secretarial_filing(user: dict, filing_id: str, payload: dict 
                     filing_type=filing_type,
                     submission_number=reference,
                     transaction_id=transaction_id,
-                    package_reference=presenter_id,
+                    package_reference=package_reference,
                     form_data=form_data,
                     effective_date=effective_date or date.today(),
                 )
@@ -5834,7 +5939,13 @@ def _resolve_submission_candidates(company_ids: list[str]) -> list[dict]:
     return rows
 
 
-def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None) -> dict:
+def bulk_submit_confirmation_statements(
+    user: dict,
+    payload: dict | None = None,
+    *,
+    preflight_only: bool = False,
+    progress_callback=None,
+) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
     raw_workflow_actions = payload.get("workflowActions") if isinstance(payload.get("workflowActions"), dict) else {}
@@ -5862,6 +5973,8 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
     credit_account_number = _xml_text(settings_row.get("credit_account_number"))
+    package_reference = configured_package_reference()
+    auth_method = _ch_auth_method()
     configured_fee_amount = _coerce_settings_amount(
         settings_row.get("xero_invoice_unit_amount"),
         "xeroInvoiceUnitAmount",
@@ -5875,8 +5988,40 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         preflight_errors.append("Set Presenter authentication code in Companies House settings.")
     if not credit_account_number:
         preflight_errors.append("Set Companies House credit account number in settings.")
+    if not package_reference:
+        preflight_errors.append(
+            "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference issued by Companies House "
+            "for your software filing account (do not reuse the Presenter ID)."
+        )
+    if auth_method not in {"CHMD5", "MD5", "clear"}:
+        preflight_errors.append(
+            "Set COMPANIES_HOUSE_AUTH_METHOD to one of: MD5 (default), CHMD5, or clear."
+        )
+    auth_code_missing: list[str] = []
+    for company_id in company_ids:
+        override = auth_code_overrides_by_company_id.get(company_id)
+        if override:
+            continue
+        stored = _load_company_auth_code(company_id)
+        if not stored:
+            auth_code_missing.append(company_id)
+    if auth_code_missing:
+        preflight_errors.append(
+            "Provide a 6-character Companies House company authentication code for each selected company. "
+            f"Missing for {len(auth_code_missing)} company/companies — open the row and enter the code, "
+            "or supply it via the auth code override."
+        )
     if preflight_errors:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(preflight_errors))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Cannot submit CS01 yet. Resolve the following before retrying: "
+                + " ".join(f"({index}) {message}" for index, message in enumerate(preflight_errors, start=1))
+            ),
+        )
+
+    if preflight_only:
+        return {"preflight": "ok", "totalCount": len(company_ids)}
 
     user_id = user.get("id") if isinstance(user, dict) else None
     companies = _resolve_submission_candidates(company_ids)
@@ -5919,10 +6064,27 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 )
             connection.commit()
 
-    for row in companies:
+    total_companies = len(companies)
+    for company_index, row in enumerate(companies, start=1):
         company_id = str(row.get("id") or "")
         company_number = row.get("company_number") or ""
         company_name = row.get("company_name") or row.get("client_name") or ""
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    {
+                        "processed": company_index - 1,
+                        "total": total_companies,
+                        "currentCompanyId": company_id,
+                        "currentCompanyName": company_name,
+                        "currentCompanyNumber": company_number,
+                        "submittedCount": len(submitted),
+                        "skippedCount": len(skipped),
+                        "failedCount": len(failed),
+                    }
+                )
+            except Exception:
+                logger.exception("bulk_submit progress_callback raised; continuing")
         internal_status = row.get("internal_status") or "active"
         filing_authority_status = str(row.get("filing_authority_status") or "pending").strip().lower()
         filing_authority_expires_at = row.get("filing_authority_expires_at")
@@ -6284,7 +6446,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 company_auth_code=company_auth_code,
                 review_date=review_date,
                 registered_email=_xml_text(row.get("contact_email")),
-                package_reference=presenter_id,
+                package_reference=package_reference,
                 transaction_id=transaction_id,
                 submission_number=submission_reference,
                 cs_payload=cs_payload,
@@ -6457,6 +6619,24 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             _record_submission_failure(rejection_reason, "gateway_postprocess_unexpected")
             continue
 
+    if progress_callback is not None:
+        try:
+            progress_callback(
+                {
+                    "processed": total_companies,
+                    "total": total_companies,
+                    "currentCompanyId": "",
+                    "currentCompanyName": "",
+                    "currentCompanyNumber": "",
+                    "submittedCount": len(submitted),
+                    "skippedCount": len(skipped),
+                    "failedCount": len(failed),
+                    "stage": "reconciliation",
+                }
+            )
+        except Exception:
+            logger.exception("bulk_submit progress_callback raised; continuing")
+
     for missing_id in missing_ids:
         skipped.append({
             "companyId": missing_id,
@@ -6490,6 +6670,171 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         "reconciliation": reconciliation,
         "supportReportPath": _submission_support_report_path(),
     }
+
+
+def _coerce_user_uuid(user_id) -> str | None:
+    if not user_id:
+        return None
+    try:
+        return str(UUID(str(user_id)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def create_bulk_submission_job(user: dict, payload: dict) -> str:
+    user_id = _coerce_user_uuid(user.get("id") if isinstance(user, dict) else None)
+    company_ids = payload.get("companyIds") if isinstance(payload, dict) else []
+    total = len(company_ids) if isinstance(company_ids, list) else 0
+    initial_progress = {
+        "processed": 0,
+        "total": total,
+        "currentCompanyName": "",
+        "currentCompanyNumber": "",
+        "submittedCount": 0,
+        "skippedCount": 0,
+        "failedCount": 0,
+        "stage": "queued",
+    }
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ch_bulk_jobs (user_id, job_type, status, payload, progress)
+                VALUES (%s, 'confirmation_statement_bulk', 'queued', %s::jsonb, %s::jsonb)
+                RETURNING id
+                """,
+                (user_id, json.dumps(payload or {}), json.dumps(initial_progress)),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return str(row["id"])
+
+
+def _update_bulk_job_progress(job_id: str, progress: dict) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ch_bulk_jobs
+                SET progress = %s::jsonb,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (json.dumps(progress or {}), job_id),
+            )
+        connection.commit()
+
+
+def _mark_bulk_job_running(job_id: str) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ch_bulk_jobs
+                SET status = 'running',
+                    started_at = COALESCE(started_at, NOW()),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+        connection.commit()
+
+
+def _finalise_bulk_job(job_id: str, *, status_value: str, result: dict | None = None, error: str = "") -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ch_bulk_jobs
+                SET status = %s,
+                    result = %s::jsonb,
+                    error = %s,
+                    finished_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (status_value, json.dumps(result or {}), error or "", job_id),
+            )
+        connection.commit()
+
+
+def get_bulk_submission_job(job_id: str) -> dict:
+    reference = (job_id or "").strip()
+    if not reference:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job id is required.")
+    try:
+        UUID(reference)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid job id.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, user_id, job_type, status, progress, result, error,
+                       started_at, finished_at, created_at, updated_at
+                FROM ch_bulk_jobs
+                WHERE id = %s
+                """,
+                (reference,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Bulk job {reference} not found.")
+    progress = row.get("progress") or {}
+    result = row.get("result") or {}
+    if isinstance(progress, str):
+        try:
+            progress = json.loads(progress)
+        except ValueError:
+            progress = {}
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            result = {}
+    return {
+        "jobId": str(row.get("id")),
+        "status": _xml_text(row.get("status"), "queued"),
+        "jobType": _xml_text(row.get("job_type")),
+        "progress": progress if isinstance(progress, dict) else {},
+        "result": result if isinstance(result, dict) else {},
+        "error": _xml_text(row.get("error")),
+        "startedAt": row.get("started_at").isoformat() if row.get("started_at") else None,
+        "finishedAt": row.get("finished_at").isoformat() if row.get("finished_at") else None,
+        "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+    }
+
+
+def run_bulk_submission_job(job_id: str, user: dict, payload: dict) -> None:
+    """Background worker entry point. Runs bulk_submit_confirmation_statements
+    and writes status/progress/result to ch_bulk_jobs."""
+    try:
+        _mark_bulk_job_running(job_id)
+
+        def _on_progress(progress: dict) -> None:
+            try:
+                _update_bulk_job_progress(job_id, progress)
+            except Exception:
+                logger.exception("Failed to persist bulk job progress for %s", job_id)
+
+        result = bulk_submit_confirmation_statements(user, payload, progress_callback=_on_progress)
+        _finalise_bulk_job(job_id, status_value="completed", result=result)
+    except HTTPException as exc:
+        _finalise_bulk_job(
+            job_id,
+            status_value="failed",
+            error=str(exc.detail) or exc.__class__.__name__,
+        )
+    except Exception as exc:
+        logger.exception("Unexpected bulk job failure for %s", job_id)
+        _finalise_bulk_job(
+            job_id,
+            status_value="failed",
+            error=str(exc) or exc.__class__.__name__,
+        )
 
 
 def _resolve_company_contact_for_invoice(cursor, company: dict) -> dict:

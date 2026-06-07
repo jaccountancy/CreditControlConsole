@@ -1753,6 +1753,25 @@ CREATE TABLE IF NOT EXISTS ch_dead_letters (
 
 CREATE INDEX IF NOT EXISTS ch_dead_letters_created_idx ON ch_dead_letters (created_at DESC);
 
+CREATE TABLE IF NOT EXISTS ch_bulk_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    job_type TEXT NOT NULL DEFAULT 'confirmation_statement_bulk',
+    status TEXT NOT NULL DEFAULT 'queued',
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    progress JSONB NOT NULL DEFAULT '{}'::jsonb,
+    result JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error TEXT NOT NULL DEFAULT '',
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_bulk_jobs_created_idx ON ch_bulk_jobs (created_at DESC);
+CREATE INDEX IF NOT EXISTS ch_bulk_jobs_user_idx ON ch_bulk_jobs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ch_bulk_jobs_status_idx ON ch_bulk_jobs (status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS ch_imports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     import_type TEXT NOT NULL DEFAULT 'clients',

@@ -33,6 +33,9 @@ from .companies_house import (
     commit_auth_code_register_import,
     bulk_raise_submission_invoices,
     bulk_submit_confirmation_statements,
+    create_bulk_submission_job,
+    get_bulk_submission_job,
+    run_bulk_submission_job,
     complete_company_secretarial_filing,
     commit_clients_import,
     create_company_secretarial_filing,
@@ -42,6 +45,7 @@ from .companies_house import (
     export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
+    get_submission_raw_response,
     list_dead_letters,
     list_company_secretarial_filings,
     list_companies,
@@ -1587,6 +1591,14 @@ def api_companies_house_submission_report(
     return {"status": "ok", **submission_reconciliation_report(limit=limit)}
 
 
+@app.get("/api/companies-house/submissions/{submission_reference}/raw-response")
+def api_companies_house_submission_raw_response(
+    submission_reference: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "result": get_submission_raw_response(submission_reference)}
+
+
 @app.get("/api/companies-house/submissions/attempts/export.csv")
 def api_companies_house_submission_attempts_export(
     limit: int = Query(5000, ge=1, le=20000),
@@ -1644,15 +1656,34 @@ async def api_companies_house_submit_bulk(
 ):
     payload = await request.json()
     try:
-        return {"status": "ok", "result": bulk_submit_confirmation_statements(user, payload)}
+        # Run the preflight synchronously so the user gets immediate, actionable
+        # validation errors instead of having to poll a queued job that will fail.
+        bulk_submit_confirmation_statements(user, payload, preflight_only=True)
+        job_id = create_bulk_submission_job(user, payload)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Unexpected Companies House bulk submission route failure")
+        logger.exception("Unexpected Companies House bulk submission queue failure")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=companies_house_bulk_submission_error_detail(exc),
         ) from exc
+    _submit_background_job(
+        f"ch_bulk_submission:{job_id}",
+        run_bulk_submission_job,
+        job_id,
+        user,
+        payload,
+    )
+    return {"status": "ok", "jobId": job_id}
+
+
+@app.get("/api/companies-house/submissions/bulk-jobs/{job_id}")
+def api_companies_house_bulk_job_status(
+    job_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "job": get_bulk_submission_job(job_id)}
 
 
 @app.post("/api/companies-house/submissions/invoices/bulk")

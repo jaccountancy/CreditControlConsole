@@ -224,7 +224,7 @@ class CompaniesHouseTests(unittest.TestCase):
         value = root.find(".//{*}Value")
         self.assertIsNotNone(method)
         self.assertIsNotNone(value)
-        self.assertEqual(method.text, "CHMD5")
+        self.assertEqual(method.text, "MD5")
         self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
 
     def test_build_submission_xml_hashes_presenter_auth_with_md5(self):
@@ -247,7 +247,7 @@ class CompaniesHouseTests(unittest.TestCase):
         value = root.find(".//{*}Value")
         self.assertIsNotNone(method)
         self.assertIsNotNone(value)
-        self.assertEqual(method.text, "CHMD5")
+        self.assertEqual(method.text, "MD5")
         self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
 
     def test_authorisation_failure_reason_includes_uk_causes(self):

@@ -54,9 +54,24 @@ class Settings(BaseSettings):
     companies_house_presenter_id: str | None = None
     companies_house_presenter_auth: str | None = None
     companies_house_credit_account: str | None = None
+    companies_house_package_reference: str | None = None
+    companies_house_auth_method: str = "MD5"
     companies_house_sandbox_api_base: str = "https://api-sandbox.company-information.service.gov.uk"
     companies_house_production_api_base: str = "https://api.company-information.service.gov.uk"
     ch_alert_webhook_url: str | None = None
+
+    @field_validator("companies_house_auth_method")
+    @classmethod
+    def normalise_auth_method(cls, value: str | None) -> str:
+        text = (value or "").strip()
+        if not text:
+            return "MD5"
+        upper = text.upper()
+        if upper == "CLEAR":
+            return "clear"
+        if upper in {"MD5", "CHMD5"}:
+            return upper
+        raise ValueError("companies_house_auth_method must be one of: MD5, CHMD5, clear.")
 
     model_config = SettingsConfigDict(
         env_file=".env",
