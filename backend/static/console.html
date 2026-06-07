@@ -39711,8 +39711,7 @@
                     doc.fillRect(0, 0, doc.pageWidth, headerHeight, "#1e2f4d");
                     doc.fillRect(0, headerHeight, doc.pageWidth, 4, "#1d67f2");
                     doc.text(organisationName, left, isContinuation ? 31 : 36, isContinuation ? 13 : 17, "F2", "#ffffff");
-                    doc.text("Jashflow property finance ledger", left, isContinuation ? 50 : 56, 8.5, "F1", "#d8e6ff");
-                    doc.textRight("PROPERTY LOAN STATEMENT", right, isContinuation ? 31 : 36, isContinuation ? 12 : 15, "F2", "#ffffff");
+                    doc.textRight("JASHFLOW STATEMENT", right, isContinuation ? 31 : 36, isContinuation ? 12 : 15, "F2", "#ffffff");
                     doc.textRight(`Issued ${issueDate}`, right, isContinuation ? 50 : 56, 8.5, "F1", "#d8e6ff");
                     if (isContinuation) {
                         doc.text(`${borrowerName} - ${loanReference}`, left, 91, 9.5, "F2", "#1e2f4d");
@@ -58862,7 +58861,17 @@
                 const filterLabel = badDebtFilterLabels[badDebtFilter] || badDebtFilterLabels.active;
                 const sortLabel = badDebtSortLabels[badDebtSortMode] || badDebtSortLabels["invoice-date"];
                 const sortDirectionLabel = badDebtSortDirection === "asc" ? "ascending" : "descending";
-                const aiSuggested = stats.eligible.slice(0, 6);
+                const aiSuggested = stats.eligible
+                    .filter((invoice) => Number(invoice?.overdueDays || 0) > 0)
+                    .sort((left, right) => {
+                        const overdueDiff = Number(right?.overdueDays || 0) - Number(left?.overdueDays || 0);
+                        if (overdueDiff !== 0) return overdueDiff;
+                        const dueDateDiff = dateSortValue(left?.dueDate || left?.invoiceDate || left?.date || "")
+                            - dateSortValue(right?.dueDate || right?.invoiceDate || right?.date || "");
+                        if (dueDateDiff !== 0) return dueDateDiff;
+                        return String(left?.invoiceNumber || "").localeCompare(String(right?.invoiceNumber || ""), "en-GB", { sensitivity: "base" });
+                    })
+                    .slice(0, 6);
                 const aiSuggestedValue = aiSuggested.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
 
                 showAllButton.hidden = badDebtShowAllOutstanding;

@@ -26637,7 +26637,7 @@ def _practice_pack_pdf_bytes(
         story.extend([_practice_pack_pdf_charts(charts), Spacer(1, 8)])
 
     header_style = ParagraphStyle("PracticePackHeader", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)
-    for section in sections:
+    for section_index, section in enumerate(sections):
         story.append(Paragraph(xml_escape(section["heading"]), section_style))
         table_data = [[_practice_pack_pdf_cell(column, header_style) for column in columns]]
         rows = section.get("rows") or []
@@ -26665,6 +26665,8 @@ def _practice_pack_pdf_bytes(
             style_commands.append(("BACKGROUND", (0, table_row_index), (-1, table_row_index), colors.HexColor("#FFF4F1")))
         table.setStyle(TableStyle(style_commands))
         story.extend([table, Spacer(1, 6)])
+        if section_index < len(sections) - 1:
+            story.append(PageBreak())
 
     document.build(story)
     return buffer.getvalue()
