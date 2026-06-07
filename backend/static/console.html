@@ -76435,13 +76435,14 @@
 
             function chCompanyDueCell(company) {
                 const filedRecently = Boolean(company?.filedWithinLast12Months) || chFiledWithinLast12Months(company?.lastFiledDate);
+                const dueText = company?.nextDueDate ? chFormatDate(company.nextDueDate) : "—";
                 if (filedRecently) {
                     const filedDateText = company?.lastFiledDate ? chFormatDate(company.lastFiledDate) : "recently";
-                    return `<span class="ch-pill is-good">Not due yet</span><br><small style="color: var(--orange)">Filed ${escapeHTML(filedDateText)}.</small>`;
+                    return `<span class="ch-pill is-info">${escapeHTML(dueText)}</span><br><small style="color: var(--green)">Not due yet.</small><br><small style="color: var(--orange)">Filed ${escapeHTML(filedDateText)}.</small>`;
                 }
                 const className = chDueClass(company.nextDueDate);
                 const daysUntil = chDaysUntil(company.nextDueDate);
-                const text = company.nextDueDate ? chFormatDate(company.nextDueDate) : "—";
+                const text = dueText;
                 const overdueWarning = daysUntil !== null && daysUntil < 0
                     ? `<br><small class="ch-overdue-warning">Overdue by ${Math.abs(daysUntil).toLocaleString("en-GB")} day${Math.abs(daysUntil) === 1 ? "" : "s"}</small>`
                     : "";
