@@ -22206,6 +22206,45 @@
             #codeBreakerWorkspaceTableBody tr.code-breaker-row-bulk-complete {
                 animation: code-breaker-row-complete 560ms ease-out;
             }
+            .code-breaker-table-toolbar {
+                position: sticky;
+                top: 0;
+                z-index: 3;
+                display: grid;
+                grid-template-columns: minmax(260px, 1.4fr) repeat(2, minmax(170px, auto)) auto auto;
+                gap: 10px;
+                align-items: end;
+                padding: 10px;
+                border-bottom: 1px solid var(--line);
+                background: linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(248, 250, 255, 0.9));
+                backdrop-filter: blur(4px);
+            }
+            .code-breaker-table-toolbar .code-breaker-table-search {
+                margin: 0;
+            }
+            .code-breaker-table-toolbar .code-breaker-table-search input[type="search"] {
+                width: 100%;
+                min-width: 0;
+            }
+            .code-breaker-table-toolbar .code-breaker-inline-select {
+                min-width: 0;
+            }
+            .code-breaker-table-toolbar .code-breaker-inline-select select {
+                min-width: 0;
+            }
+            .code-breaker-table-toolbar .code-breaker-table-clear {
+                align-self: center;
+                min-width: 90px;
+            }
+            .code-breaker-table-meta {
+                margin: 0;
+                justify-self: end;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 780;
+                letter-spacing: 0.01em;
+                white-space: nowrap;
+            }
             .code-breaker-workspace-table th:nth-child(2),
             .code-breaker-workspace-table td:nth-child(2) {
                 display: none;
@@ -22272,6 +22311,25 @@
                 .ch-companies-filter-row {
                     border-top: 1px dashed rgba(61, 85, 130, 0.2);
                     padding-top: 8px;
+                }
+                .code-breaker-table-toolbar {
+                    grid-template-columns: 1fr 1fr 1fr auto;
+                }
+                .code-breaker-table-toolbar .code-breaker-table-search {
+                    grid-column: 1 / -1;
+                }
+                .code-breaker-table-meta {
+                    grid-column: 1 / -1;
+                    justify-self: start;
+                }
+            }
+            @media (max-width: 900px) {
+                .code-breaker-table-toolbar {
+                    grid-template-columns: 1fr;
+                    align-items: stretch;
+                }
+                .code-breaker-table-toolbar .code-breaker-table-clear {
+                    justify-self: start;
                 }
             }
             .ch-table-head-button {
@@ -27277,6 +27335,32 @@
                                 </form>
                             </section>
                             <section class="ch-companies-table-wrap" id="codeBreakerWorkspaceListSection">
+                                <div class="code-breaker-table-toolbar" id="codeBreakerWorkspaceToolbar">
+                                    <label class="search-wrap code-breaker-table-search">
+                                        <span class="search-icon">⌕</span>
+                                        <input id="codeBreakerWorkspaceSearchInput" type="search" placeholder="Search account, workspace, company number or status">
+                                    </label>
+                                    <label class="code-breaker-inline-select">
+                                        <span>Filter</span>
+                                        <select id="codeBreakerWorkspaceFilterSelect">
+                                            <option value="all">All rows</option>
+                                            <option value="variance">Variance over £2</option>
+                                            <option value="matched">Matched or immaterial</option>
+                                            <option value="awaiting">Awaiting workspace</option>
+                                        </select>
+                                    </label>
+                                    <label class="code-breaker-inline-select">
+                                        <span>Sort</span>
+                                        <select id="codeBreakerWorkspaceSortSelect">
+                                            <option value="priority">Priority</option>
+                                            <option value="name">Client A to Z</option>
+                                            <option value="variance-desc">Largest variance first</option>
+                                            <option value="submitted-desc">Latest submission first</option>
+                                        </select>
+                                    </label>
+                                    <button class="ghost-button code-breaker-table-clear" id="codeBreakerWorkspaceClearFiltersButton" type="button">Clear</button>
+                                    <p class="code-breaker-table-meta" id="codeBreakerWorkspaceTableMeta">All rows shown</p>
+                                </div>
                                 <table class="ch-table code-breaker-workspace-table" aria-label="Equity Montior workspaces">
                                     <thead>
                                         <tr>
@@ -29338,6 +29422,13 @@
             const codeBreakerBulkWorkspaceStateById = {};
             let codeBreakerBulkWorkspaceTotal = 0;
             let codeBreakerBulkWorkspaceCompleted = 0;
+            let codeBreakerWorkspaceSearch = String(persistedUIState.codeBreakerWorkspaceSearch || "").trim();
+            let codeBreakerWorkspaceFilter = ["all", "variance", "matched", "awaiting"].includes(String(persistedUIState.codeBreakerWorkspaceFilter || ""))
+                ? String(persistedUIState.codeBreakerWorkspaceFilter)
+                : "all";
+            let codeBreakerWorkspaceSort = ["priority", "name", "variance-desc", "submitted-desc"].includes(String(persistedUIState.codeBreakerWorkspaceSort || ""))
+                ? String(persistedUIState.codeBreakerWorkspaceSort)
+                : "priority";
             let codeBreakerWizardState = {
                 open: false,
                 workspaceId: "",
@@ -31560,7 +31651,10 @@
                         activeInsightsSection,
                         sortMode,
                         denseMode,
-                        visibleColumns
+                        visibleColumns,
+                        codeBreakerWorkspaceSearch,
+                        codeBreakerWorkspaceFilter,
+                        codeBreakerWorkspaceSort
                     }));
                 } catch (error) {
                     console.warn("Unable to persist console UI state in browser storage", error);
@@ -73034,6 +73128,91 @@
                 return rows;
             }
 
+            function codeBreakerWorkspaceTableRowModel(entry = {}) {
+                const connection = entry?.connection || null;
+                const workspace = entry?.workspace || null;
+                const tenantId = String(connection?.tenantId || workspace?.xeroTenantId || "").trim();
+                const tenantLabel = xeroWorkspaceLabel(
+                    connection?.tenantName || workspace?.xeroTenantName,
+                    tenantId,
+                    "Xero tenant"
+                );
+                const compare = workspace ? codeBreakerCompareStatus(workspace) : { label: "Awaiting workspace", className: "is-pending", isMatch: false, icon: "" };
+                const rowTone = codeBreakerWorkspaceRowTone(workspace, compare);
+                const ch = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xero = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
+                const varianceMagnitude = (Number.isFinite(ch) && Number.isFinite(xero)) ? Math.abs(xero - ch) : Number.NaN;
+                const status = workspace ? codeBreakerWorkspaceStatus(workspace) : { label: "Not started", className: "is-pending" };
+                const submittedSort = dateSortValue(workspace?.submittedAt || "");
+                const yearEndSort = dateSortValue(workspace?.yearEndDate || workspace?.submittedAt || "");
+                const priorityRank = !workspace ? 2 : (Number.isFinite(varianceMagnitude) && varianceMagnitude > CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP ? 0 : 1);
+                const searchBlob = [
+                    tenantLabel,
+                    workspace?.clientName || "",
+                    workspace?.companyNumber || "",
+                    compare?.label || "",
+                    status?.label || "",
+                    workspace?.yearEndDate || "",
+                    workspace?.submittedAt || "",
+                    connection?.tenantType || "",
+                ].join(" ").toLowerCase();
+                return {
+                    connection,
+                    workspace,
+                    tenantId,
+                    tenantLabel,
+                    compare,
+                    rowTone,
+                    varianceMagnitude,
+                    status,
+                    submittedSort,
+                    yearEndSort,
+                    priorityRank,
+                    searchBlob,
+                };
+            }
+
+            function codeBreakerWorkspaceRowsForDisplay(rows = []) {
+                const query = String(codeBreakerWorkspaceSearch || "").trim().toLowerCase();
+                let filtered = rows.filter((row) => {
+                    if (codeBreakerWorkspaceFilter === "awaiting" && row.workspace) return false;
+                    if (codeBreakerWorkspaceFilter === "variance") {
+                        if (!row.workspace) return false;
+                        if (!(Number.isFinite(row.varianceMagnitude) && row.varianceMagnitude > CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP)) return false;
+                    }
+                    if (codeBreakerWorkspaceFilter === "matched") {
+                        if (!row.workspace) return false;
+                        if (!row.compare?.isMatch) return false;
+                    }
+                    if (!query) return true;
+                    return row.searchBlob.includes(query);
+                });
+                filtered.sort((left, right) => {
+                    if (codeBreakerWorkspaceSort === "name") {
+                        return left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                    }
+                    if (codeBreakerWorkspaceSort === "variance-desc") {
+                        const leftVariance = Number.isFinite(left.varianceMagnitude) ? left.varianceMagnitude : -1;
+                        const rightVariance = Number.isFinite(right.varianceMagnitude) ? right.varianceMagnitude : -1;
+                        return rightVariance - leftVariance
+                            || left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                    }
+                    if (codeBreakerWorkspaceSort === "submitted-desc") {
+                        const leftSubmitted = Number.isFinite(left.submittedSort) ? left.submittedSort : -1;
+                        const rightSubmitted = Number.isFinite(right.submittedSort) ? right.submittedSort : -1;
+                        return rightSubmitted - leftSubmitted
+                            || left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                    }
+                    const leftVariance = Number.isFinite(left.varianceMagnitude) ? left.varianceMagnitude : -1;
+                    const rightVariance = Number.isFinite(right.varianceMagnitude) ? right.varianceMagnitude : -1;
+                    return left.priorityRank - right.priorityRank
+                        || rightVariance - leftVariance
+                        || right.yearEndSort - left.yearEndSort
+                        || left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                });
+                return filtered;
+            }
+
             function renderCodeBreakerScreen() {
                 const screen = document.getElementById("codeBreakerScreen");
                 if (!screen) return;
@@ -73048,6 +73227,11 @@
                 const workspaceViewMeta = document.getElementById("codeBreakerWorkspaceViewMeta");
                 const workspaceBackButton = document.getElementById("codeBreakerWorkspaceBackButton");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
+                const searchInput = document.getElementById("codeBreakerWorkspaceSearchInput");
+                const filterSelect = document.getElementById("codeBreakerWorkspaceFilterSelect");
+                const sortSelect = document.getElementById("codeBreakerWorkspaceSortSelect");
+                const clearFiltersButton = document.getElementById("codeBreakerWorkspaceClearFiltersButton");
+                const tableMeta = document.getElementById("codeBreakerWorkspaceTableMeta");
                 if (!summary || !setupButton || !calculateAllButton || !connectTenantButton || !refreshButton || !tableBody) return;
 
                 setupButton.textContent = "Set up workspace";
@@ -73098,18 +73282,64 @@
                         renderCodeBreakerScreen();
                     });
                 }
+                if (searchInput) {
+                    searchInput.value = codeBreakerWorkspaceSearch;
+                    if (searchInput.dataset.cbWired !== "true") {
+                        searchInput.dataset.cbWired = "true";
+                        searchInput.addEventListener("input", () => {
+                            codeBreakerWorkspaceSearch = String(searchInput.value || "").trim();
+                            renderCodeBreakerScreen();
+                        });
+                    }
+                }
+                if (filterSelect) {
+                    filterSelect.value = codeBreakerWorkspaceFilter;
+                    if (filterSelect.dataset.cbWired !== "true") {
+                        filterSelect.dataset.cbWired = "true";
+                        filterSelect.addEventListener("change", () => {
+                            codeBreakerWorkspaceFilter = String(filterSelect.value || "all");
+                            renderCodeBreakerScreen();
+                        });
+                    }
+                }
+                if (sortSelect) {
+                    sortSelect.value = codeBreakerWorkspaceSort;
+                    if (sortSelect.dataset.cbWired !== "true") {
+                        sortSelect.dataset.cbWired = "true";
+                        sortSelect.addEventListener("change", () => {
+                            codeBreakerWorkspaceSort = String(sortSelect.value || "priority");
+                            renderCodeBreakerScreen();
+                        });
+                    }
+                }
+                if (clearFiltersButton && clearFiltersButton.dataset.cbWired !== "true") {
+                    clearFiltersButton.dataset.cbWired = "true";
+                    clearFiltersButton.addEventListener("click", () => {
+                        codeBreakerWorkspaceSearch = "";
+                        codeBreakerWorkspaceFilter = "all";
+                        codeBreakerWorkspaceSort = "priority";
+                        renderCodeBreakerScreen();
+                    });
+                }
 
                 const mergedRows = codeBreakerWorkspaceRowsByConnection();
+                const rowModels = mergedRows.map((entry) => codeBreakerWorkspaceTableRowModel(entry));
+                const visibleRows = codeBreakerWorkspaceRowsForDisplay(rowModels);
+                if (tableMeta) {
+                    if (!mergedRows.length) tableMeta.textContent = "No rows";
+                    else tableMeta.textContent = `${visibleRows.length.toLocaleString("en-GB")} of ${mergedRows.length.toLocaleString("en-GB")} shown`;
+                }
+                if (clearFiltersButton) {
+                    clearFiltersButton.disabled = !String(codeBreakerWorkspaceSearch || "").trim()
+                        && codeBreakerWorkspaceFilter === "all"
+                        && codeBreakerWorkspaceSort === "priority";
+                }
                 if (!mergedRows.length) {
                     tableBody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No Xero connections</p><h4>Connect a Xero tenant first</h4><p>Then set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
+                } else if (!visibleRows.length) {
+                    tableBody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No matching rows</p><h4>Nothing matches this search/filter</h4><p>Try clearing filters or broaden your search to see more workspaces.</p></div></td></tr>';
                 } else {
-                    tableBody.innerHTML = mergedRows.map(({ connection, workspace }, rowIndex) => {
-                        const tenantId = String(connection?.tenantId || workspace?.xeroTenantId || "").trim();
-                        const tenantLabel = xeroWorkspaceLabel(
-                            connection?.tenantName || workspace?.xeroTenantName,
-                            tenantId,
-                            "Xero tenant"
-                        );
+                    tableBody.innerHTML = visibleRows.map(({ connection, workspace, tenantId, tenantLabel, compare, rowTone }, rowIndex) => {
                         const tenantType = String(connection?.tenantType || "").trim();
                         const connectionCopy = connection
                             ? (tenantType ? `${tenantType} · Connected` : "Connected")
@@ -73145,8 +73375,6 @@
                                             : { label: "Failed", className: "is-overdue" }
                             )
                             : status;
-                        const compare = codeBreakerCompareStatus(workspace);
-                        const rowTone = codeBreakerWorkspaceRowTone(workspace, compare);
                         const bulkRowClass = codeBreakerBulkCalculationInFlight && bulkState
                             ? (
                                 bulkState === "running"
