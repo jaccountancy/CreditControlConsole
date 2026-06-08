@@ -17108,6 +17108,7 @@
                 padding: 16px 20px;
                 display: grid;
                 gap: 14px;
+                align-content: start;
             }
             .operation-review-table {
                 width: 100%;
@@ -17492,6 +17493,102 @@
             .operation-review-panel.is-fullscreen .operation-review-actions {
                 padding-left: 24px;
                 padding-right: 24px;
+            }
+            .operation-review-panel.is-cs01-preflight {
+                padding: 20px;
+                place-items: start center;
+                background: rgba(240, 245, 252, 0.84);
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-card {
+                width: min(1240px, 100%);
+                max-height: calc(100vh - 40px);
+                border-radius: 18px;
+                box-shadow: 0 20px 48px rgba(24, 40, 74, 0.18);
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-head {
+                position: sticky;
+                top: 0;
+                z-index: 3;
+                background: #fff;
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-summary {
+                position: sticky;
+                top: 86px;
+                z-index: 2;
+                background: rgba(246, 250, 255, 0.96);
+                border-bottom: 1px solid var(--line);
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-body {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding: 14px 20px 16px;
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-table-wrap {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                overflow: auto;
+                max-height: min(54vh, 560px);
+                background: #fff;
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-table {
+                min-width: 820px;
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-table thead th {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                background: #f7f9fd;
+            }
+            .operation-review-panel.is-cs01-preflight .operation-review-actions {
+                position: sticky;
+                bottom: 0;
+                z-index: 3;
+                background: rgba(246, 250, 255, 0.98);
+                border-top: 1px solid var(--line);
+            }
+            .operation-review-panel.is-cs01-preflight .ch-preflight-helper {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px 14px;
+                padding: 10px 12px;
+            }
+            .operation-review-panel.is-cs01-preflight .ch-preflight-helper-copy {
+                display: grid;
+                gap: 4px;
+                min-width: 280px;
+                flex: 1 1 420px;
+            }
+            @media (max-width: 1100px) {
+                .operation-review-panel.is-cs01-preflight .operation-review-card {
+                    width: min(1040px, 100%);
+                    max-height: calc(100vh - 28px);
+                }
+                .operation-review-panel.is-cs01-preflight .operation-review-summary {
+                    top: 82px;
+                }
+            }
+            @media (max-width: 760px) {
+                .operation-review-panel.is-cs01-preflight {
+                    padding: 10px;
+                }
+                .operation-review-panel.is-cs01-preflight .operation-review-card {
+                    max-height: calc(100vh - 20px);
+                    border-radius: 12px;
+                }
+                .operation-review-panel.is-cs01-preflight .operation-review-head,
+                .operation-review-panel.is-cs01-preflight .operation-review-summary,
+                .operation-review-panel.is-cs01-preflight .operation-review-actions {
+                    position: static;
+                }
+                .operation-review-panel.is-cs01-preflight .operation-review-table-wrap {
+                    max-height: none;
+                }
+                .operation-review-panel.is-cs01-preflight .ch-preflight-helper {
+                    align-items: flex-start;
+                }
             }
             .operation-review-panel.is-cs01-review {
                 padding: 24px 20px 20px;
@@ -78373,6 +78470,7 @@
                     confirmLabel: "Continue",
                     cancelLabel: "Cancel",
                     panelMode: "fullscreen",
+                    panelClass: "is-cs01-preflight",
                     summaryChips: [
                         `${initiallySelected.length.toLocaleString("en-GB")} selected`,
                         `${initialPreflight.submitCandidates.length.toLocaleString("en-GB")} ready now`,
@@ -78477,8 +78575,10 @@
                         const helper = document.createElement("div");
                         helper.className = "ch-preflight-helper";
                         helper.innerHTML = `
-                            <strong>Choose only clients that need updates</strong>
-                            <p>Every row starts on <em>No changes</em> (cross). Use the tick only for clients that require changes before submission.</p>
+                            <div class="ch-preflight-helper-copy">
+                                <strong>Choose only clients that need updates</strong>
+                                <p>Every row starts on <em>No changes</em> (cross). Use the tick only for clients that require changes before submission.</p>
+                            </div>
                             <div class="ch-preflight-legend" aria-hidden="true">
                                 <span class="ch-preflight-legend-item">
                                     <span class="ch-preflight-choice-button is-no-changes is-selected">✕</span>
