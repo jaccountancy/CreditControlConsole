@@ -1234,9 +1234,32 @@
                 transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1), margin 0.22s ease;
             }
             .app-nav-group-toggle {
+                --main-group-accent: var(--blue);
+                --main-group-accent-soft: rgba(233, 241, 255, 0.72);
                 grid-template-columns: 22px minmax(0, 1fr) 14px;
                 align-items: center;
                 column-gap: 5px;
+            }
+            .app-nav-group-toggle[data-app-nav-toggle="credit-control"] {
+                --main-group-accent: #2d7bff;
+                --main-group-accent-soft: rgba(233, 241, 255, 0.82);
+            }
+            .app-nav-group-toggle[data-app-nav-toggle="practice-tools"] {
+                --main-group-accent: #2e9a74;
+                --main-group-accent-soft: rgba(232, 248, 238, 0.82);
+            }
+            .app-nav-group-toggle[data-app-nav-toggle="practice-preps"] {
+                --main-group-accent: #da8d28;
+                --main-group-accent-soft: rgba(255, 243, 223, 0.82);
+            }
+            .app-nav-group-toggle[data-app-nav-toggle="settings"] {
+                --main-group-accent: #6c73ff;
+                --main-group-accent-soft: rgba(238, 232, 255, 0.84);
+            }
+            .app-nav-group-toggle .app-nav-icon {
+                color: var(--main-group-accent);
+                background: color-mix(in srgb, var(--main-group-accent) 11%, #ffffff);
+                border-color: color-mix(in srgb, var(--main-group-accent) 34%, #ffffff);
             }
             .app-nav-submenu {
                 display: grid;
@@ -1259,14 +1282,14 @@
                 pointer-events: auto;
             }
             .app-nav-group.is-open > .app-nav-button {
-                border-color: rgba(29, 103, 242, 0.2);
-                background: rgba(233, 241, 255, 0.72);
-                color: var(--blue);
+                border-color: color-mix(in srgb, var(--main-group-accent) 24%, #ffffff);
+                background: var(--main-group-accent-soft);
+                color: var(--main-group-accent);
             }
             .app-nav-group.is-open > .app-nav-button .app-nav-icon {
                 color: #fff;
-                background: linear-gradient(135deg, var(--blue), var(--purple));
-                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.22);
+                background: linear-gradient(135deg, var(--main-group-accent), color-mix(in srgb, var(--main-group-accent) 60%, #7bb3ff));
+                box-shadow: 0 8px 16px color-mix(in srgb, var(--main-group-accent) 32%, rgba(30, 47, 77, 0.16));
                 transform: translateY(-2px) rotate(-6deg) scale(1.06);
             }
             .app-nav-submenu .app-nav-button {
@@ -33355,31 +33378,17 @@
                 const sidebarCard = document.querySelector(".app-sidebar-card");
                 const sidebar = document.querySelector(".app-sidebar");
                 if (sidebarCard) {
-                    const groupStates = Object.keys(sidebarNavGroups).map((groupName) => ({
-                        groupName,
-                        isOpen: Boolean(document.querySelector(`.app-nav-group[data-app-nav-group="${groupName}"]`)?.classList.contains("is-open"))
-                    }));
-                    groupStates.forEach(({ groupName, isOpen: groupIsOpen }) => {
+                    Object.keys(sidebarNavGroups).forEach((groupName) => {
                         const focusClass = `is-${groupName}-focus`;
-                        sidebarCard.classList.toggle(focusClass, groupIsOpen);
-                        if (sidebar) sidebar.classList.toggle(focusClass, groupIsOpen);
+                        sidebarCard.classList.remove(focusClass);
+                        if (sidebar) sidebar.classList.remove(focusClass);
                     });
-                    const sidebarNav = sidebarCard.querySelector(".app-nav");
-                    if (groupStates.some(({ isOpen: groupIsOpen }) => groupIsOpen) && sidebarNav) {
-                        sidebarNav.scrollTop = 0;
-                    }
                 }
             }
 
             function syncCreditControlGroupState(activeSection = activeNavForView()) {
-                const activeGroup = Object.entries(sidebarNavGroups).find(([, sections]) => sections.has(activeSection))?.[0] || "";
-                if (activeGroup) openSidebarNavGroup = activeGroup;
-                const resolvedOpenGroup = openSidebarNavGroup || activeGroup;
-                Object.entries(sidebarNavGroups).forEach(([group, sections]) => {
-                    const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${group}"]`);
-                    if (!targetGroup) return;
-                    const shouldOpen = resolvedOpenGroup ? group === resolvedOpenGroup : false;
-                    setCreditControlGroupOpen(group, shouldOpen, false);
+                Object.keys(sidebarNavGroups).forEach((group) => {
+                    setCreditControlGroupOpen(group, true, false);
                 });
             }
 
@@ -33389,12 +33398,7 @@
                 const toggle = event?.currentTarget?.dataset?.appNavToggle
                     || event?.target?.closest?.("[data-app-nav-toggle]")?.dataset?.appNavToggle
                     || "credit-control";
-                const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${toggle}"]`);
-                if (!targetGroup) return;
-                const willOpen = !targetGroup.classList.contains("is-open");
-                Object.keys(sidebarNavGroups).forEach((group) => {
-                    setCreditControlGroupOpen(group, group === toggle ? willOpen : false, true);
-                });
+                if (toggle) setCreditControlGroupOpen(toggle, true, true);
             }
 
             function handleAppNavigation(section, event = null) {
