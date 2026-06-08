@@ -12497,7 +12497,18 @@ def _xero_connection_scope_set(connection_row: dict | None) -> set[str]:
 
 def _xero_connection_has_reports_scope(connection_row: dict | None) -> bool:
     scopes = _xero_connection_scope_set(connection_row)
-    return "accounting.reports.read" in scopes
+    report_scopes = {
+        "accounting.reports.read",
+        "accounting.reports.aged.read",
+        "accounting.reports.balancesheet.read",
+        "accounting.reports.banksummary.read",
+        "accounting.reports.budgetsummary.read",
+        "accounting.reports.executivesummary.read",
+        "accounting.reports.profitandloss.read",
+        "accounting.reports.trialbalance.read",
+        "accounting.reports.taxreports.read",
+    }
+    return any(scope in scopes for scope in report_scopes)
 
 
 def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
@@ -14986,7 +14997,8 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             reports_scope_missing = not xero_scope_has_reports or any(token in error_text for token in scope_hint_tokens)
             if reports_scope_missing:
                 xero_reason = (
-                    "Xero connection is missing reports access (accounting.reports.read). "
+                    "Xero connection is missing reports access "
+                    "(accounting.reports.balancesheet.read or accounting.reports.read). "
                     "Reconnect Xero and approve reports scope, then re-run Code Breaker."
                 )
                 if xero_balance_sheet_error:

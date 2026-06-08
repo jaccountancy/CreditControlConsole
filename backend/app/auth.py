@@ -16,21 +16,31 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "email",
     "offline_access",
 )
-REQUIRED_XERO_ACCOUNTING_SCOPES = (
-    "accounting.transactions",
+DEFAULT_XERO_ACCOUNTING_SCOPES = (
+    "accounting.invoices",
+    "accounting.payments",
+    "accounting.banktransactions",
+    "accounting.manualjournals",
     "accounting.contacts",
     "accounting.settings",
-    "accounting.reports.read",
+    "accounting.attachments",
+    "accounting.reports.balancesheet.read",
+    "accounting.reports.profitandloss.read",
+    "accounting.reports.trialbalance.read",
 )
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
-    "accounting.invoices": ("accounting.transactions",),
-    "accounting.payments": ("accounting.transactions",),
-    "accounting.invoices.read": ("accounting.transactions",),
-    "accounting.payments.read": ("accounting.transactions",),
-    "accounting.transactions.read": ("accounting.transactions",),
-    "accounting.contacts.read": ("accounting.contacts",),
-    "accounting.settings.read": ("accounting.settings",),
-    "accounting.attachments.read": ("accounting.attachments",),
+    "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read", "accounting.banktransactions.read", "accounting.manualjournals.read"),
+    "accounting.transactions": ("accounting.invoices", "accounting.payments", "accounting.banktransactions", "accounting.manualjournals"),
+    "accounting.reports.read": (
+        "accounting.reports.aged.read",
+        "accounting.reports.balancesheet.read",
+        "accounting.reports.banksummary.read",
+        "accounting.reports.budgetsummary.read",
+        "accounting.reports.executivesummary.read",
+        "accounting.reports.profitandloss.read",
+        "accounting.reports.trialbalance.read",
+        "accounting.reports.taxreports.read",
+    ),
 }
 
 
@@ -41,20 +51,9 @@ def xero_scope_string(configured_scopes: str) -> str:
             if scope and scope not in scopes:
                 scopes.append(scope)
 
-    for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *REQUIRED_XERO_ACCOUNTING_SCOPES):
+    for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
             scopes.append(required_scope)
-
-    # Xero rejects the authorize flow with `invalid_scope` when a connection/app has not
-    # been assigned granular scopes. Keep a broad-compatible scope set by default.
-    for broad_scope, granular_scopes in (
-        ("accounting.transactions", ("accounting.invoices", "accounting.payments")),
-        ("accounting.contacts", ("accounting.contacts.read",)),
-        ("accounting.settings", ("accounting.settings.read",)),
-        ("accounting.attachments", ("accounting.attachments.read",)),
-    ):
-        if broad_scope in scopes:
-            scopes = [scope for scope in scopes if scope not in granular_scopes]
     return " ".join(scopes)
 
 
