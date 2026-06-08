@@ -69536,9 +69536,11 @@
 
             function codeBreakerConnections() {
                 const byTenantId = new Map();
-                const include = (row = {}) => {
+                const explicitTenantIds = new Set();
+                const include = (row = {}, source = "derived") => {
                     const tenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
                     if (!tenantId) return;
+                    if (source !== "explicit" && explicitTenantIds.size && !explicitTenantIds.has(tenantId)) return;
                     const tenantName = String(row?.tenantName || row?.xeroTenantName || "").trim();
                     const tenantType = String(row?.tenantType || "").trim();
                     const existing = byTenantId.get(tenantId) || {};
@@ -69549,11 +69551,17 @@
                     });
                 };
 
+                const explicit = [];
                 const fromMeReport = typeof meReportXeroConnections === "function" ? meReportXeroConnections() : [];
-                if (Array.isArray(fromMeReport)) fromMeReport.forEach(include);
-
+                if (Array.isArray(fromMeReport)) explicit.push(...fromMeReport);
                 const fromSupplierRec = typeof supplierReconciliationXeroConnections === "function" ? supplierReconciliationXeroConnections() : [];
-                if (Array.isArray(fromSupplierRec)) fromSupplierRec.forEach(include);
+                if (Array.isArray(fromSupplierRec)) explicit.push(...fromSupplierRec);
+                explicit.forEach((row) => {
+                    const tenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
+                    if (!tenantId) return;
+                    explicitTenantIds.add(tenantId);
+                    include(row, "explicit");
+                });
 
                 const customerRows = Array.isArray(state?.customers) ? state.customers : [];
                 customerRows.forEach((row) => include({
@@ -69865,12 +69873,23 @@
                     method: "POST",
                     body: JSON.stringify(payload),
                 }, { suppressFailurePanel: true });
-                if (String(response?.status || "").toLowerCase() !== "ok") {
-                    throw new Error(
-                        String(response?.result?.error || response?.detail || "Code Breaker snapshot failed.")
-                    );
-                }
-                return response?.result || {};
+                const statusText = String(response?.status || "").toLowerCase();
+                const result = response?.result && typeof response.result === "object" ? response.result : {};
+                if (statusText === "ok") return result;
+                const errorText = String(result?.error || response?.detail || "Code Breaker snapshot failed.").trim();
+                return {
+                    ...result,
+                    _requestStatus: statusText || "error",
+                    _requestError: errorText,
+                    ch: {
+                        ...(result?.ch && typeof result.ch === "object" ? result.ch : {}),
+                        reason: String(result?.ch?.reason || "").trim() || errorText,
+                    },
+                    xero: {
+                        ...(result?.xero && typeof result.xero === "object" ? result.xero : {}),
+                        reason: String(result?.xero?.reason || "").trim() || errorText,
+                    },
+                };
             }
 
             function codeBreakerWorkspaceCustomer(workspace = null) {
@@ -70391,20 +70410,26 @@
 
                     setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
                     const customer = codeBreakerWorkspaceCustomer(workspace);
+                    let candidateRows = [];
                     if (!customer?.id) {
-                        throw new Error("No linked Xero client was found for this workspace. Update workspace link and retry.");
+                        setCodeBreakerWizardStep(
+                            2,
+                            "complete",
+                            "No linked Xero client was found for this workspace, so transaction-level mapping was skipped. Balance-sheet comparison is still available."
+                        );
+                    } else {
+                        const customerPayload = await requestJSON(
+                            api.endpoints.customerTransactions,
+                            { suppressFailurePanel: true },
+                            { customerId: customer.id }
+                        );
+                        candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
+                        setCodeBreakerWizardStep(
+                            2,
+                            "complete",
+                            `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
+                        );
                     }
-                    const customerPayload = await requestJSON(
-                        api.endpoints.customerTransactions,
-                        { suppressFailurePanel: true },
-                        { customerId: customer.id }
-                    );
-                    const candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
-                    setCodeBreakerWizardStep(
-                        2,
-                        "complete",
-                        `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
-                    );
 
                     setCodeBreakerWizardStep(3, "running", "Building suggested reversal rows to close the variance.");
                     const variance = Number(workspace.netAssetsDifference || 0);
@@ -70911,6 +70936,12 @@
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     showToast(error?.message || "Unable to read net asset values for this setup.", "error");
                     return false;
+                }
+                if (String(snapshot?._requestStatus || "").toLowerCase() && String(snapshot?._requestStatus || "").toLowerCase() !== "ok") {
+                    showToast(
+                        String(snapshot?._requestError || "Code Breaker snapshot returned warnings. Workspace saved with fallback values."),
+                        "info"
+                    );
                 }
 
                 const now = new Date().toISOString();

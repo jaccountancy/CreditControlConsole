@@ -14744,9 +14744,18 @@ async def _code_breaker_companies_house_net_assets_from_document(
     )
     selected_filing, selected_made_up_to, _ = _code_breaker_select_accounts_filing_for_date(filing_items, as_at_date)
     if selected_filing is None or (as_at_date is not None and selected_made_up_to != as_at_date):
+        available_periods: list[str] = []
+        for item in filing_items:
+            if not _code_breaker_is_accounts_filing(item):
+                continue
+            made_up_to = _code_breaker_accounts_made_up_to_date(item)
+            if isinstance(made_up_to, date):
+                available_periods.append(made_up_to.isoformat())
+        available_periods = sorted(set(available_periods), reverse=True)
         if as_at_date is not None:
+            period_hint = f" Available submitted accounts periods: {', '.join(available_periods[:8])}." if available_periods else ""
             stage("No exact period match in filing history.")
-            return None, "unavailable", f"Companies House did not return an exact accounts filing for {as_at_date.isoformat()}.", diagnostics
+            return None, "unavailable", f"Companies House did not return an exact accounts filing for {as_at_date.isoformat()}.{period_hint}", diagnostics
         stage("No usable accounts filing found.")
         return None, "unavailable", "Companies House did not return a usable accounts filing.", diagnostics
     stage("Downloading filed accounts document.")
@@ -14828,6 +14837,7 @@ async def _code_breaker_companies_house_net_assets_from_document(
             diagnostics["engine"] = "openai_low_confidence"
             stage("Using low-confidence Jenius AI extraction because deterministic extraction was unavailable.")
     if extracted is None or not source:
+        failure_reason = "Matched Companies House accounts document did not contain a readable net assets figure."
         _code_breaker_store_ch_document_extraction(
             company_number=company_number,
             as_at_date=as_at_date if as_at_date is not None else selected_made_up_to,
@@ -14836,12 +14846,12 @@ async def _code_breaker_companies_house_net_assets_from_document(
             document_bytes=content,
             source="unavailable",
             status_value="failed",
-            reason="Matched Companies House accounts document did not contain a readable net assets figure.",
+            reason=failure_reason,
             extraction_engine=str(diagnostics.get("engine") or "none"),
             extraction_payload={"openai": ai_payload, "stages": diagnostics["stages"]},
             activity_log=diagnostics["stages"],
         )
-        return None, "unavailable", "Matched Companies House accounts document did not contain a readable net assets figure.", diagnostics
+        return None, "unavailable", failure_reason, diagnostics
     if document_url:
         source = f"{source}:{document_url}"
     _code_breaker_store_ch_document_extraction(
@@ -14875,10 +14885,19 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     connection_lookup_error = ""
     try:
         if tenant_id:
-            connections = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connections = list_xero_connections_for_user(user["id"], include_fallback=False)
             connection_row = next((row for row in connections if str(row.get("tenant_id") or "").strip() == tenant_id), None)
             if connection_row is None:
-                connection_lookup_error = "Selected Xero connection is unavailable for this workspace tenant."
+                if connections:
+                    preferred_tenant_name = get_settings().xero_primary_tenant_name
+                    connection_row = max(connections, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
+                    fallback_tenant_name = str(connection_row.get("tenant_name") or connection_row.get("tenant_id") or "").strip()
+                    connection_lookup_error = (
+                        f"Selected Xero tenant {tenant_id} is unavailable for this user; "
+                        f"using connected tenant {fallback_tenant_name or 'default'} instead."
+                    )
+                else:
+                    connection_lookup_error = "Selected Xero connection is unavailable for this workspace tenant."
         else:
             connection_row = get_xero_connection_for_user(user["id"])
     except Exception as exc:
@@ -15004,7 +15023,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         if doc_net_assets is not None:
             ch_net_assets = doc_net_assets
             ch_source = doc_source
-            ch_reason = ""
+            ch_reason = doc_reason or ""
         elif doc_reason:
             ch_reason = doc_reason if not ch_reason else f"{ch_reason} {doc_reason}"
 

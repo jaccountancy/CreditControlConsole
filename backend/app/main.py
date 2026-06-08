@@ -1432,7 +1432,7 @@ async def api_code_breaker_workspace_snapshot(
         fallback_as_at = as_at_value or datetime.now(timezone.utc).date().isoformat()
         error_text = str(exc)[:300]
         return {
-            "status": "ok",
+            "status": "error",
             "result": {
                 "asAtDate": fallback_as_at,
                 "tenantId": str((payload or {}).get("tenantId") or ""),
