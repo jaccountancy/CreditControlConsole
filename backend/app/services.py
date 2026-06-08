@@ -14871,51 +14871,60 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     if as_at_date is None:
         as_at_date = utcnow().date()
 
-    if tenant_id:
-        connections = list_xero_connections_for_user(user["id"], include_fallback=True)
-        connection_row = next((row for row in connections if str(row.get("tenant_id") or "").strip() == tenant_id), None)
-        if connection_row is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
-    else:
-        connection_row = get_xero_connection_for_user(user["id"])
-
-    balance_sheet_payload = await _me_xero_optional_get(
-        connection_row,
-        "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
-        {"date": as_at_date.isoformat()},
-    )
-    balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
-    xero_balance_sheet_error = str(balance_sheet_data.get("_error") or "").strip()
-    xero_scope_has_reports = _xero_connection_has_reports_scope(connection_row)
-    xero_net_assets, xero_source, xero_diagnostics = _code_breaker_xero_net_assets_with_diagnostics(
-        _xero_report_lines(balance_sheet_data),
-        as_at_date=as_at_date,
-        header_dates=_xero_report_header_dates(balance_sheet_data),
-    )
-    if isinstance(xero_diagnostics, dict):
-        xero_diagnostics["scopeIncludesReportsRead"] = xero_scope_has_reports
-        if xero_balance_sheet_error:
-            xero_diagnostics["requestError"] = xero_balance_sheet_error
-    xero_reason = ""
-    if xero_net_assets is None:
-        error_text = xero_balance_sheet_error.lower()
-        scope_hint_tokens = ("insufficient_scope", "insufficent_scope", "insufficient scope", "forbidden")
-        reports_scope_missing = not xero_scope_has_reports or any(token in error_text for token in scope_hint_tokens)
-        if reports_scope_missing:
-            xero_reason = (
-                "Xero connection is missing reports access (accounting.reports.read). "
-                "Reconnect Xero and approve reports scope, then re-run Code Breaker."
-            )
-            if xero_balance_sheet_error:
-                xero_reason = f"{xero_reason} API response: {xero_balance_sheet_error}"
-            if xero_source == "xero_balance_sheet:unavailable":
-                xero_source = "xero_balance_sheet:scope_missing"
-        elif xero_balance_sheet_error:
-            xero_reason = f"Xero Balance Sheet request failed: {xero_balance_sheet_error}"
-            if xero_source == "xero_balance_sheet:unavailable":
-                xero_source = "xero_balance_sheet:error"
+    connection_row = None
+    connection_lookup_error = ""
+    try:
+        if tenant_id:
+            connections = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connection_row = next((row for row in connections if str(row.get("tenant_id") or "").strip() == tenant_id), None)
+            if connection_row is None:
+                connection_lookup_error = "Selected Xero connection is unavailable for this workspace tenant."
         else:
-            xero_reason = f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
+            connection_row = get_xero_connection_for_user(user["id"])
+    except Exception as exc:
+        connection_lookup_error = _sync_error_message(exc)
+
+    xero_net_assets = None
+    xero_source = "unavailable"
+    xero_diagnostics = {"scopeIncludesReportsRead": False}
+    xero_reason = connection_lookup_error.strip()
+    if connection_row:
+        balance_sheet_payload = await _me_xero_optional_get(
+            connection_row,
+            "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
+            {"date": as_at_date.isoformat()},
+        )
+        balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
+        xero_balance_sheet_error = str(balance_sheet_data.get("_error") or "").strip()
+        xero_scope_has_reports = _xero_connection_has_reports_scope(connection_row)
+        xero_net_assets, xero_source, xero_diagnostics = _code_breaker_xero_net_assets_with_diagnostics(
+            _xero_report_lines(balance_sheet_data),
+            as_at_date=as_at_date,
+            header_dates=_xero_report_header_dates(balance_sheet_data),
+        )
+        if isinstance(xero_diagnostics, dict):
+            xero_diagnostics["scopeIncludesReportsRead"] = xero_scope_has_reports
+            if xero_balance_sheet_error:
+                xero_diagnostics["requestError"] = xero_balance_sheet_error
+        if xero_net_assets is None:
+            error_text = xero_balance_sheet_error.lower()
+            scope_hint_tokens = ("insufficient_scope", "insufficent_scope", "insufficient scope", "forbidden")
+            reports_scope_missing = not xero_scope_has_reports or any(token in error_text for token in scope_hint_tokens)
+            if reports_scope_missing:
+                xero_reason = (
+                    "Xero connection is missing reports access (accounting.reports.read). "
+                    "Reconnect Xero and approve reports scope, then re-run Code Breaker."
+                )
+                if xero_balance_sheet_error:
+                    xero_reason = f"{xero_reason} API response: {xero_balance_sheet_error}"
+                if xero_source == "xero_balance_sheet:unavailable":
+                    xero_source = "xero_balance_sheet:scope_missing"
+            elif xero_balance_sheet_error:
+                xero_reason = f"Xero Balance Sheet request failed: {xero_balance_sheet_error}"
+                if xero_source == "xero_balance_sheet:unavailable":
+                    xero_source = "xero_balance_sheet:error"
+            else:
+                xero_reason = f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
 
     ch_company = None
     try:
@@ -15005,8 +15014,8 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
 
     return {
         "asAtDate": as_at_date.isoformat(),
-        "tenantId": str(connection_row.get("tenant_id") or ""),
-        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "tenantId": str((connection_row or {}).get("tenant_id") or ""),
+        "tenantName": str((connection_row or {}).get("tenant_name") or ""),
         "companyNumber": company_number or "",
         "ch": {
             "companyName": str((ch_company or {}).get("company_name") or ""),

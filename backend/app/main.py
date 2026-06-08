@@ -1430,6 +1430,7 @@ async def api_code_breaker_workspace_snapshot(
         logger.exception("Code Breaker workspace snapshot failed")
         as_at_value = str((payload or {}).get("asAtDate") or (payload or {}).get("yearEndDate") or "").strip()
         fallback_as_at = as_at_value or datetime.now(timezone.utc).date().isoformat()
+        error_text = str(exc)[:300]
         return {
             "status": "ok",
             "result": {
@@ -1441,18 +1442,20 @@ async def api_code_breaker_workspace_snapshot(
                     "companyName": "",
                     "netAssets": None,
                     "source": "unavailable",
+                    "reason": f"Code Breaker snapshot failed: {error_text}",
                     "lastFiledDate": None,
                     "latestSubmissionCompletedAt": None,
                 },
                 "xero": {
                     "netAssets": None,
                     "source": "unavailable",
+                    "reason": f"Code Breaker snapshot failed: {error_text}",
                 },
                 "match": {
                     "matches": False,
                     "difference": None,
                 },
-                "error": str(exc)[:300],
+                "error": error_text,
             },
         }
 
