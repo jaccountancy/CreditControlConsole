@@ -706,7 +706,7 @@
             }
             .app-sidebar {
                 padding: 0;
-                gap: 10px;
+                gap: 8px;
                 background: transparent;
                 border: 0;
                 box-shadow: none;
@@ -8414,6 +8414,21 @@
                 font-weight: 900;
                 line-height: 1.25;
                 overflow-wrap: anywhere;
+            }
+            .identity-verify-action {
+                min-width: 132px;
+            }
+            .identity-verify-hidden-check {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                margin: -1px;
+                border: 0;
+                padding: 0;
+                clip-path: inset(100%);
+                clip: rect(0 0 0 0);
+                overflow: hidden;
+                white-space: nowrap;
             }
             #vatReturnPrepareScreen .key-metrics-grid {
                 grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -26567,6 +26582,38 @@
                                     </table>
                                 </section>
                             </section>
+                            <div class="company-secretarial-modal" id="identityVerificationPersonModal" hidden>
+                                <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="identityVerificationPersonModalTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Identity verification</p>
+                                            <h4 id="identityVerificationPersonModalTitle">Verify person identity</h4>
+                                            <p class="detail-meta" id="identityVerificationPersonModalMeta">Confirm verification details, save locally, and push to Companies House.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="identityVerificationPersonModalCancelButton" type="button">Cancel</button>
+                                        </div>
+                                    </div>
+                                    <form class="bank-account-form" id="identityVerificationPersonModalForm" autocomplete="off">
+                                        <label>
+                                            Checked by (ACSP)
+                                            <input id="identityVerificationPersonModalCheckedByInput" type="text" placeholder="Team member name">
+                                        </label>
+                                        <label>
+                                            Evidence reference
+                                            <input id="identityVerificationPersonModalEvidenceInput" type="text" placeholder="Case or document reference">
+                                        </label>
+                                        <label class="ch-checkbox-inline">
+                                            <input id="identityVerificationPersonModalPushInput" type="checkbox" checked>
+                                            Push verification to Companies House now
+                                        </label>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="identityVerificationPersonModalCloseButton" type="button">Close</button>
+                                            <button class="primary-button" id="identityVerificationPersonModalConfirmButton" type="submit">Verify identity</button>
+                                        </div>
+                                    </form>
+                                </section>
+                            </div>
                         </section>
                     </section>
 
@@ -28589,6 +28636,12 @@
                 saving: false,
                 saveStatus: "",
                 workspaceMode: "list",
+                personModal: {
+                    open: false,
+                    personKey: "",
+                    personType: "",
+                    personName: "",
+                },
             };
             let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateFixInFlightTenantIds = new Set();
@@ -70643,6 +70696,98 @@
                 return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
             }
 
+            function identityVerificationSelectedCompany() {
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                const tenantRow = identityVerificationTenantRows().find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                return identityVerificationCompanyByTenant(tenantRow);
+            }
+
+            function renderIdentityVerificationPersonModal() {
+                const modal = document.getElementById("identityVerificationPersonModal");
+                const title = document.getElementById("identityVerificationPersonModalTitle");
+                const meta = document.getElementById("identityVerificationPersonModalMeta");
+                const checkedByInput = document.getElementById("identityVerificationPersonModalCheckedByInput");
+                const evidenceInput = document.getElementById("identityVerificationPersonModalEvidenceInput");
+                if (!modal || !title || !meta || !checkedByInput || !evidenceInput) return;
+                const open = Boolean(identityVerificationState.personModal?.open);
+                modal.hidden = !open;
+                if (!open) return;
+                const personName = identityVerificationState.personModal?.personName || "Selected person";
+                title.textContent = `Verify identity: ${personName}`;
+                meta.textContent = "Confirm who checked identity, save this verification in the workspace, and push the update to Companies House.";
+                checkedByInput.value = String(document.getElementById("identityVerificationCheckedByInput")?.value || "").trim();
+                evidenceInput.value = String(document.getElementById("identityVerificationEvidenceRefInput")?.value || "").trim();
+            }
+
+            function closeIdentityVerificationPersonModal() {
+                identityVerificationState.personModal = { open: false, personKey: "", personType: "", personName: "" };
+                renderIdentityVerificationPersonModal();
+            }
+
+            function openIdentityVerificationPersonModal({ personKey = "", personType = "", personName = "" } = {}) {
+                if (!personKey) return;
+                identityVerificationState.personModal = {
+                    open: true,
+                    personKey: String(personKey).trim(),
+                    personType: String(personType || "person").trim(),
+                    personName: String(personName || "Selected person").trim(),
+                };
+                renderIdentityVerificationPersonModal();
+            }
+
+            async function verifyIdentityPersonFromModal(event) {
+                event?.preventDefault?.();
+                const personKey = String(identityVerificationState.personModal?.personKey || "").trim();
+                if (!personKey) return;
+                const checkedBy = String(document.getElementById("identityVerificationPersonModalCheckedByInput")?.value || "").trim();
+                const evidenceRef = String(document.getElementById("identityVerificationPersonModalEvidenceInput")?.value || "").trim();
+                const pushNow = Boolean(document.getElementById("identityVerificationPersonModalPushInput")?.checked);
+                if (!checkedBy) {
+                    showToast("Enter the ACSP team member name before verifying identity.", "error");
+                    return;
+                }
+                let matched = false;
+                document.querySelectorAll("[data-identity-person-check]").forEach((node) => {
+                    if (String(node.getAttribute("data-identity-person-key") || "").trim() !== personKey) return;
+                    node.checked = true;
+                    matched = true;
+                });
+                if (!matched) {
+                    showToast("Unable to find that person in the current workspace.", "error");
+                    return;
+                }
+                const checkedByInput = document.getElementById("identityVerificationCheckedByInput");
+                const evidenceInput = document.getElementById("identityVerificationEvidenceRefInput");
+                if (checkedByInput) checkedByInput.value = checkedBy;
+                if (evidenceInput) evidenceInput.value = evidenceRef;
+                const saved = await saveIdentityVerificationRecord();
+                if (!saved) return;
+                if (!pushNow) {
+                    closeIdentityVerificationPersonModal();
+                    showToast("Identity verified and saved locally.", "success");
+                    return;
+                }
+                const companyId = String(identityVerificationSelectedCompany()?.id || "").trim();
+                if (!companyId) {
+                    closeIdentityVerificationPersonModal();
+                    showToast("Identity saved locally. Map this tenant to a Companies House company to push submission.", "info");
+                    return;
+                }
+                try {
+                    const payload = await requestJSON("/api/companies-house/submissions/bulk", {
+                        method: "POST",
+                        body: JSON.stringify({ companyIds: [companyId] }),
+                    });
+                    closeIdentityVerificationPersonModal();
+                    showToast(payload?.jobId
+                        ? "Identity verified. Companies House submission job queued."
+                        : "Identity verified and pushed to Companies House.", "success");
+                } catch (error) {
+                    closeIdentityVerificationPersonModal();
+                    showToast(error?.message || "Identity saved, but push to Companies House failed.", "error");
+                }
+            }
+
             async function loadIdentityVerificationData(force = false) {
                 if (identityVerificationState.loading && !force) return;
                 identityVerificationState.loading = true;
@@ -70716,7 +70861,7 @@
                 const companyId = String(company?.id || "").trim();
                 if (!companyId) {
                     showToast("Map this tenant to a Companies House company first.", "info");
-                    return;
+                    return false;
                 }
                 const required = Boolean(document.getElementById("identityVerificationRequiredInput")?.checked);
                 const verificationStatementGiven = Boolean(document.getElementById("identityVerificationStatementInput")?.checked);
@@ -70729,7 +70874,7 @@
                 const authCode = identityVerificationNormaliseAuthCode(authCodeRaw);
                 if (authCodeRaw && !/^[A-Z0-9]{6}$/.test(authCode)) {
                     showToast("Auth code must be exactly 6 letters/numbers.", "error");
-                    return;
+                    return false;
                 }
                 const people = [];
                 document.querySelectorAll("[data-identity-person-check]").forEach((node) => {
@@ -70750,6 +70895,7 @@
                 identityVerificationState.saving = true;
                 identityVerificationState.saveStatus = "Saving identity verification…";
                 renderIdentityVerificationScreen();
+                let saveSucceeded = false;
                 try {
                     const body = {
                         identityVerification: {
@@ -70786,6 +70932,7 @@
                     showToast("Identity verification saved locally.", "success");
                     const authCodeInput = document.getElementById("identityVerificationAuthCodeInput");
                     if (authCodeInput) authCodeInput.value = "";
+                    saveSucceeded = true;
                 } catch (error) {
                     identityVerificationState.saveStatus = error?.message || "Unable to save identity verification.";
                     showToast(identityVerificationState.saveStatus, "error");
@@ -70793,6 +70940,7 @@
                     identityVerificationState.saving = false;
                     renderIdentityVerificationScreen();
                 }
+                return saveSucceeded;
             }
 
             function renderIdentityVerificationScreen() {
@@ -70811,6 +70959,9 @@
                 const saveStatus = document.getElementById("identityVerificationSaveStatus");
                 const officersBody = document.getElementById("identityVerificationOfficersBody");
                 const pscBody = document.getElementById("identityVerificationPscBody");
+                const personModalForm = document.getElementById("identityVerificationPersonModalForm");
+                const personModalCloseButton = document.getElementById("identityVerificationPersonModalCloseButton");
+                const personModalCancelButton = document.getElementById("identityVerificationPersonModalCancelButton");
                 if (!summary || !tenantListSection || !tableBody || !refreshButton || !workspace || !backButton || !workspaceTitle || !workspaceMeta || !metrics || !mappingForm || !verificationForm || !openSubmissionButton || !saveStatus || !officersBody || !pscBody) return;
 
                 if (refreshButton.dataset.identityVerificationWired !== "true") {
@@ -70837,6 +70988,18 @@
                         renderTopbarIdentity();
                     });
                 }
+                if (personModalForm && personModalForm.dataset.identityVerificationWired !== "true") {
+                    personModalForm.dataset.identityVerificationWired = "true";
+                    personModalForm.addEventListener("submit", verifyIdentityPersonFromModal);
+                }
+                if (personModalCloseButton && personModalCloseButton.dataset.identityVerificationWired !== "true") {
+                    personModalCloseButton.dataset.identityVerificationWired = "true";
+                    personModalCloseButton.addEventListener("click", closeIdentityVerificationPersonModal);
+                }
+                if (personModalCancelButton && personModalCancelButton.dataset.identityVerificationWired !== "true") {
+                    personModalCancelButton.dataset.identityVerificationWired = "true";
+                    personModalCancelButton.addEventListener("click", closeIdentityVerificationPersonModal);
+                }
 
                 const rows = identityVerificationTenantRows();
                 if (!rows.length) {
@@ -70848,6 +71011,7 @@
                     tenantListSection.hidden = false;
                     workspace.hidden = true;
                     renderTopbarIdentity();
+                    closeIdentityVerificationPersonModal();
                     return;
                 }
 
@@ -70891,6 +71055,7 @@
                     tenantListSection.hidden = false;
                     workspace.hidden = true;
                     renderTopbarIdentity();
+                    closeIdentityVerificationPersonModal();
                     return;
                 }
 
@@ -70900,6 +71065,7 @@
                 if (!showWorkspace) {
                     summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
                     renderTopbarIdentity();
+                    closeIdentityVerificationPersonModal();
                     return;
                 }
 
@@ -70915,6 +71081,7 @@
                 workspaceTitle.textContent = `${tenantLabel} · Identity verification`;
                 summary.textContent = `Tenant workspace open: ${tenantLabel}.`;
                 renderTopbarIdentity();
+                renderIdentityVerificationPersonModal();
                 workspaceMeta.textContent = selectedCompany
                     ? `${selectedCompany.companyName || "Mapped company"} (${selectedCompany.companyNumber || "No number"}) · ${status.label}`
                     : "No Companies House company is mapped to this tenant yet.";
@@ -70968,14 +71135,24 @@
                         const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
                         const personKey = identityVerificationPersonKey(officer, "officer", index);
                         const personRecord = details.peopleByKey.get(personKey);
-                        const personMeta = personRecord?.verified
-                            ? `Verified${personRecord?.checkedBy ? ` by ${personRecord.checkedBy}` : ""}${personRecord?.checkedAt ? ` on ${formatDate(personRecord.checkedAt)}` : ""}`
+                        const chVerified = typeof officer?.verified === "boolean" ? officer.verified : null;
+                        const verified = typeof personRecord?.verified === "boolean" ? personRecord.verified : chVerified === true;
+                        const checkedAt = personRecord?.checkedAt || officer?.checkedAt || "";
+                        const checkedBy = personRecord?.checkedBy || "";
+                        const personMeta = verified
+                            ? `Verified${checkedBy ? ` by ${checkedBy}` : ""}${checkedAt ? ` on ${formatDate(checkedAt)}` : ""}`
                             : statusText;
+                        const verificationAction = verified
+                            ? '<span class="lock-status-pill is-open">Verified</span>'
+                            : `<button class="ghost-button identity-verify-action" type="button" data-identity-person-verify data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="officer" data-identity-person-name="${escapeHTML(name)}" ${identityDisabled || identityVerificationState.saving ? "disabled" : ""}>Verify identity</button>`;
                         return `<tr>
                             <td>${escapeHTML(name)}</td>
                             <td>${escapeHTML(role)}</td>
                             <td>${escapeHTML(personMeta)}</td>
-                            <td><label class="ch-checkbox-inline"><input type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="officer" data-identity-person-name="${escapeHTML(name)}" ${personRecord?.verified ? "checked" : ""}> Verified</label></td>
+                            <td>
+                                <input class="identity-verify-hidden-check" type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="officer" data-identity-person-name="${escapeHTML(name)}" ${verified ? "checked" : ""}>
+                                ${verificationAction}
+                            </td>
                         </tr>`;
                     }).join("")
                     : '<tr><td colspan="4"><div class="ch-empty-state">No officer records loaded for this company.</div></td></tr>';
@@ -70988,17 +71165,36 @@
                         const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
                         const personKey = identityVerificationPersonKey(psc, "psc", index);
                         const personRecord = details.peopleByKey.get(personKey);
-                        const personMeta = personRecord?.verified
-                            ? `Verified${personRecord?.checkedBy ? ` by ${personRecord.checkedBy}` : ""}${personRecord?.checkedAt ? ` on ${formatDate(personRecord.checkedAt)}` : ""}`
+                        const chVerified = typeof psc?.verified === "boolean" ? psc.verified : null;
+                        const verified = typeof personRecord?.verified === "boolean" ? personRecord.verified : chVerified === true;
+                        const checkedAt = personRecord?.checkedAt || psc?.checkedAt || "";
+                        const checkedBy = personRecord?.checkedBy || "";
+                        const personMeta = verified
+                            ? `Verified${checkedBy ? ` by ${checkedBy}` : ""}${checkedAt ? ` on ${formatDate(checkedAt)}` : ""}`
                             : statusText;
+                        const verificationAction = verified
+                            ? '<span class="lock-status-pill is-open">Verified</span>'
+                            : `<button class="ghost-button identity-verify-action" type="button" data-identity-person-verify data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="psc" data-identity-person-name="${escapeHTML(name)}" ${identityDisabled || identityVerificationState.saving ? "disabled" : ""}>Verify identity</button>`;
                         return `<tr>
                             <td>${escapeHTML(name)}</td>
                             <td>${escapeHTML(controlType)}</td>
                             <td>${escapeHTML(personMeta)}</td>
-                            <td><label class="ch-checkbox-inline"><input type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="psc" data-identity-person-name="${escapeHTML(name)}" ${personRecord?.verified ? "checked" : ""}> Verified</label></td>
+                            <td>
+                                <input class="identity-verify-hidden-check" type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="psc" data-identity-person-name="${escapeHTML(name)}" ${verified ? "checked" : ""}>
+                                ${verificationAction}
+                            </td>
                         </tr>`;
                     }).join("")
                     : '<tr><td colspan="4"><div class="ch-empty-state">No PSC records loaded for this company.</div></td></tr>';
+                document.querySelectorAll("[data-identity-person-verify]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        openIdentityVerificationPersonModal({
+                            personKey: String(button.getAttribute("data-identity-person-key") || "").trim(),
+                            personType: String(button.getAttribute("data-identity-person-type") || "").trim(),
+                            personName: String(button.getAttribute("data-identity-person-name") || "").trim(),
+                        });
+                    });
+                });
             }
 
             function formatVaultFileSize(sizeBytes) {

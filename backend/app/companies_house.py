@@ -849,12 +849,44 @@ def _normalise_ch_officers(payload: dict | None) -> list[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
+        identity_payload = (
+            item.get("identity_verification")
+            if isinstance(item.get("identity_verification"), dict)
+            else (
+                item.get("identityVerification")
+                if isinstance(item.get("identityVerification"), dict)
+                else {}
+            )
+        )
+        verified = _first_bool_from_sources(
+            item.get("verified"),
+            item.get("is_verified"),
+            item.get("identity_verified"),
+            item.get("identityVerified"),
+            identity_payload.get("verified"),
+            identity_payload.get("is_verified"),
+            identity_payload.get("identity_verified"),
+            identity_payload.get("identityVerified"),
+        )
+        checked_at = str(
+            item.get("identity_verified_on")
+            or item.get("identityVerifiedOn")
+            or item.get("verified_on")
+            or item.get("verifiedOn")
+            or identity_payload.get("verified_on")
+            or identity_payload.get("verifiedOn")
+            or identity_payload.get("checked_at")
+            or identity_payload.get("checkedAt")
+            or ""
+        ).strip()
         output.append(
             {
                 "name": str(item.get("name") or "").strip(),
                 "role": str(item.get("officer_role") or "").strip(),
                 "appointedOn": str(item.get("appointed_on") or "").strip(),
                 "resignedOn": str(item.get("resigned_on") or "").strip(),
+                "verified": verified,
+                "checkedAt": checked_at,
             }
         )
     return output[:50]
@@ -866,12 +898,44 @@ def _normalise_ch_pscs(payload: dict | None) -> list[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
+        identity_payload = (
+            item.get("identity_verification")
+            if isinstance(item.get("identity_verification"), dict)
+            else (
+                item.get("identityVerification")
+                if isinstance(item.get("identityVerification"), dict)
+                else {}
+            )
+        )
+        verified = _first_bool_from_sources(
+            item.get("verified"),
+            item.get("is_verified"),
+            item.get("identity_verified"),
+            item.get("identityVerified"),
+            identity_payload.get("verified"),
+            identity_payload.get("is_verified"),
+            identity_payload.get("identity_verified"),
+            identity_payload.get("identityVerified"),
+        )
+        checked_at = str(
+            item.get("identity_verified_on")
+            or item.get("identityVerifiedOn")
+            or item.get("verified_on")
+            or item.get("verifiedOn")
+            or identity_payload.get("verified_on")
+            or identity_payload.get("verifiedOn")
+            or identity_payload.get("checked_at")
+            or identity_payload.get("checkedAt")
+            or ""
+        ).strip()
         output.append(
             {
                 "name": str(item.get("name") or "").strip(),
                 "kind": str(item.get("kind") or "").strip(),
                 "notifiedOn": str(item.get("notified_on") or "").strip(),
                 "ceasedOn": str(item.get("ceased_on") or "").strip(),
+                "verified": verified,
+                "checkedAt": checked_at,
             }
         )
     return output[:50]
