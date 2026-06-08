@@ -77693,8 +77693,17 @@
                         .map((company) => String(company?.id || ""))
                         .filter(Boolean)
                 );
+                const authFailurePattern = /(authorisation|authorization|authentication|auth code|credential|presenter)/i;
+                const requiresAuthReview = (company) => {
+                    if (!company?.authCodeOnFile) return true;
+                    const latestRejected = String(company?.latestSubmissionStatus || "").toLowerCase() === "rejected";
+                    if (!latestRejected) return false;
+                    const issues = chSubmissionIneligibilityReasons(company);
+                    const warnings = chCompanySubmissionWarnings(company);
+                    return [...issues, ...warnings].some((message) => authFailurePattern.test(String(message || "")));
+                };
                 const authAttentionRows = selectedCompanies
-                    .filter((company) => !company?.authCodeOnFile)
+                    .filter((company) => requiresAuthReview(company))
                     .map((company) => ({
                         companyId: String(company?.id || ""),
                         companyName: String(company?.companyName || "—"),
@@ -77708,11 +77717,11 @@
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Auth code check",
-                    subtitle: "Add any missing auth codes before submission.",
+                    subtitle: "Add missing auth codes and resolve auth-related rejections before submission.",
                     confirmLabel: "Save and continue",
                     cancelLabel: "Back",
                     summaryChips: [
-                        `${authAttentionRows.length.toLocaleString("en-GB")} missing`,
+                        `${authAttentionRows.length.toLocaleString("en-GB")} need review`,
                         "0 entered",
                         `${companiesHouseSettings.authRegisterRows.length.toLocaleString("en-GB")} register rows loaded`,
                     ],
