@@ -8377,17 +8377,17 @@
                 flex: 1 1 620px;
                 min-width: 0;
             }
-            #identityVerificationWorkspace .identity-verification-hero-metrics {
-                margin: 14px 0 0;
+            #identityVerificationScreen .identity-verification-hero-metrics {
+                margin: 14px 0 16px;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
             }
             @media (max-width: 1260px) {
-                #identityVerificationWorkspace .identity-verification-hero-metrics {
+                #identityVerificationScreen .identity-verification-hero-metrics {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
             }
             @media (max-width: 640px) {
-                #identityVerificationWorkspace .identity-verification-hero-metrics {
+                #identityVerificationScreen .identity-verification-hero-metrics {
                     grid-template-columns: 1fr;
                 }
             }
@@ -17677,14 +17677,73 @@
                 background: linear-gradient(90deg, #1d67f2, #53d5ef);
                 transition: width 0.22s ease;
             }
+            .code-breaker-wizard-panel {
+                width: min(1120px, calc(100vw - 32px));
+            }
+            .code-breaker-wizard-meta {
+                display: grid;
+                gap: 8px;
+                margin-top: 8px;
+            }
+            .code-breaker-wizard-status {
+                color: var(--muted);
+                font-size: 0.84rem;
+                font-weight: 780;
+            }
+            .code-breaker-wizard-steps {
+                display: grid;
+                gap: 8px;
+                margin: 12px 0;
+            }
+            .code-breaker-wizard-step {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.84);
+                padding: 10px 12px;
+                display: grid;
+                gap: 4px;
+            }
+            .code-breaker-wizard-step-title {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                font-size: 0.82rem;
+                font-weight: 820;
+                color: var(--ink);
+            }
+            .code-breaker-wizard-step-copy {
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: var(--muted);
+                line-height: 1.35;
+            }
+            .code-breaker-wizard-guidance {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 6px;
+            }
+            .code-breaker-wizard-guidance li {
+                color: var(--ink);
+                font-size: 0.84rem;
+                font-weight: 700;
+                line-height: 1.45;
+            }
             @media (max-width: 1100px) {
                 .code-breaker-live-stats {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .code-breaker-wizard-panel {
+                    width: min(960px, calc(100vw - 20px));
                 }
             }
             @media (max-width: 620px) {
                 .code-breaker-live-stats {
                     grid-template-columns: 1fr;
+                }
+                .code-breaker-wizard-panel {
+                    width: calc(100vw - 12px);
                 }
             }
             .ch-preflight-choice {
@@ -26425,6 +26484,48 @@
                                 </div>
                                 <div class="code-breaker-live" id="codeBreakerCrackOutput"></div>
                             </section>
+                            <div class="company-secretarial-modal" id="codeBreakerWizardModal" hidden>
+                                <section class="company-secretarial-modal-panel code-breaker-wizard-panel" role="dialog" aria-modal="true" aria-labelledby="codeBreakerWizardTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Code Breaker Wizard</p>
+                                            <h4 id="codeBreakerWizardTitle">Variance investigation</h4>
+                                            <div class="code-breaker-wizard-meta">
+                                                <p class="detail-meta" id="codeBreakerWizardSubtitle">Follow the guided steps to sync values, compare balances, and map post-filing Xero transactions.</p>
+                                                <p class="code-breaker-wizard-status" id="codeBreakerWizardStatus">Ready.</p>
+                                            </div>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="codeBreakerWizardCloseButton" type="button">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="code-breaker-wizard-steps" id="codeBreakerWizardSteps"></div>
+                                    <div class="key-metrics-grid" id="codeBreakerWizardMetrics"></div>
+                                    <section class="detail-panel">
+                                        <h4>Jenius AI adjustment guidance</h4>
+                                        <ul class="code-breaker-wizard-guidance" id="codeBreakerWizardGuidance"></ul>
+                                    </section>
+                                    <section class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="Code Breaker wizard transaction rows">
+                                            <thead>
+                                                <tr>
+                                                    <th>Type</th>
+                                                    <th>Reference</th>
+                                                    <th>Posted date</th>
+                                                    <th>Status</th>
+                                                    <th>Amount</th>
+                                                    <th>Reverse by</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="codeBreakerWizardRowsBody"></tbody>
+                                        </table>
+                                    </section>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="codeBreakerWizardRetryButton" type="button">Run wizard again</button>
+                                        <button class="primary-button" id="codeBreakerWizardSecondaryCloseButton" type="button">Done</button>
+                                    </div>
+                                </section>
+                            </div>
                         </section>
                     </section>
 
@@ -26484,6 +26585,7 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="identityVerificationSummary">Loading tenant workspaces and Companies House records.</p>
+                            <div class="key-metrics-grid identity-verification-hero-metrics" id="identityVerificationMetrics" hidden></div>
                             <section class="ch-companies-table-wrap" id="identityVerificationTenantListSection">
                                 <table class="ch-table" aria-label="Identity verification tenant table">
                                     <thead>
@@ -26503,7 +26605,6 @@
                                         <p class="eyebrow">Tenant workspace</p>
                                         <h4 id="identityVerificationWorkspaceTitle">Identity verification workspace</h4>
                                         <p class="detail-meta" id="identityVerificationWorkspaceMeta">Open a tenant to review officers, PSCs and verification evidence.</p>
-                                        <div class="key-metrics-grid identity-verification-hero-metrics" id="identityVerificationMetrics"></div>
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ghost-button" id="identityVerificationBackButton" type="button">Back to tenant list</button>
@@ -28312,6 +28413,17 @@
             let codeBreakerAnalysisByWorkspaceId = {};
             let codeBreakerWorkspaceSubView = "workspace";
             const codeBreakerCrackByWorkspaceId = {};
+            let codeBreakerWizardState = {
+                open: false,
+                workspaceId: "",
+                running: false,
+                status: "idle",
+                stepStatus: ["pending", "pending", "pending", "pending"],
+                stepMessages: ["", "", "", ""],
+                rows: [],
+                guidance: [],
+                summary: null,
+            };
             let microAnalyzerRows = [];
             let microAnalyzerLoading = false;
             const microAnalyzerResultsByCustomerId = {};
@@ -69486,6 +69598,330 @@
                 }
             }
 
+            function codeBreakerWizardSteps() {
+                return [
+                    "Validate workspace details",
+                    "Pull CH and Xero net assets",
+                    "Pull post-filing Xero transactions",
+                    "Build adjustment guidance",
+                ];
+            }
+
+            function resetCodeBreakerWizardState(workspaceId = "") {
+                codeBreakerWizardState = {
+                    open: false,
+                    workspaceId: String(workspaceId || ""),
+                    running: false,
+                    status: "idle",
+                    stepStatus: ["pending", "pending", "pending", "pending"],
+                    stepMessages: ["", "", "", ""],
+                    rows: [],
+                    guidance: [],
+                    summary: null,
+                };
+            }
+
+            function closeCodeBreakerWizardModal() {
+                const modal = document.getElementById("codeBreakerWizardModal");
+                if (!modal) return;
+                codeBreakerWizardState.open = false;
+                modal.hidden = true;
+                renderCodeBreakerWizardModal();
+            }
+
+            function setCodeBreakerWizardStep(stepIndex = 0, status = "pending", message = "") {
+                const safeIndex = Math.max(0, Math.min(3, Number(stepIndex || 0)));
+                codeBreakerWizardState.stepStatus[safeIndex] = status;
+                codeBreakerWizardState.stepMessages[safeIndex] = String(message || "");
+                renderCodeBreakerWizardModal();
+            }
+
+            function codeBreakerWizardTransactionRows(workspace = {}, customerPayload = {}) {
+                const submittedMs = dateSortValue(workspace?.submittedAt || "");
+                const normaliseRows = [
+                    ...(Array.isArray(customerPayload?.outstandingInvoices) ? customerPayload.outstandingInvoices : []).map((row) => ({
+                        sourceType: "Invoice",
+                        reference: String(row?.invoiceNumber || row?.xeroInvoiceId || row?.id || "Invoice"),
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.invoiceDate || row?.dueDate || "").slice(0, 10),
+                        amount: Number(row?.total || row?.amountDue || 0),
+                    })),
+                    ...(Array.isArray(customerPayload?.unallocatedCredits) ? customerPayload.unallocatedCredits : []).map((row) => ({
+                        sourceType: "Credit note",
+                        reference: String(row?.creditNumber || row?.invoiceNumber || row?.id || "Credit"),
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.date || row?.creditNoteDate || "").slice(0, 10),
+                        amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                    })),
+                    ...(Array.isArray(customerPayload?.overpayments) ? customerPayload.overpayments : []).map((row) => ({
+                        sourceType: "Overpayment",
+                        reference: String(row?.reference || row?.id || "Overpayment"),
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
+                        amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                    })),
+                ].map((row) => {
+                    const postedMs = dateSortValue(row.postedDate || "");
+                    const postedSinceFiling = Number.isFinite(submittedMs) && submittedMs !== Number.MAX_SAFE_INTEGER
+                        ? (Number.isFinite(postedMs) && postedMs !== Number.MAX_SAFE_INTEGER && postedMs > submittedMs)
+                        : false;
+                    return {
+                        ...row,
+                        postedSinceFiling,
+                        absoluteAmount: Math.abs(Number(row.amount || 0)),
+                    };
+                });
+                return normaliseRows
+                    .filter((row) => row.postedSinceFiling && row.absoluteAmount > 0)
+                    .sort((left, right) => right.absoluteAmount - left.absoluteAmount);
+            }
+
+            function renderCodeBreakerWizardModal() {
+                const modal = document.getElementById("codeBreakerWizardModal");
+                const subtitle = document.getElementById("codeBreakerWizardSubtitle");
+                const status = document.getElementById("codeBreakerWizardStatus");
+                const stepsTarget = document.getElementById("codeBreakerWizardSteps");
+                const metricsTarget = document.getElementById("codeBreakerWizardMetrics");
+                const guidanceTarget = document.getElementById("codeBreakerWizardGuidance");
+                const rowsBody = document.getElementById("codeBreakerWizardRowsBody");
+                const retryButton = document.getElementById("codeBreakerWizardRetryButton");
+                const closeButton = document.getElementById("codeBreakerWizardCloseButton");
+                const secondaryCloseButton = document.getElementById("codeBreakerWizardSecondaryCloseButton");
+                if (!modal || !subtitle || !status || !stepsTarget || !metricsTarget || !guidanceTarget || !rowsBody) return;
+
+                modal.hidden = !codeBreakerWizardState.open;
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(codeBreakerWizardState.workspaceId || "")) || null;
+                subtitle.textContent = workspace
+                    ? `${workspace.clientName || "Workspace"} · ${workspace.companyNumber || "No company number"} · submitted ${formatDate(workspace.submittedAt || "") || "--"}`
+                    : "Follow the guided steps to sync values, compare balances, and map post-filing Xero transactions.";
+                status.textContent = codeBreakerWizardState.status === "running"
+                    ? "Wizard running..."
+                    : codeBreakerWizardState.status === "failed"
+                        ? "Wizard stopped with an error."
+                        : codeBreakerWizardState.status === "complete"
+                            ? "Wizard complete."
+                            : "Ready.";
+
+                const steps = codeBreakerWizardSteps();
+                stepsTarget.innerHTML = steps.map((label, index) => {
+                    const stepStatus = String(codeBreakerWizardState.stepStatus[index] || "pending");
+                    const message = String(codeBreakerWizardState.stepMessages[index] || "");
+                    const statusLabel = stepStatus === "complete" ? "Done" : stepStatus === "running" ? "Running" : stepStatus === "failed" ? "Error" : "Pending";
+                    const pillClass = stepStatus === "complete" ? "is-open" : stepStatus === "running" ? "is-due" : stepStatus === "failed" ? "is-overdue" : "is-pending";
+                    return `
+                        <article class="code-breaker-wizard-step">
+                            <div class="code-breaker-wizard-step-title">
+                                <span>${escapeHTML(`${index + 1}. ${label}`)}</span>
+                                <span class="lock-status-pill ${pillClass}">${statusLabel}</span>
+                            </div>
+                            <p class="code-breaker-wizard-step-copy">${escapeHTML(message || "Waiting for this step to run.")}</p>
+                        </article>
+                    `;
+                }).join("");
+
+                const summary = codeBreakerWizardState.summary || {};
+                const metrics = [
+                    ["CH net assets", Number.isFinite(Number(summary.chNetAssets)) ? formatCurrency(Number(summary.chNetAssets)) : "Pending"],
+                    ["Xero net assets", Number.isFinite(Number(summary.xeroNetAssets)) ? formatCurrency(Number(summary.xeroNetAssets)) : "Pending"],
+                    ["Variance", Number.isFinite(Number(summary.variance)) ? formatCurrency(Number(summary.variance)) : "Pending"],
+                    ["Suggested rows", Number(summary.suggestedCount || 0).toLocaleString("en-GB")],
+                ];
+                metricsTarget.innerHTML = metrics.map(([label, value]) => (
+                    `<article class="key-metric-card"><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`
+                )).join("");
+
+                const guidance = Array.isArray(codeBreakerWizardState.guidance) ? codeBreakerWizardState.guidance : [];
+                guidanceTarget.innerHTML = guidance.length
+                    ? guidance.map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("")
+                    : "<li>Run the wizard to generate guidance.</li>";
+
+                const rows = Array.isArray(codeBreakerWizardState.rows) ? codeBreakerWizardState.rows : [];
+                rowsBody.innerHTML = rows.length
+                    ? rows.map((row) => `
+                        <tr>
+                            <td>${escapeHTML(String(row.sourceType || ""))}</td>
+                            <td>${escapeHTML(String(row.reference || ""))}</td>
+                            <td>${escapeHTML(formatDate(row.postedDate || ""))}</td>
+                            <td>${escapeHTML(String(row.status || ""))}</td>
+                            <td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
+                            <td>${escapeHTML(formatCurrency(Number(row.reversalAmount || 0)))}</td>
+                        </tr>
+                    `).join("")
+                    : '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>Transaction mapping not available</h4><p>Run wizard steps to pull and map post-filing Xero rows.</p></div></td></tr>';
+
+                if (closeButton && closeButton.dataset.cbWired !== "true") {
+                    closeButton.dataset.cbWired = "true";
+                    closeButton.addEventListener("click", closeCodeBreakerWizardModal);
+                }
+                if (secondaryCloseButton && secondaryCloseButton.dataset.cbWired !== "true") {
+                    secondaryCloseButton.dataset.cbWired = "true";
+                    secondaryCloseButton.addEventListener("click", closeCodeBreakerWizardModal);
+                }
+                if (retryButton && retryButton.dataset.cbWired !== "true") {
+                    retryButton.dataset.cbWired = "true";
+                    retryButton.addEventListener("click", () => runCodeBreakerAnalysisWizard(codeBreakerWizardState.workspaceId));
+                }
+                if (retryButton) {
+                    retryButton.disabled = codeBreakerWizardState.running || !workspace;
+                    retryButton.textContent = codeBreakerWizardState.running ? "Running wizard..." : "Run wizard again";
+                }
+            }
+
+            async function runCodeBreakerAnalysisWizard(workspaceId = "") {
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
+                if (!workspace) return;
+                selectedCodeBreakerWorkspaceId = workspace.id;
+                codeBreakerWorkspaceSubView = "workspace";
+                resetCodeBreakerWizardState(workspace.id);
+                codeBreakerWizardState.open = true;
+                codeBreakerWizardState.running = true;
+                codeBreakerWizardState.status = "running";
+                renderCodeBreakerWizardModal();
+                try {
+                    setCodeBreakerWizardStep(0, "running", "Checking workspace fields, company number, filing date, and linked Xero client.");
+                    const submittedAt = String(workspace.submittedAt || "").slice(0, 10);
+                    if (!workspace.companyNumber || !workspace.yearEndDate || !submittedAt) {
+                        throw new Error("Workspace is missing company number, submitted date, or year-end date. Edit workspace setup and try again.");
+                    }
+                    await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace).catch(() => null);
+                    setCodeBreakerWizardStep(0, "complete", "Workspace details are valid.");
+
+                    setCodeBreakerWizardStep(1, "running", "Fetching Companies House net assets and live Xero balance sheet values.");
+                    const snapshot = await codeBreakerWorkspaceSnapshot({
+                        tenantId: workspace.xeroTenantId,
+                        xeroContactId: workspace.xeroContactId,
+                        companyNumber: workspace.companyNumber,
+                        asAtDate: workspace.yearEndDate || workspace.submittedAt,
+                    });
+                    const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
+                        ? Number(snapshot.ch.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.ch);
+                    const resolvedXero = Number.isFinite(Number(snapshot?.xero?.netAssets))
+                        ? Number(snapshot.xero.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.xero);
+                    const resolvedDifference = Number.isFinite(Number(snapshot?.match?.difference))
+                        ? Number(snapshot.match.difference)
+                        : (
+                            Number.isFinite(resolvedCh) && Number.isFinite(resolvedXero)
+                                ? (resolvedXero - resolvedCh)
+                                : null
+                        );
+                    workspace.chNetAssets = Number.isFinite(resolvedCh) ? resolvedCh : null;
+                    workspace.xeroNetAssets = Number.isFinite(resolvedXero) ? resolvedXero : null;
+                    workspace.netAssetsDifference = Number.isFinite(resolvedDifference) ? resolvedDifference : null;
+                    workspace.updatedAt = new Date().toISOString();
+                    persistCodeBreakerWorkspaces();
+                    if (!Number.isFinite(workspace.chNetAssets) || !Number.isFinite(workspace.xeroNetAssets)) {
+                        throw new Error("Net assets could not be read from Companies House or Xero for this workspace date.");
+                    }
+                    setCodeBreakerWizardStep(
+                        1,
+                        "complete",
+                        `CH ${formatCurrency(workspace.chNetAssets)} vs Xero ${formatCurrency(workspace.xeroNetAssets)} (${formatCurrency(workspace.netAssetsDifference || 0)} variance).`
+                    );
+
+                    setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
+                    const customer = codeBreakerWorkspaceCustomer(workspace);
+                    if (!customer?.id) {
+                        throw new Error("No linked Xero client was found for this workspace. Update workspace link and retry.");
+                    }
+                    const customerPayload = await requestJSON(
+                        api.endpoints.customerTransactions,
+                        { suppressFailurePanel: true },
+                        { customerId: customer.id }
+                    );
+                    const candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
+                    setCodeBreakerWizardStep(
+                        2,
+                        "complete",
+                        `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
+                    );
+
+                    setCodeBreakerWizardStep(3, "running", "Building suggested reversal rows to close the variance.");
+                    const variance = Number(workspace.netAssetsDifference || 0);
+                    const varianceTarget = Math.abs(variance);
+                    let remaining = varianceTarget;
+                    const suggested = [];
+                    for (const row of candidateRows) {
+                        if (remaining <= 0.01) break;
+                        suggested.push({
+                            ...row,
+                            reversalAmount: Number(row.amount || 0) * -1,
+                        });
+                        remaining = Math.max(0, remaining - Number(row.absoluteAmount || 0));
+                    }
+                    if (!suggested.length && candidateRows.length) {
+                        candidateRows.slice(0, Math.min(8, candidateRows.length)).forEach((row) => {
+                            suggested.push({ ...row, reversalAmount: Number(row.amount || 0) * -1 });
+                        });
+                    }
+                    const suggestedReversalTotal = suggested.reduce((sum, row) => sum + Number(row.reversalAmount || 0), 0);
+                    const unresolvedVariance = variance + suggestedReversalTotal;
+                    const matches = Math.abs(variance) <= 0.01;
+                    const guidance = [];
+                    if (matches) {
+                        guidance.push("No action required. Companies House and Xero net assets match for the filed period.");
+                    } else {
+                        guidance.push(`Variance detected: ${formatCurrency(variance)} between CH and Xero net assets.`);
+                        guidance.push(
+                            suggested.length
+                                ? `${suggested.length.toLocaleString("en-GB")} suggested post-filing transaction reversal${suggested.length === 1 ? "" : "s"} generated from live Xero rows.`
+                                : "No post-filing rows were available to explain the variance. Check journals in Xero for the filing period."
+                        );
+                        if (suggested.length) {
+                            guidance.push(
+                                Math.abs(unresolvedVariance) <= 0.01
+                                    ? "Suggested reversals fully clear the variance to £0.00."
+                                    : `Suggested reversals leave ${formatCurrency(unresolvedVariance)} unresolved. Review additional balance sheet journals.`
+                            );
+                        }
+                    }
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = {
+                        mode: "balance_sheet_compare",
+                        submittedAt: submittedAt,
+                        periodStart: codeBreakerPeriodStartDate(workspace),
+                        periodEnd: String(workspace.yearEndDate || submittedAt || "").slice(0, 10),
+                        changedCount: candidateRows.length,
+                        matches,
+                        netDelta: variance,
+                        reversalTarget: variance,
+                        rows: suggested.map((row) => ({
+                            id: `${row.sourceType}:${row.reference}:${row.postedDate}`,
+                            invoiceNumber: row.reference,
+                            postedDate: row.postedDate,
+                            entryDate: row.postedDate,
+                            status: row.status,
+                            amount: Number(row.amount || 0),
+                            reversalAmount: Number(row.reversalAmount || 0),
+                        })),
+                        recommendations: guidance,
+                    };
+                    codeBreakerWizardState.rows = [...(codeBreakerAnalysisByWorkspaceId[workspace.id].rows || [])];
+                    codeBreakerWizardState.guidance = guidance;
+                    codeBreakerWizardState.summary = {
+                        chNetAssets: workspace.chNetAssets,
+                        xeroNetAssets: workspace.xeroNetAssets,
+                        variance: variance,
+                        suggestedCount: codeBreakerWizardState.rows.length,
+                    };
+                    setCodeBreakerWizardStep(3, "complete", "Guidance and transaction breakdown ready.");
+                    codeBreakerWizardState.running = false;
+                    codeBreakerWizardState.status = "complete";
+                    renderCodeBreakerScreen();
+                    renderCodeBreakerWizardModal();
+                } catch (error) {
+                    const message = error?.message || "Code Breaker wizard failed.";
+                    const runningStepIndex = codeBreakerWizardState.stepStatus.findIndex((value) => value === "running");
+                    if (runningStepIndex >= 0) setCodeBreakerWizardStep(runningStepIndex, "failed", message);
+                    codeBreakerWizardState.running = false;
+                    codeBreakerWizardState.status = "failed";
+                    renderCodeBreakerScreen();
+                    renderCodeBreakerWizardModal();
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    showToast(message, "error");
+                }
+            }
+
             async function openCodeBreakerWorkspaceSetupDialog() {
                 let connections = codeBreakerConnections();
                 if (!connections.length && typeof loadMeReport === "function") {
@@ -70106,101 +70542,7 @@
             }
 
             async function runCodeBreakerAnalysis(workspaceId = "") {
-                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
-                if (!workspace) return;
-                selectedCodeBreakerWorkspaceId = workspace.id;
-                codeBreakerWorkspaceSubView = "workspace";
-                try {
-                    await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace);
-                } catch (error) {
-                    console.warn("Unable to refresh Code Breaker dates from Companies House", error);
-                }
-                try {
-                    const snapshot = await codeBreakerWorkspaceSnapshot({
-                        tenantId: workspace.xeroTenantId,
-                        xeroContactId: workspace.xeroContactId,
-                        companyNumber: workspace.companyNumber,
-                        asAtDate: workspace.yearEndDate || workspace.submittedAt,
-                    });
-                    const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
-                        ? Number(snapshot.ch.netAssets)
-                        : codeBreakerExtractNetAssets(snapshot?.ch);
-                    const resolvedXero = Number.isFinite(Number(snapshot?.xero?.netAssets))
-                        ? Number(snapshot.xero.netAssets)
-                        : codeBreakerExtractNetAssets(snapshot?.xero);
-                    const resolvedDifference = Number.isFinite(Number(snapshot?.match?.difference))
-                        ? Number(snapshot.match.difference)
-                        : (
-                            Number.isFinite(resolvedCh) && Number.isFinite(resolvedXero)
-                                ? (resolvedXero - resolvedCh)
-                                : null
-                        );
-                    workspace.chNetAssets = Number.isFinite(resolvedCh) ? resolvedCh : null;
-                    workspace.xeroNetAssets = Number.isFinite(resolvedXero) ? resolvedXero : null;
-                    workspace.netAssetsDifference = Number.isFinite(resolvedDifference) ? resolvedDifference : null;
-                    workspace.updatedAt = new Date().toISOString();
-                    persistCodeBreakerWorkspaces();
-                } catch (error) {
-                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    console.warn("Unable to refresh Code Breaker net asset snapshot", error);
-                }
-                const company = (codeBreakerCompanies || []).find((row) =>
-                    String(row?.companyNumber || "").toUpperCase() === String(workspace.companyNumber || "").toUpperCase()
-                    || String(row?.xeroContactId || "") === String(workspace.xeroContactId || "")
-                ) || null;
-                const submittedAt = String(
-                    workspace.submittedAt
-                    || company?.latestSubmissionCompletedAt
-                    || company?.latestSubmissionAt
-                    || ""
-                ).slice(0, 10);
-                const submittedMs = dateSortValue(submittedAt || "");
-                const periodStart = codeBreakerPeriodStartDate(workspace);
-                const periodEnd = String(workspace?.yearEndDate || submittedAt || "").slice(0, 10);
-                const periodStartMs = dateSortValue(periodStart || "");
-                const periodEndMs = dateSortValue(periodEnd || "");
-                if (!submittedAt || !Number.isFinite(submittedMs) || submittedMs === Number.MAX_SAFE_INTEGER) {
-                    codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Missing filing submission date. Set submitted date in workspace setup." };
-                    renderCodeBreakerScreen();
-                    return;
-                }
-                if (!periodStart || !periodEnd || !Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs) || periodStartMs === Number.MAX_SAFE_INTEGER || periodEndMs === Number.MAX_SAFE_INTEGER || periodStartMs > periodEndMs) {
-                    codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Missing accounting period dates. Set period start and year end in workspace setup." };
-                    renderCodeBreakerScreen();
-                    return;
-                }
-                const reversalTarget = codeBreakerExtractNetAssets(workspace?.netAssetsDifference);
-                const chValue = codeBreakerExtractNetAssets(workspace?.chNetAssets);
-                const xeroValue = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
-                if (!Number.isFinite(chValue) || !Number.isFinite(xeroValue)) {
-                    codeBreakerAnalysisByWorkspaceId[workspace.id] = {
-                        error: "Unable to calculate net assets for this workspace. Check Companies House filing history and Xero balance sheet availability, then recalculate.",
-                    };
-                    renderCodeBreakerScreen();
-                    return;
-                }
-                const matches = Math.abs(reversalTarget) <= 0.01;
-                const recommendations = [];
-                if (matches) {
-                    recommendations.push("No action required. Companies House and Xero net assets match for this filed period.");
-                } else {
-                    recommendations.push(`LUK variance is ${formatCurrency(reversalTarget)} and should be unwound back to ${formatCurrency(0)}.`);
-                    recommendations.push(`Compare Companies House filed values to the Xero balance sheet as at ${formatDate(periodEnd)} and identify posting differences.`);
-                    recommendations.push("Review journals and balance-sheet account movements dated inside the locked filing period.");
-                }
-                codeBreakerAnalysisByWorkspaceId[workspace.id] = {
-                    mode: "balance_sheet_compare",
-                    submittedAt,
-                    periodStart,
-                    periodEnd,
-                    changedCount: 0,
-                    matches,
-                    netDelta: 0,
-                    reversalTarget,
-                    rows: [],
-                    recommendations,
-                };
-                renderCodeBreakerScreen();
+                await runCodeBreakerAnalysisWizard(workspaceId);
             }
 
             function openCodeBreakerWorkspace(workspaceId = "") {
@@ -70409,6 +70751,7 @@
                     ? `Company ${selectedWorkspace.companyNumber || "—"} · Submitted ${formatDate(selectedWorkspace.submittedAt || "") || "—"}`
                     : "Review post-filing delta analysis for this workspace.";
                 renderCodeBreakerAnalysis(selectedWorkspace);
+                renderCodeBreakerWizardModal();
             }
 
             async function refreshMicroAnalyzerRows() {
@@ -70533,12 +70876,10 @@
 
             function renderMicroAnalyzerScreen() {
                 const summary = document.getElementById("microAnalyzerSummary");
-                const tableBody = document.getElementById("microAnalyzerTableBody");
                 const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
                 const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
-                const runAllButton = document.getElementById("microAnalyzerRunAllButton");
-                if (!summary || !tableBody || !refreshButton || !runAllButton) return;
+                if (!summary || !refreshButton) return;
                 const connectedAccountCount = renderMicroAnalyzerConnectionsTable(connectionsTableBody, connectionsSection);
                 const rowTenantCount = new Set(
                     (microAnalyzerRows || [])
@@ -70547,57 +70888,12 @@
                 ).size;
                 const connectedTenantCount = connectedAccountCount || rowTenantCount;
                 summary.textContent = microAnalyzerLoading
-                    ? "Loading connected Xero accounts and active Ignition Micro/Starter/Solo plans..."
+                    ? "Loading connected Xero accounts..."
                     : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected.`;
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
                     refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
                 }
-                if (runAllButton.dataset.microWired !== "true") {
-                    runAllButton.dataset.microWired = "true";
-                    runAllButton.addEventListener("click", async () => {
-                        for (const row of microAnalyzerRows) {
-                            // Sequential keeps API calls controlled for Xero limits.
-                            await runMicroAnalyzerForRow(row.id);
-                        }
-                        showToast("VAT on Unregistered run complete.", "success");
-                    });
-                }
-                if (microAnalyzerLoading) {
-                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Reading active Ignition plans</h4><p>Filtering Xero-connected organisations to clients on Micro, Starter, or Solo plans.</p></div></td></tr>';
-                    return;
-                }
-                if (!microAnalyzerRows.length) {
-                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No matching clients found</h4><p>No Xero-connected organisations currently match active Ignition Micro/Starter/Solo plans.</p></div></td></tr>';
-                    return;
-                }
-                tableBody.innerHTML = microAnalyzerRows.map((row) => {
-                    const result = microAnalyzerResultsByCustomerId[row.id] || {};
-                    const vatCount = Number(result.vatCount || 0);
-                    const vatLabel = result.error
-                        ? result.error
-                        : result.analysedAt
-                            ? `${vatCount.toLocaleString("en-GB")} VAT-coded line${vatCount === 1 ? "" : "s"}${result.fixedAt ? " · fixed" : ""}`
-                            : "Not analyzed";
-                    return `
-                        <tr>
-                            <td><strong>${escapeHTML(row.clientName)}</strong></td>
-                            <td>${escapeHTML(row.planName || "Micro/Starter")}</td>
-                            <td>${row.customerId ? `<strong>${escapeHTML(row.customerName || row.customerId)}</strong><small>${escapeHTML(row.tenantName || row.tenantId || row.customerId)}</small>` : '<span class="ch-pill is-warn">No match</span>'}</td>
-                            <td>${escapeHTML(vatLabel)}</td>
-                            <td>
-                                <button class="ghost-button" type="button" data-micro-analyze="${escapeHTML(row.id)}">Analyze</button>
-                                <button class="primary-button" type="button" data-micro-fix="${escapeHTML(row.id)}" ${!row.customerId ? "disabled" : ""}>Set NO VAT</button>
-                            </td>
-                        </tr>
-                    `;
-                }).join("");
-                tableBody.querySelectorAll("[data-micro-analyze]").forEach((button) => {
-                    button.addEventListener("click", () => runMicroAnalyzerForRow(button.dataset.microAnalyze || ""));
-                });
-                tableBody.querySelectorAll("[data-micro-fix]").forEach((button) => {
-                    button.addEventListener("click", () => applyMicroAnalyzerFix(button.dataset.microFix || ""));
-                });
             }
 
             function identityVerificationTenantRows() {
@@ -71008,6 +71304,7 @@
                     summary.textContent = identityVerificationState.loading
                         ? "Loading tenant workspaces and Companies House records."
                         : "No Xero tenant connections found. Connect Xero to begin.";
+                    metrics.hidden = true;
                     tableBody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No tenants</p><h4>Connect Xero first</h4><p>Once tenant connections are available, open each workspace to verify directors and PSCs.</p></div></td></tr>';
                     identityVerificationState.workspaceMode = "list";
                     tenantListSection.hidden = false;
@@ -71056,6 +71353,7 @@
                     identityVerificationState.workspaceMode = "list";
                     tenantListSection.hidden = false;
                     workspace.hidden = true;
+                    metrics.hidden = true;
                     renderTopbarIdentity();
                     closeIdentityVerificationPersonModal();
                     return;
@@ -71064,6 +71362,7 @@
                 const showWorkspace = identityVerificationState.workspaceMode === "workspace";
                 tenantListSection.hidden = showWorkspace;
                 workspace.hidden = !showWorkspace;
+                metrics.hidden = !showWorkspace;
                 if (!showWorkspace) {
                     summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
                     renderTopbarIdentity();
