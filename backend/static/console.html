@@ -32402,12 +32402,31 @@
                 return `Welcome to Jenius Tools, ${insightsWelcomeName()}`;
             }
 
+            function activeIdentityVerificationClientLabel() {
+                if (activeView !== "identity-verification") return "";
+                if (identityVerificationState?.workspaceMode !== "workspace") return "";
+                const selectedTenantId = String(identityVerificationState?.selectedTenantId || "").trim();
+                if (!selectedTenantId) return "";
+                const tenantRow = identityVerificationTenantRows().find(
+                    (row) => String(row?.tenantId || "").trim() === selectedTenantId
+                ) || null;
+                if (!tenantRow) return "";
+                const mappedClientName = String(tenantRow?.mapping?.clientName || "").trim();
+                if (mappedClientName) return mappedClientName;
+                const company = identityVerificationCompanyByTenant(tenantRow);
+                const companyClientName = String(company?.clientName || "").trim();
+                if (companyClientName) return companyClientName;
+                return xeroWorkspaceLabel(tenantRow?.tenantName, selectedTenantId, "Xero tenant");
+            }
+
             function activeTopbarTitle(topbarClient = null) {
                 if (activeView === "insights") return insightsTopbarTitle();
                 if (activeView === "client") {
                     const client = topbarClient || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                     return client?.name || "Client";
                 }
+                const identityVerificationClientLabel = activeIdentityVerificationClientLabel();
+                if (identityVerificationClientLabel) return identityVerificationClientLabel;
                 if (activeView === "ignition" && ignitionRenewalsWorkspaceStage === "pricing") {
                     const run = ignitionRenewalRun();
                     if (run?.id) return ignitionRenewalBatchReferenceForRun(run);
@@ -70797,6 +70816,7 @@
                     backButton.addEventListener("click", () => {
                         identityVerificationState.workspaceMode = "list";
                         renderIdentityVerificationScreen();
+                        renderTopbarIdentity();
                     });
                 }
 
@@ -70809,6 +70829,7 @@
                     identityVerificationState.workspaceMode = "list";
                     tenantListSection.hidden = false;
                     workspace.hidden = true;
+                    renderTopbarIdentity();
                     return;
                 }
 
@@ -70842,6 +70863,7 @@
                         identityVerificationState.selectedTenantId = String(button.dataset.identityOpen || "").trim();
                         identityVerificationState.workspaceMode = "workspace";
                         renderIdentityVerificationScreen();
+                        renderTopbarIdentity();
                     });
                 });
 
@@ -70850,6 +70872,7 @@
                     identityVerificationState.workspaceMode = "list";
                     tenantListSection.hidden = false;
                     workspace.hidden = true;
+                    renderTopbarIdentity();
                     return;
                 }
 
@@ -70858,6 +70881,7 @@
                 workspace.hidden = !showWorkspace;
                 if (!showWorkspace) {
                     summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
+                    renderTopbarIdentity();
                     return;
                 }
 
@@ -70872,6 +70896,7 @@
 
                 workspaceTitle.textContent = `${tenantLabel} · Identity verification`;
                 summary.textContent = `Tenant workspace open: ${tenantLabel}.`;
+                renderTopbarIdentity();
                 workspaceMeta.textContent = selectedCompany
                     ? `${selectedCompany.companyName || "Mapped company"} (${selectedCompany.companyNumber || "No number"}) · ${status.label}`
                     : "No Companies House company is mapped to this tenant yet.";
@@ -72098,6 +72123,9 @@
                 });
                 const stack = document.getElementById("toastStack");
                 if (!stack) return;
+                if (document.body && stack.parentElement !== document.body) {
+                    document.body.appendChild(stack);
+                }
                 const toast = document.createElement("div");
                 toast.className = `toast-message ${type}`;
                 if (context === "sync") toast.classList.add("is-sync");
