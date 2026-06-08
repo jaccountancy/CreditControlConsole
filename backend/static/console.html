@@ -68341,8 +68341,8 @@
             }
 
             function codeBreakerCompareStatus(workspace = {}) {
-                const ch = Number(workspace?.chNetAssets);
-                const xero = Number(workspace?.xeroNetAssets);
+                const ch = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xero = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
                 if (!Number.isFinite(ch) || !Number.isFinite(xero)) {
                     return { label: "Awaiting values", className: "is-review" };
                 }
@@ -68351,6 +68351,12 @@
                     return { label: "JOB DONE", className: "is-open" };
                 }
                 return { label: `LUK variance ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+            }
+
+            function codeBreakerMetricValue(value) {
+                const resolved = codeBreakerExtractNetAssets(value);
+                if (!Number.isFinite(resolved)) return "Pending";
+                return escapeHTML(formatCurrency(resolved));
             }
 
             function codeBreakerPeriodStartDate(workspace = {}) {
@@ -69137,8 +69143,8 @@
                         <div class="key-metrics-grid">
                             <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(workspace.submittedAt || ""))}</strong></article>
                             <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(codeBreakerPeriodStartDate(workspace) || ""))} to ${escapeHTML(formatDate(workspace.yearEndDate || ""))}</strong></article>
-                            <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
-                            <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                            <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
+                            <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
                         </div>
                         <div class="code-breaker-workspace-actions">
                             <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
@@ -69168,8 +69174,8 @@
                     <div class="key-metrics-grid">
                         <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
                         <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(analysis.periodStart || ""))} to ${escapeHTML(formatDate(analysis.periodEnd || ""))}</strong></article>
-                        <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
-                        <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                        <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
+                        <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
                         <article class="key-metric-card"><span>Variance to clear</span><strong>${escapeHTML(compare.label)}</strong></article>
                         <article class="key-metric-card"><span>Comparison mode</span><strong>${escapeHTML(analysis.mode === "balance_sheet_compare" ? "CH filed vs Xero balance sheet" : "Transaction delta")}</strong></article>
                         <article class="key-metric-card"><span>Variance</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>
@@ -69223,9 +69229,22 @@
                         companyNumber: workspace.companyNumber,
                         asAtDate: workspace.yearEndDate || workspace.submittedAt,
                     });
-                    workspace.chNetAssets = Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : (workspace.chNetAssets ?? null);
-                    workspace.xeroNetAssets = Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : (workspace.xeroNetAssets ?? null);
-                    workspace.netAssetsDifference = Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null;
+                    const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
+                        ? Number(snapshot.ch.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.ch);
+                    const resolvedXero = Number.isFinite(Number(snapshot?.xero?.netAssets))
+                        ? Number(snapshot.xero.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.xero);
+                    const resolvedDifference = Number.isFinite(Number(snapshot?.match?.difference))
+                        ? Number(snapshot.match.difference)
+                        : (
+                            Number.isFinite(resolvedCh) && Number.isFinite(resolvedXero)
+                                ? (resolvedXero - resolvedCh)
+                                : null
+                        );
+                    workspace.chNetAssets = Number.isFinite(resolvedCh) ? resolvedCh : null;
+                    workspace.xeroNetAssets = Number.isFinite(resolvedXero) ? resolvedXero : null;
+                    workspace.netAssetsDifference = Number.isFinite(resolvedDifference) ? resolvedDifference : null;
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
                 } catch (error) {
@@ -69257,7 +69276,16 @@
                     renderCodeBreakerScreen();
                     return;
                 }
-                const reversalTarget = Number(workspace?.netAssetsDifference || 0);
+                const reversalTarget = codeBreakerExtractNetAssets(workspace?.netAssetsDifference);
+                const chValue = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xeroValue = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
+                if (!Number.isFinite(chValue) || !Number.isFinite(xeroValue)) {
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = {
+                        error: "Unable to calculate net assets for this workspace. Check Companies House filing history and Xero balance sheet availability, then recalculate.",
+                    };
+                    renderCodeBreakerScreen();
+                    return;
+                }
                 const matches = Math.abs(reversalTarget) <= 0.01;
                 const recommendations = [];
                 if (matches) {
@@ -69385,8 +69413,8 @@
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(workspace.xeroContactId || "--")}</td>
-                                <td>${Number.isFinite(Number(workspace.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</td>
-                                <td>${Number.isFinite(Number(workspace.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</td>
+                                <td>${codeBreakerMetricValue(workspace.chNetAssets)}</td>
+                                <td>${codeBreakerMetricValue(workspace.xeroNetAssets)}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
                                 <td>
