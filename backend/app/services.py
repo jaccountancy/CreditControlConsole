@@ -12515,6 +12515,17 @@ def _xero_connection_has_reports_scope(connection_row: dict | None) -> bool:
     return any(scope in scopes for scope in report_scopes)
 
 
+def _xero_connection_has_journal_scope(connection_row: dict | None) -> bool:
+    scopes = _xero_connection_scope_set(connection_row)
+    journal_scopes = {
+        "accounting.transactions.read",
+        "accounting.transactions",
+        "accounting.manualjournals.read",
+        "accounting.manualjournals",
+    }
+    return any(scope in scopes for scope in journal_scopes)
+
+
 def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
     if not fields:
         return
@@ -14936,6 +14947,106 @@ async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[
     return journals, ""
 
 
+async def _code_breaker_fetch_voided_contact_transactions(
+    connection_row: dict,
+    *,
+    xero_contact_id: str,
+    as_at_date: date,
+    submitted_at: datetime | None,
+) -> tuple[list[dict], str]:
+    contact_id = str(xero_contact_id or "").strip()
+    if not contact_id:
+        return [], ""
+
+    invoice_where = (
+        f'{_xero_contact_where(contact_id)}'
+        '&&Type=="ACCREC"'
+        '&&(Status=="VOIDED"||Status=="DELETED")'
+    )
+    credit_where = (
+        f'{_xero_contact_where(contact_id)}'
+        '&&Type=="ACCRECCREDIT"'
+        '&&(Status=="VOIDED"||Status=="DELETED")'
+    )
+    overpayment_where = (
+        f'{_xero_contact_where(contact_id)}'
+        '&&(Status=="VOIDED"||Status=="DELETED")'
+    )
+    try:
+        invoices = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"where": invoice_where, "order": "UpdatedDateUTC DESC"},
+            max_pages=3,
+        )
+        credits = await fetch_paginated_collection(
+            connection_row,
+            CREDIT_NOTES_URL,
+            "CreditNotes",
+            params={"where": credit_where, "order": "UpdatedDateUTC DESC"},
+            max_pages=3,
+        )
+        overpayments = await fetch_paginated_collection(
+            connection_row,
+            OVERPAYMENTS_URL,
+            "Overpayments",
+            params={"where": overpayment_where, "order": "UpdatedDateUTC DESC"},
+            max_pages=3,
+        )
+    except Exception as exc:
+        return [], _sync_error_message(exc)
+
+    def _created_or_updated_at(row: dict) -> datetime | None:
+        return _parse_optional_iso_datetime(row.get("UpdatedDateUTC") or row.get("UpdatedDate") or row.get("CreatedDateUTC") or row.get("CreatedDate"))
+
+    rows: list[dict] = []
+
+    def _append_transaction(raw_row: dict, *, source_type: str, tx_type: str, tx_id_key: str, number_key: str) -> None:
+        if not isinstance(raw_row, dict):
+            return
+        status_text = str(raw_row.get("Status") or "").strip().upper()
+        if status_text not in {"VOIDED", "DELETED"}:
+            return
+        tx_date = _parse_optional_iso_date(raw_row.get("Date") or raw_row.get("DateString"))
+        if tx_date is None or tx_date > as_at_date:
+            return
+        changed_at = _created_or_updated_at(raw_row)
+        if submitted_at is not None and (changed_at is None or changed_at <= submitted_at):
+            return
+        amount = _money(raw_row.get("Total") or raw_row.get("AmountDue") or 0)
+        rows.append(
+            {
+                "sourceType": source_type,
+                "transactionType": tx_type,
+                "transactionId": str(raw_row.get(tx_id_key) or "").strip(),
+                "reference": str(raw_row.get(number_key) or raw_row.get("Reference") or "").strip(),
+                "status": status_text,
+                "journalDate": tx_date.isoformat(),
+                "createdAt": _iso(changed_at),
+                "impact": float(_money(amount * -1)),
+                "reason": "Transaction appears voided/deleted after filing and may explain variance movement.",
+            }
+        )
+
+    for row in invoices or []:
+        _append_transaction(row, source_type="Voided invoice", tx_type="invoice", tx_id_key="InvoiceID", number_key="InvoiceNumber")
+    for row in credits or []:
+        _append_transaction(row, source_type="Voided credit note", tx_type="credit_note", tx_id_key="CreditNoteID", number_key="CreditNoteNumber")
+    for row in overpayments or []:
+        _append_transaction(row, source_type="Voided overpayment", tx_type="overpayment", tx_id_key="OverpaymentID", number_key="OverpaymentNumber")
+
+    rows.sort(
+        key=lambda item: (
+            str(item.get("createdAt") or ""),
+            str(item.get("journalDate") or ""),
+            str(item.get("transactionId") or ""),
+        ),
+        reverse=True,
+    )
+    return rows[:120], ""
+
+
 def _code_breaker_journal_candidates(
     journals: list[dict],
     *,
@@ -15186,9 +15297,10 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
 
     xero_net_assets = None
     xero_source = "unavailable"
-    xero_diagnostics = {"scopeIncludesReportsRead": False}
+    xero_diagnostics = {"scopeIncludesReportsRead": False, "scopeIncludesJournalRead": False}
     xero_reason = connection_lookup_error.strip()
     if connection_row:
+        xero_scope_has_journals = _xero_connection_has_journal_scope(connection_row)
         balance_sheet_payload = await _me_xero_optional_get(
             connection_row,
             "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
@@ -15204,6 +15316,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         )
         if isinstance(xero_diagnostics, dict):
             xero_diagnostics["scopeIncludesReportsRead"] = xero_scope_has_reports
+            xero_diagnostics["scopeIncludesJournalRead"] = xero_scope_has_journals
             if xero_balance_sheet_error:
                 xero_diagnostics["requestError"] = xero_balance_sheet_error
         if xero_net_assets is None:
@@ -15293,6 +15406,8 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "explainedDifference": None,
         "residualDifference": float(difference) if difference is not None else None,
         "transactions": [],
+        "voidedTransactions": [],
+        "voidedCandidateCount": 0,
     }
     if difference is not None:
         if connection_row is None:
@@ -15349,6 +15464,18 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     residual_difference = _money(ai_variance.get("residualDifference"))
                     post_filing_analysis["explainedDifference"] = float(explained_difference)
                     post_filing_analysis["residualDifference"] = float(residual_difference)
+            voided_rows, voided_reason = await _code_breaker_fetch_voided_contact_transactions(
+                connection_row,
+                xero_contact_id=xero_contact_id,
+                as_at_date=as_at_date,
+                submitted_at=submission_completed_at,
+            )
+            post_filing_analysis["voidedTransactions"] = voided_rows
+            post_filing_analysis["voidedCandidateCount"] = len(voided_rows)
+            if voided_reason:
+                warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                warnings.append(f"Unable to fetch voided/deleted transactions: {voided_reason}")
+                post_filing_analysis["warnings"] = warnings
 
     return {
         "asAtDate": as_at_date.isoformat(),
@@ -25455,6 +25582,98 @@ async def customer_xero_transactions(
     )
 
 
+def _code_breaker_duplicate_line_items(lines: list[dict] | None) -> list[dict]:
+    safe_lines = lines if isinstance(lines, list) else []
+    duplicated: list[dict] = []
+    for row in safe_lines[:200]:
+        if not isinstance(row, dict):
+            continue
+        line_amount = _money(row.get("LineAmount") if row.get("LineAmount") is not None else row.get("UnitAmount"))
+        duplicated.append(
+            {
+                "Description": str(row.get("Description") or "").strip()[:400],
+                "Quantity": float(row.get("Quantity") or 1),
+                "UnitAmount": float(line_amount),
+                "AccountCode": str(row.get("AccountCode") or "").strip()[:30],
+                "TaxType": str(row.get("TaxType") or "").strip()[:30],
+            }
+        )
+    return duplicated
+
+
+async def _code_breaker_duplicate_xero_transaction(
+    connection_row: dict,
+    *,
+    transaction_type: str,
+    transaction_id: str,
+) -> dict:
+    if transaction_type == "invoice":
+        payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{transaction_id}")
+        invoices = payload.get("Invoices") if isinstance(payload, dict) else []
+        source = invoices[0] if isinstance(invoices, list) and invoices else {}
+        if not isinstance(source, dict) or not str(source.get("InvoiceID") or "").strip():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found in Xero.")
+        contact = source.get("Contact") if isinstance(source.get("Contact"), dict) else {}
+        duplicate_payload = {
+            "Type": str(source.get("Type") or "ACCREC").strip() or "ACCREC",
+            "Contact": {"ContactID": str(contact.get("ContactID") or "").strip()},
+            "Date": _xero_payload_date(source.get("DateString") or source.get("Date")) or _iso(utcnow().date()),
+            "DueDate": _xero_payload_date(source.get("DueDateString") or source.get("DueDate")) or _xero_payload_date(source.get("DateString") or source.get("Date")),
+            "Reference": str(source.get("Reference") or source.get("InvoiceNumber") or "").strip()[:120],
+            "CurrencyCode": str(source.get("CurrencyCode") or "GBP").strip()[:10] or "GBP",
+            "LineAmountTypes": str(source.get("LineAmountTypes") or "Exclusive").strip()[:20] or "Exclusive",
+            "Status": "DRAFT",
+            "LineItems": _code_breaker_duplicate_line_items(source.get("LineItems")),
+        }
+        if not duplicate_payload["Contact"].get("ContactID"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice contact is unavailable, so duplicate could not be created.")
+        if not duplicate_payload["LineItems"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice has no line items, so duplicate could not be created.")
+        created = await create_sales_invoice(connection_row, duplicate_payload)
+        created_rows = created.get("Invoices") if isinstance(created, dict) else []
+        created_row = created_rows[0] if isinstance(created_rows, list) and created_rows else {}
+        return {
+            "transactionType": "invoice",
+            "transactionId": str(created_row.get("InvoiceID") or "").strip(),
+            "number": str(created_row.get("InvoiceNumber") or "").strip(),
+            "status": str(created_row.get("Status") or "DRAFT").strip(),
+        }
+    if transaction_type == "credit_note":
+        payload = await xero_api_get(connection_row, f"{CREDIT_NOTES_URL}/{transaction_id}")
+        rows = payload.get("CreditNotes") if isinstance(payload, dict) else []
+        source = rows[0] if isinstance(rows, list) and rows else {}
+        if not isinstance(source, dict) or not str(source.get("CreditNoteID") or "").strip():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Credit note not found in Xero.")
+        contact = source.get("Contact") if isinstance(source.get("Contact"), dict) else {}
+        duplicate_payload = {
+            "Type": str(source.get("Type") or "ACCRECCREDIT").strip() or "ACCRECCREDIT",
+            "Contact": {"ContactID": str(contact.get("ContactID") or "").strip()},
+            "Date": _xero_payload_date(source.get("DateString") or source.get("Date")) or _iso(utcnow().date()),
+            "Reference": str(source.get("Reference") or source.get("CreditNoteNumber") or "").strip()[:120],
+            "CurrencyCode": str(source.get("CurrencyCode") or "GBP").strip()[:10] or "GBP",
+            "LineAmountTypes": str(source.get("LineAmountTypes") or "Exclusive").strip()[:20] or "Exclusive",
+            "Status": "DRAFT",
+            "LineItems": _code_breaker_duplicate_line_items(source.get("LineItems")),
+        }
+        if not duplicate_payload["Contact"].get("ContactID"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit note contact is unavailable, so duplicate could not be created.")
+        if not duplicate_payload["LineItems"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit note has no line items, so duplicate could not be created.")
+        created = await create_credit_note(connection_row, duplicate_payload)
+        created_rows = created.get("CreditNotes") if isinstance(created, dict) else []
+        created_row = created_rows[0] if isinstance(created_rows, list) and created_rows else {}
+        return {
+            "transactionType": "credit_note",
+            "transactionId": str(created_row.get("CreditNoteID") or "").strip(),
+            "number": str(created_row.get("CreditNoteNumber") or "").strip(),
+            "status": str(created_row.get("Status") or "DRAFT").strip(),
+        }
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"Duplicate is not supported for transactionType '{transaction_type}'.",
+    )
+
+
 async def code_breaker_apply_xero_transaction_action(customer_id: str, user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     customer, connection_row = _validate_customer_xero_access(customer_id, user)
@@ -25465,8 +25684,8 @@ async def code_breaker_apply_xero_transaction_action(customer_id: str, user: dic
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="transactionType, transactionId, and action are required.")
 
     allowed = {
-        "invoice": {"void": "VOIDED", "delete": "DELETED"},
-        "credit_note": {"void": "VOIDED"},
+        "invoice": {"void": "VOIDED", "delete": "DELETED", "duplicate": "DUPLICATE"},
+        "credit_note": {"void": "VOIDED", "duplicate": "DUPLICATE"},
         "overpayment": {"void": "VOIDED"},
         "bank_transaction": {"delete": "DELETED"},
     }
@@ -25479,7 +25698,14 @@ async def code_breaker_apply_xero_transaction_action(customer_id: str, user: dic
             detail=f"Action '{requested_action}' is not supported for transactionType '{transaction_type}'. Supported: {supported}.",
         )
 
-    if transaction_type == "invoice":
+    duplicate_payload: dict | None = None
+    if requested_action == "duplicate":
+        duplicate_payload = await _code_breaker_duplicate_xero_transaction(
+            connection_row,
+            transaction_type=transaction_type,
+            transaction_id=transaction_id,
+        )
+    elif transaction_type == "invoice":
         await update_invoice_status(connection_row, transaction_id, status_value)
     elif transaction_type == "credit_note":
         await update_credit_note_status(connection_row, transaction_id, status_value)
@@ -25511,6 +25737,7 @@ async def code_breaker_apply_xero_transaction_action(customer_id: str, user: dic
         "transactionId": transaction_id,
         "action": requested_action,
         "statusValue": status_value,
+        "duplicate": duplicate_payload,
     }
 
 

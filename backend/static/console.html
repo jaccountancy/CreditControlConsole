@@ -17728,6 +17728,18 @@
                 align-self: start;
                 justify-self: end;
             }
+            .lock-status-pill.is-processing {
+                position: relative;
+                border-color: rgba(29, 103, 242, 0.34);
+                background: linear-gradient(110deg, rgba(236, 244, 255, 0.9), rgba(221, 236, 255, 0.95), rgba(236, 244, 255, 0.9));
+                background-size: 180% 180%;
+                color: #1b4eaa;
+                animation: code-breaker-pill-processing 1.2s ease-in-out infinite;
+            }
+            @keyframes code-breaker-pill-processing {
+                0%, 100% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+            }
             .code-breaker-client-row.is-selected {
                 border-color: rgba(29, 103, 242, 0.44);
                 box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
@@ -29115,6 +29127,9 @@
             const codeBreakerCrackByWorkspaceId = {};
             const codeBreakerQuickSetupInFlightTenantIds = new Set();
             let codeBreakerBulkCalculationInFlight = false;
+            const codeBreakerBulkWorkspaceStateById = {};
+            let codeBreakerBulkWorkspaceTotal = 0;
+            let codeBreakerBulkWorkspaceCompleted = 0;
             let codeBreakerWizardState = {
                 open: false,
                 workspaceId: "",
@@ -71200,8 +71215,11 @@
                 if (!workspace) return false;
                 const silent = Boolean(options?.silent);
                 const suppressErrorToast = Boolean(options?.suppressErrorToast);
-                selectedCodeBreakerWorkspaceId = workspace.id;
-                codeBreakerWorkspaceSubView = "workspace";
+                const background = Boolean(options?.background);
+                if (!background) {
+                    selectedCodeBreakerWorkspaceId = workspace.id;
+                    codeBreakerWorkspaceSubView = "workspace";
+                }
                 resetCodeBreakerWizardState(workspace.id);
                 codeBreakerWizardState.open = !silent;
                 codeBreakerWizardState.running = true;
@@ -72596,18 +72614,36 @@
                     showToast("Set up at least one workspace before running Calculate all.", "info");
                     return;
                 }
+                const previousSelectedWorkspaceId = String(selectedCodeBreakerWorkspaceId || "");
+                const previousSubView = String(codeBreakerWorkspaceSubView || "workspace");
                 codeBreakerBulkCalculationInFlight = true;
+                codeBreakerBulkWorkspaceTotal = workspaceIds.length;
+                codeBreakerBulkWorkspaceCompleted = 0;
+                Object.keys(codeBreakerBulkWorkspaceStateById).forEach((key) => delete codeBreakerBulkWorkspaceStateById[key]);
+                workspaceIds.forEach((workspaceId) => {
+                    codeBreakerBulkWorkspaceStateById[workspaceId] = "queued";
+                });
                 renderCodeBreakerScreen();
                 let successCount = 0;
                 let failedCount = 0;
                 try {
                     for (const workspaceId of workspaceIds) {
-                        const success = await runCodeBreakerAnalysis(workspaceId, { silent: true, suppressErrorToast: true });
+                        codeBreakerBulkWorkspaceStateById[workspaceId] = "running";
+                        renderCodeBreakerScreen();
+                        const success = await runCodeBreakerAnalysis(workspaceId, { silent: true, suppressErrorToast: true, background: true });
                         if (success) successCount += 1;
                         else failedCount += 1;
+                        codeBreakerBulkWorkspaceStateById[workspaceId] = success ? "complete" : "failed";
+                        codeBreakerBulkWorkspaceCompleted += 1;
+                        renderCodeBreakerScreen();
                     }
                 } finally {
+                    selectedCodeBreakerWorkspaceId = previousSelectedWorkspaceId;
+                    codeBreakerWorkspaceSubView = previousSubView;
                     codeBreakerBulkCalculationInFlight = false;
+                    codeBreakerBulkWorkspaceTotal = 0;
+                    codeBreakerBulkWorkspaceCompleted = 0;
+                    Object.keys(codeBreakerBulkWorkspaceStateById).forEach((key) => delete codeBreakerBulkWorkspaceStateById[key]);
                     persistCodeBreakerWorkspaces();
                     renderCodeBreakerScreen();
                 }
@@ -72702,7 +72738,11 @@
                 setupButton.textContent = "Set up workspace";
                 const connectionCount = codeBreakerConnections().length;
                 const workspaceCount = (codeBreakerWorkspaces || []).length;
-                summary.textContent = `${connectionCount.toLocaleString("en-GB")} connected Xero organisation${connectionCount === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} configured.`;
+                if (codeBreakerBulkCalculationInFlight && codeBreakerBulkWorkspaceTotal > 0) {
+                    summary.textContent = `Calculating in background: ${codeBreakerBulkWorkspaceCompleted.toLocaleString("en-GB")} of ${codeBreakerBulkWorkspaceTotal.toLocaleString("en-GB")} workspaces processed.`;
+                } else {
+                    summary.textContent = `${connectionCount.toLocaleString("en-GB")} connected Xero organisation${connectionCount === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} configured.`;
+                }
 
                 if (setupButton.dataset.cbWired !== "true") {
                     setupButton.dataset.cbWired = "true";
@@ -72774,6 +72814,18 @@
                             `;
                         }
                         const status = codeBreakerWorkspaceStatus(workspace);
+                        const bulkState = String(codeBreakerBulkWorkspaceStateById[String(workspace.id || "")] || "");
+                        const renderedStatus = codeBreakerBulkCalculationInFlight && bulkState
+                            ? (
+                                bulkState === "running"
+                                    ? { label: "Calculating...", className: "is-processing" }
+                                    : bulkState === "queued"
+                                        ? { label: "Queued", className: "is-pending" }
+                                        : bulkState === "complete"
+                                            ? { label: "Updated", className: "is-open" }
+                                            : { label: "Failed", className: "is-overdue" }
+                            )
+                            : status;
                         const compare = codeBreakerCompareStatus(workspace);
                         const workspaceName = String(workspace.clientName || "Workspace").trim();
                         const normalisedWorkspaceName = workspaceName.toLowerCase().replace(/\s+/g, " ").trim();
@@ -72790,7 +72842,7 @@
                                 <td>${codeBreakerMetricValue(workspace.chNetAssets)}</td>
                                 <td>${codeBreakerMetricValue(workspace.xeroNetAssets)}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${compare.icon ? `<span aria-hidden="true">${escapeHTML(compare.icon)}</span> ` : ""}${escapeHTML(compare.label)}</span></td>
-                                <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
+                                <td><span class="lock-status-pill ${escapeHTML(renderedStatus.className)}">${escapeHTML(renderedStatus.label)}</span></td>
                                 <td>
                                     <button class="ghost-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">Open</button>
                                     <button class="ghost-button danger-button" type="button" data-code-breaker-remove="${escapeHTML(workspace.id)}">Delete</button>
