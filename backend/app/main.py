@@ -550,7 +550,7 @@ def auth_xero_start(request: Request, redirect_to: str = "/", force: int = 0):
         if response:
             return response
     state_token = start_oauth_state(redirect_to=redirect_to)
-    return RedirectResponse(xero_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(xero_authorize_url(state_token, prompt_consent=bool(force)), status_code=status.HTTP_302_FOUND)
 
 
 @app.get("/auth/xero/connected")

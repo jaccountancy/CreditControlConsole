@@ -29125,6 +29125,8 @@
             let settingsUsageInspectorModalOpen = false;
             let productReleasesLoading = false;
             let productReleasesData = loadProductReleasesHistory();
+            let productReleasesAutoRefreshTimer = null;
+            const PRODUCT_RELEASES_AUTO_REFRESH_MS = 60000;
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
@@ -62837,6 +62839,7 @@
                 else if (activeView === "settings") activeNavSection = "settings";
                 else if (activeView === "client") activeNavSection = "clients";
                 syncActiveViewShell();
+                syncProductReleasesAutoRefresh();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
                 renderTopbarIdentity(topbarClient);
                 const syncStamp = document.getElementById("syncStamp");
@@ -75448,6 +75451,8 @@
                             const normalisedSource = String(row.source || "").toLowerCase();
                             const sourceLabel = normalisedSource === "runtime"
                                 ? "RAILWAY RUNTIME"
+                                : normalisedSource === "railway_runtime"
+                                    ? "RAILWAY RUNTIME"
                                 : normalisedSource === "git_push"
                                     ? "GIT PUSH"
                                     : String(row.source || "RAILWAY").toUpperCase();
@@ -75503,6 +75508,21 @@
                 }
             }
 
+            function syncProductReleasesAutoRefresh() {
+                const shouldRefresh = activeView === "settings" && activeSettingsSection === "product-releases";
+                if (shouldRefresh && !productReleasesAutoRefreshTimer) {
+                    productReleasesAutoRefreshTimer = setInterval(() => {
+                        if (document.hidden) return;
+                        loadProductReleases();
+                    }, PRODUCT_RELEASES_AUTO_REFRESH_MS);
+                    return;
+                }
+                if (!shouldRefresh && productReleasesAutoRefreshTimer) {
+                    clearInterval(productReleasesAutoRefreshTimer);
+                    productReleasesAutoRefreshTimer = null;
+                }
+            }
+
             function productReleaseHumanSummary(row = {}) {
                 const summary = String(row.summary || "").trim();
                 if (summary) {
@@ -75512,7 +75532,7 @@
                 }
                 const source = String(row.source || "").toLowerCase();
                 if (source === "git_push") return "New code was deployed from a Git push.";
-                if (source === "runtime") return "Production runtime deployment published.";
+                if (source === "runtime" || source === "railway_runtime") return "Production runtime deployment published.";
                 return "Deployment published successfully.";
             }
 

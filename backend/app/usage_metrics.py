@@ -893,10 +893,20 @@ def _sync_runtime_release_update() -> None:
     commit_sha = str(os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()
     service_id = str(os.getenv("RAILWAY_SERVICE_ID") or "").strip()
     environment_id = str(os.getenv("RAILWAY_ENVIRONMENT_ID") or "").strip()
+    service_name = str(os.getenv("RAILWAY_SERVICE_NAME") or "").strip()
+    environment_name = str(os.getenv("RAILWAY_ENVIRONMENT_NAME") or "").strip()
     short_dep = deployment_id[:12]
+    title_parts = ["Railway deployment"]
+    if service_name:
+        title_parts.append(service_name)
+    if environment_name:
+        title_parts.append(environment_name)
+    title_parts.append(short_dep)
     details = [
         f"Deployment ID: {deployment_id}",
+        f"Service: {service_name}" if service_name else "",
         f"Service ID: {service_id}" if service_id else "",
+        f"Environment: {environment_name}" if environment_name else "",
         f"Environment ID: {environment_id}" if environment_id else "",
         f"Commit: {commit_sha[:12]}" if commit_sha else "",
     ]
@@ -925,7 +935,7 @@ def _sync_runtime_release_update() -> None:
                     updated_at = EXCLUDED.updated_at
                 """,
                 (
-                    f"Railway deployment · {short_dep}",
+                    " · ".join(title_parts),
                     "Published runtime deployment record.",
                     json.dumps(details),
                     deployment_id,

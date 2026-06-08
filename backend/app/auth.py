@@ -319,15 +319,17 @@ def approve_device_code(verification_code: str, user_id: str) -> str:
     return complete_device_login(row["device_code"], user_id)
 
 
-def xero_authorize_url(state_token: str) -> str:
+def xero_authorize_url(state_token: str, prompt_consent: bool = False) -> str:
     settings = get_settings()
-    query = urlencode(
-        {
-            "response_type": "code",
-            "client_id": settings.xero_client_id,
-            "redirect_uri": settings.xero_redirect_uri,
-            "scope": xero_scope_string(settings.xero_scopes),
-            "state": state_token,
-        }
-    )
+    params = {
+        "response_type": "code",
+        "client_id": settings.xero_client_id,
+        "redirect_uri": settings.xero_redirect_uri,
+        "scope": xero_scope_string(settings.xero_scopes),
+        "state": state_token,
+    }
+    if prompt_consent:
+        # Reconnect flows should always re-open consent so newly requested scopes are granted.
+        params["prompt"] = "consent"
+    query = urlencode(params)
     return f"https://login.xero.com/identity/connect/authorize?{query}"
