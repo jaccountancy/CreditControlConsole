@@ -17673,6 +17673,103 @@
                 font-size: 0.76rem;
                 font-weight: 700;
             }
+            .code-breaker-client-picker {
+                display: grid;
+                gap: 12px;
+            }
+            .code-breaker-client-toolbar {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) repeat(2, minmax(170px, auto));
+                gap: 10px;
+                align-items: end;
+            }
+            .code-breaker-inline-select {
+                display: grid;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .code-breaker-inline-select select {
+                min-width: 0;
+            }
+            .code-breaker-client-list {
+                display: grid;
+                gap: 10px;
+                max-height: min(46vh, 420px);
+                overflow: auto;
+                padding-right: 2px;
+            }
+            .code-breaker-client-row {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: #fff;
+                padding: 12px 14px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 6px 10px;
+                text-align: left;
+                color: var(--ink);
+                transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
+            }
+            .code-breaker-client-row:hover {
+                border-color: rgba(29, 103, 242, 0.3);
+                background: rgba(233, 241, 255, 0.38);
+                transform: translateY(-1px);
+            }
+            .code-breaker-client-row:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.48);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.14);
+            }
+            .code-breaker-client-row .lock-status-pill {
+                align-self: start;
+                justify-self: end;
+            }
+            .code-breaker-client-row.is-selected {
+                border-color: rgba(29, 103, 242, 0.44);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                background: rgba(233, 241, 255, 0.72);
+            }
+            .code-breaker-client-name {
+                font-weight: 800;
+                font-size: 0.95rem;
+            }
+            .code-breaker-client-meta {
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+                grid-column: 1 / 2;
+            }
+            .code-breaker-client-picker-footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 10px;
+                color: var(--muted);
+                font-size: 0.8rem;
+                font-weight: 700;
+                border-top: 1px solid var(--line);
+                padding-top: 12px;
+            }
+            .code-breaker-client-picker-footer p {
+                margin: 0;
+            }
+            .code-breaker-client-picker-footer .primary-button {
+                min-width: 170px;
+            }
+            .code-breaker-client-picker-hint {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 700;
+            }
+            .code-breaker-step-nav {
+                grid-column: 1 / -1;
+                display: flex;
+                justify-content: flex-start;
+            }
             #codeBreakerSetupModalForm {
                 display: grid;
                 grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
@@ -17733,6 +17830,12 @@
                 100% { box-shadow: 0 0 0 6px rgba(29, 103, 242, 0.04); }
             }
             @media (max-width: 1320px) {
+                .code-breaker-client-toolbar {
+                    grid-template-columns: 1fr 1fr;
+                }
+                .code-breaker-client-toolbar .search-wrap {
+                    grid-column: span 2;
+                }
                 #codeBreakerSetupModalForm {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
                 }
@@ -17741,6 +17844,16 @@
                 }
             }
             @media (max-width: 920px) {
+                .code-breaker-client-toolbar {
+                    grid-template-columns: 1fr;
+                }
+                .code-breaker-client-toolbar .search-wrap {
+                    grid-column: auto;
+                }
+                .code-breaker-client-picker-footer {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
                 #codeBreakerSetupModalForm {
                     grid-template-columns: 1fr;
                 }
@@ -35899,6 +36012,8 @@
                 title.textContent = config.title || "Confirm operation";
                 subtitle.textContent = config.subtitle || "Review the selected rows before confirming.";
                 confirmButton.textContent = config.confirmLabel || "Confirm";
+                confirmButton.hidden = false;
+                confirmButton.disabled = false;
                 cancelButton.textContent = config.cancelLabel || "Cancel";
                 summary.innerHTML = (config.summaryChips || [])
                     .map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`)
@@ -70863,19 +70978,23 @@
                 let codeBreakerSubmittedAccountsOverride = [];
                 let codeBreakerPopulateStatus = "";
                 let codeBreakerPopulateRunId = 0;
+                let codeBreakerSetupStep = 1;
+                let codeBreakerClientSearch = "";
+                let codeBreakerClientSort = "name";
+                let codeBreakerClientFilter = "all";
 
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Equity Montior",
                     title: "Set up workspace",
-                    subtitle: "Confirm the Xero account in question and Jenius will populate the details from CH and the Company Number - then we can look into the differences",
+                    subtitle: "Step 1 of 2: choose the Xero client workspace",
                     confirmLabel: "Create workspace",
                     cancelLabel: "Cancel",
                     summaryChips: [
-                        draft.yearEndDate ? `Year end ${formatDate(draft.yearEndDate)}` : "Year end pending",
+                        "Select client",
                     ],
                     columns: [],
                     rows: [{}],
-                    onRender: ({ body }) => {
+                    onRender: ({ body, subtitle, summary, confirmButton }) => {
                         const selectedConnectionForTenant = (tenantId = "") => (
                             connections.find((row) => String(row?.tenantId || "").trim() === String(tenantId || "").trim()) || null
                         );
@@ -71148,7 +71267,175 @@
                                 }
                             }
                         };
-                        const render = () => {
+                        const workspaceExistsForTenant = (tenantId = "") => (
+                            (codeBreakerWorkspaces || []).some((workspace) => String(workspace?.xeroTenantId || "").trim() === String(tenantId || "").trim())
+                        );
+                        const resetDraftFromTenantSelection = () => {
+                            draft.clientName = "";
+                            draft.xeroContactId = "";
+                            draft.companyNumber = "";
+                            draft.periodStartDate = "";
+                            draft.yearEndDate = "";
+                            draft.submittedAt = "";
+                            codeBreakerPopulateBusy = false;
+                            codeBreakerPopulateStatus = "";
+                            codeBreakerSubmittedAccountsOverride = [];
+                            codeBreakerYearEndManualSelection = false;
+                            codeBreakerShowSubmittedAccountsPicker = false;
+                            codeBreakerPopulateRunId += 1;
+                        };
+                        const pickerRows = () => {
+                            const search = String(codeBreakerClientSearch || "").trim().toLowerCase();
+                            const sorted = (connections || []).map((row) => {
+                                const tenantId = String(row?.tenantId || "").trim();
+                                const tenantLabel = xeroWorkspaceLabel(row?.tenantName, tenantId, "Xero tenant");
+                                const latest = latestSubmittedPeriodForTenant(tenantId);
+                                const latestStamp = latest?.submittedPeriod?.submittedAt || latest?.period?.submittedAt || latest?.period?.yearEnd || "";
+                                const latestSort = dateSortValue(latestStamp);
+                                return {
+                                    row,
+                                    tenantId,
+                                    tenantLabel,
+                                    tenantType: String(row?.tenantType || "").trim(),
+                                    latestSubmitted: latestStamp,
+                                    latestSort: Number.isFinite(latestSort) ? latestSort : Number.MAX_SAFE_INTEGER,
+                                    hasWorkspace: workspaceExistsForTenant(tenantId),
+                                };
+                            }).filter((entry) => {
+                                if (codeBreakerClientFilter === "needs-setup" && entry.hasWorkspace) return false;
+                                if (codeBreakerClientFilter === "configured" && !entry.hasWorkspace) return false;
+                                if (!search) return true;
+                                const blob = [entry.tenantLabel, entry.tenantId, entry.tenantType].join(" ").toLowerCase();
+                                return blob.includes(search);
+                            });
+                            sorted.sort((left, right) => {
+                                if (codeBreakerClientSort === "recent") {
+                                    return right.latestSort - left.latestSort
+                                        || left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                                }
+                                if (codeBreakerClientSort === "workspace") {
+                                    return Number(left.hasWorkspace) - Number(right.hasWorkspace)
+                                        || left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                                }
+                                return left.tenantLabel.localeCompare(right.tenantLabel, "en-GB");
+                            });
+                            return sorted;
+                        };
+                        const moveClientSelection = (direction = 1) => {
+                            const rows = pickerRows();
+                            if (!rows.length) return;
+                            const currentIndex = rows.findIndex((entry) => entry.tenantId === draft.tenantId);
+                            const baseIndex = currentIndex >= 0 ? currentIndex : (direction > 0 ? -1 : 0);
+                            const nextIndex = (baseIndex + direction + rows.length) % rows.length;
+                            const nextTenantId = String(rows[nextIndex]?.tenantId || "").trim();
+                            if (!nextTenantId || nextTenantId === draft.tenantId) return;
+                            draft.tenantId = nextTenantId;
+                            resetDraftFromTenantSelection();
+                        };
+                        const renderClientPickerStep = () => {
+                            subtitle.textContent = "Step 1 of 2: choose the Xero client workspace";
+                            summary.innerHTML = '<span class="operation-review-chip">Client picker</span><span class="operation-review-chip">Search, sort, filter</span>';
+                            confirmButton.hidden = true;
+                            confirmButton.disabled = true;
+                            const rows = pickerRows();
+                            const configuredCount = rows.filter((entry) => entry.hasWorkspace).length;
+                            const needsSetupCount = rows.length - configuredCount;
+                            body.innerHTML = `
+                                <div class="code-breaker-client-picker">
+                                    <div class="code-breaker-client-toolbar">
+                                        <label class="search-wrap">
+                                            <span class="search-icon">⌕</span>
+                                            <input id="codeBreakerClientPickerSearch" type="search" value="${escapeHTML(codeBreakerClientSearch)}" placeholder="Search Xero clients...">
+                                        </label>
+                                        <label class="code-breaker-inline-select">
+                                            <span>Sort</span>
+                                            <select id="codeBreakerClientPickerSort">
+                                                <option value="name" ${codeBreakerClientSort === "name" ? "selected" : ""}>A to Z</option>
+                                                <option value="recent" ${codeBreakerClientSort === "recent" ? "selected" : ""}>Latest filed first</option>
+                                                <option value="workspace" ${codeBreakerClientSort === "workspace" ? "selected" : ""}>Needs setup first</option>
+                                            </select>
+                                        </label>
+                                        <label class="code-breaker-inline-select">
+                                            <span>Filter</span>
+                                            <select id="codeBreakerClientPickerFilter">
+                                                <option value="all" ${codeBreakerClientFilter === "all" ? "selected" : ""}>All clients</option>
+                                                <option value="needs-setup" ${codeBreakerClientFilter === "needs-setup" ? "selected" : ""}>Needs workspace</option>
+                                                <option value="configured" ${codeBreakerClientFilter === "configured" ? "selected" : ""}>Already configured</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div class="operation-review-summary">
+                                        <span class="operation-review-chip">${rows.length.toLocaleString("en-GB")} shown</span>
+                                        <span class="operation-review-chip">${needsSetupCount.toLocaleString("en-GB")} need setup</span>
+                                        <span class="operation-review-chip">${configuredCount.toLocaleString("en-GB")} configured</span>
+                                    </div>
+                                    <div class="code-breaker-client-list">
+                                        ${rows.length ? rows.map((entry) => `
+                                            <button class="code-breaker-client-row ${entry.tenantId === draft.tenantId ? "is-selected" : ""}" type="button" data-code-breaker-tenant="${escapeHTML(entry.tenantId)}">
+                                                <span class="code-breaker-client-name">${escapeHTML(entry.tenantLabel)}</span>
+                                                <span class="code-breaker-client-meta">${escapeHTML([entry.tenantType || "Organisation", entry.latestSubmitted ? `Latest filed ${formatDate(entry.latestSubmitted)}` : "No submitted accounts found"].join(" · "))}</span>
+                                                <span class="lock-status-pill ${entry.hasWorkspace ? "is-running" : "is-pending"}">${entry.hasWorkspace ? "Workspace configured" : "Needs workspace"}</span>
+                                            </button>
+                                        `).join("") : '<div class="empty-state"><p class="eyebrow">No matches</p><h4>No Xero clients match this view</h4><p>Try clearing filters or searching by organisation name.</p></div>'}
+                                    </div>
+                                    <div class="code-breaker-client-picker-footer">
+                                        <p>${rows.length.toLocaleString("en-GB")} Xero client${rows.length === 1 ? "" : "s"} shown${draft.tenantId ? ` · selected: ${escapeHTML(workspaceNameFromConnection(draft.tenantId) || draft.tenantId)}` : ""}</p>
+                                        <div>
+                                            <button class="primary-button" id="codeBreakerClientPickerContinue" type="button" ${draft.tenantId ? "" : "disabled"}>Continue to details</button>
+                                            <div class="code-breaker-client-picker-hint">Tip: use ↑ ↓ and Enter in search</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            body.querySelector("#codeBreakerClientPickerSearch")?.addEventListener("input", (event) => {
+                                codeBreakerClientSearch = String(event.target?.value || "");
+                                renderClientPickerStep();
+                            });
+                            body.querySelector("#codeBreakerClientPickerSearch")?.addEventListener("keydown", (event) => {
+                                if (event.key === "ArrowDown") {
+                                    event.preventDefault();
+                                    moveClientSelection(1);
+                                    renderClientPickerStep();
+                                    return;
+                                }
+                                if (event.key === "ArrowUp") {
+                                    event.preventDefault();
+                                    moveClientSelection(-1);
+                                    renderClientPickerStep();
+                                    return;
+                                }
+                                if (event.key === "Enter" && draft.tenantId) {
+                                    event.preventDefault();
+                                    codeBreakerSetupStep = 2;
+                                    render();
+                                    populateCodeBreakerSetupFromSelection({ animated: true });
+                                }
+                            });
+                            body.querySelector("#codeBreakerClientPickerSort")?.addEventListener("change", (event) => {
+                                codeBreakerClientSort = String(event.target?.value || "name");
+                                renderClientPickerStep();
+                            });
+                            body.querySelector("#codeBreakerClientPickerFilter")?.addEventListener("change", (event) => {
+                                codeBreakerClientFilter = String(event.target?.value || "all");
+                                renderClientPickerStep();
+                            });
+                            body.querySelectorAll("[data-code-breaker-tenant]").forEach((button) => {
+                                button.addEventListener("click", () => {
+                                    const tenantId = String(button.dataset.codeBreakerTenant || "").trim();
+                                    if (!tenantId || tenantId === draft.tenantId) return;
+                                    draft.tenantId = tenantId;
+                                    resetDraftFromTenantSelection();
+                                    renderClientPickerStep();
+                                });
+                            });
+                            body.querySelector("#codeBreakerClientPickerContinue")?.addEventListener("click", () => {
+                                if (!draft.tenantId) return;
+                                codeBreakerSetupStep = 2;
+                                render();
+                                populateCodeBreakerSetupFromSelection({ animated: true });
+                            });
+                        };
+                        const renderWorkspaceDetailsStep = () => {
                             let submittedAccounts = codeBreakerSubmittedAccountsOverride.length ? [...codeBreakerSubmittedAccountsOverride] : [];
                             if (draft.tenantId) {
                                 draft.clientName = workspaceNameFromConnection(draft.tenantId);
@@ -71168,32 +71455,27 @@
                                     draft.xeroContactId = String(matchedCustomer?.xeroContactId || matchedCustomer?.contactId || "").trim();
                                 }
                             } else {
-                                draft.clientName = "";
-                                draft.xeroContactId = "";
-                                draft.companyNumber = "";
-                                draft.periodStartDate = "";
-                                draft.yearEndDate = "";
-                                draft.submittedAt = "";
-                                codeBreakerShowSubmittedAccountsPicker = false;
+                                resetDraftFromTenantSelection();
                             }
                             if (!submittedAccounts.length) codeBreakerShowSubmittedAccountsPicker = false;
+                            subtitle.textContent = "Step 2 of 2: review and confirm workspace details";
+                            summary.innerHTML = `
+                                <span class="operation-review-chip">${escapeHTML(draft.clientName || "No client selected")}</span>
+                                <span class="operation-review-chip">${escapeHTML(draft.yearEndDate ? `Year end ${formatDate(draft.yearEndDate)}` : "Year end pending")}</span>
+                            `;
+                            confirmButton.hidden = false;
+                            confirmButton.disabled = !draft.tenantId;
                             body.innerHTML = `
                                 <form class="bank-account-form" id="codeBreakerSetupModalForm" autocomplete="off">
+                                    <div class="code-breaker-step-nav">
+                                        <button class="ghost-button" id="codeBreakerSetupModalBackToClients" type="button">Back to client list</button>
+                                    </div>
                                     <label class="code-breaker-field code-breaker-field-client">Client / workspace name
                                         <input id="codeBreakerSetupModalClientName" type="text" value="${escapeHTML(draft.clientName)}" placeholder="Auto-filled from selected Xero connection" readonly>
                                     </label>
-                                    <label class="code-breaker-field code-breaker-field-xero">Xero connection
-                                        <select id="codeBreakerSetupModalTenant">
-                                            <option value="" ${!draft.tenantId ? "selected" : ""}>Select Xero connection</option>
-                                            ${connections.length
-                                                ? connections.map((row) => {
-                                                    const tenantId = String(row.tenantId || "");
-                                                    const tenantLabel = xeroWorkspaceLabel(row.tenantName, tenantId, "Xero tenant");
-                                                    return `<option value="${escapeHTML(tenantId)}" ${tenantId === draft.tenantId ? "selected" : ""}>${escapeHTML(tenantLabel)}</option>`;
-                                                }).join("")
-                                                : '<option value="">No Xero connections</option>'}
-                                        </select>
-                                        <span class="code-breaker-auto-status" id="codeBreakerAutoPopulateStatus">${escapeHTML(codeBreakerPopulateStatus || (draft.tenantId ? (codeBreakerPopulateBusy ? "Jenius AI is populating Companies House details..." : "Jenius AI will auto-populate Companies House details once a connection is selected.") : ""))}</span>
+                                    <label class="code-breaker-field code-breaker-field-xero">Selected Xero connection
+                                        <input id="codeBreakerSetupModalTenantLabel" type="text" value="${escapeHTML(xeroWorkspaceLabel(selectedConnectionForTenant(draft.tenantId)?.tenantName, draft.tenantId, "Xero tenant"))}" readonly>
+                                        <span class="code-breaker-auto-status" id="codeBreakerAutoPopulateStatus">${escapeHTML(codeBreakerPopulateStatus || (draft.tenantId ? (codeBreakerPopulateBusy ? "Jenius AI is populating Companies House details..." : "Jenius AI will auto-populate Companies House details from your selected client.") : ""))}</span>
                                     </label>
                                     <label class="code-breaker-field code-breaker-field-company-number">Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
@@ -71222,23 +71504,9 @@
                                     </label>
                                 </form>
                             `;
-                            body.querySelector("#codeBreakerSetupModalTenant")?.addEventListener("change", (event) => {
-                                draft.tenantId = String(event.target?.value || "");
-                                draft.clientName = "";
-                                draft.xeroContactId = "";
-                                draft.companyNumber = "";
-                                draft.periodStartDate = "";
-                                draft.yearEndDate = "";
-                                draft.submittedAt = "";
-                                codeBreakerPopulateBusy = false;
-                                codeBreakerPopulateStatus = "";
-                                codeBreakerSubmittedAccountsOverride = [];
-                                codeBreakerYearEndManualSelection = false;
-                                codeBreakerShowSubmittedAccountsPicker = false;
+                            body.querySelector("#codeBreakerSetupModalBackToClients")?.addEventListener("click", () => {
+                                codeBreakerSetupStep = 1;
                                 render();
-                                if (draft.tenantId) {
-                                    populateCodeBreakerSetupFromSelection({ animated: true });
-                                }
                             });
                             body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
                                 codeBreakerPopulateRunId += 1;
@@ -71251,7 +71519,7 @@
                             body.querySelector("#codeBreakerSetupModalYearEndChange")?.addEventListener("click", () => {
                                 if (!submittedAccounts.length) return;
                                 codeBreakerShowSubmittedAccountsPicker = !codeBreakerShowSubmittedAccountsPicker;
-                                render();
+                                renderWorkspaceDetailsStep();
                             });
                             body.querySelector("#codeBreakerSetupModalSubmittedAccountsSelect")?.addEventListener("change", (event) => {
                                 const raw = String(event.target?.value || "");
@@ -71262,8 +71530,15 @@
                                 codeBreakerYearEndManualSelection = true;
                                 codeBreakerShowSubmittedAccountsPicker = false;
                                 updateCodeBreakerPopulateStatus("Submitted accounts period selected.");
-                                render();
+                                renderWorkspaceDetailsStep();
                             });
+                        };
+                        const render = () => {
+                            if (codeBreakerSetupStep === 1) {
+                                renderClientPickerStep();
+                                return;
+                            }
+                            renderWorkspaceDetailsStep();
                         };
                         render();
                     },
