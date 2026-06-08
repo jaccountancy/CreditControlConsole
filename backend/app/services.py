@@ -13941,6 +13941,65 @@ def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
     return None
 
 
+def _code_breaker_is_accounts_filing(item: dict | None) -> bool:
+    if not isinstance(item, dict):
+        return False
+    filing_type = str(item.get("type") or "").strip().upper()
+    category = str(item.get("category") or "").strip().lower()
+    description = str(item.get("description") or "").strip().lower()
+    return filing_type.startswith("AA") or category == "accounts" or "accounts" in description
+
+
+def _code_breaker_accounts_made_up_to_date(item: dict | None) -> date | None:
+    if not isinstance(item, dict):
+        return None
+    for key in ("made_up_to", "madeUpTo", "made_up_to_date", "period_end_on", "period_end_date", "period_end", "periodEnd"):
+        parsed = _parse_optional_iso_date(item.get(key))
+        if parsed:
+            return parsed
+    description_values = item.get("description_values")
+    if isinstance(description_values, dict):
+        for key in ("made_up_date", "made_up_to", "period_end_on", "period_end"):
+            parsed = _parse_optional_iso_date(description_values.get(key))
+            if parsed:
+                return parsed
+    return None
+
+
+def _code_breaker_select_accounts_filing_for_date(
+    filing_history: object,
+    target_date: date | None,
+) -> tuple[dict | None, date | None, str]:
+    rows = filing_history if isinstance(filing_history, list) else []
+    accounts_rows: list[tuple[dict, date]] = []
+    for row in rows:
+        if not _code_breaker_is_accounts_filing(row):
+            continue
+        made_up_to = _code_breaker_accounts_made_up_to_date(row)
+        if made_up_to is None:
+            continue
+        accounts_rows.append((row, made_up_to))
+    if not accounts_rows:
+        return None, None, "unavailable"
+    accounts_rows.sort(key=lambda item: item[1], reverse=True)
+    if target_date is None:
+        latest_row, latest_date = accounts_rows[0]
+        return latest_row, latest_date, "latest_accounts_filing"
+    for row, row_date in accounts_rows:
+        if row_date == target_date:
+            return row, row_date, "exact_period_match"
+    before_or_on = [(row, row_date) for row, row_date in accounts_rows if row_date <= target_date]
+    if before_or_on:
+        selected = max(before_or_on, key=lambda item: item[1])
+        return selected[0], selected[1], "latest_before_target"
+    after_rows = [(row, row_date) for row, row_date in accounts_rows if row_date > target_date]
+    if after_rows:
+        selected = min(after_rows, key=lambda item: item[1])
+        return selected[0], selected[1], "earliest_after_target"
+    latest_row, latest_date = accounts_rows[0]
+    return latest_row, latest_date, "latest_accounts_filing"
+
+
 async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     tenant_id = str(payload.get("tenantId") or "").strip()
@@ -14004,9 +14063,15 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     except Exception:
         logger.exception("Code Breaker snapshot: database lookup failed")
 
-    ch_net_assets = None
+    selected_accounts_filing = None
+    selected_accounts_made_up_to = None
+    filing_date_match = "unavailable"
     if ch_company:
-        ch_net_assets = _code_breaker_net_assets_value(ch_company.get("filing_history"))
+        selected_accounts_filing, selected_accounts_made_up_to, filing_date_match = _code_breaker_select_accounts_filing_for_date(
+            ch_company.get("filing_history"),
+            as_at_date,
+        )
+    ch_net_assets = _code_breaker_net_assets_value(selected_accounts_filing)
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
@@ -14020,7 +14085,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "ch": {
             "companyName": str((ch_company or {}).get("company_name") or ""),
             "netAssets": float(ch_net_assets) if ch_net_assets is not None else None,
-            "source": "companies_house_filing_history" if ch_net_assets is not None and ch_company else "unavailable",
+            "source": (
+                f"companies_house_filing_history:{filing_date_match}"
+                if ch_company and selected_accounts_filing
+                else "unavailable"
+            ),
+            "matchedAccountsMadeUpTo": _iso(selected_accounts_made_up_to),
             "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
             "latestSubmissionCompletedAt": _iso((ch_company or {}).get("latest_submission_completed_at")),
         },

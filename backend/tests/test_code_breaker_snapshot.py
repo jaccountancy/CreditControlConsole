@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+import os
+import unittest
+from datetime import date
+
+os.environ.setdefault("PORT", "8000")
+os.environ.setdefault("BASE_URL", "https://example.com")
+os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@example.com:5432/credit_control")
+os.environ.setdefault("APP_SECRET", "test-app-secret")
+os.environ.setdefault("WIDGET_TOKEN", "test-widget-token")
+os.environ.setdefault("XERO_CLIENT_ID", "test-xero-client-id")
+os.environ.setdefault("XERO_CLIENT_SECRET", "test-xero-client-secret")
+os.environ.setdefault("XERO_REDIRECT_URI", "https://example.com/xero/callback")
+
+try:
+    from app import services
+
+    _IMPORT_ERROR = ""
+except ModuleNotFoundError as exc:  # pragma: no cover - local runtime guard
+    services = None  # type: ignore[assignment]
+    _IMPORT_ERROR = str(exc)
+
+
+@unittest.skipIf(services is None, f"Code Breaker tests skipped: {_IMPORT_ERROR}")
+class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
+    def test_select_accounts_filing_prefers_exact_made_up_to(self):
+        filing_history = [
+            {"type": "AA", "made_up_to": "2024-03-31", "netAssets": "100"},
+            {"type": "AA", "made_up_to": "2025-03-31", "netAssets": "200"},
+        ]
+        row, made_up_to, match = services._code_breaker_select_accounts_filing_for_date(
+            filing_history,
+            date(2025, 3, 31),
+        )
+        self.assertEqual(match, "exact_period_match")
+        self.assertEqual(made_up_to, date(2025, 3, 31))
+        self.assertEqual(services._code_breaker_net_assets_value(row), services.Decimal("200.00"))
+
+    def test_select_accounts_filing_uses_latest_before_target_when_no_exact_match(self):
+        filing_history = [
+            {"type": "AA", "made_up_to": "2023-03-31", "netAssets": "50"},
+            {"type": "AA", "made_up_to": "2024-03-31", "netAssets": "100"},
+            {"type": "AA", "made_up_to": "2025-03-31", "netAssets": "200"},
+        ]
+        row, made_up_to, match = services._code_breaker_select_accounts_filing_for_date(
+            filing_history,
+            date(2024, 8, 1),
+        )
+        self.assertEqual(match, "latest_before_target")
+        self.assertEqual(made_up_to, date(2024, 3, 31))
+        self.assertEqual(services._code_breaker_net_assets_value(row), services.Decimal("100.00"))
+
+    def test_select_accounts_filing_uses_earliest_after_target_when_only_future_available(self):
+        filing_history = [
+            {"type": "AA", "made_up_to": "2024-12-31", "netAssets": "120"},
+            {"type": "AA", "made_up_to": "2025-12-31", "netAssets": "180"},
+        ]
+        row, made_up_to, match = services._code_breaker_select_accounts_filing_for_date(
+            filing_history,
+            date(2024, 1, 1),
+        )
+        self.assertEqual(match, "earliest_after_target")
+        self.assertEqual(made_up_to, date(2024, 12, 31))
+        self.assertEqual(services._code_breaker_net_assets_value(row), services.Decimal("120.00"))
+
