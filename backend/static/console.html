@@ -25882,7 +25882,7 @@
                                     </div>
                                 </form>
                             </section>
-                            <section class="ch-companies-table-wrap">
+                            <section class="ch-companies-table-wrap" id="codeBreakerWorkspaceListSection">
                                 <table class="ch-table" aria-label="Code Breaker workspaces">
                                     <thead>
                                         <tr>
@@ -25900,6 +25900,18 @@
                                     </thead>
                                     <tbody id="codeBreakerWorkspaceTableBody"></tbody>
                                 </table>
+                            </section>
+                            <section class="detail-panel" id="codeBreakerWorkspaceViewHeader" hidden>
+                                <div class="detail-hero">
+                                    <div>
+                                        <p class="eyebrow">Code Breaker Workspace</p>
+                                        <h4 id="codeBreakerWorkspaceViewTitle">Workspace delta review</h4>
+                                        <p class="detail-meta" id="codeBreakerWorkspaceViewMeta">Review post-filing delta analysis for this workspace.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="codeBreakerWorkspaceBackButton" type="button">Back to workspaces</button>
+                                    </div>
+                                </div>
                             </section>
                             <section class="detail-panel" id="codeBreakerAnalysisPanel" hidden>
                                 <h4 id="codeBreakerAnalysisTitle">Analysis</h4>
@@ -69312,6 +69324,11 @@
                 const connectTenantButton = document.getElementById("codeBreakerConnectTenantButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
                 const connectionsSection = document.getElementById("codeBreakerConnectionsSection");
+                const workspaceListSection = document.getElementById("codeBreakerWorkspaceListSection");
+                const workspaceViewHeader = document.getElementById("codeBreakerWorkspaceViewHeader");
+                const workspaceViewTitle = document.getElementById("codeBreakerWorkspaceViewTitle");
+                const workspaceViewMeta = document.getElementById("codeBreakerWorkspaceViewMeta");
+                const workspaceBackButton = document.getElementById("codeBreakerWorkspaceBackButton");
                 const connectionsTableBody = document.getElementById("codeBreakerConnectionsTableBody");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
                 if (!summary || !setupButton || !connectTenantButton || !refreshButton || !connectionsTableBody || !tableBody) return;
@@ -69340,6 +69357,14 @@
                 if (refreshButton.dataset.cbWired !== "true") {
                     refreshButton.dataset.cbWired = "true";
                     refreshButton.addEventListener("click", () => refreshCodeBreakerData());
+                }
+                if (workspaceBackButton && workspaceBackButton.dataset.cbWired !== "true") {
+                    workspaceBackButton.dataset.cbWired = "true";
+                    workspaceBackButton.addEventListener("click", () => {
+                        selectedCodeBreakerWorkspaceId = "";
+                        codeBreakerWorkspaceSubView = "workspace";
+                        renderCodeBreakerScreen();
+                    });
                 }
 
                 if (!codeBreakerWorkspaces.length) {
@@ -69387,6 +69412,18 @@
                     });
                 }
                 const selectedWorkspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(selectedCodeBreakerWorkspaceId || "")) || null;
+                const viewingWorkspace = Boolean(selectedWorkspace);
+                if (summary) summary.hidden = viewingWorkspace;
+                if (setupButton) setupButton.hidden = viewingWorkspace;
+                if (connectTenantButton) connectTenantButton.hidden = viewingWorkspace;
+                if (refreshButton) refreshButton.hidden = viewingWorkspace;
+                if (connectionsSection && viewingWorkspace) connectionsSection.hidden = true;
+                if (workspaceListSection) workspaceListSection.hidden = viewingWorkspace;
+                if (workspaceViewHeader) workspaceViewHeader.hidden = !viewingWorkspace;
+                if (workspaceViewTitle) workspaceViewTitle.textContent = selectedWorkspace ? `${selectedWorkspace.clientName || "Workspace"} · Delta analysis` : "Workspace delta review";
+                if (workspaceViewMeta) workspaceViewMeta.textContent = selectedWorkspace
+                    ? `Company ${selectedWorkspace.companyNumber || "—"} · Submitted ${formatDate(selectedWorkspace.submittedAt || "") || "—"}`
+                    : "Review post-filing delta analysis for this workspace.";
                 renderCodeBreakerAnalysis(selectedWorkspace);
             }
 
@@ -77657,7 +77694,7 @@
                         .filter(Boolean)
                 );
                 const authAttentionRows = selectedCompanies
-                    .filter((company) => !company?.authCodeOnFile || String(company?.latestSubmissionStatus || "").toLowerCase() === "rejected")
+                    .filter((company) => !company?.authCodeOnFile)
                     .map((company) => ({
                         companyId: String(company?.id || ""),
                         companyName: String(company?.companyName || "—"),
@@ -77671,12 +77708,12 @@
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Auth code check",
-                    subtitle: "Replace outdated auth codes and add any missing ones before submission.",
+                    subtitle: "Add any missing auth codes before submission.",
                     confirmLabel: "Save and continue",
                     cancelLabel: "Back",
                     summaryChips: [
-                        `${authAttentionRows.length.toLocaleString("en-GB")} need auth-code check`,
-                        `${missingRequiredCount.toLocaleString("en-GB")} missing`,
+                        `${authAttentionRows.length.toLocaleString("en-GB")} missing`,
+                        "0 entered",
                         `${companiesHouseSettings.authRegisterRows.length.toLocaleString("en-GB")} register rows loaded`,
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
@@ -77723,7 +77760,7 @@
                                             <td>${row.authCodeOnFile ? "On file" : "Missing"}</td>
                                             <td><input type="text" data-ch-authfix-input maxlength="12" placeholder="e.g. A1B2C3"></td>
                                             <td><button class="ghost-button" type="button" data-ch-authfix-search>Search register</button></td>
-                                            <td data-ch-authfix-status>${row.authCodeOnFile ? "Review if rejected with authorisation failure" : "Missing"}</td>
+                                            <td data-ch-authfix-status>${row.authCodeOnFile ? "On file" : "Missing"}</td>
                                         </tr>
                                     `).join("")}
                                 </tbody>
