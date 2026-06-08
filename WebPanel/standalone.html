@@ -1902,13 +1902,17 @@ function dashboardTotals() {
 
 function renderDashboardHero() {
     const totals = dashboardTotals();
-    document.getElementById("heroTotalOutstanding").textContent = formatCurrency(totals.totalOutstanding);
-    document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`;
-    document.getElementById("heroOverdueValue").textContent = formatCurrency(totals.overdueValue);
-    document.getElementById("heroOverdueCount").textContent = `${totals.overdueCount.toLocaleString("en-GB")} overdue invoice${totals.overdueCount === 1 ? "" : "s"}`;
-    document.getElementById("heroClientsAction").textContent = totals.clientsNeedingAction.toLocaleString("en-GB");
-    document.getElementById("heroLatestSync").textContent = state.organisation.lastSync || "Waiting for first sync";
-    document.getElementById("heroLatestSyncOrg").textContent = state.organisation.name || "Xero organisation not connected";
+    const setText = (id, value) => {
+        const node = document.getElementById(id);
+        if (node) node.textContent = value;
+    };
+    setText("heroTotalOutstanding", formatCurrency(totals.totalOutstanding));
+    setText("heroOpenInvoices", `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`);
+    setText("heroOverdueValue", formatCurrency(totals.overdueValue));
+    setText("heroOverdueCount", `${totals.overdueCount.toLocaleString("en-GB")} overdue invoice${totals.overdueCount === 1 ? "" : "s"}`);
+    setText("heroClientsAction", totals.clientsNeedingAction.toLocaleString("en-GB"));
+    setText("heroLatestSync", state.organisation.lastSync || "Waiting for first sync");
+    setText("heroLatestSyncOrg", state.organisation.name || "Xero organisation not connected");
 }
 
 function renderSummaryCounts() {
@@ -2828,12 +2832,19 @@ function wireForms() {
 
 async function init() {
     await hydrateFromAPI();
-    renderAll();
-    wireFilters();
-    wireLoginButtons();
-    wireSyncButtons();
-    wireForms();
-    wireBulkActions();
+    const safe = (label, run) => {
+        try {
+            run();
+        } catch (error) {
+            console.error(`Init step failed: ${label}`, error);
+        }
+    };
+    safe("renderAll", () => renderAll());
+    safe("wireFilters", () => wireFilters());
+    safe("wireLoginButtons", () => wireLoginButtons());
+    safe("wireSyncButtons", () => wireSyncButtons());
+    safe("wireForms", () => wireForms());
+    safe("wireBulkActions", () => wireBulkActions());
     maybeAutoStartInitialSync();
 }
 init();

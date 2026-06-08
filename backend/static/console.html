@@ -32635,30 +32635,39 @@
 
             function renderDashboardHero() {
                 const totals = dashboardTotals();
-                document.getElementById("heroTotalInvoiced").textContent = formatCompactCurrency(totals.totalInvoiced);
-                document.getElementById("heroTotalInvoicedCount").textContent = `${totals.invoiceCount.toLocaleString("en-GB")} invoice${totals.invoiceCount === 1 ? "" : "s"} synced`;
-                document.getElementById("heroTotalOutstanding").textContent = formatCompactCurrency(totals.totalOutstanding);
-                document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"} · net of credits`;
-                document.getElementById("heroLateChargeCount").textContent = totals.lateChargeCount.toLocaleString("en-GB");
-                document.getElementById("heroLateChargeSummary").textContent = totals.lateChargeCount
+                const setText = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.textContent = value;
+                    return node;
+                };
+                setText("heroTotalInvoiced", formatCompactCurrency(totals.totalInvoiced));
+                setText("heroTotalInvoicedCount", `${totals.invoiceCount.toLocaleString("en-GB")} invoice${totals.invoiceCount === 1 ? "" : "s"} synced`);
+                setText("heroTotalOutstanding", formatCompactCurrency(totals.totalOutstanding));
+                setText("heroOpenInvoices", `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"} · net of credits`);
+                setText("heroLateChargeCount", totals.lateChargeCount.toLocaleString("en-GB"));
+                setText("heroLateChargeSummary", totals.lateChargeCount
                     ? `${formatCurrency(totals.lateChargeAmount)} incl VAT to review`
                     : totals.lateChargeReviewCount
                     ? "No eligible charges right now"
-                    : "No charges need review";
-                document.getElementById("heroPaidInvoicesValue").textContent = formatCompactCurrency(totals.paidValue);
-                document.getElementById("heroPaidInvoices").textContent = `${totals.paidCount.toLocaleString("en-GB")} invoice${totals.paidCount === 1 ? "" : "s"} paid`;
-                document.getElementById("heroClientsAction").textContent = totals.clientsNeedingAction.toLocaleString("en-GB");
+                    : "No charges need review");
+                setText("heroPaidInvoicesValue", formatCompactCurrency(totals.paidValue));
+                setText("heroPaidInvoices", `${totals.paidCount.toLocaleString("en-GB")} invoice${totals.paidCount === 1 ? "" : "s"} paid`);
+                setText("heroClientsAction", totals.clientsNeedingAction.toLocaleString("en-GB"));
                 const noticeSummary = document.getElementById("heroNoticesSummary");
                 const noticeCard = document.getElementById("sevenDayNoticeCard");
                 const nextNotice = totals.sevenDayNotices[0];
-                noticeSummary.textContent = !nextNotice
-                    ? "No active 7 day notices"
-                    : totals.sevenDayNotices.length === 1
-                    ? `${nextNotice.clientName}: ${nextNotice.countdown}`
-                    : `${totals.sevenDayNotices.length} clients · next ${nextNotice.clientName}: ${nextNotice.countdown}`;
-                noticeCard.title = totals.sevenDayNotices.length
-                    ? totals.sevenDayNotices.map((item) => `${item.clientName}: ${item.countdown}`).join("\n")
-                    : "No active 7 day notices";
+                if (noticeSummary) {
+                    noticeSummary.textContent = !nextNotice
+                        ? "No active 7 day notices"
+                        : totals.sevenDayNotices.length === 1
+                        ? `${nextNotice.clientName}: ${nextNotice.countdown}`
+                        : `${totals.sevenDayNotices.length} clients · next ${nextNotice.clientName}: ${nextNotice.countdown}`;
+                }
+                if (noticeCard) {
+                    noticeCard.title = totals.sevenDayNotices.length
+                        ? totals.sevenDayNotices.map((item) => `${item.clientName}: ${item.countdown}`).join("\n")
+                        : "No active 7 day notices";
+                }
                 const lateChargeCard = document.getElementById("lateChargeReviewCard");
                 if (lateChargeCard) {
                     lateChargeCard.title = totals.lateChargeCount
@@ -82796,20 +82805,37 @@
             }
 
             async function init() {
-                trimEmbeddedPageChrome();
-                wireAdaptiveTopbarLayout();
-                ensureConfirmationStatementsNavEntry();
-                sortSidebarsAlphabetically();
-                wireSidebarNavigation();
-                setSidebarCompact(false, false);
-                const xeroConnectionReturn = consumeXeroConnectionReturn();
-                const ignitionConnectionReturn = consumeIgnitionConnectionReturn();
+                const runInitStep = (label, step, fallbackValue = undefined) => {
+                    try {
+                        const value = step();
+                        return value === undefined ? fallbackValue : value;
+                    } catch (error) {
+                        console.error(`Init step failed: ${label}`, error);
+                        return fallbackValue;
+                    }
+                };
+                runInitStep("trimEmbeddedPageChrome", () => trimEmbeddedPageChrome());
+                runInitStep("wireAdaptiveTopbarLayout", () => wireAdaptiveTopbarLayout());
+                runInitStep("ensureConfirmationStatementsNavEntry", () => ensureConfirmationStatementsNavEntry());
+                runInitStep("sortSidebarsAlphabetically", () => sortSidebarsAlphabetically());
+                runInitStep("wireSidebarNavigation", () => wireSidebarNavigation());
+                runInitStep("setSidebarCompact", () => setSidebarCompact(false, false));
+                const xeroConnectionReturn = runInitStep(
+                    "consumeXeroConnectionReturn",
+                    () => consumeXeroConnectionReturn(),
+                    { connected: false, targetSection: "", syncRunId: "", syncStarted: false, newTenantsCount: 0 }
+                );
+                const ignitionConnectionReturn = runInitStep(
+                    "consumeIgnitionConnectionReturn",
+                    () => consumeIgnitionConnectionReturn(),
+                    { connected: false, syncRunId: "", syncStarted: false }
+                );
                 const returnedFromXeroConnection = xeroConnectionReturn.connected;
                 const returnedFromIgnitionConnection = ignitionConnectionReturn.connected;
                 let panelPayload = null;
-                wireCriticalNavigation();
-                wireButtonIconEnhancements();
-                wireUserActivityLogging();
+                runInitStep("wireCriticalNavigation", () => wireCriticalNavigation());
+                runInitStep("wireButtonIconEnhancements", () => wireButtonIconEnhancements());
+                runInitStep("wireUserActivityLogging", () => wireUserActivityLogging());
                 companySecretarialQueue = loadCompanySecretarialQueueFallback();
                 const initialSection = appNavSectionFromHash();
                 const hasPersistedActiveView = Object.prototype.hasOwnProperty.call(persistedUIState, "activeView");
