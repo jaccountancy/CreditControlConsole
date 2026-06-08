@@ -22490,6 +22490,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="15" r="1.2"></circle></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Lock Date</strong><span>Period locks</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-identity-verification" data-app-nav="identity-verification">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v6c0 4.7 2.8 8.3 7 9 4.2-.7 7-4.3 7-9V6l-7-3Z"></path><path d="m9.5 12 1.7 1.7L14.8 10"></path><path d="M8 17h8"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Identity Verification</strong><span>Directors and PSC checks</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-hmrc-64-8s" data-app-nav="hmrc-64-8s">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path><path d="m15 17 2 2 3-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>HMRC 64-8s</strong><span>Agent authority</span></span>
@@ -25948,6 +25952,18 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="microAnalyzerSummary">Loading Xero-connected clients with active Ignition Micro/Starter/Solo plans.</p>
+                            <section class="ch-companies-table-wrap" id="microAnalyzerConnectionsSection">
+                                <table class="ch-table" aria-label="VAT on Unregistered connected Xero accounts">
+                                    <thead>
+                                        <tr>
+                                            <th>Xero account</th>
+                                            <th>Tenant ID</th>
+                                            <th>Connection</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="microAnalyzerConnectionsTableBody"></tbody>
+                                </table>
+                            </section>
                             <section class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Micro analyzer client table">
                                     <thead>
@@ -25961,6 +25977,121 @@
                                     </thead>
                                     <tbody id="microAnalyzerTableBody"></tbody>
                                 </table>
+                            </section>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="identityVerificationScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>Identity Verification</h3>
+                                    <p class="detail-meta">Review Xero tenant links, cross-reference Companies House officers and PSCs, record who is verified, and prepare filing-ready identity evidence as an authorised ACSP.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="identityVerificationRefreshButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="identityVerificationSummary">Loading tenant workspaces and Companies House records.</p>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Identity verification tenant table">
+                                    <thead>
+                                        <tr>
+                                            <th>Xero tenant</th>
+                                            <th>Companies House link</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="identityVerificationTenantTableBody"></tbody>
+                                </table>
+                            </section>
+                            <section class="detail-panel" id="identityVerificationWorkspace" hidden>
+                                <div class="detail-hero">
+                                    <div>
+                                        <p class="eyebrow">Tenant workspace</p>
+                                        <h4 id="identityVerificationWorkspaceTitle">Identity verification workspace</h4>
+                                        <p class="detail-meta" id="identityVerificationWorkspaceMeta">Open a tenant to review officers, PSCs and verification evidence.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="identityVerificationOpenSubmissionButton" type="button">Submit to Companies House</button>
+                                    </div>
+                                </div>
+                                <div class="key-metrics-grid" id="identityVerificationMetrics"></div>
+                                <form class="bank-account-form" id="identityVerificationMappingForm" autocomplete="off">
+                                    <label>
+                                        Company number
+                                        <input id="identityVerificationCompanyNumberInput" type="text" placeholder="e.g. 12345678">
+                                    </label>
+                                    <label>
+                                        Company name
+                                        <input id="identityVerificationCompanyNameInput" type="text" placeholder="Mapped company name">
+                                    </label>
+                                    <label>
+                                        Client name
+                                        <input id="identityVerificationClientNameInput" type="text" placeholder="Internal client name">
+                                    </label>
+                                    <label>
+                                        Mapping notes
+                                        <input id="identityVerificationMappingNotesInput" type="text" placeholder="Optional notes">
+                                    </label>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="identityVerificationSaveMappingButton" type="submit">Save tenant mapping</button>
+                                    </div>
+                                </form>
+                                <form class="bank-account-form" id="identityVerificationForm" autocomplete="off">
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationRequiredInput" type="checkbox"> Identity verification required</label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationStatementInput" type="checkbox"> Verification statement confirmed</label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationDirectorCodeInput" type="checkbox"> Director personal code supplied</label>
+                                    <label>
+                                        Relevant officer
+                                        <input id="identityVerificationRelevantOfficerInput" type="text" placeholder="Officer confirming verification">
+                                    </label>
+                                    <label>
+                                        Checked by (ACSP)
+                                        <input id="identityVerificationCheckedByInput" type="text" placeholder="Team member name">
+                                    </label>
+                                    <label>
+                                        Evidence reference
+                                        <input id="identityVerificationEvidenceRefInput" type="text" placeholder="Case or document reference">
+                                    </label>
+                                    <label>
+                                        Companies House auth code
+                                        <input id="identityVerificationAuthCodeInput" type="text" maxlength="6" autocomplete="off" placeholder="Enter 6-character code">
+                                    </label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationClientCheckedInput" type="checkbox"> Client identity checked by ACSP team</label>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="identityVerificationSaveButton" type="submit">Save locally</button>
+                                    </div>
+                                    <p class="detail-meta" id="identityVerificationSaveStatus">No pending changes.</p>
+                                </form>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Directors and officers verification table">
+                                        <thead>
+                                            <tr>
+                                                <th>Director or officer</th>
+                                                <th>Role</th>
+                                                <th>Status</th>
+                                                <th>Verified</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="identityVerificationOfficersBody"></tbody>
+                                    </table>
+                                </section>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="PSC verification table">
+                                        <thead>
+                                            <tr>
+                                                <th>PSC</th>
+                                                <th>Control type</th>
+                                                <th>Status</th>
+                                                <th>Verified</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="identityVerificationPscBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
                         </section>
                     </section>
@@ -27806,6 +27937,7 @@
                 "hmrc-64-8-history": "HMRC 64-8 History",
                 "aml-verification": "AML Verification",
                 "xero-lock-date": "Xero Lock Date",
+                "identity-verification": "Identity Verification",
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 "supplier-reconciliation": "Supplier Reconciliation",
@@ -27836,6 +27968,7 @@
                 "hmrc-64-8-history": "Review HMRC 64-8 audit history and sent-client summaries.",
                 "aml-verification": "Review AML/KYC readiness and unresolved compliance blockers.",
                 "xero-lock-date": "Review lock dates across all connected Xero tenants and flag filed accounts that are still unlocked.",
+                "identity-verification": "Review Xero tenants, verify directors and PSCs, store client identity checks, and route ready records into Companies House submission.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 "supplier-reconciliation": "",
@@ -27959,6 +28092,13 @@
             let xeroAccountsLoaded = false;
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let identityVerificationState = {
+                selectedTenantId: "",
+                companies: [],
+                loading: false,
+                saving: false,
+                saveStatus: "",
+            };
             let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateFixInFlightTenantIds = new Set();
             let xeroLockDateSearchTerm = "";
@@ -31672,6 +31812,7 @@
                 if (activeView === "vat-return-prepare") return "vat-return-prepare";
                 if (activeView === "code-breaker") return "code-breaker";
                 if (activeView === "micro-analyzer") return "micro-analyzer";
+                if (activeView === "identity-verification") return "identity-verification";
                 if (activeView === "vault") return "vault";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
                 if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
@@ -31830,6 +31971,7 @@
                 if (activeView === "hmrc-64-8s") return "credit";
                 if (activeView === "aml-verification") return "credit";
                 if (activeView === "xero-lock-date") return "credit";
+                if (activeView === "identity-verification") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank";
                 if (activeView === "supplier-reconciliation") return "bank";
@@ -31970,11 +32112,12 @@
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
                 setElementVisible(document.getElementById("codeBreakerScreen"), activeView === "code-breaker");
                 setElementVisible(document.getElementById("microAnalyzerScreen"), activeView === "micro-analyzer");
+                setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("vaultScreen"), activeView === "vault");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -32098,6 +32241,16 @@
                 scrollConsoleToTop();
             }
 
+            function openIdentityVerificationScreen() {
+                activeView = "identity-verification";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadIdentityVerificationData();
+                scrollConsoleToTop();
+            }
+
             function navigateApp(section) {
                 if (section === "home") return openInsightsScreen();
                 if (section === "notifications") return openNotificationsScreen();
@@ -32122,6 +32275,7 @@
                 if (section === "tasks") return openTaskTrackerScreen();
                 if (section === "code-breaker") return openCodeBreakerScreen();
                 if (section === "micro-analyzer") return openMicroAnalyzerScreen();
+                if (section === "identity-verification") return openIdentityVerificationScreen();
                 if (section === "vault") return openVaultScreen();
                 if (section === "practice-packs") return openPracticePackScreen();
                 if (section === "settings") return openSettingsScreen();
@@ -32267,6 +32421,7 @@
                 "company-secretarial",
                 "company-secreterial",
                 "xero-lock-date",
+                "identity-verification",
                 "hmrc-64-8s",
                 "ignition",
                 "me-report",
@@ -32377,6 +32532,7 @@
                 "hmrc-64-8s": "credit-control-hmrc-64-8s",
                 "aml-verification": "credit-control-aml-verification",
                 "xero-lock-date": "credit-control-xero-lock-date",
+                "identity-verification": "credit-control-identity-verification",
                 jashflow: "credit-control-jashflow",
                 "bank-statements": "credit-control-bank-statements",
                 "supplier-reconciliation": "credit-control-supplier-reconciliation",
@@ -36828,6 +36984,7 @@
                 if (xeroLockDateLoading && !force) return;
                 xeroLockDateLoading = true;
                 if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                if (activeView === "identity-verification") renderIdentityVerificationScreen();
                 if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 try {
@@ -36847,16 +37004,19 @@
                         [...xeroLockDateFixInFlightTenantIds].filter((tenantId) => visibleTenantIds.has(String(tenantId || "")))
                     );
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 } catch (error) {
                     console.error("Unable to load Xero lock-date overview", error);
                     if (activeView === "xero-lock-date") showToast(error.message || "Unable to load lock-date overview", "error");
+                    if (activeView === "identity-verification") showToast(error.message || "Unable to load Xero tenant connections", "error");
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") showToast(error.message || "Unable to load lock-date overview", "error");
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") showToast(error.message || "Unable to load Xero tenant connections", "error");
                 } finally {
                     xeroLockDateLoading = false;
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 }
@@ -61415,6 +61575,7 @@
                 else if (activeView === "hmrc-64-8s") activeNavSection = "hmrc-64-8s";
                 else if (activeView === "aml-verification") activeNavSection = "aml-verification";
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
+                else if (activeView === "identity-verification") activeNavSection = "identity-verification";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
                 else if (activeView === "bank-statements") activeNavSection = "bank-statements";
                 else if (activeView === "supplier-reconciliation" || activeView === "supplier-reconciliation-statement-page") activeNavSection = "supplier-reconciliation";
@@ -69461,7 +69622,6 @@
                 try {
                     const payload = await requestJSON(api.endpoints.microAnalyzerClients);
                     const rows = Array.isArray(payload?.clients) ? payload.clients : [];
-                    const connectedTenantId = String(state?.organisation?.tenantId || state?.organisation?.xeroTenantId || "").trim();
                     microAnalyzerRows = rows
                         .map((row) => ({
                             id: String(row?.xeroContactId || row?.customerId || row?.id || row?.clientName || ""),
@@ -69478,8 +69638,7 @@
                             if (!tenantId) return false;
                             const hasXeroMatch = Boolean(String(row.customerId || "").trim()) && Boolean(String(row.xeroContactId || "").trim());
                             if (!hasXeroMatch) return false;
-                            if (!connectedTenantId) return true;
-                            return tenantId === connectedTenantId;
+                            return true;
                         });
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -69555,20 +69714,46 @@
                 renderMicroAnalyzerScreen();
             }
 
+            function renderMicroAnalyzerConnectionsTable(tableBody, connectionsSection = null) {
+                if (!tableBody) return 0;
+                const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
+                const rows = (Array.isArray(connections) ? connections : [])
+                    .map((connection) => ({
+                        tenantId: String(connection?.tenantId || "").trim(),
+                        tenantName: xeroWorkspaceLabel(connection?.tenantName, connection?.tenantId, "Xero account"),
+                        tenantType: String(connection?.tenantType || "").trim(),
+                    }))
+                    .filter((connection) => Boolean(connection.tenantId))
+                    .sort((left, right) => String(left.tenantName || "").localeCompare(String(right.tenantName || ""), "en-GB"));
+                if (connectionsSection) connectionsSection.hidden = !rows.length;
+                tableBody.innerHTML = rows.map((row) => `
+                    <tr>
+                        <td><strong>${escapeHTML(row.tenantName || row.tenantId)}</strong></td>
+                        <td><code>${escapeHTML(row.tenantId || "--")}</code></td>
+                        <td><small>${escapeHTML(row.tenantType ? `${row.tenantType} · Connected` : "Connected")}</small></td>
+                    </tr>
+                `).join("");
+                return rows.length;
+            }
+
             function renderMicroAnalyzerScreen() {
                 const summary = document.getElementById("microAnalyzerSummary");
                 const tableBody = document.getElementById("microAnalyzerTableBody");
+                const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
+                const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
                 const runAllButton = document.getElementById("microAnalyzerRunAllButton");
                 if (!summary || !tableBody || !refreshButton || !runAllButton) return;
-                const connectedTenantCount = new Set(
+                const connectedAccountCount = renderMicroAnalyzerConnectionsTable(connectionsTableBody, connectionsSection);
+                const rowTenantCount = new Set(
                     (microAnalyzerRows || [])
                         .map((row) => String(row?.tenantId || "").trim())
                         .filter((tenantId) => Boolean(tenantId))
                 ).size;
+                const connectedTenantCount = connectedAccountCount || rowTenantCount;
                 summary.textContent = microAnalyzerLoading
-                    ? "Loading Xero tenant IDs with active Ignition Micro/Starter/Solo plans..."
-                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero tenant ID${connectedTenantCount === 1 ? "" : "s"} connected.`;
+                    ? "Loading connected Xero accounts and active Ignition Micro/Starter/Solo plans..."
+                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected.`;
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
                     refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
@@ -70452,6 +70637,8 @@
                     ["renderPracticePackScreen", () => renderPracticePackScreen()],
                     ["renderTaskTrackerScreen", () => renderTaskTrackerScreen()],
                     ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],
+                    ["renderMicroAnalyzerScreen", () => renderMicroAnalyzerScreen()],
+                    ["renderIdentityVerificationScreen", () => renderIdentityVerificationScreen()],
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderClientScreen", () => renderClientScreen()],
                     ["enhanceConsoleButtons", () => enhanceConsoleButtons()],
