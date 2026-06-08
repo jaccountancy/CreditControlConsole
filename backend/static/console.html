@@ -69479,6 +69479,101 @@
                 return selected;
             }
 
+            function codeBreakerResolveWorkspaceCompanyNumber(workspace = {}) {
+                const existing = normaliseCompanyNumberInput(workspace?.companyNumber || "");
+                if (existing) return existing;
+
+                const customer = codeBreakerWorkspaceCustomer(workspace);
+                const fromCustomer = normaliseCompanyNumberInput(customer?.companyNumber || "");
+                if (fromCustomer) {
+                    workspace.companyNumber = fromCustomer;
+                    return fromCustomer;
+                }
+
+                const tenantId = String(workspace?.xeroTenantId || "").trim();
+                if (tenantId) {
+                    const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                    const lockMatch = lockRows.find((row) => String(row?.tenantId || "").trim() === tenantId) || null;
+                    const fromLock = normaliseCompanyNumberInput(
+                        lockMatch?.mapping?.companyNumber
+                        || lockMatch?.companiesHouse?.companyNumber
+                        || ""
+                    );
+                    if (fromLock) {
+                        workspace.companyNumber = fromLock;
+                        return fromLock;
+                    }
+                }
+
+                const registerRows = companySecretarialRegisterRows();
+                if (Array.isArray(registerRows) && registerRows.length) {
+                    const targetName = normaliseStatus(workspace?.clientName || workspace?.xeroTenantName || "");
+                    if (targetName) {
+                        const exact = registerRows.find((row) => (
+                            normaliseStatus(row?.displayName || "") === targetName
+                            || normaliseStatus(row?.companyName || "") === targetName
+                        )) || null;
+                        const loose = exact || registerRows.find((row) => {
+                            const candidate = normaliseStatus(row?.displayName || row?.companyName || "");
+                            return candidate && (candidate.includes(targetName) || targetName.includes(candidate));
+                        }) || null;
+                        const fromRegister = normaliseCompanyNumberInput(loose?.companyNumber || "");
+                        if (fromRegister) {
+                            workspace.companyNumber = fromRegister;
+                            return fromRegister;
+                        }
+                    }
+                }
+                return "";
+            }
+
+            async function codeBreakerResolveCompanyByWorkspaceName(workspace = {}) {
+                const searchTerm = String(workspace?.clientName || workspace?.xeroTenantName || "").trim();
+                if (!searchTerm) return "";
+                const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(searchTerm)}`);
+                const companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                if (!companies.length) return "";
+                const target = normaliseStatus(searchTerm);
+                const scored = companies
+                    .map((company) => {
+                        const name = normaliseStatus(company?.companyName || "");
+                        let score = 0;
+                        if (name && target) {
+                            if (name === target) score = 1000;
+                            else if (name.includes(target) || target.includes(name)) score = 500;
+                            else {
+                                const targetTokens = target.split(/\s+/).filter(Boolean);
+                                const nameTokens = name.split(/\s+/).filter(Boolean);
+                                score = targetTokens.filter((token) => nameTokens.includes(token)).length * 10;
+                            }
+                        }
+                        return { company, score };
+                    })
+                    .sort((left, right) => right.score - left.score);
+                const best = scored[0]?.company || companies[0] || null;
+                const resolved = normaliseCompanyNumberInput(best?.companyNumber || "");
+                if (resolved) workspace.companyNumber = resolved;
+                return resolved;
+            }
+
+            async function codeBreakerHydrateWorkspaceForWizard(workspace = {}) {
+                let resolvedCompanyNumber = codeBreakerResolveWorkspaceCompanyNumber(workspace);
+                if (!resolvedCompanyNumber) {
+                    resolvedCompanyNumber = await codeBreakerResolveCompanyByWorkspaceName(workspace).catch(() => "");
+                }
+                if (!resolvedCompanyNumber) return null;
+                const selectedPeriod = await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace).catch(() => null);
+                if (!workspace.periodStartDate && workspace.yearEndDate) {
+                    workspace.periodStartDate = codeBreakerPeriodStartDate(workspace);
+                }
+                if (!workspace.submittedAt && workspace.yearEndDate) {
+                    workspace.submittedAt = String(workspace.yearEndDate || "").slice(0, 10);
+                }
+                workspace.updatedAt = new Date().toISOString();
+                persistCodeBreakerWorkspaces();
+                return selectedPeriod;
+            }
+
             async function codeBreakerWorkspaceSnapshot(payload = {}) {
                 const response = await requestJSON(api.endpoints.codeBreakerWorkspaceSnapshot, {
                     method: "POST",
@@ -69826,20 +69921,28 @@
                 codeBreakerWizardState.status = "running";
                 renderCodeBreakerWizardModal();
                 try {
-                    setCodeBreakerWizardStep(0, "running", "Checking workspace fields, company number, filing date, and linked Xero client.");
+                    setCodeBreakerWizardStep(0, "running", "Resolving company number and latest filed Companies House period for this workspace.");
+                    const selectedPeriod = await codeBreakerHydrateWorkspaceForWizard(workspace);
                     const submittedAt = String(workspace.submittedAt || "").slice(0, 10);
                     if (!workspace.companyNumber || !workspace.yearEndDate || !submittedAt) {
-                        throw new Error("Workspace is missing company number, submitted date, or year-end date. Edit workspace setup and try again.");
+                        throw new Error("Unable to resolve company number or filed accounts date from Companies House. Open workspace setup and confirm details.");
                     }
-                    await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace).catch(() => null);
-                    setCodeBreakerWizardStep(0, "complete", "Workspace details are valid.");
+                    const filedYearEnd = formatDate(workspace.yearEndDate || "");
+                    const filedSubmitted = formatDate(submittedAt || "");
+                    setCodeBreakerWizardStep(
+                        0,
+                        "complete",
+                        selectedPeriod
+                            ? `Using latest filed accounts period ending ${filedYearEnd} (filed ${filedSubmitted}).`
+                            : `Using workspace filed accounts period ending ${filedYearEnd} (filed ${filedSubmitted}).`
+                    );
 
-                    setCodeBreakerWizardStep(1, "running", "Fetching Companies House net assets and live Xero balance sheet values.");
+                    setCodeBreakerWizardStep(1, "running", `Fetching Companies House and Xero net assets for period end ${filedYearEnd}.`);
                     const snapshot = await codeBreakerWorkspaceSnapshot({
                         tenantId: workspace.xeroTenantId,
                         xeroContactId: workspace.xeroContactId,
                         companyNumber: workspace.companyNumber,
-                        asAtDate: workspace.yearEndDate || workspace.submittedAt,
+                        asAtDate: workspace.yearEndDate,
                     });
                     const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
                         ? Number(snapshot.ch.netAssets)
