@@ -14878,8 +14878,63 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     company_number = normalise_company_number(payload.get("companyNumber"))
     as_at_raw = str(payload.get("asAtDate") or payload.get("yearEndDate") or "").strip()
     as_at_date = _parse_optional_iso_date(as_at_raw)
-    if as_at_date is None:
-        as_at_date = utcnow().date()
+    as_at_explicit = as_at_date is not None
+
+    def _latest_accounts_made_up_to_from_cache(company_row: dict | None) -> date | None:
+        if not isinstance(company_row, dict):
+            return None
+        filings = company_row.get("filing_history")
+        candidates: list[date] = []
+        if isinstance(filings, list):
+            for row in filings:
+                if not _code_breaker_is_accounts_filing(row):
+                    continue
+                made_up_to = _code_breaker_accounts_made_up_to_date(row)
+                if isinstance(made_up_to, date):
+                    candidates.append(made_up_to)
+        return max(candidates) if candidates else None
+
+    ch_company = None
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                if company_number:
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT company_name, company_number, last_filed_date, latest_submission_completed_at, filing_history
+                            FROM ch_companies
+                            WHERE UPPER(company_number) = UPPER(%s)
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                            """,
+                            (company_number,),
+                        )
+                        ch_company = cursor.fetchone()
+                    except Exception:
+                        try:
+                            # Support older production schemas where latest_submission_completed_at is unavailable.
+                            cursor.execute(
+                                """
+                                SELECT company_name, company_number, last_filed_date, filing_history
+                                FROM ch_companies
+                                WHERE UPPER(company_number) = UPPER(%s)
+                                ORDER BY updated_at DESC
+                                LIMIT 1
+                                """,
+                                (company_number,),
+                            )
+                            ch_company = cursor.fetchone()
+                        except Exception:
+                            logger.exception("Code Breaker snapshot: unable to query Companies House cache")
+                            ch_company = None
+            connection.commit()
+    except Exception:
+        logger.exception("Code Breaker snapshot: database lookup failed")
+
+    if not as_at_explicit:
+        latest_filed_period = _latest_accounts_made_up_to_from_cache(ch_company)
+        as_at_date = latest_filed_period or utcnow().date()
 
     connection_row = None
     connection_lookup_error = ""
@@ -14944,44 +14999,6 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     xero_source = "xero_balance_sheet:error"
             else:
                 xero_reason = f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
-
-    ch_company = None
-    try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                if company_number:
-                    try:
-                        cursor.execute(
-                            """
-                            SELECT company_name, company_number, last_filed_date, latest_submission_completed_at, filing_history
-                            FROM ch_companies
-                            WHERE UPPER(company_number) = UPPER(%s)
-                            ORDER BY updated_at DESC
-                            LIMIT 1
-                            """,
-                            (company_number,),
-                        )
-                        ch_company = cursor.fetchone()
-                    except Exception:
-                        try:
-                            # Support older production schemas where latest_submission_completed_at is unavailable.
-                            cursor.execute(
-                                """
-                                SELECT company_name, company_number, last_filed_date, filing_history
-                                FROM ch_companies
-                                WHERE UPPER(company_number) = UPPER(%s)
-                                ORDER BY updated_at DESC
-                                LIMIT 1
-                                """,
-                                (company_number,),
-                            )
-                            ch_company = cursor.fetchone()
-                        except Exception:
-                            logger.exception("Code Breaker snapshot: unable to query Companies House cache")
-                            ch_company = None
-            connection.commit()
-    except Exception:
-        logger.exception("Code Breaker snapshot: database lookup failed")
 
     selected_accounts_filing = None
     selected_accounts_made_up_to = None

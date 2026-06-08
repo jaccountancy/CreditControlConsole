@@ -69752,7 +69752,7 @@
                     .sort((left, right) => dateSortValue(right.submittedAt || right.yearEnd || "") - dateSortValue(left.submittedAt || left.yearEnd || ""));
             }
 
-            async function codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace = {}) {
+            async function codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace = {}, options = {}) {
                 const companyNumber = normaliseCompanyNumberInput(workspace?.companyNumber || "");
                 if (!companyNumber) return null;
                 const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(companyNumber)}`);
@@ -69761,8 +69761,11 @@
                 if (!exact) return null;
                 const periods = codeBreakerAccountsPeriodsFromCompany(exact);
                 if (!periods.length) return null;
+                const forceLatestFiled = Boolean(options?.forceLatestFiled);
                 const currentYearEnd = String(workspace?.yearEndDate || "").slice(0, 10);
-                const matched = periods.find((period) => String(period?.yearEnd || "").slice(0, 10) === currentYearEnd) || null;
+                const matched = forceLatestFiled
+                    ? null
+                    : periods.find((period) => String(period?.yearEnd || "").slice(0, 10) === currentYearEnd) || null;
                 const selected = matched || periods[0];
                 workspace.yearEndDate = selected.yearEnd;
                 workspace.submittedAt = selected.submittedAt;
@@ -69853,7 +69856,7 @@
                     resolvedCompanyNumber = await codeBreakerResolveCompanyByWorkspaceName(workspace).catch(() => "");
                 }
                 if (!resolvedCompanyNumber) return null;
-                const selectedPeriod = await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace).catch(() => null);
+                const selectedPeriod = await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace, { forceLatestFiled: true }).catch(() => null);
                 if (!workspace.yearEndDate && workspace.submittedAt) {
                     workspace.yearEndDate = String(workspace.submittedAt || "").slice(0, 10);
                 }
