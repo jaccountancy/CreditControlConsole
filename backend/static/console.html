@@ -1311,6 +1311,9 @@
             }
             .app-nav-submenu .app-nav-copy strong {
                 font-size: 0.79rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .app-sidebar-card.is-practice-tools-focus .app-nav > :not(.app-nav-group[data-app-nav-group="practice-tools"]),
             .app-sidebar-card.is-credit-control-focus .app-nav > :not(.app-nav-group[data-app-nav-group="credit-control"]),
@@ -1348,16 +1351,16 @@
                 max-height: none;
                 margin-top: 2px;
                 padding: 4px 0 6px 0;
-                gap: 6px;
+                gap: 3px;
                 transform: translateY(0) scaleY(1);
                 overflow-y: auto;
             }
             .app-sidebar-card.is-practice-tools-focus .app-nav-group[data-app-nav-group="practice-tools"] .app-nav-submenu .app-nav-button,
             .app-sidebar-card.is-credit-control-focus .app-nav-group[data-app-nav-group="credit-control"] .app-nav-submenu .app-nav-button,
             .app-sidebar-card.is-settings-focus .app-nav-group[data-app-nav-group="settings"] .app-nav-submenu .app-nav-button {
-                min-height: 42px;
-                padding: 8px 9px;
-                border-radius: 13px;
+                min-height: 28px;
+                padding: 4px 6px;
+                border-radius: 9px;
                 background: rgba(248, 251, 255, 0.88);
             }
             .app-sidebar-card.is-practice-tools-focus .app-nav-group[data-app-nav-group="practice-tools"] .app-nav-submenu .app-nav-button:nth-child(4) {
@@ -26541,6 +26544,7 @@
                                             </div>
                                         </div>
                                         <div class="detail-actions">
+                                            <button class="ghost-button" id="codeBreakerWizardRefreshButton" type="button">Refresh</button>
                                             <button class="ghost-button" id="codeBreakerWizardCloseButton" type="button">Close</button>
                                         </div>
                                     </div>
@@ -69563,6 +69567,9 @@
                 }
                 if (!resolvedCompanyNumber) return null;
                 const selectedPeriod = await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace).catch(() => null);
+                if (!workspace.yearEndDate && workspace.submittedAt) {
+                    workspace.yearEndDate = String(workspace.submittedAt || "").slice(0, 10);
+                }
                 if (!workspace.periodStartDate && workspace.yearEndDate) {
                     workspace.periodStartDate = codeBreakerPeriodStartDate(workspace);
                 }
@@ -69828,6 +69835,7 @@
                 const guidanceTarget = document.getElementById("codeBreakerWizardGuidance");
                 const rowsBody = document.getElementById("codeBreakerWizardRowsBody");
                 const retryButton = document.getElementById("codeBreakerWizardRetryButton");
+                const refreshButton = document.getElementById("codeBreakerWizardRefreshButton");
                 const closeButton = document.getElementById("codeBreakerWizardCloseButton");
                 const secondaryCloseButton = document.getElementById("codeBreakerWizardSecondaryCloseButton");
                 if (!modal || !subtitle || !status || !stepsTarget || !metricsTarget || !guidanceTarget || !rowsBody) return;
@@ -69904,9 +69912,17 @@
                     retryButton.dataset.cbWired = "true";
                     retryButton.addEventListener("click", () => runCodeBreakerAnalysisWizard(codeBreakerWizardState.workspaceId));
                 }
+                if (refreshButton && refreshButton.dataset.cbWired !== "true") {
+                    refreshButton.dataset.cbWired = "true";
+                    refreshButton.addEventListener("click", () => runCodeBreakerAnalysisWizard(codeBreakerWizardState.workspaceId));
+                }
                 if (retryButton) {
                     retryButton.disabled = codeBreakerWizardState.running || !workspace;
                     retryButton.textContent = codeBreakerWizardState.running ? "Running wizard..." : "Run wizard again";
+                }
+                if (refreshButton) {
+                    refreshButton.disabled = codeBreakerWizardState.running || !workspace;
+                    refreshButton.textContent = "Refresh";
                 }
             }
 
