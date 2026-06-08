@@ -26791,6 +26791,7 @@
                                         </div>
                                         <div class="detail-actions">
                                             <button class="ghost-button" id="codeBreakerWizardRefreshButton" type="button">Refresh</button>
+                                            <button class="ghost-button" id="codeBreakerWizardReconnectButton" type="button" hidden>Reconnect Xero</button>
                                             <button class="ghost-button" id="codeBreakerWizardCloseButton" type="button">Close</button>
                                         </div>
                                     </div>
@@ -69636,6 +69637,30 @@
                 ).trim();
             }
 
+            function codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot = {}) {
+                const source = String(snapshot?.xero?.source || "").trim().toLowerCase();
+                if (source.includes("scope_missing")) return true;
+                const combined = [
+                    snapshot?.error,
+                    snapshot?._requestError,
+                    snapshot?.xero?.reason,
+                    snapshot?.xero?.diagnostics?.requestError,
+                ]
+                    .map((value) => String(value || "").trim().toLowerCase())
+                    .filter(Boolean)
+                    .join(" ");
+                if (!combined) return false;
+                const scopeHints = [
+                    "scope_missing",
+                    "accounting.reports.read",
+                    "reports.read",
+                    "insufficient scope",
+                    "missing reports access",
+                    "xero permissions need updating",
+                ];
+                return scopeHints.some((hint) => combined.includes(hint));
+            }
+
             function codeBreakerCompanyByNumberOrContact(companyNumber = "", xeroContactId = "") {
                 const cleanNumber = String(companyNumber || "").trim().toUpperCase();
                 const cleanContactId = String(xeroContactId || "").trim();
@@ -70105,6 +70130,8 @@
                     summary: null,
                     extraction: null,
                     runToken: "",
+                    showReconnectXero: false,
+                    reconnectReason: "",
                 };
             }
 
@@ -70200,6 +70227,7 @@
                 const rowsBody = document.getElementById("codeBreakerWizardRowsBody");
                 const retryButton = document.getElementById("codeBreakerWizardRetryButton");
                 const refreshButton = document.getElementById("codeBreakerWizardRefreshButton");
+                const reconnectButton = document.getElementById("codeBreakerWizardReconnectButton");
                 const closeButton = document.getElementById("codeBreakerWizardCloseButton");
                 const secondaryCloseButton = document.getElementById("codeBreakerWizardSecondaryCloseButton");
                 if (!modal || !subtitle || !status || !stepsTarget || !metricsTarget || !guidanceTarget || !rowsBody) return;
@@ -70292,6 +70320,17 @@
                     refreshButton.dataset.cbWired = "true";
                     refreshButton.addEventListener("click", () => runCodeBreakerAnalysisWizard(codeBreakerWizardState.workspaceId));
                 }
+                if (reconnectButton && reconnectButton.dataset.cbWired !== "true") {
+                    reconnectButton.dataset.cbWired = "true";
+                    reconnectButton.addEventListener("click", () => {
+                        const connectUrl = codeBreakerConnectXeroStartUrl();
+                        if (!connectUrl) {
+                            showToast("Xero connection URL is not configured.", "error");
+                            return;
+                        }
+                        window.location.href = connectUrl;
+                    });
+                }
                 if (retryButton) {
                     retryButton.disabled = codeBreakerWizardState.running || !workspace;
                     retryButton.textContent = codeBreakerWizardState.running ? "Running wizard..." : "Run wizard again";
@@ -70299,6 +70338,13 @@
                 if (refreshButton) {
                     refreshButton.disabled = codeBreakerWizardState.running || !workspace;
                     refreshButton.textContent = "Refresh";
+                }
+                if (reconnectButton) {
+                    reconnectButton.hidden = !codeBreakerWizardState.showReconnectXero;
+                    reconnectButton.disabled = codeBreakerWizardState.running;
+                    reconnectButton.textContent = codeBreakerWizardState.showReconnectXero
+                        ? "Reconnect Xero (Reports Scope)"
+                        : "Reconnect Xero";
                 }
             }
 
@@ -70376,6 +70422,29 @@
                     workspace.xeroSource = String(snapshot?.xero?.source || "unavailable");
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
+                    const xeroScopeMissing = codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot);
+                    if (xeroScopeMissing) {
+                        const xeroReason = String(snapshot?.xero?.reason || snapshot?.error || snapshot?._requestError || "").trim();
+                        codeBreakerWizardState.showReconnectXero = true;
+                        codeBreakerWizardState.reconnectReason = xeroReason;
+                        codeBreakerWizardState.rows = [];
+                        codeBreakerWizardState.summary = {
+                            chNetAssets: Number.isFinite(workspace.chNetAssets) ? workspace.chNetAssets : null,
+                            xeroNetAssets: null,
+                            variance: null,
+                            chExtractionEngine: String(snapshot?.ch?.documentExtraction?.engine || "unavailable"),
+                            chSource: workspace.chSource || "",
+                            xeroSource: workspace.xeroSource || "",
+                            suggestedCount: 0,
+                        };
+                        codeBreakerWizardState.guidance = [
+                            "Reconnect Xero and approve reports scope (accounting.reports.read), then run the wizard again.",
+                            xeroReason ? `Xero API detail: ${xeroReason}` : "Xero balance sheet call is blocked until reports scope is approved.",
+                        ];
+                        throw new Error(
+                            "Xero reports scope is missing (accounting.reports.read). Reconnect Xero, approve reports scope, then run Code Breaker again."
+                        );
+                    }
                     if (!Number.isFinite(workspace.chNetAssets) || !Number.isFinite(workspace.xeroNetAssets)) {
                         const snapshotError = String(snapshot?.error || "").trim();
                         const chReason = String(snapshot?.ch?.reason || "").trim();
