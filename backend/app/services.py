@@ -14035,13 +14035,6 @@ def _code_breaker_xero_net_assets(
             liabilities_total = amount
     if assets_total is not None and liabilities_total is not None:
         return _money(assets_total - liabilities_total)
-
-    for line in reversed(lines):
-        amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
-        chosen = preferred_amount(amounts)
-        if chosen is not None:
-            return chosen
-
     return None
 
 
@@ -14181,22 +14174,6 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             as_at_date,
         )
     ch_net_assets = _code_breaker_net_assets_value(selected_accounts_filing)
-    if ch_company and (
-        ch_net_assets is None
-        or ch_net_assets.copy_abs() == Decimal("0.00")
-    ):
-        latest_accounts_filing, latest_accounts_made_up_to, latest_match = _code_breaker_select_accounts_filing_for_date(
-            ch_company.get("filing_history"),
-            None,
-        )
-        latest_net_assets = _code_breaker_net_assets_value(latest_accounts_filing)
-        if latest_net_assets is not None and (
-            ch_net_assets is None or latest_net_assets.copy_abs() > Decimal("0.00")
-        ):
-            ch_net_assets = latest_net_assets
-            selected_accounts_filing = latest_accounts_filing
-            selected_accounts_made_up_to = latest_accounts_made_up_to
-            filing_date_match = f"{latest_match}_fallback"
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:

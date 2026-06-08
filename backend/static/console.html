@@ -69833,9 +69833,10 @@
                     const invoices = Array.isArray(payload?.outstandingInvoices) ? payload.outstandingInvoices : [];
                     const credits = Array.isArray(payload?.unallocatedCredits) ? payload.unallocatedCredits : [];
                     const overpayments = Array.isArray(payload?.overpayments) ? payload.overpayments : [];
+                    const allocatedCredits = Array.isArray(payload?.allocatedCredits) ? payload.allocatedCredits : [];
                     const crack = codeBreakerCrackByWorkspaceId[workspace.id];
-                    crack.totalCount = invoices.length + credits.length + overpayments.length;
-                    codeBreakerAppendLiveEvent(workspace.id, `Pulled ${crack.totalCount.toLocaleString("en-GB")} live rows (${invoices.length} invoices, ${credits.length} credits, ${overpayments.length} overpayments).`);
+                    crack.totalCount = invoices.length + credits.length + overpayments.length + allocatedCredits.length;
+                    codeBreakerAppendLiveEvent(workspace.id, `Pulled ${crack.totalCount.toLocaleString("en-GB")} live rows (${invoices.length} invoices, ${credits.length} credits, ${overpayments.length} overpayments, ${allocatedCredits.length} allocated credits).`);
                     renderCodeBreakerScreen();
 
                     const submittedMs = dateSortValue(workspace?.submittedAt || "");
@@ -69864,6 +69865,34 @@
                             amount: Number(row?.remainingCredit || row?.total || 0) * -1,
                             raw: row,
                         })),
+                        ...allocatedCredits.flatMap((row) => {
+                            const allocations = Array.isArray(row?.allocations) ? row.allocations : [];
+                            if (!allocations.length) {
+                                const applied = Math.abs(Number(row?.appliedAmount || 0));
+                                return applied > 0 ? [{
+                                    sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
+                                    reference: String(row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                    status: String(row?.status || "AUTHORISED"),
+                                    postedDate: String(row?.date || "").slice(0, 10),
+                                    amount: applied * -1,
+                                    raw: row,
+                                }] : [];
+                            }
+                            return allocations
+                                .map((allocation) => {
+                                    const amount = Math.abs(Number(allocation?.amount || 0));
+                                    if (!(amount > 0)) return null;
+                                    return {
+                                        sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
+                                        reference: String(allocation?.invoiceNumber || row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                        status: String(row?.status || "AUTHORISED"),
+                                        postedDate: String(allocation?.date || row?.date || "").slice(0, 10),
+                                        amount: amount * -1,
+                                        raw: { ...row, allocation },
+                                    };
+                                })
+                                .filter(Boolean);
+                        }),
                     ];
                     const renderedRows = [];
                     for (const row of sourceRows) {
@@ -69962,6 +69991,7 @@
 
             function codeBreakerWizardTransactionRows(workspace = {}, customerPayload = {}) {
                 const submittedMs = dateSortValue(workspace?.submittedAt || "");
+                const allocatedCredits = Array.isArray(customerPayload?.allocatedCredits) ? customerPayload.allocatedCredits : [];
                 const normaliseRows = [
                     ...(Array.isArray(customerPayload?.outstandingInvoices) ? customerPayload.outstandingInvoices : []).map((row) => ({
                         sourceType: "Invoice",
@@ -69984,6 +70014,32 @@
                         postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
                         amount: Number(row?.remainingCredit || row?.total || 0) * -1,
                     })),
+                    ...allocatedCredits.flatMap((row) => {
+                        const allocations = Array.isArray(row?.allocations) ? row.allocations : [];
+                        if (!allocations.length) {
+                            const applied = Math.abs(Number(row?.appliedAmount || 0));
+                            return applied > 0 ? [{
+                                sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
+                                reference: String(row?.number || row?.reference || row?.id || "Allocation"),
+                                status: String(row?.status || "AUTHORISED"),
+                                postedDate: String(row?.date || "").slice(0, 10),
+                                amount: applied * -1,
+                            }] : [];
+                        }
+                        return allocations
+                            .map((allocation) => {
+                                const amount = Math.abs(Number(allocation?.amount || 0));
+                                if (!(amount > 0)) return null;
+                                return {
+                                    sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
+                                    reference: String(allocation?.invoiceNumber || row?.number || row?.reference || row?.id || "Allocation"),
+                                    status: String(row?.status || "AUTHORISED"),
+                                    postedDate: String(allocation?.date || row?.date || "").slice(0, 10),
+                                    amount: amount * -1,
+                                };
+                            })
+                            .filter(Boolean);
+                    }),
                 ].map((row) => {
                     const postedMs = dateSortValue(row.postedDate || "");
                     const postedSinceFiling = Number.isFinite(submittedMs) && submittedMs !== Number.MAX_SAFE_INTEGER
