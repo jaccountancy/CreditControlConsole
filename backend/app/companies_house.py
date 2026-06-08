@@ -1028,47 +1028,6 @@ def _decimal_to_text(value: Decimal) -> str:
     return text or "0"
 
 
-def _deep_merge_dicts(base: dict | None, patch: dict | None) -> dict:
-    left = dict(base) if isinstance(base, dict) else {}
-    right = dict(patch) if isinstance(patch, dict) else {}
-    merged: dict[str, object] = dict(left)
-    for key, right_value in right.items():
-        left_value = merged.get(key)
-        if isinstance(left_value, dict) and isinstance(right_value, dict):
-            merged[key] = _deep_merge_dicts(left_value, right_value)
-        else:
-            merged[key] = right_value
-    return merged
-
-
-def _extract_director_personal_code(*payloads: object) -> str:
-    candidate_keys = {
-        "directorpersonalcode",
-        "director_personal_code",
-        "personalcode",
-        "personal_code",
-        "govukpersonalcode",
-        "gov_uk_personal_code",
-        "govukoneloginpersonalcode",
-        "gov_uk_one_login_personal_code",
-    }
-    stack: list[object] = [payload for payload in payloads if payload is not None]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, dict):
-            for key, value in node.items():
-                normalised_key = re.sub(r"[^a-z0-9]", "", str(key or "").lower())
-                if normalised_key in candidate_keys:
-                    code = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
-                    if code:
-                        return code
-                if isinstance(value, (dict, list)):
-                    stack.append(value)
-        elif isinstance(node, list):
-            stack.extend(node)
-    return ""
-
-
 def _extract_shareholder_signals(company_payload: dict | None, filing_history: list[dict]) -> dict:
     payload = company_payload if isinstance(company_payload, dict) else {}
     accounts = payload.get("accounts") if isinstance(payload.get("accounts"), dict) else {}
@@ -1145,28 +1104,17 @@ def _extract_shareholder_signals(company_payload: dict | None, filing_history: l
     computed_total_nominal = Decimal("0")
     has_computed_total_nominal = False
     for row in payload_share_capital_rows:
-        share_class = str(
-            row.get("share_class")
-            or row.get("class")
-            or row.get("shareClass")
-            or row.get("share_type")
-            or row.get("shareType")
-            or row.get("type")
-            or ""
-        ).strip()
+        share_class = str(row.get("share_class") or row.get("class") or row.get("shareClass") or "").strip()
         number_held = _decimal_from_any(
             row.get("number_of_shares_issued")
             or row.get("number_allotted")
-            or row.get("number_of_shares")
             or row.get("numberHeld")
             or row.get("number_held")
-            or row.get("shares")
         )
         aggregate_nominal = _decimal_from_any(
             row.get("aggregate_nominal_value")
             or row.get("total_aggregate_nominal_value")
             or row.get("totalAggregateNominalValue")
-            or row.get("aggregate_value")
         )
         nominal_value_per_share = _decimal_from_any(
             row.get("nominal_value")
@@ -1345,19 +1293,6 @@ def _fetch_ch_company_snapshot(
     confirmation = company_payload.get("confirmation_statement") or {}
     filing_history = _normalise_ch_filing_history(filing_payload)
     share_capital = _extract_shareholder_signals(company_payload, filing_history)
-    director_personal_code = _extract_director_personal_code(company_payload, officers_payload, psc_payload)
-    if director_personal_code:
-        share_capital = _deep_merge_dicts(
-            share_capital,
-            {
-                "confirmationStatement": {
-                    "identityVerification": {
-                        "directorPersonalCodeSupplied": True,
-                        "directorPersonalCode": director_personal_code,
-                    }
-                }
-            },
-        )
     return {
         "companyNumber": company_number,
         "companyName": str(company_payload.get("company_name") or "").strip(),
@@ -1379,20 +1314,7 @@ def _fetch_ch_company_snapshot(
 
 def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
     share_capital_patch = snapshot.get("shareCapital") if isinstance(snapshot.get("shareCapital"), dict) else {}
-    merged_share_capital: dict = {}
-    if share_capital_patch:
-        cursor.execute(
-            """
-            SELECT share_capital
-            FROM ch_companies
-            WHERE id = %s
-            """,
-            (company_id,),
-        )
-        current_row = cursor.fetchone() or {}
-        current_share_capital = current_row.get("share_capital") if isinstance(current_row.get("share_capital"), dict) else {}
-        merged_share_capital = _deep_merge_dicts(current_share_capital, share_capital_patch)
-    merged_share_capital_json = json.dumps(merged_share_capital)
+    share_capital_patch_json = json.dumps(share_capital_patch)
     cursor.execute(
         """
         UPDATE ch_companies
@@ -1406,7 +1328,7 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
             pscs = %s::jsonb,
             share_capital = CASE
                 WHEN %s::jsonb = '{}'::jsonb THEN share_capital
-                ELSE %s::jsonb
+                ELSE COALESCE(share_capital, '{}'::jsonb) || %s::jsonb
             END,
             next_made_up_to_date = %s,
             next_due_date = %s,
@@ -1425,8 +1347,8 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
             json.dumps(snapshot.get("sicCodes") or []),
             json.dumps(snapshot.get("officers") or []),
             json.dumps(snapshot.get("pscs") or []),
-            merged_share_capital_json,
-            merged_share_capital_json,
+            share_capital_patch_json,
+            share_capital_patch_json,
             snapshot.get("nextMadeUpToDate"),
             snapshot.get("nextDueDate"),
             snapshot.get("lastFiledDate"),
@@ -1913,7 +1835,6 @@ def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = Tr
         payload["identityVerification"] = {
             "required": bool(_first_bool_from_sources(identity_verification.get("required"))),
             "directorPersonalCodeSupplied": bool(_first_bool_from_sources(identity_verification.get("directorPersonalCodeSupplied"))),
-            "directorPersonalCode": _coerce_text(identity_verification.get("directorPersonalCode"), 80),
             "verificationStatementGiven": bool(_first_bool_from_sources(identity_verification.get("verificationStatementGiven"))),
             "relevantOfficer": _coerce_text(identity_verification.get("relevantOfficer"), 200),
         }
@@ -8214,7 +8135,7 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
 
     if share_capital_patch:
         current_share_capital = current_company.get("shareCapital") if isinstance(current_company.get("shareCapital"), dict) else {}
-        merged_share_capital = _deep_merge_dicts(current_share_capital, share_capital_patch)
+        merged_share_capital = {**current_share_capital, **share_capital_patch}
         updates["share_capital"] = json.dumps(merged_share_capital)
         json_columns.add("share_capital")
 

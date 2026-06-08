@@ -79727,25 +79727,6 @@
                 return (companiesHouseState.companies || []).filter((company) => selected.has(String(company.id || "")));
             }
 
-            async function chSyncSelectedCompaniesFromCompaniesHouse(selectedCompanyIds = []) {
-                const ids = Array.isArray(selectedCompanyIds)
-                    ? selectedCompanyIds.map((value) => String(value || "").trim()).filter(Boolean)
-                    : [];
-                if (!ids.length) return;
-                await requestJSON("/api/companies-house/sync", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        companyIds: ids,
-                        limit: Math.max(1, ids.length),
-                        mode: "manual",
-                    }),
-                });
-                await loadCompaniesHouseCompanies(true);
-                if (companiesHouseState.selectedCompanyId) {
-                    await openCompaniesHouseCompanyDetail(companiesHouseState.selectedCompanyId);
-                }
-            }
-
             function chWorkflowConfiguredUnitAmount() {
                 const configured = Number(companiesHouseSettings.data?.xeroInvoiceUnitAmount || 0);
                 if (configured > 0) return configured;
@@ -80597,11 +80578,10 @@
                     const normalisedRows = rows
                         .filter((row) => row && typeof row === "object")
                         .map((row) => {
-                            const shareClass = String(row.shareClass || row.share_class || row.class || row.type || "").trim() || "Share class";
+                            const shareClass = String(row.shareClass || row.share_class || row.class || "").trim() || "Share class";
                             const numberHeld = String(
                                 row.numberHeld
                                 ?? row.number_held
-                                ?? row.number_of_shares_issued
                                 ?? row.numberOfShares
                                 ?? row.number_of_shares
                                 ?? row.totalShares
@@ -80669,26 +80649,6 @@
                     const identityVerification = (confirmationStatement.identityVerification && typeof confirmationStatement.identityVerification === "object")
                         ? confirmationStatement.identityVerification
                         : {};
-                    const officerPersonalCode = (Array.isArray(company?.officers) ? company.officers : [])
-                        .map((officer) => String(
-                            officer?.directorPersonalCode
-                            || officer?.director_personal_code
-                            || officer?.personalCode
-                            || officer?.personal_code
-                            || ""
-                        ).trim())
-                        .find((code) => Boolean(code)) || "";
-                    const resolvedDirectorPersonalCode = String(
-                        identityVerification.directorPersonalCode
-                        || confirmationStatement.directorPersonalCode
-                        || confirmationStatement.director_personal_code
-                        || confirmationStatement.personalCode
-                        || confirmationStatement.personal_code
-                        || shareCapital.directorPersonalCode
-                        || shareCapital.director_personal_code
-                        || officerPersonalCode
-                        || ""
-                    ).toUpperCase().replace(/[^A-Z0-9]/g, "");
                     const activePscCount = (Array.isArray(company?.pscs) ? company.pscs : [])
                         .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
                         .length;
@@ -80739,8 +80699,8 @@
                         reviewPeriodEnd: String(company.reviewPeriodEnd || confirmationStatement.reviewPeriodEnd || company.nextMadeUpToDate || ""),
                         identityVerification: {
                             required: Boolean(identityVerification.required),
-                            directorPersonalCodeSupplied: Boolean(identityVerification.directorPersonalCodeSupplied) || Boolean(resolvedDirectorPersonalCode),
-                            directorPersonalCode: resolvedDirectorPersonalCode,
+                            directorPersonalCodeSupplied: Boolean(identityVerification.directorPersonalCodeSupplied),
+                            directorPersonalCode: String(identityVerification.directorPersonalCode || ""),
                             verificationStatementGiven: identityVerification.verificationStatementGiven !== false,
                             relevantOfficer: String(identityVerification.relevantOfficer || ""),
                         },
@@ -81407,31 +81367,9 @@
             async function submitSelectedCompaniesWorkflow() {
                 if (companiesHouseState.workflowBusy) return;
                 companiesHouseState.workflowAuthCodeOverrides = {};
-                let initiallySelected = chSelectedCompanies();
+                const initiallySelected = chSelectedCompanies();
                 if (!initiallySelected.length) {
                     chSetWorkflowStatus("Select at least one company before running the confirmation workflow.", "error");
-                    return;
-                }
-                const selectedIds = initiallySelected
-                    .map((company) => String(company?.id || "").trim())
-                    .filter(Boolean);
-                chSetWorkflowStatus("Refreshing selected clients from Companies House before opening workflow…", "muted");
-                try {
-                    await chSyncSelectedCompaniesFromCompaniesHouse(selectedIds);
-                    initiallySelected = chSelectedCompanies()
-                        .filter((company) => selectedIds.includes(String(company?.id || "").trim()));
-                } catch (error) {
-                    console.error("Unable to refresh selected Companies House records", error);
-                    if (error instanceof AuthRequiredError) {
-                        markAuthenticationRequired(error.message);
-                        return;
-                    }
-                    showToast(error?.message || "Unable to refresh selected Companies House records.", "error");
-                    chSetWorkflowStatus("Sync failed. Resolve the issue, then retry the workflow.", "error");
-                    return;
-                }
-                if (!initiallySelected.length) {
-                    chSetWorkflowStatus("No selected clients were available after sync. Re-select clients and retry.", "error");
                     return;
                 }
 

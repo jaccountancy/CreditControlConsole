@@ -195,63 +195,6 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertTrue(payload.get("tradingOnMarket"))
         self.assertTrue(payload.get("pscExemptAsSharesAdmittedOnMarket"))
 
-    def test_build_cs01_payload_includes_director_personal_code(self):
-        row = {
-            "company_number": "12345678",
-            "next_due_date": date.today(),
-            "share_capital": {
-                "confirmationStatement": {
-                    "identityVerification": {
-                        "required": True,
-                        "directorPersonalCodeSupplied": True,
-                        "directorPersonalCode": "AB12CD34",
-                        "verificationStatementGiven": True,
-                        "relevantOfficer": "A Director",
-                    }
-                }
-            },
-        }
-        payload = ch._build_cs01_payload(row)
-        self.assertEqual(
-            payload.get("identityVerification", {}).get("directorPersonalCode"),
-            "AB12CD34",
-        )
-
-    def test_deep_merge_dicts_preserves_nested_confirmation_statement_values(self):
-        base = {
-            "confirmationStatement": {
-                "identityVerification": {
-                    "directorPersonalCode": "ZXCV1234",
-                    "verificationStatementGiven": True,
-                },
-                "registeredEmailAddress": "ops@example.com",
-            }
-        }
-        patch = {
-            "confirmationStatement": {
-                "numberOfShareholders": 2,
-            }
-        }
-        merged = ch._deep_merge_dicts(base, patch)
-        self.assertEqual(
-            merged.get("confirmationStatement", {}).get("identityVerification", {}).get("directorPersonalCode"),
-            "ZXCV1234",
-        )
-        self.assertEqual(merged.get("confirmationStatement", {}).get("numberOfShareholders"), 2)
-        self.assertEqual(
-            merged.get("confirmationStatement", {}).get("registeredEmailAddress"),
-            "ops@example.com",
-        )
-
-    def test_extract_director_personal_code_from_nested_payloads(self):
-        payload = {
-            "items": [
-                {"identity_verification": {"personal_code": "ab-12 cd34"}}
-            ]
-        }
-        code = ch._extract_director_personal_code(payload)
-        self.assertEqual(code, "AB12CD34")
-
     def test_extract_shareholder_signals_ingests_company_and_filing_history_variants(self):
         payload = {
             "accounts": {
