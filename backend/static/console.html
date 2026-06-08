@@ -8435,6 +8435,20 @@
                 display: grid;
                 gap: 16px;
             }
+            .company-secretarial-hero {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 14px 16px;
+                align-items: start;
+            }
+            .company-secretarial-hero .detail-actions {
+                justify-self: end;
+                align-self: start;
+            }
+            .company-secretarial-hero .company-secretarial-toolbar {
+                grid-column: 1 / -1;
+                margin-top: 2px;
+            }
             .company-secretarial-toolbar {
                 display: flex;
                 flex-wrap: wrap;
@@ -8452,15 +8466,85 @@
                 gap: 8px;
                 align-items: center;
             }
-            .company-secretarial-toolbar-controls select {
-                min-height: 38px;
-                border: 1px solid var(--line);
-                border-radius: 10px;
+            .company-secretarial-filter-group {
+                display: grid;
+                gap: 6px;
+                min-width: 180px;
+            }
+            .company-secretarial-filter-group > span {
+                font-size: 0.65rem;
+                font-weight: 900;
+                letter-spacing: 0.09em;
+                text-transform: uppercase;
+                color: #6d7f9c;
+            }
+            .company-secretarial-filter-chips {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .company-secretarial-filter-chip {
+                min-height: 32px;
                 padding: 0 10px;
-                color: var(--ink);
-                font: inherit;
-                font-weight: 700;
-                background: var(--surface-strong);
+                border: 1px solid rgba(140, 159, 189, 0.45);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.88);
+                color: #2a3f63;
+                font-size: 0.78rem;
+                font-weight: 850;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                position: relative;
+                transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+            }
+            .company-secretarial-filter-chip:hover {
+                border-color: rgba(29, 103, 242, 0.45);
+                background: rgba(29, 103, 242, 0.08);
+                transform: translateY(-1px);
+            }
+            .company-secretarial-filter-chip.is-active {
+                color: #1142a8;
+                border-color: rgba(29, 103, 242, 0.6);
+                background: rgba(29, 103, 242, 0.14);
+                box-shadow: 0 4px 12px rgba(29, 103, 242, 0.15);
+            }
+            .company-secretarial-filter-chip-icon {
+                width: 16px;
+                height: 16px;
+                border-radius: 999px;
+                display: inline-grid;
+                place-items: center;
+                background: rgba(255, 255, 255, 0.92);
+                font-size: 0.7rem;
+                line-height: 1;
+            }
+            .company-secretarial-filter-chip[data-tooltip]:hover::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                left: 50%;
+                bottom: calc(100% + 8px);
+                transform: translateX(-50%);
+                max-width: 240px;
+                white-space: normal;
+                padding: 6px 9px;
+                border-radius: 8px;
+                font-size: 0.72rem;
+                font-weight: 800;
+                color: #f6f9ff;
+                background: rgba(26, 39, 63, 0.94);
+                box-shadow: 0 8px 20px rgba(13, 24, 43, 0.28);
+                pointer-events: none;
+                z-index: 10;
+            }
+            .company-secretarial-clear-filters {
+                min-height: 32px;
+                align-self: end;
+                border-radius: 999px;
+                padding: 0 12px;
+                font-size: 0.78rem;
+                font-weight: 850;
             }
             .company-secretarial-summary-grid {
                 display: grid;
@@ -8913,6 +8997,15 @@
                 color: #415575;
             }
             @media (max-width: 1260px) {
+                .company-secretarial-hero {
+                    grid-template-columns: 1fr;
+                }
+                .company-secretarial-hero .detail-actions {
+                    justify-self: start;
+                }
+                .company-secretarial-filter-group {
+                    min-width: 150px;
+                }
                 .company-secretarial-summary-grid {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
                 }
@@ -8930,6 +9023,17 @@
             @media (max-width: 720px) {
                 .company-secretarial-summary-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .company-secretarial-toolbar-controls {
+                    width: 100%;
+                    align-items: stretch;
+                }
+                .company-secretarial-filter-group {
+                    min-width: 100%;
+                }
+                .company-secretarial-filter-chip[data-tooltip]:hover::after {
+                    left: 0;
+                    transform: none;
                 }
                 .company-secretarial-form-grid {
                     grid-template-columns: 1fr;
@@ -24525,7 +24629,7 @@
 
                     <section class="late-charges-screen detail-card" id="companySecreterialScreen" hidden>
                         <section class="detail-panel company-secretarial-workspace">
-                            <div class="detail-hero">
+                            <div class="detail-hero company-secretarial-hero">
                                 <div class="company-secretarial-hero-copy">
                                     <p class="eyebrow">Non-CS01 secretarial operating system</p>
                                     <h3>Company Secretarial Submission System</h3>
@@ -24536,34 +24640,26 @@
                                     <button class="ghost-button" id="companySecretarialSeedDemoButton" type="button">Load sample queue</button>
                                     <button class="primary-button" id="companySecretarialCreateDraftButton" type="button">Create filing draft</button>
                                 </div>
-                            </div>
-                            <div class="company-secretarial-toolbar">
-                                <label class="search-wrap">
-                                    <span class="search-icon">⌕</span>
-                                    <input id="companySecretarialSearch" type="search" placeholder="Search company, filing type, status, owner, Companies House ref...">
-                                </label>
-                                <div class="company-secretarial-toolbar-controls">
-                                    <select id="companySecretarialStatusFilter" aria-label="Filter company secretarial filings by status">
-                                        <option value="all">All statuses</option>
-                                        <option value="DRAFT">Draft</option>
-                                        <option value="VALIDATED">Validated</option>
-                                        <option value="AWAITING_CLIENT_APPROVAL">Awaiting client approval</option>
-                                        <option value="AWAITING_INTERNAL_REVIEW">Awaiting internal review</option>
-                                        <option value="READY_TO_SUBMIT">Ready to submit</option>
-                                        <option value="SUBMITTED">Submitted</option>
-                                        <option value="COMPLETED">Completed</option>
-                                        <option value="VALIDATION_FAILED">Validation failed</option>
-                                        <option value="REJECTED">Rejected</option>
-                                    </select>
-                                    <select id="companySecretarialTypeFilter" aria-label="Filter by filing type">
-                                        <option value="all">All filing types</option>
-                                    </select>
-                                    <select id="companySecretarialRiskFilter" aria-label="Filter by risk level">
-                                        <option value="all">All risk levels</option>
-                                        <option value="low">Low risk</option>
-                                        <option value="medium">Medium risk</option>
-                                        <option value="high">High risk</option>
-                                    </select>
+                                <div class="company-secretarial-toolbar">
+                                    <label class="search-wrap">
+                                        <span class="search-icon">⌕</span>
+                                        <input id="companySecretarialSearch" type="search" placeholder="Search company, filing type, status, owner, Companies House ref...">
+                                    </label>
+                                    <div class="company-secretarial-toolbar-controls">
+                                        <div class="company-secretarial-filter-group" aria-label="Filter by status">
+                                            <span>Status</span>
+                                            <div class="company-secretarial-filter-chips" id="companySecretarialStatusFilterChips"></div>
+                                        </div>
+                                        <div class="company-secretarial-filter-group" aria-label="Filter by filing type">
+                                            <span>Filing type</span>
+                                            <div class="company-secretarial-filter-chips" id="companySecretarialTypeFilterChips"></div>
+                                        </div>
+                                        <div class="company-secretarial-filter-group" aria-label="Filter by risk level">
+                                            <span>Risk</span>
+                                            <div class="company-secretarial-filter-chips" id="companySecretarialRiskFilterChips"></div>
+                                        </div>
+                                        <button class="ghost-button company-secretarial-clear-filters" id="companySecretarialClearFiltersButton" type="button">Clear</button>
+                                    </div>
                                 </div>
                             </div>
                             <article class="me-report-insight-card me-report-table-card">
@@ -24605,7 +24701,7 @@
                                     </div>
                                     <div class="company-secretarial-wizard-steps" id="companySecretarialWizardSteps" aria-label="Filing wizard steps">
                                         <button class="ghost-button" type="button" data-company-secretarial-step-jump="1">1. Filing type</button>
-                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="2">2. Client</button>
+                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="2">2. Xero tenant</button>
                                         <button class="ghost-button" type="button" data-company-secretarial-step-jump="3">3. Filing details</button>
                                         <button class="ghost-button" type="button" data-company-secretarial-step-jump="4">4. Validate & create</button>
                                     </div>
@@ -24621,24 +24717,24 @@
                                             <input id="companySecretarialWizardFieldsPreview" type="text" readonly hidden>
                                         </section>
                                         <section class="company-secretarial-wizard-section" data-company-secretarial-step-section="2" hidden>
-                                            <h5>Step 2: Select client from register</h5>
-                                            <p class="detail-meta">Choose the client and we will pull through their company details from your client register automatically.</p>
+                                            <h5>Step 2: Select Xero organisation tenant</h5>
+                                            <p class="detail-meta">Choose a connected Xero organisation tenant ID. Company number and mapped company details are pulled through automatically.</p>
                                             <label>
-                                                Company
-                                                <input id="companySecretarialWizardCompanySearch" type="search" placeholder="Type client name to auto-select" autocomplete="off" required>
-                                                <select id="companySecretarialWizardCompany" required hidden></select>
+                                                Xero organisation tenant
+                                                <input id="companySecretarialWizardCompanySearch" type="search" placeholder="Search tenant name, tenant ID or company number" autocomplete="off" required>
+                                                <select id="companySecretarialWizardCompany" required></select>
                                             </label>
                                             <div class="company-secretarial-mini-grid is-wide" id="companySecretarialWizardClientRegisterSnapshot">
                                                 <article>
-                                                    <span>Client manager</span>
+                                                    <span>Owner</span>
                                                     <strong id="companySecretarialWizardSnapshotManager">—</strong>
                                                 </article>
                                                 <article>
-                                                    <span>Client register source</span>
+                                                    <span>Tenant ID</span>
                                                     <strong id="companySecretarialWizardSnapshotSource">—</strong>
                                                 </article>
                                                 <article>
-                                                    <span>Client email</span>
+                                                    <span>Company number</span>
                                                     <strong id="companySecretarialWizardSnapshotEmail">—</strong>
                                                 </article>
                                                 <article>
@@ -24702,7 +24798,8 @@
                                             </label>
                                             <label class="is-wide" id="companySecretarialWizardAddressLine1Wrap" hidden>
                                                 New registered office address line 1
-                                                <input id="companySecretarialWizardAddressLine1" type="text" placeholder="Address line 1">
+                                                <input id="companySecretarialWizardAddressLine1" type="text" placeholder="Address line 1" list="companySecretarialAddressLine1Suggestions">
+                                                <datalist id="companySecretarialAddressLine1Suggestions"></datalist>
                                             </label>
                                             <label id="companySecretarialWizardAddressLine2Wrap" hidden>
                                                 Address line 2
@@ -24761,31 +24858,18 @@
                                                     <strong id="companySecretarialWizardSummaryType">—</strong>
                                                 </article>
                                                 <article>
-                                                    <span>Client</span>
+                                                    <span>Tenant</span>
                                                     <strong id="companySecretarialWizardSummaryClient">—</strong>
-                                                </article>
-                                                <article>
-                                                    <span>Approval checks</span>
-                                                    <strong id="companySecretarialWizardSummaryApprovals">Pending</strong>
                                                 </article>
                                                 <article>
                                                     <span>Validation</span>
                                                     <strong id="companySecretarialWizardSummaryValidation">Not run</strong>
                                                 </article>
                                             </div>
-                                            <div class="company-secretarial-form-ticks is-wide">
-                                                <label><input id="companySecretarialWizardEvidence" type="checkbox"> Supporting evidence attached</label>
-                                                <label><input id="companySecretarialWizardClientApproval" type="checkbox"> Client approval captured</label>
-                                                <label><input id="companySecretarialWizardInternalApproval" type="checkbox"> Internal review completed</label>
-                                            </div>
                                             <div class="detail-actions is-wide">
                                                 <button class="ghost-button" id="companySecretarialWizardValidateButton" type="button">Run validation</button>
                                                 <button class="primary-button" id="companySecretarialWizardSubmitButton" type="submit" disabled>Create draft filing</button>
                                             </div>
-                                            <label class="is-wide">
-                                                Prepared Companies House submission payload
-                                                <textarea id="companySecretarialWizardSubmissionPreview" readonly></textarea>
-                                            </label>
                                         </section>
                                         <div class="detail-actions is-wide company-secretarial-wizard-nav">
                                             <button class="ghost-button" id="companySecretarialWizardBackButton" type="button">Back</button>
@@ -35915,92 +35999,91 @@
                 };
             }
 
-            function companySecretarialCompanies() {
-                const merged = new Map();
-                const pushCompany = (company = {}) => {
-                    const companyNumber = normaliseCompanyNumberInput(company.companyNumber || "");
-                    const clientId = String(company.clientId || "");
-                    const key = companyNumber || clientId || `name:${normaliseStatus(company.companyName || "")}`;
-                    if (!key) return;
-                    const existing = merged.get(key) || {};
-                    merged.set(key, {
-                        ...existing,
-                        ...company,
-                        companyNumber: companyNumber || existing.companyNumber || "",
-                        companyName: company.companyName || existing.companyName || "Unknown company",
-                        manager: company.manager || existing.manager || "Client Manager",
-                        source: company.source || existing.source || "xero",
-                    });
+            function companySecretarialAddressSuggestions() {
+                const suggestions = new Map();
+                const addSuggestion = (rawAddress = "") => {
+                    const parsed = companySecretarialAddressParts(rawAddress);
+                    const line1 = String(parsed?.line1 || "").trim();
+                    if (!line1) return;
+                    const key = normaliseStatus(line1);
+                    if (!key || suggestions.has(key)) return;
+                    suggestions.set(key, parsed);
                 };
-
-                companySecretarialRegisterRows().forEach((row, index) => {
-                    const companyNumber = normaliseCompanyNumberInput(row?.companyNumber || "");
-                    const companyName = String(row?.displayName || row?.companyName || "").trim();
-                    const clientId = String(row?.clientId || "");
-                    pushCompany({
-                        id: `co-reg-${companyNumber || clientId || index + 1}`,
-                        clientId,
-                        companyName: companyName || `Client ${index + 1}`,
-                        companyNumber: companyNumber || "",
-                        manager: String(row?.clientManager || "").trim() || "Client Manager",
-                        clientEmail: String(row?.clientEmail || "").trim(),
-                        clientPhone: String(row?.clientPhone || "").trim(),
-                        clientAddress: String(row?.clientAddress || "").trim(),
-                        authCodeHint: String(row?.authCodeHint || "").trim(),
-                        sourceFilename: String(row?.sourceFilename || "").trim(),
-                        uploadedAt: String(row?.uploadedAt || "").trim(),
-                        source: "client-register",
-                    });
+                companySecretarialCompanies().forEach((company) => addSuggestion(company?.clientAddress || ""));
+                companySecretarialQueue.forEach((row) => {
+                    const office = row?.formData?.newRegisteredOffice || {};
+                    addSuggestion([office?.line1, office?.line2, office?.city, office?.postcode, office?.country].filter(Boolean).join(", "));
                 });
+                return Array.from(suggestions.values()).filter((item) => String(item?.line1 || "").trim());
+            }
 
-                (state.customers || [])
-                    .filter((customer) => customer?.id)
-                    .slice(0, 300)
-                    .forEach((customer, index) => {
-                        const rawNumber = String(
-                            customer.companyNumber
-                            || customer.registrationNumber
-                            || customer.companyNo
-                            || customer.accountNumber
-                            || ""
-                        ).toUpperCase().replace(/[^A-Z0-9]/g, "");
-                        const companyNumber = normaliseCompanyNumberInput(rawNumber);
-                        const primaryAddress = Array.isArray(customer?.addresses) ? (customer.addresses[0] || {}) : {};
-                        const addressLines = [
-                            primaryAddress.addressLine1,
-                            primaryAddress.addressLine2,
-                            primaryAddress.city,
-                            primaryAddress.region,
-                            primaryAddress.postalCode,
-                            primaryAddress.country
-                        ].map((value) => String(value || "").trim()).filter(Boolean);
-                        pushCompany({
-                            id: `co-${customer.id}`,
-                            clientId: String(customer.id),
-                            companyName: String(customer.name || `Client ${index + 1}`).trim(),
+            function companySecretarialAddressSuggestionByLine1(line1 = "") {
+                const key = normaliseStatus(line1);
+                if (!key) return null;
+                return companySecretarialAddressSuggestions().find((item) => normaliseStatus(item?.line1 || "") === key) || null;
+            }
+
+            function companySecretarialApplyAddressSuggestionFromLine1(force = false) {
+                const line1Input = document.getElementById("companySecretarialWizardAddressLine1");
+                if (!line1Input) return;
+                const suggestion = companySecretarialAddressSuggestionByLine1(line1Input.value || "");
+                if (!suggestion) return;
+                const assign = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (!node) return;
+                    if (force || !String(node.value || "").trim()) node.value = String(value || "");
+                };
+                assign("companySecretarialWizardAddressLine2", suggestion.line2 || "");
+                assign("companySecretarialWizardAddressCity", suggestion.city || "");
+                assign("companySecretarialWizardAddressPostcode", suggestion.postcode || "");
+                assign("companySecretarialWizardAddressCountry", suggestion.country || "United Kingdom");
+            }
+
+            function companySecretarialCompanies() {
+                const registerByNumber = new Map();
+                companySecretarialRegisterRows().forEach((row) => {
+                    const number = normaliseCompanyNumberInput(row?.companyNumber || "");
+                    if (!number) return;
+                    if (!registerByNumber.has(number)) registerByNumber.set(number, row || {});
+                });
+                const rows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                return rows
+                    .filter((row) => {
+                        const tenantId = String(row?.tenantId || "").trim();
+                        if (!tenantId) return false;
+                        const tenantType = String(row?.tenantType || "").trim().toLowerCase();
+                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                    })
+                    .map((row, index) => {
+                        const tenantId = String(row?.tenantId || "").trim();
+                        const tenantName = String(row?.tenantName || "").trim() || `Tenant ${index + 1}`;
+                        const companyNumber = normaliseCompanyNumberInput(
+                            row?.mapping?.companyNumber || row?.companiesHouse?.companyNumber || ""
+                        );
+                        const registerRecord = registerByNumber.get(companyNumber) || {};
+                        const companyName = String(
+                            row?.companiesHouse?.companyName
+                            || row?.mapping?.companyName
+                            || tenantName
+                        ).trim();
+                        return {
+                            id: `tenant-${tenantId}`,
+                            tenantId,
+                            tenantName,
+                            clientId: tenantId,
+                            companyName: companyName || tenantName,
                             companyNumber: companyNumber || "",
-                            manager: customer.owner || customer.accountManager || "Client Manager",
-                            clientEmail: String(customer.email || "").trim(),
-                            clientPhone: String(customer.phone || "").trim(),
-                            clientAddress: addressLines.join(", "),
-                            source: "xero",
-                        });
-                    });
-
-                const customers = Array.from(merged.values())
-                    .map((company, index) => ({
-                        ...company,
-                        id: company.id || `co-${company.companyNumber || company.clientId || index + 1}`,
-                        companyName: company.companyName || `Client ${index + 1}`,
-                        companyNumber: company.companyNumber || "",
-                    }))
-                    .sort((a, b) => String(a.companyName || "").localeCompare(String(b.companyName || "")));
-                if (customers.length) return customers;
-                return [
-                    { id: "co-demo-1", clientId: "demo-1", companyName: "Riverview Joinery Ltd", companyNumber: "14100231", manager: "Jay" },
-                    { id: "co-demo-2", clientId: "demo-2", companyName: "North Star Media Ltd", companyNumber: "12783019", manager: "Amie" },
-                    { id: "co-demo-3", clientId: "demo-3", companyName: "Oakstone Property Group Ltd", companyNumber: "08944120", manager: "Accounts Team" },
-                ];
+                            manager: String(registerRecord?.clientManager || "Client Manager").trim() || "Client Manager",
+                            clientEmail: String(registerRecord?.clientEmail || "").trim(),
+                            clientPhone: String(registerRecord?.clientPhone || "").trim(),
+                            clientAddress: String(registerRecord?.clientAddress || "").trim(),
+                            authCodeHint: String(registerRecord?.authCodeHint || "").trim(),
+                            sourceFilename: String(registerRecord?.sourceFilename || "").trim(),
+                            uploadedAt: String(registerRecord?.uploadedAt || "").trim(),
+                            source: "xero-organisation-tenant",
+                        };
+                    })
+                    .sort((a, b) => String(a.tenantName || "").localeCompare(String(b.tenantName || ""), "en-GB"));
             }
 
             function companySecretarialCompanyProfile(companyId = "") {
@@ -36080,6 +36163,7 @@
                     submissionMode: document.getElementById("companySecretarialWizardMode")?.value || config.mode || "manual",
                     company: {
                         id: profile.id,
+                        tenantId: profile.tenantId || "",
                         clientId: profile.clientId || "",
                         companyName: profile.companyName || "",
                         companyNumber: profile.companyNumber || "",
@@ -36094,9 +36178,9 @@
                         address: profile.clientAddress || "",
                     },
                     checklist: {
-                        evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
-                        clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
-                        internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
+                        evidenceAttached: true,
+                        clientApproved: true,
+                        internalApproved: true,
                     },
                     notes: String(document.getElementById("companySecretarialWizardNotes")?.value || "").trim(),
                     formData,
@@ -36172,8 +36256,8 @@
                     if (node) node.textContent = value || "—";
                 };
                 setText("companySecretarialWizardSnapshotManager", profile.manager || "Client Manager");
-                setText("companySecretarialWizardSnapshotSource", profile.sourceFilename || profile.source || "Direct client data");
-                setText("companySecretarialWizardSnapshotEmail", profile.clientEmail || "Not available");
+                setText("companySecretarialWizardSnapshotSource", profile.tenantId || "Tenant not available");
+                setText("companySecretarialWizardSnapshotEmail", profile.companyNumber || "Company number not mapped");
                 setText("companySecretarialWizardSnapshotAuth", profile.authCodeHint ? `On file (${profile.authCodeHint})` : "Not stored");
 
                 const assignee = document.getElementById("companySecretarialWizardAssignee");
@@ -36226,8 +36310,9 @@
                 const normalisedTerm = normaliseStatus(rawTerm);
                 let matched = null;
                 if (normalisedTerm) {
-                    matched = companies.find((company) => normaliseStatus(company.companyName || "").startsWith(normalisedTerm))
-                        || companies.find((company) => normaliseStatus(company.companyName || "").includes(normalisedTerm))
+                    matched = companies.find((company) => normaliseStatus(company.tenantName || "").startsWith(normalisedTerm))
+                        || companies.find((company) => normaliseStatus(company.tenantName || "").includes(normalisedTerm))
+                        || companies.find((company) => normaliseStatus(company.tenantId || "").includes(normalisedTerm))
                         || companies.find((company) => normaliseStatus(company.companyNumber || "").includes(normalisedTerm));
                 }
                 if (!matched) {
@@ -36235,8 +36320,8 @@
                 }
                 if (matched) {
                     companyPicker.value = String(matched.id || "");
-                    if (force || !rawTerm || normaliseStatus(matched.companyName || "").startsWith(normalisedTerm)) {
-                        searchInput.value = String(matched.companyName || "");
+                    if (force || !rawTerm || normaliseStatus(matched.tenantName || "").startsWith(normalisedTerm)) {
+                        searchInput.value = String(matched.tenantName || matched.companyName || "");
                     }
                 }
             }
@@ -36244,10 +36329,16 @@
             function openCompanySecretarialWizard() {
                 const modal = document.getElementById("companySecretarialWizardModal");
                 if (!modal) return;
+                if (!companySecretarialCompanies().length) {
+                    showToast("Connect at least one Xero organisation tenant before creating a filing draft.", "info");
+                    return;
+                }
                 modal.hidden = false;
                 companySecretarialWizardStep = 1;
                 companySecretarialWizardValidationPassed = false;
                 companySecretarialWizardLastIssues = [];
+                const wizardFee = document.getElementById("companySecretarialWizardFee");
+                if (wizardFee) wizardFee.dataset.feeTouched = "false";
                 companySecretarialToggleWizardTypeFields();
                 syncCompanySecretarialWizardSelectedTypeMeta();
                 companySecretarialSyncWizardCompanySearch(true);
@@ -36471,14 +36562,55 @@
                 return "is-low";
             }
 
+            function companySecretarialStatusFilterOptions() {
+                return [
+                    { value: "all", label: "All", icon: "*", tooltip: "Show every status" },
+                    { value: "DRAFT", label: "Draft", icon: "D", tooltip: "Unvalidated drafts" },
+                    { value: "VALIDATED", label: "Validated", icon: "V", tooltip: "Validated and ready for approval" },
+                    { value: "AWAITING_CLIENT_APPROVAL", label: "Client", icon: "C", tooltip: "Awaiting client approval" },
+                    { value: "AWAITING_INTERNAL_REVIEW", label: "Review", icon: "R", tooltip: "Awaiting internal review" },
+                    { value: "READY_TO_SUBMIT", label: "Ready", icon: ">", tooltip: "Ready to submit" },
+                    { value: "SUBMITTED", label: "Sent", icon: "^", tooltip: "Submitted to Companies House" },
+                    { value: "COMPLETED", label: "Done", icon: "+", tooltip: "Completed filings" },
+                    { value: "VALIDATION_FAILED", label: "Failed", icon: "!", tooltip: "Validation failed" },
+                    { value: "REJECTED", label: "Rejected", icon: "×", tooltip: "Rejected filings" },
+                ];
+            }
+
+            function companySecretarialRiskFilterOptions() {
+                return [
+                    { value: "all", label: "All", icon: "*", tooltip: "All risk levels" },
+                    { value: "low", label: "Low", icon: "L", tooltip: "Low-risk filings" },
+                    { value: "medium", label: "Med", icon: "M", tooltip: "Medium-risk filings" },
+                    { value: "high", label: "High", icon: "H", tooltip: "High-risk filings" },
+                ];
+            }
+
+            function companySecretarialTypeIcon(typeCode = "") {
+                const safeCode = String(typeCode || "").toUpperCase();
+                if (safeCode === "AD01") return "A";
+                if (safeCode === "NM01") return "N";
+                if (safeCode === "DS01") return "D";
+                return "T";
+            }
+
+            function companySecretarialRenderFilterChips(host, options, selectedValue, group) {
+                if (!host) return;
+                host.innerHTML = (options || []).map((option) => {
+                    const value = String(option?.value || "");
+                    const label = String(option?.label || value || "Option");
+                    const icon = String(option?.icon || "T");
+                    const tooltip = String(option?.tooltip || label);
+                    const active = value === String(selectedValue || "");
+                    return `<button class="company-secretarial-filter-chip ${active ? "is-active" : ""}" type="button" data-company-secretarial-chip-group="${escapeHTML(group)}" data-company-secretarial-chip-value="${escapeHTML(value)}" data-tooltip="${escapeHTML(tooltip)}" aria-pressed="${active ? "true" : "false"}"><span class="company-secretarial-filter-chip-icon">${escapeHTML(icon)}</span>${escapeHTML(label)}</button>`;
+                }).join("");
+            }
+
             function companySecretarialValidationMessages(payload = {}, typeConfig = null) {
                 const checks = [];
                 if (!payload.companyId) checks.push("Select a company.");
                 if (!payload.filingType) checks.push("Select a filing type.");
                 if (!payload.effectiveDate) checks.push("Effective date is required.");
-                if (!payload.evidenceAttached) checks.push("Attach supporting evidence.");
-                if (typeConfig?.clientApprovalRequired && !payload.clientApproved) checks.push("Client approval is mandatory.");
-                if (typeConfig?.internalApprovalRequired && !payload.internalApproved) checks.push("Internal approval is mandatory.");
                 const formData = payload?.formData || {};
                 if (typeConfig?.code === "NM01") {
                     const proposedName = String(formData?.proposedCompanyName || "").trim();
@@ -36548,9 +36680,9 @@
                 const tableBody = document.getElementById("companySecretarialTableBody");
                 const queueTitle = document.getElementById("companySecretarialQueueTitle");
                 const searchInput = document.getElementById("companySecretarialSearch");
-                const statusSelect = document.getElementById("companySecretarialStatusFilter");
-                const typeSelect = document.getElementById("companySecretarialTypeFilter");
-                const riskSelect = document.getElementById("companySecretarialRiskFilter");
+                const statusChips = document.getElementById("companySecretarialStatusFilterChips");
+                const typeChips = document.getElementById("companySecretarialTypeFilterChips");
+                const riskChips = document.getElementById("companySecretarialRiskFilterChips");
                 const typePicker = document.getElementById("companySecretarialWizardType");
                 const companyPicker = document.getElementById("companySecretarialWizardCompany");
                 const companyPickerSearch = document.getElementById("companySecretarialWizardCompanySearch");
@@ -36560,14 +36692,32 @@
                 const phaseList = document.getElementById("companySecretarialPhaseList");
                 const controlGrid = document.getElementById("companySecretarialControlGrid");
                 if (searchInput && searchInput.value !== companySecretarialSearchTerm) searchInput.value = companySecretarialSearchTerm;
-                if (statusSelect && statusSelect.value !== companySecretarialStatusFilter) statusSelect.value = companySecretarialStatusFilter;
-                if (riskSelect && riskSelect.value !== companySecretarialRiskFilter) riskSelect.value = companySecretarialRiskFilter;
-                if (typeSelect) {
-                    const current = typeSelect.value || companySecretarialTypeFilter;
-                    typeSelect.innerHTML = `<option value="all">All filing types</option>${companySecretarialFilingTypeRegistry.map((item) => `<option value="${escapeHTML(item.code)}">${escapeHTML(item.code)} · ${escapeHTML(item.name)}</option>`).join("")}`;
-                    typeSelect.value = companySecretarialTypeFilter === "all" ? "all" : companySecretarialTypeFilter;
-                    if (!typeSelect.value) typeSelect.value = current || "all";
-                }
+                companySecretarialRenderFilterChips(
+                    statusChips,
+                    companySecretarialStatusFilterOptions(),
+                    companySecretarialStatusFilter,
+                    "status"
+                );
+                companySecretarialRenderFilterChips(
+                    riskChips,
+                    companySecretarialRiskFilterOptions(),
+                    companySecretarialRiskFilter,
+                    "risk"
+                );
+                companySecretarialRenderFilterChips(
+                    typeChips,
+                    [
+                        { value: "all", label: "All", icon: "*", tooltip: "All filing types" },
+                        ...companySecretarialFilingTypeRegistry.map((item) => ({
+                            value: String(item.code || ""),
+                            label: String(item.code || ""),
+                            icon: companySecretarialTypeIcon(item.code),
+                            tooltip: `${item.code} · ${item.name}`,
+                        })),
+                    ],
+                    companySecretarialTypeFilter,
+                    "type"
+                );
                 if (typePicker) {
                     const previous = typePicker.value;
                     typePicker.innerHTML = companySecretarialFilingTypeRegistry.map((item) => `<option value="${escapeHTML(item.code)}">${escapeHTML(item.code)} · ${escapeHTML(item.name)}</option>`).join("");
@@ -36576,11 +36726,31 @@
                 if (companyPicker) {
                     const companies = companySecretarialCompanies();
                     const previous = companyPicker.value;
-                    companyPicker.innerHTML = companies.map((company) => `<option value="${escapeHTML(company.id)}">${escapeHTML(company.companyName)} · ${escapeHTML(company.companyNumber)}</option>`).join("");
+                    companyPicker.innerHTML = companies.length
+                        ? companies.map((company) => `
+                            <option value="${escapeHTML(company.id)}">
+                                ${escapeHTML(company.tenantName || company.companyName || company.tenantId || "Tenant")}
+                                ${company.tenantId ? ` · ${escapeHTML(company.tenantId)}` : ""}
+                                ${company.companyNumber ? ` · ${escapeHTML(company.companyNumber)}` : " · Company number missing"}
+                            </option>
+                        `).join("")
+                        : '<option value="">No Xero organisation tenants connected</option>';
                     companyPicker.value = previous || companyPicker.value || companies[0]?.id || "";
+                    companyPicker.disabled = !companies.length;
+                    if (companyPickerSearch) {
+                        companyPickerSearch.disabled = !companies.length;
+                        if (!companies.length) companyPickerSearch.value = "";
+                    }
                 }
                 const effectiveDateInput = document.getElementById("companySecretarialWizardEffectiveDate");
                 if (effectiveDateInput && !effectiveDateInput.value) effectiveDateInput.value = localDateKey();
+                const addressLine1Suggestions = document.getElementById("companySecretarialAddressLine1Suggestions");
+                if (addressLine1Suggestions) {
+                    const options = companySecretarialAddressSuggestions()
+                        .map((item) => `<option value="${escapeHTML(item?.line1 || "")}"></option>`)
+                        .join("");
+                    addressLine1Suggestions.innerHTML = options;
+                }
                 const totals = {
                     total: companySecretarialQueue.length,
                     validated: companySecretarialQueue.filter((row) => row.status === "VALIDATED").length,
@@ -38271,19 +38441,16 @@
 
             function companySecretarialWizardStepHint(step = 1) {
                 if (step === 1) return "Step 1 of 4: Select the filing type you want to submit.";
-                if (step === 2) return "Step 2 of 4: Select the client from your client register.";
+                if (step === 2) return "Step 2 of 4: Select a connected Xero organisation tenant.";
                 if (step === 3) return "Step 3 of 4: Complete filing details and notes.";
                 return "Step 4 of 4: Run validation and then create the filing draft.";
             }
 
             function companySecretarialWizardIssueFix(issue = "") {
                 const value = String(issue || "");
-                if (/Select a company/i.test(value)) return "Go to Step 2 and choose a client from the register.";
+                if (/Select a company/i.test(value)) return "Go to Step 2 and choose a connected Xero organisation tenant.";
                 if (/Select a filing type/i.test(value)) return "Go to Step 1 and choose the submission type first.";
                 if (/Effective date/i.test(value)) return "Go to Step 3 and enter an effective date.";
-                if (/supporting evidence/i.test(value)) return "In Step 4, tick 'Supporting evidence attached' once evidence is uploaded.";
-                if (/Client approval/i.test(value)) return "In Step 4, tick 'Client approval captured' after approval is recorded.";
-                if (/Internal approval/i.test(value)) return "In Step 4, tick 'Internal review completed' after internal sign-off.";
                 if (/proposed company name/i.test(value)) return "For NM01, complete 'Proposed company name' in Step 3.";
                 if (/address line 1/i.test(value)) return "For AD01, enter the first line of the new registered office in Step 3.";
                 if (/requires city/i.test(value)) return "For AD01, enter the town/city in Step 3.";
@@ -38361,13 +38528,10 @@
                     if (node) node.textContent = value;
                 };
                 setText("companySecretarialWizardSummaryType", config ? `${config.code} - ${config.name}` : "Not selected");
-                setText("companySecretarialWizardSummaryClient", profile ? (profile.companyName || "Selected client") : "Not selected");
-                const approvals = [
-                    Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
-                    Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
-                    Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
-                ].filter(Boolean).length;
-                setText("companySecretarialWizardSummaryApprovals", `${approvals}/3 complete`);
+                setText(
+                    "companySecretarialWizardSummaryClient",
+                    profile ? `${profile.tenantName || profile.companyName || "Tenant"}${profile.companyNumber ? ` · ${profile.companyNumber}` : ""}` : "Not selected"
+                );
                 const validationText = companySecretarialWizardValidationPassed
                     ? "Passed"
                     : companySecretarialWizardLastIssues.length
@@ -38390,10 +38554,23 @@
                 const config = companySecretarialTypeConfig(typeCode);
                 if (preview) preview.value = config?.fields?.join(", ") || "";
                 if (mode && config) mode.value = config.mode || "manual";
-                if (feeInput && config && Number(feeInput.value || 0) <= 0) feeInput.value = Number(config.fee || 0).toFixed(2);
+                if (feeInput && config) {
+                    const configuredFee = Number(config.fee || 0).toFixed(2);
+                    const lastType = String(feeInput.dataset.feeType || "");
+                    const touched = feeInput.dataset.feeTouched === "true";
+                    if (lastType !== typeCode || !touched) feeInput.value = configuredFee;
+                    feeInput.dataset.feeType = typeCode;
+                    if (config.code === "AD01") {
+                        feeInput.value = "0.00";
+                        feeInput.readOnly = true;
+                    } else {
+                        feeInput.readOnly = false;
+                    }
+                }
                 syncCompanySecretarialWizardSelectedTypeMeta();
                 companySecretarialToggleWizardTypeFields();
                 companySecretarialPopulateWizardFromProfile(false);
+                if (typeCode === "AD01") companySecretarialApplyAddressSuggestionFromLine1(false);
                 companySecretarialRenderWizardSubmissionPreview();
                 invalidateCompanySecretarialWizardValidation();
             }
@@ -38409,9 +38586,9 @@
                     filingType: typeCode,
                     effectiveDate: document.getElementById("companySecretarialWizardEffectiveDate")?.value || "",
                     notes: document.getElementById("companySecretarialWizardNotes")?.value || "",
-                    clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
-                    internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
-                    evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
+                    clientApproved: true,
+                    internalApproved: true,
+                    evidenceAttached: true,
                     formData: draftPayload?.formData || {},
                 };
                 const issues = companySecretarialValidationMessages(payload, config);
@@ -38462,9 +38639,9 @@
                     filingType: config.code,
                     effectiveDate,
                     notes: document.getElementById("companySecretarialWizardNotes")?.value || "",
-                    clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
-                    internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
-                    evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
+                    clientApproved: true,
+                    internalApproved: true,
+                    evidenceAttached: true,
                     formData: draftPayload?.formData || {},
                 };
                 const mode = document.getElementById("companySecretarialWizardMode")?.value || config.mode || "manual";
@@ -38477,11 +38654,7 @@
                     target.setDate(target.getDate() + (config.risk === "high" ? 5 : 12));
                     return localDateKey(target);
                 })();
-                const nextStatus = config.clientApprovalRequired && !payload.clientApproved
-                    ? "AWAITING_CLIENT_APPROVAL"
-                    : config.internalApprovalRequired && !payload.internalApproved
-                    ? "AWAITING_INTERNAL_REVIEW"
-                    : "READY_TO_SUBMIT";
+                const nextStatus = "READY_TO_SUBMIT";
                 try {
                     await createCompanySecretarialFiling({
                         filingType: config.code,
@@ -38494,10 +38667,10 @@
                         mode,
                         dueDate,
                         effectiveDate,
-                        clientApprovalRequired: config.clientApprovalRequired,
-                        clientApprovalStatus: config.clientApprovalRequired ? (payload.clientApproved ? "approved" : "requested") : "not_required",
-                        internalApprovalRequired: config.internalApprovalRequired,
-                        internalApprovalStatus: config.internalApprovalRequired ? (payload.internalApproved ? "approved" : "pending") : "not_required",
+                        clientApprovalRequired: false,
+                        clientApprovalStatus: "not_required",
+                        internalApprovalRequired: false,
+                        internalApprovalStatus: "not_required",
                         evidenceAttached: payload.evidenceAttached,
                         companiesHouseStatus: "Draft prepared for Companies House",
                         feeAmount: Number.isFinite(feeAmount) ? feeAmount : 0,
@@ -79047,31 +79220,75 @@
                         .join(" | ") || "No active PSC records loaded";
                 };
                 const normaliseShareholdings = (value) => {
-                    const rows = Array.isArray(value) ? value : [];
-                    return rows
+                    const shareCapital = value && typeof value === "object" ? value : {};
+                    const rows = Array.isArray(value)
+                        ? value
+                        : Array.isArray(shareCapital?.shareholdings)
+                            ? shareCapital.shareholdings
+                            : Array.isArray(shareCapital?.holdings)
+                                ? shareCapital.holdings
+                                : [];
+                    const holderNameFromItem = (holder) => {
+                        if (!holder) return "";
+                        if (typeof holder === "string") return holder.trim();
+                        if (typeof holder !== "object") return "";
+                        const direct = String(holder.name || holder.shareholderName || holder.fullName || "").trim();
+                        if (direct) return direct;
+                        const forename = String(holder.forename || holder.firstName || "").trim();
+                        const surname = String(holder.surname || holder.lastName || "").trim();
+                        const combined = `${forename} ${surname}`.trim();
+                        return combined || "";
+                    };
+                    const normalisedRows = rows
                         .filter((row) => row && typeof row === "object")
                         .map((row) => {
-                            const shareClass = String(row.shareClass || row.share_class || "").trim() || "Share class";
-                            const numberHeld = String(row.numberHeld ?? row.number_held ?? "").trim() || "—";
-                            const holders = Array.isArray(row.shareholders) ? row.shareholders : [];
-                            const holderNames = holders
-                                .map((holder) => {
-                                    if (!holder || typeof holder !== "object") return "";
-                                    const direct = String(holder.name || "").trim();
-                                    if (direct) return direct;
-                                    const forename = String(holder.forename || holder.firstName || "").trim();
-                                    const surname = String(holder.surname || holder.lastName || "").trim();
-                                    const combined = `${forename} ${surname}`.trim();
-                                    return combined || "";
-                                })
-                                .filter(Boolean);
+                            const shareClass = String(row.shareClass || row.share_class || row.class || "").trim() || "Share class";
+                            const numberHeld = String(
+                                row.numberHeld
+                                ?? row.number_held
+                                ?? row.numberOfShares
+                                ?? row.number_of_shares
+                                ?? row.totalShares
+                                ?? row.total_shares
+                                ?? ""
+                            ).trim() || "—";
+                            const rawHolders = Array.isArray(row.shareholders)
+                                ? row.shareholders
+                                : Array.isArray(row.holders)
+                                    ? row.holders
+                                    : Array.isArray(row.members)
+                                        ? row.members
+                                        : [];
+                            const holderNames = rawHolders.map(holderNameFromItem).filter(Boolean);
+                            if (!holderNames.length) {
+                                const inlineName = holderNameFromItem(row.shareholder || row.member || row);
+                                if (inlineName) holderNames.push(inlineName);
+                            }
+                            const shareholderCount = Number(row.shareholderCount || row.shareholder_count || holderNames.length || 0) || 0;
                             return {
                                 shareClass,
                                 numberHeld,
                                 shareholderNames: holderNames.length ? holderNames.join(", ") : "No shareholder names provided",
-                                shareholderCount: holderNames.length,
+                                shareholderCount: shareholderCount || holderNames.length,
                             };
                         });
+                    if (normalisedRows.length) return normalisedRows;
+                    const directNames = Array.isArray(shareCapital?.shareholders)
+                        ? shareCapital.shareholders.map(holderNameFromItem).filter(Boolean)
+                        : [];
+                    const statedCount = Number(
+                        shareCapital?.numberOfShareholders
+                        ?? shareCapital?.number_of_shareholders
+                        ?? directNames.length
+                        ?? 0
+                    ) || 0;
+                    if (!directNames.length && !statedCount) return [];
+                    return [{
+                        shareClass: "Ordinary shares",
+                        numberHeld: "—",
+                        shareholderNames: directNames.length ? directNames.join(", ") : "Shareholder names not provided in Companies House data",
+                        shareholderCount: statedCount || directNames.length,
+                    }];
                 };
                 const rows = companies.map((company) => {
                     const shareCapital = (company && typeof company.shareCapital === "object" && company.shareCapital) ? company.shareCapital : {};
@@ -79099,7 +79316,7 @@
                     const activePscCount = (Array.isArray(company?.pscs) ? company.pscs : [])
                         .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
                         .length;
-                    const shareholdings = normaliseShareholdings(shareCapital.shareholdings);
+                    const shareholdings = normaliseShareholdings(shareCapital);
                     const shareholdingsSummary = shareholdings.length
                         ? shareholdings.slice(0, 5).map((row) => {
                             if (!row || typeof row !== "object") return "";
@@ -80867,25 +81084,50 @@
                     companySecretarialSearchTerm = event.target.value || "";
                     renderCompanySecretarialScreen();
                 });
-                const statusFilter = document.getElementById("companySecretarialStatusFilter");
-                if (statusFilter) statusFilter.addEventListener("change", (event) => {
-                    companySecretarialStatusFilter = event.target.value || "all";
-                    renderCompanySecretarialScreen();
-                });
-                const typeFilter = document.getElementById("companySecretarialTypeFilter");
-                if (typeFilter) typeFilter.addEventListener("change", (event) => {
-                    companySecretarialTypeFilter = event.target.value || "all";
-                    renderCompanySecretarialScreen();
-                });
-                const riskFilter = document.getElementById("companySecretarialRiskFilter");
-                if (riskFilter) riskFilter.addEventListener("change", (event) => {
-                    companySecretarialRiskFilter = event.target.value || "all";
-                    renderCompanySecretarialScreen();
+                const toolbarControls = document.querySelector(".company-secretarial-toolbar-controls");
+                toolbarControls?.addEventListener("click", (event) => {
+                    const chip = event.target.closest?.("[data-company-secretarial-chip-group][data-company-secretarial-chip-value]");
+                    if (chip) {
+                        const group = String(chip.dataset.companySecretarialChipGroup || "");
+                        const value = String(chip.dataset.companySecretarialChipValue || "all");
+                        if (group === "status") companySecretarialStatusFilter = value || "all";
+                        if (group === "type") companySecretarialTypeFilter = value || "all";
+                        if (group === "risk") companySecretarialRiskFilter = value || "all";
+                        renderCompanySecretarialScreen();
+                        return;
+                    }
+                    const clearButton = event.target.closest?.("#companySecretarialClearFiltersButton");
+                    if (clearButton) {
+                        companySecretarialStatusFilter = "all";
+                        companySecretarialTypeFilter = "all";
+                        companySecretarialRiskFilter = "all";
+                        companySecretarialSearchTerm = "";
+                        renderCompanySecretarialScreen();
+                    }
                 });
                 const wizardType = document.getElementById("companySecretarialWizardType");
                 if (wizardType) wizardType.addEventListener("change", updateCompanySecretarialWizardFieldsPreview);
+                const wizardFee = document.getElementById("companySecretarialWizardFee");
+                if (wizardFee) {
+                    wizardFee.addEventListener("input", () => {
+                        wizardFee.dataset.feeTouched = "true";
+                    });
+                }
                 document.getElementById("companySecretarialWizardCompany")?.addEventListener("change", () => {
                     companySecretarialPopulateWizardFromProfile(true);
+                    companySecretarialSyncWizardCompanySearch(true);
+                    companySecretarialRenderWizardSubmissionPreview();
+                    invalidateCompanySecretarialWizardValidation();
+                });
+                document.getElementById("companySecretarialWizardCompanySearch")?.addEventListener("input", () => {
+                    companySecretarialSyncWizardCompanySearch(false);
+                    companySecretarialPopulateWizardFromProfile(false);
+                    companySecretarialRenderWizardSubmissionPreview();
+                    invalidateCompanySecretarialWizardValidation();
+                });
+                const addressLine1Input = document.getElementById("companySecretarialWizardAddressLine1");
+                addressLine1Input?.addEventListener("change", () => {
+                    companySecretarialApplyAddressSuggestionFromLine1(false);
                     companySecretarialRenderWizardSubmissionPreview();
                     invalidateCompanySecretarialWizardValidation();
                 });
