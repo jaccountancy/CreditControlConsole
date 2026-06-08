@@ -12182,17 +12182,26 @@ def _me_treatment_for_account(account: dict) -> dict:
     return {"suggestedTreatment": "Needs review", "taxTreatment": "Staff review required", "category": "Directors' income items needing review", "confidence": 50, "reviewRequired": True, "reason": "No confident Jaccountancy treatment rule matched this account."}
 
 
-def _money_from_report_cell(value) -> Decimal:
+def _money_from_report_cell(value) -> Decimal | None:
     text = str(value if value is not None else "").strip()
     if not text:
-        return Decimal("0.00")
+        return None
     negative = text.startswith("(") and text.endswith(")")
-    text = text.strip("()").replace(",", "").replace("£", "").replace("%", "")
+    text = text.strip("()").replace(",", "").replace("£", "").replace("%", "").replace("\u00a0", " ").strip()
+    if text.lower().endswith("cr"):
+        text = text[:-2].strip()
+    elif text.lower().endswith("dr"):
+        text = text[:-2].strip()
+    if text.endswith("-"):
+        negative = True
+        text = text[:-1].strip()
+    if text in {"-", "—"}:
+        return None
     try:
         amount = Decimal(text)
     except Exception:
-        return Decimal("0.00")
-    return -amount if negative else amount
+        return None
+    return _money(-amount if negative else amount)
 
 
 def _xero_report_lines(report_payload: dict) -> list[dict]:
@@ -12205,7 +12214,8 @@ def _xero_report_lines(report_payload: dict) -> list[dict]:
             if values:
                 label = str(values[0] or "").strip()
                 amounts = [_money_from_report_cell(value) for value in values[1:]]
-                lines.append({"label": label, "amounts": amounts, "raw": row})
+                row_type = str(row.get("RowType") or row.get("rowType") or "").strip()
+                lines.append({"label": label, "amounts": amounts, "rowType": row_type, "raw": row})
             visit(row.get("Rows") or row.get("rows") or [])
 
     for report in report_payload.get("Reports") or report_payload.get("reports") or []:
@@ -13993,16 +14003,23 @@ def _code_breaker_report_line_amounts(
         return parsed_at_date
     if parsed:
         return parsed
-    fallback_amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+    fallback_raw = line.get("amounts") if isinstance(line, dict) and isinstance(line.get("amounts"), list) else []
     if (
         as_at_date is not None
         and isinstance(header_dates, list)
-        and fallback_amounts
+        and isinstance(fallback_raw, list)
+        and len(fallback_raw) == len(header_dates)
     ):
-        for idx, amount in enumerate(fallback_amounts):
-            if idx < len(header_dates) and header_dates[idx] == as_at_date:
-                return [amount]
-    return fallback_amounts
+        for idx, amount in enumerate(fallback_raw):
+            if idx < len(header_dates) and header_dates[idx] == as_at_date and isinstance(amount, Decimal):
+                return [_money(amount)]
+    fallback_amounts = [item for item in fallback_raw if isinstance(item, Decimal)]
+    if not fallback_amounts:
+        return []
+    non_zero = [value for value in fallback_amounts if value.copy_abs() > Decimal("0.00")]
+    if non_zero:
+        return [_money(non_zero[-1])]
+    return [_money(fallback_amounts[-1])]
 
 
 def _code_breaker_xero_net_assets(
@@ -14014,11 +14031,13 @@ def _code_breaker_xero_net_assets(
     return value
 
 
-def _code_breaker_xero_net_assets_with_source(
+def _code_breaker_xero_net_assets_with_diagnostics(
     lines: list[dict],
     as_at_date: date | None = None,
     header_dates: list[date | None] | None = None,
-) -> tuple[Decimal | None, str]:
+) -> tuple[Decimal | None, str, dict]:
+    diagnostics = {"selectedLabel": "", "selectedRowType": "", "selectedAmount": None, "candidatesChecked": 0}
+
     def preferred_amount(amounts: list[Decimal]) -> Decimal | None:
         if not amounts:
             return None
@@ -14033,23 +14052,41 @@ def _code_breaker_xero_net_assets_with_source(
             continue
         if any(
             key in label
-            for key in ("net assets", "total equity", "capital and reserves", "equity total")
+            for key in (
+                "net assets",
+                "net assets/(liabilities)",
+                "net liabilities",
+                "total equity",
+                "capital and reserves",
+                "equity total",
+            )
         ):
+            diagnostics["candidatesChecked"] = int(diagnostics["candidatesChecked"] or 0) + 1
             amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
             chosen = preferred_amount(amounts)
             if chosen is not None:
-                return chosen, "xero_balance_sheet:summary_row"
+                diagnostics["selectedLabel"] = str(line.get("label") or "")
+                diagnostics["selectedRowType"] = str(line.get("rowType") or "")
+                diagnostics["selectedAmount"] = float(chosen)
+                return chosen, "xero_balance_sheet:summary_row", diagnostics
 
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
         if not label:
             continue
         if "net assets" in label:
+            diagnostics["candidatesChecked"] = int(diagnostics["candidatesChecked"] or 0) + 1
             amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
-            if amounts:
-                return _money(amounts[0]), "xero_balance_sheet:net_assets_row"
+            chosen = preferred_amount(amounts)
+            if chosen is not None:
+                diagnostics["selectedLabel"] = str(line.get("label") or "")
+                diagnostics["selectedRowType"] = str(line.get("rowType") or "")
+                diagnostics["selectedAmount"] = float(chosen)
+                return chosen, "xero_balance_sheet:net_assets_row", diagnostics
     assets_total = None
     liabilities_total = None
+    assets_label = ""
+    liabilities_label = ""
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
         amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
@@ -14058,11 +14095,30 @@ def _code_breaker_xero_net_assets_with_source(
         amount = _money(amounts[0])
         if "total assets" in label:
             assets_total = amount
+            assets_label = str(line.get("label") or "")
         elif "total liabilities" in label:
             liabilities_total = amount
+            liabilities_label = str(line.get("label") or "")
     if assets_total is not None and liabilities_total is not None:
-        return _money(assets_total - liabilities_total), "xero_balance_sheet:assets_minus_liabilities"
-    return None, "xero_balance_sheet:unavailable"
+        computed = _money(assets_total - liabilities_total)
+        diagnostics["selectedLabel"] = f"{assets_label} minus {liabilities_label}".strip()
+        diagnostics["selectedRowType"] = "computed"
+        diagnostics["selectedAmount"] = float(computed)
+        return computed, "xero_balance_sheet:assets_minus_liabilities", diagnostics
+    return None, "xero_balance_sheet:unavailable", diagnostics
+
+
+def _code_breaker_xero_net_assets_with_source(
+    lines: list[dict],
+    as_at_date: date | None = None,
+    header_dates: list[date | None] | None = None,
+) -> tuple[Decimal | None, str]:
+    value, source, _ = _code_breaker_xero_net_assets_with_diagnostics(
+        lines,
+        as_at_date=as_at_date,
+        header_dates=header_dates,
+    )
+    return value, source
 
 
 def _code_breaker_net_assets_value_strict(payload: object) -> Decimal | None:
@@ -14815,7 +14871,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         {"date": as_at_date.isoformat()},
     )
     balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
-    xero_net_assets, xero_source = _code_breaker_xero_net_assets_with_source(
+    xero_net_assets, xero_source, xero_diagnostics = _code_breaker_xero_net_assets_with_diagnostics(
         _xero_report_lines(balance_sheet_data),
         as_at_date=as_at_date,
         header_dates=_xero_report_header_dates(balance_sheet_data),
@@ -14930,6 +14986,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if xero_net_assets is None
                 else ""
             ),
+            "diagnostics": xero_diagnostics,
         },
         "match": {
             "matches": bool(ch_net_assets is not None and xero_net_assets is not None and abs(_money(xero_net_assets - ch_net_assets)) <= Decimal("0.01")),

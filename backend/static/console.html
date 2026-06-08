@@ -69608,10 +69608,6 @@
                             if (Number.isFinite(found)) return found;
                         }
                     }
-                    for (const nested of Object.values(value)) {
-                        const found = codeBreakerExtractNetAssets(nested);
-                        if (Number.isFinite(found)) return found;
-                    }
                 }
                 return null;
             }
@@ -70301,6 +70297,7 @@
                         );
                     }
                     const extractionMeta = snapshot?.ch?.documentExtraction || {};
+                    const xeroMeta = snapshot?.xero?.diagnostics || {};
                     const extractionEngine = String(extractionMeta?.engine || "").trim();
                     const extractionStages = Array.isArray(extractionMeta?.stages)
                         ? extractionMeta.stages.filter((item) => String(item || "").trim())
@@ -70308,10 +70305,17 @@
                     const extractionInfo = extractionEngine
                         ? `CH extraction engine ${extractionEngine.replace(/_/g, " ")}.`
                         : "";
+                    const xeroSelectedLabel = String(xeroMeta?.selectedLabel || "").trim();
+                    const xeroSelectedAmount = Number.isFinite(Number(xeroMeta?.selectedAmount))
+                        ? formatCurrency(Number(xeroMeta.selectedAmount))
+                        : "";
+                    const xeroInfo = xeroSelectedLabel
+                        ? `Xero selected row "${xeroSelectedLabel}"${xeroSelectedAmount ? ` (${xeroSelectedAmount})` : ""}.`
+                        : "";
                     setCodeBreakerWizardStep(
                         1,
                         "complete",
-                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance). ${extractionInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
+                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance). ${extractionInfo} ${xeroInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
                     );
 
                     setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
@@ -70355,6 +70359,9 @@
                     const guidance = [];
                     if (extractionEngine) {
                         guidance.push(`Jenius AI extraction engine: ${extractionEngine.replace(/_/g, " ")}.`);
+                    }
+                    if (xeroSelectedLabel) {
+                        guidance.push(`Xero balance-sheet row used: ${xeroSelectedLabel}${xeroSelectedAmount ? ` at ${xeroSelectedAmount}` : ""}.`);
                     }
                     if (Array.isArray(extractionMeta?.warnings) && extractionMeta.warnings.length) {
                         guidance.push(`Document extraction notes: ${extractionMeta.warnings.join(" ")}`);
