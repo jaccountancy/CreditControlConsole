@@ -22907,23 +22907,6 @@
                             </span>
                         </button>
                         <nav class="app-nav">
-                        <section class="sidebar-quick" aria-label="Quick navigation">
-                            <p class="sidebar-quick-head">Pinned</p>
-                            <div class="sidebar-quick-list" id="sidebarFavorites">
-                                <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h14v-9.5"></path><path d="M10 20v-5h4v5"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Home</strong><span>Insights</span></span>
-                                </a>
-                                <a class="app-nav-button" href="#credit-control-vault" data-app-nav="vault">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 11h16v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M7 11V8a5 5 0 0 1 10 0v3"></path><circle cx="12" cy="15" r="1.5"></circle><path d="M12 16.5V19"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Vault</strong><span>AI document workspace</span></span>
-                                </a>
-                            </div>
-                        </section>
-                        <section class="sidebar-quick" aria-label="Recent navigation">
-                            <p class="sidebar-quick-head">Recent</p>
-                            <div class="sidebar-quick-list" id="sidebarRecentList"></div>
-                        </section>
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h14v-9.5"></path><path d="M10 20v-5h4v5"></path></svg></span>
                             <span class="app-nav-copy"><strong>Home</strong><span>Insights</span></span>
@@ -23130,10 +23113,6 @@
                         </div>
                         </nav>
                         <div class="app-sidebar-bottom">
-                            <button class="app-sidebar-link sidebar-compact-toggle" id="sidebarCompactToggle" type="button" aria-pressed="false" title="Compact sidebar">
-                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path><path d="M9 4v16"></path></svg></span>
-                                <span class="app-nav-copy"><strong>Compact Nav</strong><span>Toggle icon rail</span></span>
-                            </button>
                             <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Back to Jenius</strong><span>Main site</span></span>
@@ -26330,18 +26309,6 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="codeBreakerSummary">Loading Code Breaker workspaces.</p>
-                            <section class="ch-companies-table-wrap" id="codeBreakerConnectionsSection">
-                                <table class="ch-table" aria-label="Code Breaker connected Xero accounts">
-                                    <thead>
-                                        <tr>
-                                            <th>Xero account</th>
-                                            <th>Tenant ID</th>
-                                            <th>Connection</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="codeBreakerConnectionsTableBody"></tbody>
-                                </table>
-                            </section>
                             <section class="detail-panel" id="codeBreakerSetupPanel" hidden>
                                 <h4>Set up Code Breaker workspace</h4>
                                 <form class="bank-account-form" id="codeBreakerWorkspaceForm">
@@ -26375,6 +26342,9 @@
                                 <table class="ch-table" aria-label="Code Breaker workspaces">
                                     <thead>
                                         <tr>
+                                            <th>Xero account</th>
+                                            <th>Tenant ID</th>
+                                            <th>Connection</th>
                                             <th>Workspace</th>
                                             <th>Company no</th>
                                             <th>Year end</th>
@@ -32384,25 +32354,6 @@
                 if (persist) persistState();
             }
 
-            function renderRecentSidebarLinks() {
-                const list = document.getElementById("sidebarRecentList");
-                if (!list) return;
-                const recent = recentNavSections
-                    .map((section) => ({ section, label: navLabelForSection(section) }))
-                    .filter((item) => item.label && item.section !== "home")
-                    .slice(0, 5);
-                if (!recent.length) {
-                    list.innerHTML = '<span class="app-nav-copy"><strong style="font-size:0.72rem;color:#7d8da7;padding:2px 8px;display:block;">No recent sections</strong></span>';
-                    return;
-                }
-                list.innerHTML = recent.map((item) => `
-                    <a class="app-nav-button" href="#${escapeHTML(appNavHashes[item.section] || "credit-control-home")}" data-app-nav="${escapeHTML(item.section)}">
-                        <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="8"></circle></svg></span>
-                        <span class="app-nav-copy"><strong>${escapeHTML(item.label)}</strong><span>Recent</span></span>
-                    </a>
-                `).join("");
-            }
-
             function isIgnitionView(view = activeView) {
                 return view === "ignition" || view === "ignition-clients";
             }
@@ -33090,7 +33041,6 @@
                         recentNavSections = [section, ...recentNavSections.filter((item) => item !== section)].slice(0, 6);
                     }
                     syncCreditControlGroupState(section);
-                    renderRecentSidebarLinks();
                 } catch (error) {
                     console.error(`Unable to open ${section} section`, error);
                     syncActiveViewShell();
@@ -33306,13 +33256,6 @@
                     if (supportBubbleToggle) {
                         event.preventDefault();
                         event.stopPropagation();
-                        return;
-                    }
-                    const sidebarCompactToggle = event.target.closest?.("#sidebarCompactToggle");
-                    if (sidebarCompactToggle) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setSidebarCompact(!sidebarCompact);
                         return;
                     }
                     const navButton = event.target.closest?.("[data-app-nav]");
@@ -62289,7 +62232,6 @@
                 else if (activeView === "practice-packs") activeNavSection = "practice-packs";
                 else if (activeView === "settings") activeNavSection = "settings";
                 else if (activeView === "client") activeNavSection = "clients";
-                renderRecentSidebarLinks();
                 syncActiveViewShell();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
                 renderTopbarIdentity(topbarClient);
@@ -70203,6 +70145,34 @@
                 tableBody.innerHTML = rows.join("");
             }
 
+            function codeBreakerWorkspaceRowsByConnection() {
+                const connections = [...codeBreakerConnections()].sort((left, right) => (
+                    xeroWorkspaceLabel(left?.tenantName, left?.tenantId, "").localeCompare(
+                        xeroWorkspaceLabel(right?.tenantName, right?.tenantId, ""),
+                        "en-GB"
+                    )
+                ));
+                const workspaces = [...(codeBreakerWorkspaces || [])];
+                const rows = [];
+                const usedWorkspaceIds = new Set();
+                connections.forEach((connection) => {
+                    const tenantId = String(connection?.tenantId || "").trim();
+                    const matching = workspaces.filter((workspace) => String(workspace?.xeroTenantId || "").trim() === tenantId);
+                    if (!matching.length) {
+                        rows.push({ connection, workspace: null });
+                        return;
+                    }
+                    matching.forEach((workspace) => {
+                        usedWorkspaceIds.add(String(workspace?.id || ""));
+                        rows.push({ connection, workspace });
+                    });
+                });
+                workspaces
+                    .filter((workspace) => !usedWorkspaceIds.has(String(workspace?.id || "")))
+                    .forEach((workspace) => rows.push({ connection: null, workspace }));
+                return rows;
+            }
+
             function renderCodeBreakerScreen() {
                 const screen = document.getElementById("codeBreakerScreen");
                 if (!screen) return;
@@ -70210,19 +70180,18 @@
                 const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
                 const connectTenantButton = document.getElementById("codeBreakerConnectTenantButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
-                const connectionsSection = document.getElementById("codeBreakerConnectionsSection");
                 const workspaceListSection = document.getElementById("codeBreakerWorkspaceListSection");
                 const workspaceViewHeader = document.getElementById("codeBreakerWorkspaceViewHeader");
                 const workspaceViewTitle = document.getElementById("codeBreakerWorkspaceViewTitle");
                 const workspaceViewMeta = document.getElementById("codeBreakerWorkspaceViewMeta");
                 const workspaceBackButton = document.getElementById("codeBreakerWorkspaceBackButton");
-                const connectionsTableBody = document.getElementById("codeBreakerConnectionsTableBody");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
-                if (!summary || !setupButton || !connectTenantButton || !refreshButton || !connectionsTableBody || !tableBody) return;
+                if (!summary || !setupButton || !connectTenantButton || !refreshButton || !tableBody) return;
 
                 setupButton.textContent = "Set up workspace";
-                summary.textContent = `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspace${(codeBreakerWorkspaces || []).length === 1 ? "" : "s"} configured.`;
-                renderCodeBreakerConnectionsTable(connectionsTableBody, connectionsSection);
+                const connectionCount = codeBreakerConnections().length;
+                const workspaceCount = (codeBreakerWorkspaces || []).length;
+                summary.textContent = `${connectionCount.toLocaleString("en-GB")} connected Xero organisation${connectionCount === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} configured.`;
 
                 if (setupButton.dataset.cbWired !== "true") {
                     setupButton.dataset.cbWired = "true";
@@ -70254,20 +70223,52 @@
                     });
                 }
 
-                if (!codeBreakerWorkspaces.length) {
-                    tableBody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">No workspaces</p><h4>Create a Code Breaker workspace</h4><p>Set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
+                const mergedRows = codeBreakerWorkspaceRowsByConnection();
+                if (!mergedRows.length) {
+                    tableBody.innerHTML = '<tr><td colspan="13"><div class="empty-state"><p class="eyebrow">No Xero connections</p><h4>Connect a Xero tenant first</h4><p>Then set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
                 } else {
-                    tableBody.innerHTML = codeBreakerWorkspaces.map((workspace) => {
+                    tableBody.innerHTML = mergedRows.map(({ connection, workspace }) => {
+                        const tenantId = String(connection?.tenantId || workspace?.xeroTenantId || "").trim();
+                        const tenantLabel = xeroWorkspaceLabel(
+                            connection?.tenantName || workspace?.xeroTenantName,
+                            tenantId,
+                            "Xero tenant"
+                        );
+                        const tenantType = String(connection?.tenantType || "").trim();
+                        const connectionCopy = connection
+                            ? (tenantType ? `${tenantType} · Connected` : "Connected")
+                            : "No active connection";
+                        if (!workspace) {
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHTML(tenantLabel)}</strong></td>
+                                    <td><code>${escapeHTML(tenantId || "--")}</code></td>
+                                    <td><small>${escapeHTML(connectionCopy)}</small></td>
+                                    <td><small>No workspace set up</small></td>
+                                    <td>--</td>
+                                    <td>--</td>
+                                    <td>--</td>
+                                    <td>--</td>
+                                    <td>--</td>
+                                    <td>--</td>
+                                    <td><span class="lock-status-pill is-pending">Awaiting workspace</span></td>
+                                    <td><span class="lock-status-pill is-pending">Not started</span></td>
+                                    <td><button class="ghost-button" type="button" data-code-breaker-setup-workspace="true">Set up</button></td>
+                                </tr>
+                            `;
+                        }
                         const status = codeBreakerWorkspaceStatus(workspace);
                         const compare = codeBreakerCompareStatus(workspace);
                         const workspaceName = String(workspace.clientName || "Workspace").trim();
-                        const tenantLabel = xeroWorkspaceLabel(workspace.xeroTenantName, workspace.xeroTenantId, "Xero tenant");
                         const normalisedWorkspaceName = workspaceName.toLowerCase().replace(/\s+/g, " ").trim();
                         const normalisedTenantLabel = String(tenantLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
                         const showTenantLine = Boolean(normalisedTenantLabel) && normalisedTenantLabel !== normalisedWorkspaceName;
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(workspaceName || "Workspace")}</strong>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
+                                <td><strong>${escapeHTML(tenantLabel)}</strong></td>
+                                <td><code>${escapeHTML(tenantId || "--")}</code></td>
+                                <td><small>${escapeHTML(connectionCopy)}</small></td>
+                                <td><button class="text-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">${escapeHTML(workspaceName || "Workspace")}</button>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
                                 <td>${escapeHTML(workspace.companyNumber || "--")}</td>
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
@@ -70285,6 +70286,11 @@
                     }).join("");
                     tableBody.querySelectorAll("[data-code-breaker-open]").forEach((button) => {
                         button.addEventListener("click", () => openCodeBreakerWorkspace(button.dataset.codeBreakerOpen || ""));
+                    });
+                    tableBody.querySelectorAll("[data-code-breaker-setup-workspace]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            await openCodeBreakerWorkspaceSetupDialog();
+                        });
                     });
                     tableBody.querySelectorAll("[data-code-breaker-remove]").forEach((button) => {
                         button.addEventListener("click", () => {
@@ -70304,7 +70310,6 @@
                 if (setupButton) setupButton.hidden = viewingWorkspace;
                 if (connectTenantButton) connectTenantButton.hidden = viewingWorkspace;
                 if (refreshButton) refreshButton.hidden = viewingWorkspace;
-                if (connectionsSection && viewingWorkspace) connectionsSection.hidden = true;
                 if (workspaceListSection) workspaceListSection.hidden = viewingWorkspace;
                 if (workspaceViewHeader) workspaceViewHeader.hidden = !viewingWorkspace;
                 if (workspaceViewTitle) workspaceViewTitle.textContent = selectedWorkspace ? `${selectedWorkspace.clientName || "Workspace"} · Delta analysis` : "Workspace delta review";
@@ -81695,8 +81700,7 @@
                 ensureConfirmationStatementsNavEntry();
                 sortSidebarsAlphabetically();
                 wireSidebarNavigation();
-                setSidebarCompact(sidebarCompact, false);
-                renderRecentSidebarLinks();
+                setSidebarCompact(false, false);
                 const xeroConnectionReturn = consumeXeroConnectionReturn();
                 const ignitionConnectionReturn = consumeIgnitionConnectionReturn();
                 const returnedFromXeroConnection = xeroConnectionReturn.connected;
