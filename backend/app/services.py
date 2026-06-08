@@ -12486,6 +12486,20 @@ async def _me_xero_optional_get(connection_row: dict, url: str, params: dict | N
         return {"_error": _sync_error_message(exc), "_type": exc.__class__.__name__}
 
 
+def _xero_connection_scope_set(connection_row: dict | None) -> set[str]:
+    if not isinstance(connection_row, dict):
+        return set()
+    raw_scope = str(connection_row.get("scope") or "").strip()
+    if not raw_scope:
+        return set()
+    return {item.strip() for item in raw_scope.split() if item.strip()}
+
+
+def _xero_connection_has_reports_scope(connection_row: dict | None) -> bool:
+    scopes = _xero_connection_scope_set(connection_row)
+    return "accounting.reports.read" in scopes
+
+
 def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
     if not fields:
         return
@@ -14871,11 +14885,37 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         {"date": as_at_date.isoformat()},
     )
     balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
+    xero_balance_sheet_error = str(balance_sheet_data.get("_error") or "").strip()
+    xero_scope_has_reports = _xero_connection_has_reports_scope(connection_row)
     xero_net_assets, xero_source, xero_diagnostics = _code_breaker_xero_net_assets_with_diagnostics(
         _xero_report_lines(balance_sheet_data),
         as_at_date=as_at_date,
         header_dates=_xero_report_header_dates(balance_sheet_data),
     )
+    if isinstance(xero_diagnostics, dict):
+        xero_diagnostics["scopeIncludesReportsRead"] = xero_scope_has_reports
+        if xero_balance_sheet_error:
+            xero_diagnostics["requestError"] = xero_balance_sheet_error
+    xero_reason = ""
+    if xero_net_assets is None:
+        error_text = xero_balance_sheet_error.lower()
+        scope_hint_tokens = ("insufficient_scope", "insufficent_scope", "insufficient scope", "forbidden")
+        reports_scope_missing = not xero_scope_has_reports or any(token in error_text for token in scope_hint_tokens)
+        if reports_scope_missing:
+            xero_reason = (
+                "Xero connection is missing reports access (accounting.reports.read). "
+                "Reconnect Xero and approve reports scope, then re-run Code Breaker."
+            )
+            if xero_balance_sheet_error:
+                xero_reason = f"{xero_reason} API response: {xero_balance_sheet_error}"
+            if xero_source == "xero_balance_sheet:unavailable":
+                xero_source = "xero_balance_sheet:scope_missing"
+        elif xero_balance_sheet_error:
+            xero_reason = f"Xero Balance Sheet request failed: {xero_balance_sheet_error}"
+            if xero_source == "xero_balance_sheet:unavailable":
+                xero_source = "xero_balance_sheet:error"
+        else:
+            xero_reason = f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
 
     ch_company = None
     try:
@@ -14981,11 +15021,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "xero": {
             "netAssets": float(xero_net_assets) if xero_net_assets is not None else None,
             "source": xero_source,
-            "reason": (
-                f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
-                if xero_net_assets is None
-                else ""
-            ),
+            "reason": xero_reason,
             "diagnostics": xero_diagnostics,
         },
         "match": {

@@ -21,6 +21,7 @@ REQUIRED_XERO_ACCOUNTING_SCOPES = (
     "accounting.payments",
     "accounting.contacts",
     "accounting.settings.read",
+    "accounting.reports.read",
 )
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
     "accounting.transactions": ("accounting.invoices", "accounting.payments"),
