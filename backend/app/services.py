@@ -12518,6 +12518,8 @@ def _xero_connection_has_reports_scope(connection_row: dict | None) -> bool:
 def _xero_connection_has_journal_scope(connection_row: dict | None) -> bool:
     scopes = _xero_connection_scope_set(connection_row)
     journal_scopes = {
+        "accounting.journals.read",
+        "accounting.journals",
         "accounting.transactions.read",
         "accounting.transactions",
         "accounting.manualjournals.read",
@@ -15419,7 +15421,23 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 ]
             journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
             if journals_reason:
-                post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
+                journal_error_text = str(journals_reason).lower()
+                journal_scope_missing = (
+                    not _xero_connection_has_journal_scope(connection_row)
+                    or any(
+                        token in journal_error_text
+                        for token in ("insufficient_scope", "insufficent_scope", "insufficient scope", "forbidden")
+                    )
+                )
+                if journal_scope_missing:
+                    post_filing_analysis["reason"] = (
+                        "Unable to fetch Xero journals because the connection is missing journal scope "
+                        "(accounting.journals.read). Reconnect Xero and approve journals scope, then re-run Equity Montior."
+                    )
+                    if journals_reason:
+                        post_filing_analysis["reason"] = f"{post_filing_analysis['reason']} API response: {journals_reason}"
+                else:
+                    post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
             else:
                 candidates = _code_breaker_journal_candidates(
                     journals,

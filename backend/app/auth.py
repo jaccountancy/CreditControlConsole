@@ -21,6 +21,7 @@ DEFAULT_XERO_ACCOUNTING_SCOPES = (
     "accounting.payments",
     "accounting.banktransactions",
     "accounting.manualjournals",
+    "accounting.journals.read",
     "accounting.contacts",
     "accounting.settings",
     "accounting.attachments",
@@ -29,8 +30,8 @@ DEFAULT_XERO_ACCOUNTING_SCOPES = (
     "accounting.reports.trialbalance.read",
 )
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
-    "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read", "accounting.banktransactions.read", "accounting.manualjournals.read"),
-    "accounting.transactions": ("accounting.invoices", "accounting.payments", "accounting.banktransactions", "accounting.manualjournals"),
+    "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read", "accounting.banktransactions.read", "accounting.manualjournals.read", "accounting.journals.read"),
+    "accounting.transactions": ("accounting.invoices", "accounting.payments", "accounting.banktransactions", "accounting.manualjournals", "accounting.journals.read"),
     "accounting.reports.read": (
         "accounting.reports.aged.read",
         "accounting.reports.balancesheet.read",

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     xero_redirect_uri: str
     xero_scopes: str = (
         "openid profile email offline_access "
-        "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals "
+        "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.journals.read "
         "accounting.contacts accounting.settings accounting.attachments "
         "accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read"
     )
