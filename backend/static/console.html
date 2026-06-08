@@ -24386,6 +24386,7 @@
                                                 <th>Period End</th>
                                                 <th>Deadline</th>
                                                 <th>Auth code</th>
+                                                <th>Verified</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
@@ -35899,6 +35900,7 @@
                 renderAll();
                 activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                 loadCompaniesHouseSettings();
+                triggerCompaniesHouseAutoSyncOnOpen();
                 scrollConsoleToTop();
             }
 
@@ -77966,6 +77968,7 @@
                 workflowAuthCodeOverrides: {},
                 topbarSyncing: false,
                 companyDetailView: false,
+                autoSyncTriggeredAt: 0,
             };
 
             const CH_INTERNAL_STATUS_LABELS = {
@@ -77984,6 +77987,7 @@
                 revoked: "Revoked",
             };
             const CH_SUBMISSION_BATCH_SIZE = 1;
+            const CH_AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
 
             function chunkList(values, chunkSize) {
                 const items = Array.isArray(values) ? values.filter(Boolean) : [];
@@ -78194,6 +78198,11 @@
             }
 
             async function syncCompaniesHouseTopbarData() {
+                return syncCompaniesHouseData({ silent: false });
+            }
+
+            async function syncCompaniesHouseData(options = {}) {
+                const silent = options?.silent === true;
                 if (companiesHouseState.topbarSyncing) return;
                 companiesHouseState.topbarSyncing = true;
                 renderConfirmationStatementsTopbarSummary();
@@ -78227,17 +78236,19 @@
                     const target = Number(result.targetCount || 0);
                     const accepted = Number(reconcile.acceptedCount || 0);
                     const rejected = Number(reconcile.rejectedCount || 0);
-                    showToast(
-                        `Companies House sync finished: ${synced.toLocaleString("en-GB")} of ${target.toLocaleString("en-GB")} refreshed${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}${accepted || rejected ? `. Status updates: ${accepted} accepted, ${rejected} rejected` : ""}.`,
-                        failed ? "info" : "success"
-                    );
+                    if (!silent) {
+                        showToast(
+                            `Companies House sync finished: ${synced.toLocaleString("en-GB")} of ${target.toLocaleString("en-GB")} refreshed${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}${accepted || rejected ? `. Status updates: ${accepted} accepted, ${rejected} rejected` : ""}.`,
+                            failed ? "info" : "success"
+                        );
+                    }
                     if (failed) {
                         const failureRows = Array.isArray(result.failed) ? result.failed : [];
                         const firstReasons = failureRows
                             .slice(0, 3)
                             .map((row) => String(row?.reason || "").trim())
                             .filter(Boolean);
-                        if (firstReasons.length) {
+                        if (firstReasons.length && !silent) {
                             showToast(`Sync failures: ${firstReasons.join(" | ")}`, "error");
                         }
                     }
@@ -78246,12 +78257,20 @@
                     if (error instanceof AuthRequiredError) {
                         markAuthenticationRequired(error.message);
                     } else {
-                        showToast(error?.message || "Unable to sync Companies House data.", "error");
+                        if (!silent) showToast(error?.message || "Unable to sync Companies House data.", "error");
                     }
                 } finally {
                     companiesHouseState.topbarSyncing = false;
                     renderConfirmationStatementsTopbarSummary();
                 }
+            }
+
+            function triggerCompaniesHouseAutoSyncOnOpen() {
+                const now = Date.now();
+                const lastTriggered = Number(companiesHouseState.autoSyncTriggeredAt || 0);
+                if (lastTriggered && (now - lastTriggered) < CH_AUTO_SYNC_INTERVAL_MS) return;
+                companiesHouseState.autoSyncTriggeredAt = now;
+                syncCompaniesHouseData({ silent: true });
             }
 
             function chRenderSubmissionsTable(bodyId, rows, options = {}) {
@@ -78352,6 +78371,42 @@
             function chCompanyAuthCell(company) {
                 if (company.authCodeOnFile) return `<span class="ch-pill is-good">✓ ${escapeHTML(company.authCodeHint || "Stored")}</span>`;
                 return `<span class="ch-pill is-warn">Missing</span>`;
+            }
+
+            function chCompanyVerificationDetails(company) {
+                const shareCapital = company?.shareCapital && typeof company.shareCapital === "object"
+                    ? company.shareCapital
+                    : {};
+                const confirmationStatement = shareCapital?.confirmationStatement && typeof shareCapital.confirmationStatement === "object"
+                    ? shareCapital.confirmationStatement
+                    : {};
+                const identityVerification = confirmationStatement?.identityVerification && typeof confirmationStatement.identityVerification === "object"
+                    ? confirmationStatement.identityVerification
+                    : {};
+                const client = identityVerification?.client && typeof identityVerification.client === "object"
+                    ? identityVerification.client
+                    : {};
+                const people = Array.isArray(identityVerification?.people) ? identityVerification.people : [];
+                const verifiedPeopleCount = people.filter((person) => Boolean(person?.verified)).length;
+                const clientVerified = Boolean(client?.verified);
+                const verificationStatementGiven = identityVerification.verificationStatementGiven !== false;
+                const verified = clientVerified && verificationStatementGiven;
+                const hasEvidence = Boolean(clientVerified || verifiedPeopleCount > 0 || identityVerification?.required === false);
+                return { verified, hasEvidence, verifiedPeopleCount };
+            }
+
+            function chCompanyVerificationCell(company) {
+                const details = chCompanyVerificationDetails(company);
+                if (details.verified) {
+                    return `<span class="ch-pill is-good">✓ Verified</span>`;
+                }
+                if (details.hasEvidence) {
+                    const peopleText = details.verifiedPeopleCount > 0
+                        ? `<br><small style="color: var(--muted)">${details.verifiedPeopleCount.toLocaleString("en-GB")} people checked</small>`
+                        : "";
+                    return `<span class="ch-pill is-warn">Pending</span>${peopleText}`;
+                }
+                return `<span class="ch-pill is-info">Not started</span>`;
             }
 
             function chCompanyXeroConnected(company) {
@@ -78573,8 +78628,8 @@
                 const companies = companiesHouseState.companies || [];
                 if (!companies.length) {
                     body.innerHTML = companiesHouseState.companyFilters?.xeroConnected
-                        ? `<tr><td colspan="8" class="ch-empty-state">No connected Xero organisations match the current filter.</td></tr>`
-                        : `<tr><td colspan="8" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                        ? `<tr><td colspan="9" class="ch-empty-state">No connected Xero organisations match the current filter.</td></tr>`
+                        : `<tr><td colspan="9" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
                     chUpdateWorkflowControls();
                     return;
                 }
@@ -78608,6 +78663,7 @@
                         <td><span class="ch-pill">${escapeHTML(company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—")}</span></td>
                         <td>${chCompanyDueCell(company)}</td>
                         <td>${chCompanyAuthCell(company)}</td>
+                        <td>${chCompanyVerificationCell(company)}</td>
                         <td>
                             <button class="ghost-button danger-button ch-delete-button" type="button" data-ch-delete-company="${escapeHTML(companyId)}" aria-label="Delete ${escapeHTML(company.companyName || "company")}">
                                 <span class="ch-delete-icon" aria-hidden="true">

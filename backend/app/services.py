@@ -13859,12 +13859,19 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
             return _money(-amount if negative else amount)
         return None
 
+    def preferred(values: list[Decimal]) -> Decimal | None:
+        if not values:
+            return None
+        non_zero = [value for value in values if value.copy_abs() > Decimal("0.00")]
+        return _money(non_zero[-1] if non_zero else values[-1])
+
     if payload is None:
         return None
     numeric = parse_numeric(payload)
     if numeric is not None:
         return numeric
     if isinstance(payload, dict):
+        candidates: list[Decimal] = []
         candidate_keys = (
             "netAssets",
             "net_assets",
@@ -13877,25 +13884,27 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
             if key in payload:
                 value = _code_breaker_net_assets_value(payload.get(key))
                 if value is not None:
-                    return value
+                    candidates.append(value)
         for key, value in payload.items():
             key_text = str(key or "").strip().lower()
             if "net assets" in key_text or "net_assets" in key_text:
                 extracted = _code_breaker_net_assets_value(value)
                 if extracted is not None:
-                    return extracted
+                    candidates.append(extracted)
         for value in payload.values():
             if not isinstance(value, (dict, list)):
                 continue
             extracted = _code_breaker_net_assets_value(value)
             if extracted is not None:
-                return extracted
-        return None
+                candidates.append(extracted)
+        return preferred(candidates)
     if isinstance(payload, list):
+        candidates: list[Decimal] = []
         for item in payload:
             value = _code_breaker_net_assets_value(item)
             if value is not None:
-                return value
+                candidates.append(value)
+        return preferred(candidates)
     return None
 
 
@@ -14072,6 +14081,22 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             as_at_date,
         )
     ch_net_assets = _code_breaker_net_assets_value(selected_accounts_filing)
+    if ch_company and (
+        ch_net_assets is None
+        or ch_net_assets.copy_abs() == Decimal("0.00")
+    ):
+        latest_accounts_filing, latest_accounts_made_up_to, latest_match = _code_breaker_select_accounts_filing_for_date(
+            ch_company.get("filing_history"),
+            None,
+        )
+        latest_net_assets = _code_breaker_net_assets_value(latest_accounts_filing)
+        if latest_net_assets is not None and (
+            ch_net_assets is None or latest_net_assets.copy_abs() > Decimal("0.00")
+        ):
+            ch_net_assets = latest_net_assets
+            selected_accounts_filing = latest_accounts_filing
+            selected_accounts_made_up_to = latest_accounts_made_up_to
+            filing_date_match = f"{latest_match}_fallback"
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
