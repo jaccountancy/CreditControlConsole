@@ -75145,6 +75145,40 @@
                 if (!body) return;
                 const allRows = Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [];
                 const filters = companiesHouseSettings.bmTasksFilters || {};
+                const openBmTaskVatWorkspace = async (rowId = "") => {
+                    const match = allRows.find((item) => String(item?.id || "") === String(rowId || ""));
+                    if (!match) return;
+                    activeView = "vat-return-prepare";
+                    activeNavSection = "vat-return-prepare";
+                    const xero = match.xeroMatch || {};
+                    const desiredTenantId = String(xero.tenantId || "").trim();
+                    const desiredPeriodEndISO = String(match?.vatPeriodEndISO || xero?.periodEndISO || "").trim();
+                    vatReturnSelectedWorkspaceTenantId = desiredTenantId;
+                    selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
+                    vatReturnDetailTab = "transactions";
+                    renderAll();
+                    try {
+                        await loadVatReturnQueue(true);
+                        let selected = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!selected) {
+                            const queueRows = vatReturnQueueRows();
+                            selected = queueRows.find((row) => {
+                                return String(row?.tenantId || "").trim() === desiredTenantId
+                                    && String(row?.periodEndISO || "").trim() === desiredPeriodEndISO;
+                            }) || queueRows.find((row) => String(row?.tenantId || "").trim() === desiredTenantId) || null;
+                            if (selected?.key) selectedVatReturnKey = String(selected.key);
+                        }
+                        if (selected) {
+                            await ensureVatReturnTransactions(selected, true);
+                        } else {
+                            renderVatReturnPrepareScreen();
+                            showToast("VAT workspace row found, but no matching VAT period row is available yet. Try Refresh.", "info");
+                        }
+                    } catch (error) {
+                        console.error("Unable to open VAT workspace from BM task row", error);
+                        showToast(error?.message || "Unable to open VAT workspace for this task row.", "error");
+                    }
+                };
                 if (searchInput && searchInput.value !== String(filters.searchTerm || "")) searchInput.value = String(filters.searchTerm || "");
                 const uniqueAssignees = Array.from(new Set(allRows.map((row) => String(row?.assigneeName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
                 if (assigneeFilter) {
@@ -75168,7 +75202,10 @@
                         const hasOpenAction = Boolean(xero?.tenantId || xero?.vatReturnKey);
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(row.clientName || "Unknown client")}</strong><small>${escapeHTML(row.clientId || "")}</small></td>
+                                <td>${hasOpenAction
+                                    ? `<button class="text-button" type="button" data-bm-task-open-vat="${escapeHTML(row.id || "")}"><strong>${escapeHTML(row.clientName || "Unknown client")}</strong></button><small>${escapeHTML(row.clientId || "")}</small>`
+                                    : `<strong>${escapeHTML(row.clientName || "Unknown client")}</strong><small>${escapeHTML(row.clientId || "")}</small>`}
+                                </td>
                                 <td><strong>${escapeHTML(row.taskName || "VAT task")}</strong><small>${escapeHTML(row.taskProgress || "No progress note")}</small></td>
                                 <td>${escapeHTML(row.vatPeriodEndISO ? formatDate(row.vatPeriodEndISO) : "—")}</td>
                                 <td>${escapeHTML(row.deadlineISO ? formatDate(row.deadlineISO) : "—")}</td>
@@ -75185,33 +75222,7 @@
                 body.querySelectorAll("[data-bm-task-open-vat]").forEach((button) => {
                     button.addEventListener("click", async () => {
                         const rowId = String(button.getAttribute("data-bm-task-open-vat") || "");
-                        const match = allRows.find((item) => String(item?.id || "") === rowId);
-                        if (!match) return;
-                        activeView = "vat-return-prepare";
-                        activeNavSection = "vat-return-prepare";
-                        const xero = match.xeroMatch || {};
-                        const desiredTenantId = String(xero.tenantId || "").trim();
-                        const desiredPeriodEndISO = String(match?.vatPeriodEndISO || xero?.periodEndISO || "").trim();
-                        vatReturnSelectedWorkspaceTenantId = desiredTenantId;
-                        selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
-                        renderAll();
-                        try {
-                            await loadVatReturnQueue(true);
-                            let selected = selectedVatReturnEntry(vatReturnQueueRows());
-                            if (!selected) {
-                                const queueRows = vatReturnQueueRows();
-                                selected = queueRows.find((row) => {
-                                    return String(row?.tenantId || "").trim() === desiredTenantId
-                                        && String(row?.periodEndISO || "").trim() === desiredPeriodEndISO;
-                                }) || queueRows.find((row) => String(row?.tenantId || "").trim() === desiredTenantId) || null;
-                                if (selected?.key) selectedVatReturnKey = String(selected.key);
-                            }
-                            if (selected) await ensureVatReturnTransactions(selected, true);
-                            else renderVatReturnPrepareScreen();
-                        } catch (error) {
-                            console.error("Unable to open VAT workspace from BM task row", error);
-                            showToast(error?.message || "Unable to open VAT workspace for this task row.", "error");
-                        }
+                        await openBmTaskVatWorkspace(rowId);
                     });
                 });
             }
