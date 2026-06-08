@@ -17970,6 +17970,22 @@
                 font-size: 0.84rem;
                 font-weight: 780;
             }
+            .code-breaker-wizard-progress {
+                position: relative;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(61, 85, 130, 0.16);
+                overflow: hidden;
+            }
+            .code-breaker-wizard-progress > span {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #53d5ef);
+                box-shadow: 0 0 14px rgba(29, 103, 242, 0.28);
+                transition: width 260ms ease;
+            }
             .code-breaker-wizard-steps {
                 display: grid;
                 gap: 8px;
@@ -17983,6 +17999,7 @@
                 display: grid;
                 gap: 4px;
                 transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                animation: code-breaker-step-enter 220ms ease both;
             }
             .code-breaker-wizard-step.is-running {
                 border-color: rgba(29, 103, 242, 0.34);
@@ -17999,6 +18016,22 @@
             .code-breaker-wizard-step.is-failed {
                 border-color: rgba(224, 79, 79, 0.34);
                 background: rgba(255, 241, 241, 0.92);
+            }
+            #codeBreakerWizardMetrics .key-metric-card.is-ch {
+                border-color: rgba(39, 176, 95, 0.24);
+                background: rgba(237, 250, 241, 0.9);
+            }
+            #codeBreakerWizardMetrics .key-metric-card.is-xero {
+                border-color: rgba(29, 103, 242, 0.24);
+                background: rgba(236, 244, 255, 0.9);
+            }
+            #codeBreakerWizardMetrics .key-metric-card.is-variance {
+                border-color: rgba(255, 159, 47, 0.28);
+                background: rgba(255, 247, 235, 0.92);
+            }
+            #codeBreakerWizardMetrics .key-metric-card.is-tolerance {
+                border-color: rgba(141, 98, 255, 0.22);
+                background: rgba(245, 240, 255, 0.9);
             }
             .code-breaker-wizard-step-title {
                 display: flex;
@@ -18088,6 +18121,10 @@
             @keyframes code-breaker-step-pulse {
                 0%, 100% { background-position: 0% 50%; }
                 50% { background-position: 100% 50%; }
+            }
+            @keyframes code-breaker-step-enter {
+                from { opacity: 0; transform: translateY(4px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             @keyframes code-breaker-dot-ping {
                 0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.45); }
@@ -27008,6 +27045,9 @@
                                             <div class="code-breaker-wizard-meta">
                                                 <p class="detail-meta" id="codeBreakerWizardSubtitle">Follow the guided steps to sync values, compare balances, and map post-filing Xero transactions.</p>
                                                 <p class="code-breaker-wizard-status" id="codeBreakerWizardStatus">Ready.</p>
+                                                <div class="code-breaker-wizard-progress" aria-hidden="true">
+                                                    <span id="codeBreakerWizardProgressBar"></span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="detail-actions">
@@ -28961,8 +29001,8 @@
                 workspaceId: "",
                 running: false,
                 status: "idle",
-                stepStatus: ["pending", "pending", "pending", "pending"],
-                stepMessages: ["", "", "", ""],
+                stepStatus: ["pending", "pending", "pending", "pending", "pending", "pending"],
+                stepMessages: ["", "", "", "", "", ""],
                 rows: [],
                 guidance: [],
                 summary: null,
@@ -70364,20 +70404,29 @@
             function codeBreakerWizardSteps() {
                 return [
                     "Validate workspace details",
-                    "Pull CH and Xero net assets",
+                    "Extract CH net assets from latest filed accounts",
+                    "Pull Xero net assets at filed year-end",
+                    "Check variance against tolerance",
                     "Pull post-filing Xero transactions",
                     "Build adjustment guidance",
                 ];
             }
 
+            function codeBreakerWizardSourceCopy(source = "") {
+                const text = String(source || "").trim();
+                if (!text) return "Unavailable";
+                return text.length > 86 ? `${text.slice(0, 83)}...` : text;
+            }
+
             function resetCodeBreakerWizardState(workspaceId = "") {
+                const stepCount = codeBreakerWizardSteps().length;
                 codeBreakerWizardState = {
                     open: false,
                     workspaceId: String(workspaceId || ""),
                     running: false,
                     status: "idle",
-                    stepStatus: ["pending", "pending", "pending", "pending"],
-                    stepMessages: ["", "", "", ""],
+                    stepStatus: Array.from({ length: stepCount }, () => "pending"),
+                    stepMessages: Array.from({ length: stepCount }, () => ""),
                     rows: [],
                     guidance: [],
                     summary: null,
@@ -70397,7 +70446,8 @@
             }
 
             function setCodeBreakerWizardStep(stepIndex = 0, status = "pending", message = "") {
-                const safeIndex = Math.max(0, Math.min(3, Number(stepIndex || 0)));
+                const maxIndex = Math.max(0, codeBreakerWizardSteps().length - 1);
+                const safeIndex = Math.max(0, Math.min(maxIndex, Number(stepIndex || 0)));
                 codeBreakerWizardState.stepStatus[safeIndex] = status;
                 codeBreakerWizardState.stepMessages[safeIndex] = String(message || "");
                 renderCodeBreakerWizardModal();
@@ -70478,6 +70528,7 @@
                 const metricsTarget = document.getElementById("codeBreakerWizardMetrics");
                 const guidanceTarget = document.getElementById("codeBreakerWizardGuidance");
                 const rowsBody = document.getElementById("codeBreakerWizardRowsBody");
+                const progressBar = document.getElementById("codeBreakerWizardProgressBar");
                 const retryButton = document.getElementById("codeBreakerWizardRetryButton");
                 const refreshButton = document.getElementById("codeBreakerWizardRefreshButton");
                 const reconnectButton = document.getElementById("codeBreakerWizardReconnectButton");
@@ -70497,15 +70548,23 @@
                         return `${workspace.clientName || "Workspace"} · ${workspace.companyNumber || "No company number"} · period in question ${periodStart} to ${periodEnd} (as-at ${periodEnd}) · submitted ${submitted}`;
                     })()
                     : "Follow the guided steps to sync values, compare balances, and map post-filing Xero transactions.";
+                const steps = codeBreakerWizardSteps();
+                const completedSteps = codeBreakerWizardState.stepStatus.filter((item) => item === "complete").length;
+                const runningStepIndex = codeBreakerWizardState.stepStatus.findIndex((item) => item === "running");
+                const progressValue = codeBreakerWizardState.status === "complete"
+                    ? 1
+                    : Math.min(1, (completedSteps + (runningStepIndex >= 0 ? 0.55 : 0)) / Math.max(steps.length, 1));
+                if (progressBar) {
+                    progressBar.style.width = `${Math.max(0, Math.min(100, progressValue * 100)).toFixed(0)}%`;
+                }
                 status.textContent = codeBreakerWizardState.status === "running"
-                    ? "Wizard running. Jenius AI is working this out..."
+                    ? `Wizard running · step ${Math.max(1, runningStepIndex + 1)} of ${steps.length}. Jenius AI is working this out...`
                     : codeBreakerWizardState.status === "failed"
-                        ? "Wizard stopped with an error."
+                        ? `Wizard stopped with an error after ${completedSteps.toLocaleString("en-GB")} of ${steps.length.toLocaleString("en-GB")} checks.`
                         : codeBreakerWizardState.status === "complete"
-                            ? "Wizard complete."
+                            ? `Wizard complete · ${steps.length.toLocaleString("en-GB")} checks complete.`
                             : "Ready.";
 
-                const steps = codeBreakerWizardSteps();
                 stepsTarget.innerHTML = steps.map((label, index) => {
                     const stepStatus = String(codeBreakerWizardState.stepStatus[index] || "pending");
                     const message = String(codeBreakerWizardState.stepMessages[index] || "");
@@ -70513,7 +70572,7 @@
                     const pillClass = stepStatus === "complete" ? "is-open" : stepStatus === "running" ? "is-due" : stepStatus === "failed" ? "is-overdue" : "is-pending";
                     const cardClass = stepStatus === "complete" ? "is-complete" : stepStatus === "running" ? "is-running" : stepStatus === "failed" ? "is-failed" : "";
                     return `
-                        <article class="code-breaker-wizard-step ${cardClass}">
+                        <article class="code-breaker-wizard-step ${cardClass}" style="animation-delay:${index * 40}ms">
                             <div class="code-breaker-wizard-step-title">
                                 <span>${escapeHTML(`${index + 1}. ${label}`)}</span>
                                 <span class="lock-status-pill ${pillClass}">${statusLabel}</span>
@@ -70525,20 +70584,27 @@
                 }).join("");
 
                 const summary = codeBreakerWizardState.summary || {};
+                const toleranceAmount = Number(summary.toleranceAmount || CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP || 0);
+                const toleranceState = summary.varianceWithinTolerance === true
+                    ? `Within tolerance (${formatCurrency(toleranceAmount)})`
+                    : summary.varianceWithinTolerance === false
+                        ? `Outside tolerance (${formatCurrency(toleranceAmount)})`
+                        : "Pending";
                 const metrics = [
-                    ["CH net assets", codeBreakerFiniteNumber(summary.chNetAssets) ? formatCurrency(summary.chNetAssets) : "Unavailable"],
-                    ["Xero net assets", codeBreakerFiniteNumber(summary.xeroNetAssets) ? formatCurrency(summary.xeroNetAssets) : "Unavailable"],
-                    ["Variance", codeBreakerFiniteNumber(summary.variance) ? formatCurrency(summary.variance) : "Unavailable"],
-                    ["Variance explained", codeBreakerFiniteNumber(summary.varianceExplained) ? formatCurrency(summary.varianceExplained) : "Unavailable"],
-                    ["Residual variance", codeBreakerFiniteNumber(summary.residualVariance) ? formatCurrency(summary.residualVariance) : "Unavailable"],
-                    ["CH extraction engine", String(summary.chExtractionEngine || "Unavailable")],
-                    ["Transaction engine", String(summary.transactionEngine || "Unavailable")],
-                    ["CH source", String(summary.chSource || "Unavailable")],
-                    ["Xero source", String(summary.xeroSource || "Unavailable")],
-                    ["Suggested rows", Number(summary.suggestedCount || 0).toLocaleString("en-GB")],
+                    { label: "CH net assets", value: codeBreakerFiniteNumber(summary.chNetAssets) ? formatCurrency(summary.chNetAssets) : "Unavailable", className: "is-ch" },
+                    { label: "CH extraction engine", value: String(summary.chExtractionEngine || "Unavailable"), className: "is-ch" },
+                    { label: "CH source", value: codeBreakerWizardSourceCopy(summary.chSource || ""), className: "is-ch" },
+                    { label: "Xero net assets", value: codeBreakerFiniteNumber(summary.xeroNetAssets) ? formatCurrency(summary.xeroNetAssets) : "Unavailable", className: "is-xero" },
+                    { label: "Xero source", value: codeBreakerWizardSourceCopy(summary.xeroSource || ""), className: "is-xero" },
+                    { label: "Variance", value: codeBreakerFiniteNumber(summary.variance) ? formatCurrency(summary.variance) : "Unavailable", className: "is-variance" },
+                    { label: "Variance explained", value: codeBreakerFiniteNumber(summary.varianceExplained) ? formatCurrency(summary.varianceExplained) : "Unavailable", className: "is-variance" },
+                    { label: "Residual variance", value: codeBreakerFiniteNumber(summary.residualVariance) ? formatCurrency(summary.residualVariance) : "Unavailable", className: "is-variance" },
+                    { label: "Tolerance check", value: toleranceState, className: "is-tolerance" },
+                    { label: "Suggested rows", value: Number(summary.suggestedCount || 0).toLocaleString("en-GB"), className: "is-tolerance" },
+                    { label: "Transaction engine", value: String(summary.transactionEngine || "Unavailable"), className: "" },
                 ];
-                metricsTarget.innerHTML = metrics.map(([label, value]) => (
-                    `<article class="key-metric-card"><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`
+                metricsTarget.innerHTML = metrics.map((item) => (
+                    `<article class="key-metric-card ${escapeHTML(String(item.className || ""))}"><span>${escapeHTML(String(item.label))}</span><strong>${escapeHTML(String(item.value))}</strong></article>`
                 )).join("");
 
                 const guidance = Array.isArray(codeBreakerWizardState.guidance) ? codeBreakerWizardState.guidance : [];
@@ -70634,10 +70700,10 @@
                     );
 
                     const stepOneStages = [
-                        `Fetching Companies House and Xero net assets for period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}).`,
-                        "Downloading filed accounts document from Companies House and persisting it for this period.",
-                        "Jenius AI is analysing the filed accounts document to extract net assets.",
-                        "Reconciling extracted Companies House value against Xero balance sheet.",
+                        `Fetching latest Companies House filing for period ${filedPeriodStart} to ${filedYearEnd}.`,
+                        "Downloading filed accounts document from Companies House for this workspace.",
+                        "Jenius AI is extracting CH net assets from the filed accounts document.",
+                        "Validating extracted CH value and evidence source.",
                     ];
                     let stepOneStageIndex = 0;
                     const runToken = codeBreakerWizardState.runToken;
@@ -70681,6 +70747,11 @@
                     const xeroScopeMissing = codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot);
                     if (xeroScopeMissing) {
                         const xeroReason = String(snapshot?.xero?.reason || snapshot?.error || snapshot?._requestError || "").trim();
+                        if (Number.isFinite(workspace.chNetAssets)) {
+                            setCodeBreakerWizardStep(1, "complete", `CH check complete for ${filedYearEnd}: net assets ${formatCurrency(workspace.chNetAssets)} from ${codeBreakerWizardSourceCopy(workspace.chSource)}.`);
+                        } else {
+                            setCodeBreakerWizardStep(1, "failed", "CH net assets could not be extracted from the latest filed accounts.");
+                        }
                         codeBreakerWizardState.showReconnectXero = true;
                         codeBreakerWizardState.reconnectReason = xeroReason;
                         codeBreakerWizardState.rows = [];
@@ -70697,6 +70768,7 @@
                             "Reconnect Xero and approve reports scope (accounting.reports.balancesheet.read or accounting.reports.read), then run the wizard again.",
                             xeroReason ? `Xero API detail: ${xeroReason}` : "Xero balance sheet call is blocked until reports scope is approved.",
                         ];
+                        setCodeBreakerWizardStep(2, "failed", xeroReason || "Xero reports scope is missing and Xero net assets could not be read.");
                         throw new Error(
                             "Xero reports scope is missing (accounting.reports.balancesheet.read or accounting.reports.read). Reconnect Xero, approve reports scope, then run Equity Montior again."
                         );
@@ -70707,6 +70779,12 @@
                         const xeroReason = String(snapshot?.xero?.reason || "").trim();
                         const chSource = String(snapshot?.ch?.source || "unavailable").trim();
                         const xeroSource = String(snapshot?.xero?.source || "unavailable").trim();
+                        if (!Number.isFinite(workspace.chNetAssets)) {
+                            setCodeBreakerWizardStep(1, "failed", `CH check failed${chReason ? `: ${chReason}` : "."}`);
+                        }
+                        if (!Number.isFinite(workspace.xeroNetAssets)) {
+                            setCodeBreakerWizardStep(2, "failed", `Xero check failed${xeroReason ? `: ${xeroReason}` : "."}`);
+                        }
                         throw new Error(
                             `Exact YE net assets unavailable for ${filedYearEnd}. `
                             + `CH source: ${chSource}${chReason ? ` (${chReason})` : ""}. `
@@ -70730,14 +70808,29 @@
                     const xeroInfo = xeroSelectedLabel
                         ? `Xero selected row "${xeroSelectedLabel}"${xeroSelectedAmount ? ` (${xeroSelectedAmount})` : ""}.`
                         : "";
+                    const toleranceAmount = Number(CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP || 0);
+                    const variance = Number(workspace.netAssetsDifference || 0);
+                    const isExactMatch = Math.abs(variance) <= 0.01;
+                    const isImmaterialVariance = !isExactMatch && Math.abs(variance) < toleranceAmount;
+                    const withinTolerance = isExactMatch || isImmaterialVariance;
                     setCodeBreakerWizardStep(
                         1,
                         "complete",
-                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance). ${extractionInfo} ${xeroInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
+                        `CH check complete for ${filedYearEnd}: net assets ${formatCurrency(workspace.chNetAssets)} from ${codeBreakerWizardSourceCopy(workspace.chSource)}. ${extractionInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
+                    );
+                    setCodeBreakerWizardStep(
+                        2,
+                        "complete",
+                        `Xero check complete for ${filedYearEnd}: net assets ${formatCurrency(workspace.xeroNetAssets)} from ${codeBreakerWizardSourceCopy(workspace.xeroSource)}. ${xeroInfo}`.trim()
+                    );
+                    setCodeBreakerWizardStep(
+                        3,
+                        "complete",
+                        `Variance ${formatCurrency(variance)} vs tolerance ${formatCurrency(toleranceAmount)} · ${withinTolerance ? "within tolerance" : "outside tolerance and needs deeper review"}.`
                     );
 
                     let stepTwoWarningMessage = "";
-                    setCodeBreakerWizardStep(2, "running", "Pulling post-filing Xero transactions created after filing submission.");
+                    setCodeBreakerWizardStep(4, "running", "Pulling post-filing Xero transactions created after filing submission.");
                     const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
                         ? snapshot.postFilingAnalysis
                         : {};
@@ -70758,7 +70851,7 @@
                             };
                         });
                         setCodeBreakerWizardStep(
-                            2,
+                            4,
                             "complete",
                             `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.`
                         );
@@ -70767,7 +70860,7 @@
                         if (!customer?.id) {
                             const reason = String(postFiling?.reason || "").trim();
                             setCodeBreakerWizardStep(
-                                2,
+                                4,
                                 "complete",
                                 reason || "No linked Xero client was found for this workspace, so transaction-level mapping was skipped."
                             );
@@ -70791,7 +70884,7 @@
                                     ? `bounded pull (${pageLimit} page${pageLimit === 1 ? "" : "s"} per source).`
                                     : "full pull.";
                                 setCodeBreakerWizardStep(
-                                    2,
+                                    4,
                                     "complete",
                                     `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}`
                                 );
@@ -70810,7 +70903,7 @@
                                     `Endpoint: ${endpoint}.`,
                                 ].filter(Boolean).join(" ");
                                 setCodeBreakerWizardStep(
-                                    2,
+                                    4,
                                     "complete",
                                     `Fallback transaction pull unavailable. Continuing with snapshot-only guidance. ${stepTwoWarningMessage}`
                                 );
@@ -70819,11 +70912,8 @@
                         }
                     }
 
-                    setCodeBreakerWizardStep(3, "running", "Building suggested reversal rows to close the variance.");
-                    const variance = Number(workspace.netAssetsDifference || 0);
+                    setCodeBreakerWizardStep(5, "running", "Building suggested reversal rows to close the variance.");
                     const varianceTarget = Math.abs(variance);
-                    const isExactMatch = Math.abs(variance) <= 0.01;
-                    const isImmaterialVariance = !isExactMatch && Math.abs(variance) < CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP;
                     const matches = isExactMatch || isImmaterialVariance;
                     const guidance = [];
                     let suggested = [];
@@ -70922,13 +71012,15 @@
                         variance: variance,
                         varianceExplained: Number(postFiling?.explainedDifference),
                         residualVariance: Number(postFiling?.residualDifference),
+                        toleranceAmount: toleranceAmount,
+                        varianceWithinTolerance: withinTolerance,
                         chExtractionEngine: extractionEngine || "unavailable",
                         transactionEngine: String(postFiling?.engine || "local"),
                         chSource: workspace.chSource || "",
                         xeroSource: workspace.xeroSource || "",
                         suggestedCount: codeBreakerWizardState.rows.length,
                     };
-                    setCodeBreakerWizardStep(3, "complete", "Guidance and transaction breakdown ready.");
+                    setCodeBreakerWizardStep(5, "complete", "Guidance and transaction breakdown ready.");
                     codeBreakerWizardState.running = false;
                     codeBreakerWizardState.status = "complete";
                     renderCodeBreakerScreen();
