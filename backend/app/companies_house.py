@@ -1455,10 +1455,30 @@ def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = Tr
         confirmation_statement.get("reviewPeriodEnd")
         or confirmation_statement.get("review_period_end")
     )
-    if review_period_start:
-        payload["reviewPeriodStart"] = review_period_start.isoformat()
-    if review_period_end:
-        payload["reviewPeriodEnd"] = review_period_end.isoformat()
+    made_up_to = company_row.get("next_made_up_to_date")
+    last_filed_date = company_row.get("last_filed_date")
+    derived_review_end = made_up_to if isinstance(made_up_to, date) else review_period_end
+    derived_review_start = (
+        (last_filed_date + timedelta(days=1)) if isinstance(last_filed_date, date) else None
+    )
+    effective_review_end = derived_review_end if isinstance(derived_review_end, date) else None
+    if derived_review_start is None and isinstance(effective_review_end, date):
+        derived_review_start = effective_review_end - timedelta(days=364)
+    effective_review_start = review_period_start if isinstance(review_period_start, date) else derived_review_start
+    if (
+        isinstance(effective_review_start, date)
+        and isinstance(effective_review_end, date)
+        and effective_review_start > effective_review_end
+    ):
+        effective_review_start = (
+            derived_review_start
+            if isinstance(derived_review_start, date) and derived_review_start <= effective_review_end
+            else None
+        )
+    if isinstance(effective_review_start, date):
+        payload["reviewPeriodStart"] = effective_review_start.isoformat()
+    if isinstance(effective_review_end, date):
+        payload["reviewPeriodEnd"] = effective_review_end.isoformat()
     identity_verification = (
         confirmation_statement.get("identityVerification")
         if isinstance(confirmation_statement.get("identityVerification"), dict)
@@ -1543,7 +1563,8 @@ def _prefill_no_changes_cs01_payload(
     previous_review_end = _parse_date_from_text(previous_payload.get("reviewPeriodEnd"))
     last_filed_date = company_row.get("last_filed_date")
     derived_start = (
-        (previous_review_end + timedelta(days=1)) if isinstance(previous_review_end, date)
+        (previous_review_end + timedelta(days=1))
+        if isinstance(previous_review_end, date)
         else ((last_filed_date + timedelta(days=1)) if isinstance(last_filed_date, date) else None)
     )
     current_review_start = _parse_date_from_text(payload.get("reviewPeriodStart"))
@@ -5764,6 +5785,20 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         isinstance(last_filed, date)
         and last_filed >= (today - timedelta(days=365))
     )
+    review_period_start = (
+        (last_filed + timedelta(days=1))
+        if isinstance(last_filed, date)
+        else None
+    )
+    review_period_end = next_made_up_to if isinstance(next_made_up_to, date) else None
+    if review_period_start is None and isinstance(review_period_end, date):
+        review_period_start = review_period_end - timedelta(days=364)
+    if (
+        isinstance(review_period_start, date)
+        and isinstance(review_period_end, date)
+        and review_period_start > review_period_end
+    ):
+        review_period_start = None
     submission_warnings: list[str] = []
     if filed_within_last_12_months:
         submission_warnings.append(
@@ -5812,6 +5847,8 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "nextMadeUpToDate": _date_or_none(row.get("next_made_up_to_date")),
         "nextDueDate": _date_or_none(row.get("next_due_date")),
         "lastFiledDate": _date_or_none(last_filed),
+        "reviewPeriodStart": _date_or_none(review_period_start),
+        "reviewPeriodEnd": _date_or_none(review_period_end),
         "filedWithinLast12Months": filed_within_last_12_months,
         "submissionWarnings": submission_warnings,
         "submissionIssues": submission_issues,
