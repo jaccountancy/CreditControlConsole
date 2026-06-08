@@ -8085,6 +8085,7 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
                 "directorPersonalCodeSupplied": bool(_first_bool_from_sources(identity_verification.get("directorPersonalCodeSupplied"))),
                 "verificationStatementGiven": bool(_first_bool_from_sources(identity_verification.get("verificationStatementGiven"),)),
                 "relevantOfficer": _coerce_text(identity_verification.get("relevantOfficer"), 200),
+                "directorPersonalCode": _coerce_text(identity_verification.get("directorPersonalCode"), 80),
             }
             raw_people = identity_verification.get("people")
             if raw_people not in (None, ""):

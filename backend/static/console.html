@@ -80332,6 +80332,7 @@
                         identityVerification: {
                             required: Boolean(identityVerification.required),
                             directorPersonalCodeSupplied: Boolean(identityVerification.directorPersonalCodeSupplied),
+                            directorPersonalCode: String(identityVerification.directorPersonalCode || ""),
                             verificationStatementGiven: identityVerification.verificationStatementGiven !== false,
                             relevantOfficer: String(identityVerification.relevantOfficer || ""),
                         },
@@ -80345,7 +80346,7 @@
                     address: ["contactEmail", "reviewPeriodStart", "reviewPeriodEnd"],
                     sic: ["sicCodes", "tradingOnMarket", "dtr5Applies"],
                     capital: ["totalNumberOfSharesIssued", "totalAggregateNominalValue"],
-                    authority: ["filingAuthorityStatus", "filingAuthorityReference", "lawfulPurposeStatement", "stateConfirmation", "identityRequired", "directorPersonalCodeSupplied", "identityStatementGiven", "identityRelevantOfficer"],
+                    authority: ["filingAuthorityStatus", "filingAuthorityReference", "lawfulPurposeStatement", "stateConfirmation", "identityRequired", "directorPersonalCode", "identityStatementGiven", "identityRelevantOfficer"],
                 };
                 const cs01ValidationForCard = (card, row) => {
                     const emptyResult = {
@@ -80354,8 +80355,9 @@
                         errorsByStep: { company: [], people: [], address: [], sic: [], capital: [], authority: [] },
                         invalidFieldNames: new Set(),
                     };
-                    if (!card || !row || row.workflowAction !== "changes-required") return emptyResult;
+                    if (!card || !row) return emptyResult;
                     const getFieldValue = (name) => String(card.querySelector(`[data-ch-review-field="${name}"]`)?.value || "").trim();
+                    const normalisePersonalCode = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
                     const isYesNoValue = (value) => value === "true" || value === "false";
                     const errorsByStep = { company: [], people: [], address: [], sic: [], capital: [], authority: [] };
                     const invalidFieldNames = new Set();
@@ -80363,6 +80365,19 @@
                         if (errorsByStep[step]) errorsByStep[step].push(message);
                         if (fieldName) invalidFieldNames.add(fieldName);
                     };
+                    const personalCode = normalisePersonalCode(getFieldValue("directorPersonalCode"));
+                    if (!personalCode) {
+                        pushError("authority", "directorPersonalCode", "Companies House personal code is required before submission.");
+                    }
+                    if (row.workflowAction !== "changes-required") {
+                        const firstInvalidStep = cs01StepOrder.find((step) => (errorsByStep[step] || []).length > 0) || null;
+                        return {
+                            isValid: !firstInvalidStep,
+                            firstInvalidStep,
+                            errorsByStep,
+                            invalidFieldNames,
+                        };
+                    }
                     const email = getFieldValue("contactEmail");
                     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) {
                         pushError("address", "contactEmail", "Enter a valid registered email.");
@@ -80404,9 +80419,6 @@
                     }
                     const identityRequired = getFieldValue("identityRequired") === "true";
                     if (identityRequired) {
-                        if (getFieldValue("directorPersonalCodeSupplied") !== "true") {
-                            pushError("authority", "directorPersonalCodeSupplied", "Confirm that Companies House personal code checks have been completed.");
-                        }
                         if (getFieldValue("identityStatementGiven") !== "true") {
                             pushError("authority", "identityStatementGiven", "Identity verification statement must be confirmed when identity verification is required.");
                         }
@@ -80458,7 +80470,7 @@
                                                 <p class="eyebrow">${escapeHTML(row.companyNumber)}</p>
                                                 <h3 style="margin:0;">${escapeHTML(row.companyName)}</h3>
                                                 <p class="ch-section-sub">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</p>
-                                                <p class="ch-section-sub">${row.workflowAction === "changes-required" ? "Changes required: editing enabled for this client." : "No changes required: CS01 view is locked for this client."}</p>
+                                                <p class="ch-section-sub">${row.workflowAction === "changes-required" ? "Changes required: editing enabled for this client." : "No changes required: CS01 view is read-only except for Companies House personal code."}</p>
                                             </div>
                                         </header>
                                         <div class="ch-preflight-helper" style="margin-bottom: 10px;">
@@ -80627,13 +80639,10 @@
                                                     <option value="false" ${!row.identityVerification.verificationStatementGiven ? "selected" : ""}>Not confirmed</option>
                                                 </select>
                                             </label>
-                                            <label class="is-wide">
+                                                <label class="is-wide">
                                                 Companies House personal code
-                                                <select data-ch-review-field="directorPersonalCodeSupplied">
-                                                    <option value="true" ${row.identityVerification.directorPersonalCodeSupplied ? "selected" : ""}>Confirmed for filing</option>
-                                                    <option value="false" ${!row.identityVerification.directorPersonalCodeSupplied ? "selected" : ""}>Not yet confirmed</option>
-                                                </select>
-                                                <small class="operation-review-muted">Use this to confirm director/member personal code checks for this filing. This is separate from the 6-character company authentication code above.</small>
+                                                <input type="text" data-ch-review-field="directorPersonalCode" value="${escapeHTML(row.identityVerification.directorPersonalCode || "")}" placeholder="Enter personal code">
+                                                <small class="operation-review-muted">Required before submission. This is separate from the 6-character company authentication code above.</small>
                                             </label>
                                             <label class="is-wide">
                                                 Relevant officer/member
@@ -80704,11 +80713,18 @@
                         const syncConfirmState = () => {
                             if (!confirmButton) return;
                             const editableCards = Array.from(body.querySelectorAll('[data-ch-review-company-id][data-ch-review-editable="true"]'));
+                            const allCards = Array.from(body.querySelectorAll("[data-ch-review-company-id]"));
                             const hasBlockingErrors = editableCards.some((card) => !refreshCardValidationState(card).isValid);
+                            const hasMissingPersonalCode = allCards.some((card) => {
+                                const value = String(card.querySelector('[data-ch-review-field="directorPersonalCode"]')?.value || "");
+                                return !value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                            });
                             const workflowReady = activeCard ? isLastStep(activeCard) : false;
-                            confirmButton.disabled = hasBlockingErrors || !workflowReady;
+                            confirmButton.disabled = hasBlockingErrors || !workflowReady || hasMissingPersonalCode;
                             if (hasBlockingErrors) {
                                 confirmButton.title = "Complete all required fields before continuing.";
+                            } else if (hasMissingPersonalCode) {
+                                confirmButton.title = "Add a Companies House personal code for every selected company before continuing.";
                             } else if (!workflowReady) {
                                 confirmButton.title = "Move to the final section before continuing.";
                             } else {
@@ -80795,7 +80811,8 @@
                             if (!rowIsEditable) {
                                 card.querySelectorAll("[data-ch-review-field]").forEach((fieldNode) => {
                                     if (fieldNode && typeof fieldNode === "object" && "disabled" in fieldNode) {
-                                        fieldNode.disabled = true;
+                                        const fieldName = String(fieldNode.getAttribute?.("data-ch-review-field") || "");
+                                        fieldNode.disabled = fieldName !== "directorPersonalCode";
                                     }
                                 });
                             }
@@ -80860,7 +80877,6 @@
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const original = rowById.get(companyId);
                             if (!original) return;
-                            if (original.workflowAction !== "changes-required") return;
                             const nextStatus = String(card.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
                             const nextReferenceRaw = String(card.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
                             const nextReference = nextReferenceRaw.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -80870,7 +80886,7 @@
                             const nextLawfulPurpose = fromSelect(card.querySelector('[data-ch-review-field="lawfulPurposeStatement"]')?.value);
                             const nextStateConfirmation = fromSelect(card.querySelector('[data-ch-review-field="stateConfirmation"]')?.value);
                             const nextIdentityRequired = fromSelect(card.querySelector('[data-ch-review-field="identityRequired"]')?.value);
-                            const nextDirectorPersonalCodeSupplied = fromSelect(card.querySelector('[data-ch-review-field="directorPersonalCodeSupplied"]')?.value);
+                            const nextDirectorPersonalCode = String(card.querySelector('[data-ch-review-field="directorPersonalCode"]')?.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
                             const nextIdentityStatementGiven = fromSelect(card.querySelector('[data-ch-review-field="identityStatementGiven"]')?.value);
                             const nextIdentityRelevantOfficer = String(card.querySelector('[data-ch-review-field="identityRelevantOfficer"]')?.value || "").trim();
                             const nextSicCodes = toSicCodes(String(card.querySelector('[data-ch-review-field="sicCodes"]')?.value || ""));
@@ -80925,12 +80941,17 @@
                             }
                             const nextIdentityVerification = {
                                 required: nextIdentityRequired === true,
-                                directorPersonalCodeSupplied: nextDirectorPersonalCodeSupplied === true,
+                                directorPersonalCodeSupplied: Boolean(nextDirectorPersonalCode),
+                                directorPersonalCode: nextDirectorPersonalCode,
                                 verificationStatementGiven: nextIdentityStatementGiven !== false,
                                 relevantOfficer: nextIdentityRelevantOfficer,
                             };
                             if (JSON.stringify(nextIdentityVerification) !== JSON.stringify(original.identityVerification || {})) {
                                 body.identityVerification = nextIdentityVerification;
+                            }
+                            if (original.workflowAction !== "changes-required") {
+                                if (Object.keys(body).length) updates.push({ companyId, body });
+                                return;
                             }
                             if (JSON.stringify(nextSicCodes) !== JSON.stringify(original.sicCodes)) body.sicCodes = nextSicCodes;
                             if (JSON.stringify(nextFlags) !== JSON.stringify(original.cs01Flags || {})) body.cs01Flags = nextFlags;
