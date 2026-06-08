@@ -17736,9 +17736,32 @@
                 color: #1b4eaa;
                 animation: code-breaker-pill-processing 1.2s ease-in-out infinite;
             }
+            #codeBreakerWorkspaceTableBody .lock-status-pill.is-processing,
+            #codeBreakerWorkspaceTableBody .lock-status-pill.is-pending {
+                position: relative;
+                overflow: hidden;
+            }
+            #codeBreakerWorkspaceTableBody .lock-status-pill.is-processing::after,
+            #codeBreakerWorkspaceTableBody .lock-status-pill.is-pending::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                transform: translateX(-120%);
+                background: linear-gradient(110deg, rgba(255, 255, 255, 0) 10%, rgba(255, 255, 255, 0.48) 48%, rgba(255, 255, 255, 0) 88%);
+                animation: code-breaker-pill-sheen 1.3s ease-in-out infinite;
+                pointer-events: none;
+            }
+            #codeBreakerWorkspaceTableBody .lock-status-pill.is-pending::after {
+                opacity: 0.64;
+                animation-duration: 1.9s;
+            }
             @keyframes code-breaker-pill-processing {
                 0%, 100% { background-position: 0% 50%; }
                 50% { background-position: 100% 50%; }
+            }
+            @keyframes code-breaker-pill-sheen {
+                0% { transform: translateX(-120%); }
+                100% { transform: translateX(120%); }
             }
             .code-breaker-client-row.is-selected {
                 border-color: rgba(29, 103, 242, 0.44);
@@ -22076,6 +22099,38 @@
                 border-left: 4px solid transparent;
                 transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
             }
+            #codeBreakerSummary.is-bulk-running {
+                position: relative;
+                padding-left: 30px;
+                color: #1b4eaa;
+                font-weight: 820;
+            }
+            #codeBreakerSummary.is-bulk-running::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 50%;
+                width: 16px;
+                height: 16px;
+                margin-top: -8px;
+                border-radius: 999px;
+                border: 2px solid rgba(29, 103, 242, 0.2);
+                border-top-color: var(--blue);
+                animation: code-breaker-spin 0.85s linear infinite;
+            }
+            #codeBreakerSummary.is-bulk-running::after {
+                content: "";
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: -8px;
+                height: 3px;
+                border-radius: 999px;
+                background: linear-gradient(90deg, rgba(29, 103, 242, 0.24), rgba(29, 103, 242, 0.52));
+                transform-origin: left center;
+                transform: scaleX(var(--code-breaker-bulk-progress, 0));
+                transition: transform 260ms ease;
+            }
             #codeBreakerWorkspaceTableBody tr:hover {
                 transform: translateY(-1px);
                 box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.12);
@@ -22100,6 +22155,51 @@
             }
             #codeBreakerWorkspaceTableBody tr.code-breaker-row-awaiting:hover {
                 background: linear-gradient(90deg, rgba(255, 182, 72, 0.24), rgba(255, 182, 72, 0.1) 22%, rgba(255, 255, 255, 0.98) 56%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-bulk-queued {
+                box-shadow: inset 0 0 0 1px rgba(47, 113, 228, 0.12);
+                animation: code-breaker-row-queued 1.45s ease-in-out infinite;
+                animation-delay: calc(var(--code-breaker-bulk-order, 0) * 80ms);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-bulk-running {
+                box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.35), 0 0 0 2px rgba(29, 103, 242, 0.12);
+                animation: code-breaker-row-running 0.95s ease-in-out infinite;
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-bulk-running td {
+                background-image: linear-gradient(110deg, rgba(29, 103, 242, 0.03), rgba(29, 103, 242, 0.17), rgba(29, 103, 242, 0.03));
+                background-size: 220% 100%;
+                animation: code-breaker-row-running-scan 1.2s linear infinite;
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-bulk-complete {
+                animation: code-breaker-row-complete 560ms ease-out;
+            }
+            @keyframes code-breaker-row-queued {
+                0%, 100% {
+                    box-shadow: inset 0 0 0 1px rgba(47, 113, 228, 0.10);
+                }
+                50% {
+                    box-shadow: inset 0 0 0 1px rgba(47, 113, 228, 0.26), 0 6px 16px rgba(47, 113, 228, 0.08);
+                }
+            }
+            @keyframes code-breaker-row-running {
+                0%, 100% {
+                    transform: translateY(0);
+                }
+                50% {
+                    transform: translateY(-1px);
+                }
+            }
+            @keyframes code-breaker-row-running-scan {
+                0% { background-position: 0% 50%; }
+                100% { background-position: 200% 50%; }
+            }
+            @keyframes code-breaker-row-complete {
+                0% {
+                    box-shadow: inset 0 0 0 1px rgba(39, 176, 95, 0.35), 0 0 0 4px rgba(39, 176, 95, 0.18);
+                }
+                100% {
+                    box-shadow: inset 0 0 0 1px rgba(39, 176, 95, 0.08);
+                }
             }
             @media (max-width: 1260px) {
                 .ch-companies-toolbar-top {
@@ -72813,8 +72913,12 @@
                 const workspaceCount = (codeBreakerWorkspaces || []).length;
                 if (codeBreakerBulkCalculationInFlight && codeBreakerBulkWorkspaceTotal > 0) {
                     summary.textContent = `Calculating in background: ${codeBreakerBulkWorkspaceCompleted.toLocaleString("en-GB")} of ${codeBreakerBulkWorkspaceTotal.toLocaleString("en-GB")} workspaces processed.`;
+                    summary.classList.add("is-bulk-running");
+                    summary.style.setProperty("--code-breaker-bulk-progress", String(Math.max(0, Math.min(1, Number(codeBreakerBulkWorkspaceCompleted || 0) / Number(codeBreakerBulkWorkspaceTotal || 1)))));
                 } else {
                     summary.textContent = `${connectionCount.toLocaleString("en-GB")} connected Xero organisation${connectionCount === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} configured.`;
+                    summary.classList.remove("is-bulk-running");
+                    summary.style.removeProperty("--code-breaker-bulk-progress");
                 }
 
                 if (setupButton.dataset.cbWired !== "true") {
@@ -72857,7 +72961,7 @@
                 if (!mergedRows.length) {
                     tableBody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No Xero connections</p><h4>Connect a Xero tenant first</h4><p>Then set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
                 } else {
-                    tableBody.innerHTML = mergedRows.map(({ connection, workspace }) => {
+                    tableBody.innerHTML = mergedRows.map(({ connection, workspace }, rowIndex) => {
                         const tenantId = String(connection?.tenantId || workspace?.xeroTenantId || "").trim();
                         const tenantLabel = xeroWorkspaceLabel(
                             connection?.tenantName || workspace?.xeroTenantName,
@@ -72901,12 +73005,25 @@
                             : status;
                         const compare = codeBreakerCompareStatus(workspace);
                         const rowTone = codeBreakerWorkspaceRowTone(workspace, compare);
+                        const bulkRowClass = codeBreakerBulkCalculationInFlight && bulkState
+                            ? (
+                                bulkState === "running"
+                                    ? "code-breaker-row-bulk-running"
+                                    : bulkState === "queued"
+                                        ? "code-breaker-row-bulk-queued"
+                                        : bulkState === "complete"
+                                            ? "code-breaker-row-bulk-complete"
+                                            : ""
+                            )
+                            : "";
+                        const rowClassName = `${rowTone} ${bulkRowClass}`.trim();
+                        const rowStyle = bulkState === "queued" ? ` style="--code-breaker-bulk-order:${Number(rowIndex || 0)}"` : "";
                         const workspaceName = String(workspace.clientName || "Workspace").trim();
                         const normalisedWorkspaceName = workspaceName.toLowerCase().replace(/\s+/g, " ").trim();
                         const normalisedTenantLabel = String(tenantLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
                         const showTenantLine = Boolean(normalisedTenantLabel) && normalisedTenantLabel !== normalisedWorkspaceName;
                         return `
-                            <tr class="${escapeHTML(rowTone)}">
+                            <tr class="${escapeHTML(rowClassName)}"${rowStyle}>
                                 <td><strong>${escapeHTML(tenantLabel)}</strong></td>
                                 <td><small>${escapeHTML(connectionCopy)}</small></td>
                                 <td><button class="text-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">${escapeHTML(workspaceName || "Workspace")}</button>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
