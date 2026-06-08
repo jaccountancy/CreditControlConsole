@@ -28840,6 +28840,7 @@
             let codeBreakerAnalysisByWorkspaceId = {};
             let codeBreakerWorkspaceSubView = "workspace";
             const codeBreakerCrackByWorkspaceId = {};
+            const codeBreakerQuickSetupInFlightTenantIds = new Set();
             let codeBreakerWizardState = {
                 open: false,
                 workspaceId: "",
@@ -71222,7 +71223,11 @@
                     showToast("Complete client, Xero connection, company number, year end date, and submitted date before saving.", "error");
                     return false;
                 }
+                return await createCodeBreakerWorkspaceFromDecision(decision, connections, { autoRunCalculation: false });
+            }
 
+            async function createCodeBreakerWorkspaceFromDecision(decision = {}, connections = [], options = {}) {
+                const autoRunCalculation = Boolean(options?.autoRunCalculation);
                 let snapshot = null;
                 try {
                     snapshot = await codeBreakerWorkspaceSnapshot({
@@ -71244,8 +71249,9 @@
                 }
 
                 const now = new Date().toISOString();
+                const workspaceId = `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 codeBreakerWorkspaces.unshift({
-                    id: `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    id: workspaceId,
                     clientName: decision.clientName,
                     xeroTenantId: decision.tenantId,
                     xeroTenantName: xeroWorkspaceLabel(
@@ -71271,9 +71277,122 @@
                     updatedAt: now,
                 });
                 persistCodeBreakerWorkspaces();
+                selectedCodeBreakerWorkspaceId = workspaceId;
+                codeBreakerWorkspaceSubView = "workspace";
                 showToast("Code Breaker workspace created.", "success");
                 renderCodeBreakerScreen();
+                if (autoRunCalculation) {
+                    await runCodeBreakerAnalysis(workspaceId);
+                }
                 return true;
+            }
+
+            async function quickSetupCodeBreakerWorkspaceFromTenant(tenantId = "") {
+                const safeTenantId = String(tenantId || "").trim();
+                if (!safeTenantId) {
+                    showToast("Tenant is required to run one-click setup.", "error");
+                    return false;
+                }
+                if (codeBreakerQuickSetupInFlightTenantIds.has(safeTenantId)) return false;
+                codeBreakerQuickSetupInFlightTenantIds.add(safeTenantId);
+                renderCodeBreakerScreen();
+                try {
+                    const existing = (codeBreakerWorkspaces || []).find((row) => String(row?.xeroTenantId || "").trim() === safeTenantId) || null;
+                    if (existing) {
+                        selectedCodeBreakerWorkspaceId = existing.id;
+                        codeBreakerWorkspaceSubView = "workspace";
+                        renderCodeBreakerScreen();
+                        await runCodeBreakerAnalysis(existing.id);
+                        return true;
+                    }
+                    const connections = codeBreakerConnections();
+                    const connection = connections.find((row) => String(row?.tenantId || "").trim() === safeTenantId) || null;
+                    if (!connection) {
+                        showToast("Selected Xero connection is unavailable. Refresh and try again.", "error");
+                        return false;
+                    }
+
+                    const tenantName = xeroWorkspaceLabel(connection?.tenantName, safeTenantId, "Xero tenant");
+                    const draftWorkspace = {
+                        clientName: tenantName,
+                        xeroTenantId: safeTenantId,
+                        xeroTenantName: tenantName,
+                        xeroContactId: "",
+                        companyNumber: "",
+                        periodStartDate: "",
+                        yearEndDate: "",
+                        submittedAt: "",
+                    };
+
+                    const submittedRows = yePrepCustomerRows(safeTenantId);
+                    const latestRow = submittedRows
+                        .map((row) => {
+                            const periods = yePrepCompaniesHousePeriods(row, row?.lockRow?.companiesHouse || null)
+                                .filter((period) => period?.submittedAt && period?.yearEnd);
+                            const latestPeriod = periods
+                                .sort((left, right) => dateSortValue(right?.submittedAt || right?.yearEnd || "") - dateSortValue(left?.submittedAt || left?.yearEnd || ""))[0] || null;
+                            const score = dateSortValue(latestPeriod?.submittedAt || latestPeriod?.yearEnd || "");
+                            return { row, latestPeriod, score };
+                        })
+                        .filter((item) => Number.isFinite(item.score) && item.score !== Number.MAX_SAFE_INTEGER)
+                        .sort((left, right) => right.score - left.score)[0] || null;
+                    if (latestRow?.row) {
+                        draftWorkspace.xeroContactId = String(
+                            latestRow.row?.connected?.xeroContactId
+                            || latestRow.row?.customer?.xeroContactId
+                            || latestRow.row?.customer?.contactId
+                            || ""
+                        ).trim();
+                    }
+                    if (!draftWorkspace.xeroContactId) {
+                        const customers = codeBreakerCustomersForTenant(safeTenantId);
+                        const target = normaliseStatus(tenantName || "");
+                        const bestCustomer = customers
+                            .map((row) => {
+                                const name = normaliseStatus(row?.name || row?.clientName || row?.companyName || "");
+                                let score = 0;
+                                if (name && target) {
+                                    if (name === target) score = 1000;
+                                    else if (name.includes(target) || target.includes(name)) score = 500;
+                                    else {
+                                        const targetTokens = target.split(/\s+/).filter(Boolean);
+                                        const nameTokens = name.split(/\s+/).filter(Boolean);
+                                        score = targetTokens.filter((token) => nameTokens.includes(token)).length * 10;
+                                    }
+                                }
+                                return { row, score };
+                            })
+                            .sort((left, right) => right.score - left.score)[0]?.row || customers[0] || null;
+                        draftWorkspace.xeroContactId = String(bestCustomer?.xeroContactId || bestCustomer?.contactId || "").trim();
+                        if (!draftWorkspace.companyNumber) {
+                            draftWorkspace.companyNumber = normaliseCompanyNumberInput(bestCustomer?.companyNumber || "");
+                        }
+                    }
+
+                    showToast("Jenius AI is setting up this workspace and running calculation...", "info");
+                    await codeBreakerHydrateWorkspaceForWizard(draftWorkspace);
+                    if (!draftWorkspace.companyNumber || !draftWorkspace.yearEndDate || !draftWorkspace.submittedAt) {
+                        showToast("Could not auto-populate Companies House number and dates for this tenant.", "error");
+                        return false;
+                    }
+                    const decision = {
+                        clientName: String(draftWorkspace.clientName || "").trim(),
+                        tenantId: safeTenantId,
+                        xeroContactId: String(draftWorkspace.xeroContactId || "").trim(),
+                        companyNumber: String(draftWorkspace.companyNumber || "").trim().toUpperCase(),
+                        periodStartDate: String(draftWorkspace.periodStartDate || codeBreakerPeriodStartDate(draftWorkspace) || "").trim(),
+                        yearEndDate: String(draftWorkspace.yearEndDate || "").trim(),
+                        submittedAt: String(draftWorkspace.submittedAt || "").trim(),
+                    };
+                    if (!decision.clientName || !decision.tenantId || !decision.companyNumber || !decision.yearEndDate || !decision.submittedAt) {
+                        showToast("One-click setup could not complete. Open setup to review details.", "error");
+                        return false;
+                    }
+                    return await createCodeBreakerWorkspaceFromDecision(decision, connections, { autoRunCalculation: true });
+                } finally {
+                    codeBreakerQuickSetupInFlightTenantIds.delete(safeTenantId);
+                    renderCodeBreakerScreen();
+                }
             }
 
             async function refreshCodeBreakerData() {
@@ -71595,6 +71714,7 @@
                             ? (tenantType ? `${tenantType} · Connected` : "Connected")
                             : "No active connection";
                         if (!workspace) {
+                            const setupBusy = Boolean(tenantId) && codeBreakerQuickSetupInFlightTenantIds.has(tenantId);
                             return `
                                 <tr>
                                     <td><strong>${escapeHTML(tenantLabel)}</strong></td>
@@ -71607,7 +71727,7 @@
                                     <td>--</td>
                                     <td><span class="lock-status-pill is-pending">Awaiting workspace</span></td>
                                     <td><span class="lock-status-pill is-pending">Not started</span></td>
-                                    <td><button class="ghost-button" type="button" data-code-breaker-setup-workspace="true">Set up</button></td>
+                                    <td><button class="ghost-button" type="button" data-code-breaker-setup-workspace="${escapeHTML(tenantId || "")}" ${setupBusy ? "disabled" : ""}>${setupBusy ? "Setting up..." : "Set up"}</button></td>
                                 </tr>
                             `;
                         }
@@ -71641,6 +71761,11 @@
                     });
                     tableBody.querySelectorAll("[data-code-breaker-setup-workspace]").forEach((button) => {
                         button.addEventListener("click", async () => {
+                            const tenantId = String(button.dataset.codeBreakerSetupWorkspace || "").trim();
+                            if (tenantId) {
+                                await quickSetupCodeBreakerWorkspaceFromTenant(tenantId);
+                                return;
+                            }
                             await openCodeBreakerWorkspaceSetupDialog();
                         });
                     });
