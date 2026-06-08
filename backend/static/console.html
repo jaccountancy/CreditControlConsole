@@ -82837,30 +82837,21 @@
                 runInitStep("wireButtonIconEnhancements", () => wireButtonIconEnhancements());
                 runInitStep("wireUserActivityLogging", () => wireUserActivityLogging());
                 companySecretarialQueue = loadCompanySecretarialQueueFallback();
-                try {
-                    const initialSection = appNavSectionFromHash();
-                    const hasPersistedActiveView = Object.prototype.hasOwnProperty.call(persistedUIState, "activeView");
-                    const persistedSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
-                        ? persistedUIState.activeNavSection
-                        : (hasPersistedActiveView ? activeNavForView() : "");
-                    if (returnedFromIgnitionConnection) {
-                        activeView = "ignition";
-                    } else if (returnedFromXeroConnection && xeroConnectionReturn.targetSection && appNavHashes[xeroConnectionReturn.targetSection]) {
-                        navigateApp(xeroConnectionReturn.targetSection);
-                    } else if (initialSection) {
-                        navigateApp(initialSection);
-                    } else if (persistedSection && appNavHashes[persistedSection]) {
-                        navigateApp(persistedSection);
-                    } else {
-                        navigateApp("home");
-                    }
-                } catch (error) {
-                    console.error("Unable to resolve initial navigation state", error);
-                    try {
-                        navigateApp("home");
-                    } catch (fallbackError) {
-                        console.error("Unable to navigate to home during init fallback", fallbackError);
-                    }
+                const initialSection = appNavSectionFromHash();
+                const hasPersistedActiveView = Object.prototype.hasOwnProperty.call(persistedUIState, "activeView");
+                const persistedSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
+                    ? persistedUIState.activeNavSection
+                    : (hasPersistedActiveView ? activeNavForView() : "");
+                if (returnedFromIgnitionConnection) {
+                    activeView = "ignition";
+                } else if (returnedFromXeroConnection && xeroConnectionReturn.targetSection && appNavHashes[xeroConnectionReturn.targetSection]) {
+                    navigateApp(xeroConnectionReturn.targetSection);
+                } else if (initialSection) {
+                    navigateApp(initialSection);
+                } else if (persistedSection && appNavHashes[persistedSection]) {
+                    navigateApp(persistedSection);
+                } else {
+                    navigateApp("home");
                 }
                 try {
                     renderAll();
