@@ -21084,6 +21084,39 @@
             .ch-detail-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
             .ch-detail-edit label.is-wide { grid-column: 1 / -1; }
             .ch-detail-edit input, .ch-detail-edit select, .ch-detail-edit textarea { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--ink); }
+            .ch-detail-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .ch-detail-summary-tile {
+                display: grid;
+                gap: 6px;
+                align-content: start;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: rgba(248, 251, 255, 0.92);
+                padding: 10px 12px;
+            }
+            .ch-detail-summary-tile strong {
+                font-size: 0.76rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+            }
+            .ch-detail-summary-tile small {
+                font-size: 0.82rem;
+                font-weight: 760;
+                line-height: 1.45;
+                color: var(--ink);
+                white-space: normal;
+                word-break: break-word;
+            }
+            @media (max-width: 980px) {
+                .ch-detail-summary-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
             .ch-import-card { display: flex; flex-direction: column; gap: 14px; padding: 18px 22px; background: var(--surface-strong); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); }
             .ch-import-dropzone { border: 2px dashed var(--line); border-radius: 12px; padding: 24px; text-align: center; color: var(--muted); background: var(--surface-soft); }
             .ch-import-dropzone input[type="file"] { display: block; margin: 8px auto 0; }
@@ -78059,10 +78092,19 @@
                                             <label><strong>Company type</strong><small class="operation-review-muted">${escapeHTML(row.companyType)}</small></label>
                                             <label class="is-wide"><strong>Known issues</strong><small class="operation-review-muted">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</small></label>
                                         </div>
-                                        <div class="ch-detail-edit" data-ch-step-panel="people" hidden>
-                                            <label class="is-wide"><strong>Officers</strong><small class="operation-review-muted">${escapeHTML(row.officersSummary)}</small></label>
-                                            <label class="is-wide"><strong>People with Significant Control</strong><small class="operation-review-muted">${escapeHTML(row.pscSummary)}</small></label>
-                                            <label class="is-wide"><strong>PSC context</strong><small class="operation-review-muted">${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small></label>
+                                        <div class="ch-detail-summary-grid" data-ch-step-panel="people" hidden>
+                                            <article class="ch-detail-summary-tile">
+                                                <strong>Officers</strong>
+                                                <small>${escapeHTML(row.officersSummary)}</small>
+                                            </article>
+                                            <article class="ch-detail-summary-tile">
+                                                <strong>People with Significant Control</strong>
+                                                <small>${escapeHTML(row.pscSummary)}</small>
+                                            </article>
+                                            <article class="ch-detail-summary-tile">
+                                                <strong>PSC context</strong>
+                                                <small>${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small>
+                                            </article>
                                         </div>
                                         <div class="ch-detail-edit" data-ch-step-panel="address" hidden>
                                             <label class="is-wide">
