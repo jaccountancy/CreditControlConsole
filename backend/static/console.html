@@ -27362,6 +27362,7 @@
                                                 <tr>
                                                     <th>Type</th>
                                                     <th>Reference</th>
+                                                    <th>Description</th>
                                                     <th>Posted date</th>
                                                     <th>Status</th>
                                                     <th>Amount</th>
@@ -27401,6 +27402,7 @@
                                                 <tr>
                                                     <th>Type</th>
                                                     <th>Reference</th>
+                                                    <th>Description</th>
                                                     <th>Posted date</th>
                                                     <th>Status</th>
                                                     <th>Amount</th>
@@ -70819,6 +70821,7 @@
                     ...(Array.isArray(customerPayload?.outstandingInvoices) ? customerPayload.outstandingInvoices : []).map((row) => ({
                         sourceType: "Invoice",
                         reference: String(row?.invoiceNumber || row?.xeroInvoiceId || row?.id || "Invoice"),
+                        description: String(row?.description || row?.contactName || "").trim() || "Sales invoice",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.invoiceDate || row?.dueDate || "").slice(0, 10),
                         amount: Number(row?.total || row?.amountDue || 0),
@@ -70826,6 +70829,7 @@
                     ...(Array.isArray(customerPayload?.unallocatedCredits) ? customerPayload.unallocatedCredits : []).map((row) => ({
                         sourceType: "Credit note",
                         reference: String(row?.creditNumber || row?.invoiceNumber || row?.id || "Credit"),
+                        description: String(row?.description || row?.contactName || "").trim() || "Unallocated credit note",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.date || row?.creditNoteDate || "").slice(0, 10),
                         amount: Number(row?.remainingCredit || row?.total || 0) * -1,
@@ -70833,6 +70837,7 @@
                     ...(Array.isArray(customerPayload?.overpayments) ? customerPayload.overpayments : []).map((row) => ({
                         sourceType: "Overpayment",
                         reference: String(row?.reference || row?.id || "Overpayment"),
+                        description: String(row?.description || row?.contactName || "").trim() || "Customer overpayment",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
                         amount: Number(row?.remainingCredit || row?.total || 0) * -1,
@@ -70844,6 +70849,7 @@
                             return applied > 0 ? [{
                                 sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
                                 reference: String(row?.number || row?.reference || row?.id || "Allocation"),
+                                description: String(row?.description || row?.contactName || "").trim() || "Allocated credit movement",
                                 status: String(row?.status || "AUTHORISED"),
                                 postedDate: String(row?.date || "").slice(0, 10),
                                 amount: applied * -1,
@@ -70856,6 +70862,7 @@
                                 return {
                                     sourceType: row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit",
                                     reference: String(allocation?.invoiceNumber || row?.number || row?.reference || row?.id || "Allocation"),
+                                    description: String(allocation?.reference || row?.description || row?.contactName || "").trim() || "Allocated credit movement",
                                     status: String(row?.status || "AUTHORISED"),
                                     postedDate: String(allocation?.date || row?.date || "").slice(0, 10),
                                     amount: amount * -1,
@@ -70898,6 +70905,7 @@
                     ...invoices.map((row) => ({
                         sourceType: "Invoice",
                         reference: String(row?.invoiceNumber || row?.xeroInvoiceId || "").trim() || "Invoice",
+                        description: String(row?.description || row?.contactName || "").trim() || "Sales invoice",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.invoiceDate || row?.dueDate || "").slice(0, 10),
                         amount: Number(row?.total || row?.amountDue || 0),
@@ -70908,6 +70916,7 @@
                     ...credits.map((row) => ({
                         sourceType: "Credit note",
                         reference: String(row?.creditNumber || row?.invoiceNumber || row?.id || "").trim() || "Credit",
+                        description: String(row?.description || row?.contactName || "").trim() || "Unallocated credit note",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.date || row?.creditNoteDate || "").slice(0, 10),
                         amount: Number(row?.remainingCredit || row?.total || 0) * -1,
@@ -70918,6 +70927,7 @@
                     ...overpayments.map((row) => ({
                         sourceType: "Overpayment",
                         reference: String(row?.reference || row?.id || "").trim() || "Overpayment",
+                        description: String(row?.description || row?.contactName || "").trim() || "Customer overpayment",
                         status: String(row?.status || "AUTHORISED"),
                         postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
                         amount: Number(row?.remainingCredit || row?.total || 0) * -1,
@@ -70936,6 +70946,7 @@
                             return [{
                                 sourceType,
                                 reference: String(row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                description: String(row?.description || row?.contactName || "").trim() || "Allocated credit movement",
                                 status: String(row?.status || "AUTHORISED"),
                                 postedDate: String(row?.date || "").slice(0, 10),
                                 amount: applied * -1,
@@ -70951,6 +70962,7 @@
                                 return {
                                     sourceType,
                                     reference: String(allocation?.invoiceNumber || row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                    description: String(allocation?.reference || row?.description || row?.contactName || "").trim() || "Allocated credit movement",
                                     status: String(row?.status || "AUTHORISED"),
                                     postedDate: String(allocation?.date || row?.date || "").slice(0, 10),
                                     amount: amount * -1,
@@ -71051,7 +71063,8 @@
                         return `
                             <tr>
                                 <td>${escapeHTML(String(row.sourceType || ""))}</td>
-                                <td>${escapeHTML(String(row.reference || ""))}</td>
+                                <td>${escapeHTML(String(row.reference || row.invoiceNumber || ""))}</td>
+                                <td>${escapeHTML(String(row.description || row.raw?.narration || row.raw?.reason || ""))}</td>
                                 <td>${escapeHTML(formatDate(row.postedDate || ""))}</td>
                                 <td>${escapeHTML(String(row.status || ""))}</td>
                                 <td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
@@ -71069,7 +71082,7 @@
                             </tr>
                         `;
                     }).join("")
-                    : '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>No Xero contributors found</h4><p>Refresh analysis to pull live rows from Xero.</p></div></td></tr>';
+                    : '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>No Xero contributors found</h4><p>Refresh analysis to pull live rows from Xero.</p></div></td></tr>';
 
                 if (refreshButton && refreshButton.dataset.cbWired !== "true") {
                     refreshButton.dataset.cbWired = "true";
@@ -71187,6 +71200,7 @@
                             return {
                                 sourceType: String(row?.sourceType || "Journal"),
                                 reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
+                                description: String(row?.narration || row?.reason || "").trim() || "Journal contributor",
                                 status: String(row?.reason || "Journal contributor"),
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
                                 amount: impact,
@@ -71202,6 +71216,7 @@
                         .map((row, index) => ({
                             sourceType: String(row?.sourceType || "Voided transaction"),
                             reference: String(row?.reference || row?.transactionId || "Voided transaction"),
+                            description: String(row?.reason || "").trim() || "Voided or deleted after filing",
                             status: String(row?.status || "VOIDED"),
                             postedDate: String(row?.journalDate || "").slice(0, 10),
                             amount: Number(row?.impact || 0),
@@ -71365,14 +71380,15 @@
                     ? rows.map((row) => `
                         <tr>
                             <td>${escapeHTML(String(row.sourceType || ""))}</td>
-                            <td>${escapeHTML(String(row.reference || ""))}</td>
+                            <td>${escapeHTML(String(row.reference || row.invoiceNumber || ""))}</td>
+                            <td>${escapeHTML(String(row.description || row.raw?.narration || row.raw?.reason || ""))}</td>
                             <td>${escapeHTML(formatDate(row.postedDate || ""))}</td>
                             <td>${escapeHTML(String(row.status || ""))}</td>
                             <td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
                             <td>${escapeHTML(formatCurrency(Number(row.reversalAmount || 0)))}</td>
                         </tr>
                     `).join("")
-                    : '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>Transaction mapping not available</h4><p>Run wizard steps to pull and map post-filing Xero rows.</p></div></td></tr>';
+                    : '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>Transaction mapping not available</h4><p>Run wizard steps to pull and map post-filing Xero rows.</p></div></td></tr>';
 
                 if (closeButton && closeButton.dataset.cbWired !== "true") {
                     closeButton.dataset.cbWired = "true";
@@ -71623,6 +71639,7 @@
                             return {
                                 sourceType: String(row?.sourceType || "Journal"),
                                 reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
+                                description: String(row?.narration || row?.reason || "").trim() || "Journal contributor",
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
                                 status: String(row?.reason || "Variance contributor"),
                                 amount: impact,
@@ -71777,6 +71794,7 @@
                         rows: suggested.map((row) => ({
                             id: `${row.sourceType}:${row.reference}:${row.postedDate}`,
                             invoiceNumber: row.reference,
+                            description: String(row.description || row.raw?.narration || row.raw?.reason || "").trim(),
                             postedDate: row.postedDate,
                             entryDate: row.postedDate,
                             status: row.status,
