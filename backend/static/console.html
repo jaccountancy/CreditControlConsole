@@ -69586,7 +69586,7 @@
 
             function codeBreakerMetricValue(value) {
                 const resolved = codeBreakerExtractNetAssets(value);
-                if (!Number.isFinite(resolved)) return "Pending";
+                if (!Number.isFinite(resolved)) return "Unavailable";
                 return escapeHTML(formatCurrency(resolved));
             }
 
@@ -70109,9 +70109,11 @@
 
                 const summary = codeBreakerWizardState.summary || {};
                 const metrics = [
-                    ["CH net assets", Number.isFinite(Number(summary.chNetAssets)) ? formatCurrency(Number(summary.chNetAssets)) : "Pending"],
-                    ["Xero net assets", Number.isFinite(Number(summary.xeroNetAssets)) ? formatCurrency(Number(summary.xeroNetAssets)) : "Pending"],
-                    ["Variance", Number.isFinite(Number(summary.variance)) ? formatCurrency(Number(summary.variance)) : "Pending"],
+                    ["CH net assets", Number.isFinite(Number(summary.chNetAssets)) ? formatCurrency(Number(summary.chNetAssets)) : "Unavailable"],
+                    ["Xero net assets", Number.isFinite(Number(summary.xeroNetAssets)) ? formatCurrency(Number(summary.xeroNetAssets)) : "Unavailable"],
+                    ["Variance", Number.isFinite(Number(summary.variance)) ? formatCurrency(Number(summary.variance)) : "Unavailable"],
+                    ["CH source", String(summary.chSource || "Unavailable")],
+                    ["Xero source", String(summary.xeroSource || "Unavailable")],
                     ["Suggested rows", Number(summary.suggestedCount || 0).toLocaleString("en-GB")],
                 ];
                 metricsTarget.innerHTML = metrics.map(([label, value]) => (
@@ -70214,15 +70216,25 @@
                     workspace.chNetAssets = Number.isFinite(resolvedCh) ? resolvedCh : null;
                     workspace.xeroNetAssets = Number.isFinite(resolvedXero) ? resolvedXero : null;
                     workspace.netAssetsDifference = Number.isFinite(resolvedDifference) ? resolvedDifference : null;
+                    workspace.chSource = String(snapshot?.ch?.source || "unavailable");
+                    workspace.xeroSource = String(snapshot?.xero?.source || "unavailable");
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
                     if (!Number.isFinite(workspace.chNetAssets) || !Number.isFinite(workspace.xeroNetAssets)) {
-                        throw new Error("Net assets could not be read from Companies House or Xero for this workspace date.");
+                        const chReason = String(snapshot?.ch?.reason || "").trim();
+                        const xeroReason = String(snapshot?.xero?.reason || "").trim();
+                        const chSource = String(snapshot?.ch?.source || "unavailable").trim();
+                        const xeroSource = String(snapshot?.xero?.source || "unavailable").trim();
+                        throw new Error(
+                            `Exact YE net assets unavailable for ${filedYearEnd}. `
+                            + `CH source: ${chSource}${chReason ? ` (${chReason})` : ""}. `
+                            + `Xero source: ${xeroSource}${xeroReason ? ` (${xeroReason})` : ""}.`
+                        );
                     }
                     setCodeBreakerWizardStep(
                         1,
                         "complete",
-                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} vs Xero ${formatCurrency(workspace.xeroNetAssets)} (${formatCurrency(workspace.netAssetsDifference || 0)} variance).`
+                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance).`
                     );
 
                     setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
@@ -70307,6 +70319,8 @@
                         chNetAssets: workspace.chNetAssets,
                         xeroNetAssets: workspace.xeroNetAssets,
                         variance: variance,
+                        chSource: workspace.chSource || "",
+                        xeroSource: workspace.xeroSource || "",
                         suggestedCount: codeBreakerWizardState.rows.length,
                     };
                     setCodeBreakerWizardStep(3, "complete", "Guidance and transaction breakdown ready.");
@@ -70754,6 +70768,8 @@
                     chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
                     xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : null,
                     netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null,
+                    chSource: String(snapshot?.ch?.source || "unavailable"),
+                    xeroSource: String(snapshot?.xero?.source || "unavailable"),
                     createdAt: now,
                     updatedAt: now,
                 });
@@ -70879,6 +70895,8 @@
                             <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(codeBreakerPeriodStartDate(workspace) || ""))} to ${escapeHTML(formatDate(workspace.yearEndDate || ""))}</strong></article>
                             <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
                             <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
+                            <article class="key-metric-card"><span>CH source</span><strong>${escapeHTML(String(workspace?.chSource || "Unavailable"))}</strong></article>
+                            <article class="key-metric-card"><span>Xero source</span><strong>${escapeHTML(String(workspace?.xeroSource || "Unavailable"))}</strong></article>
                         </div>
                         <div class="code-breaker-workspace-actions">
                             <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
@@ -70910,6 +70928,8 @@
                         <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(analysis.periodStart || ""))} to ${escapeHTML(formatDate(analysis.periodEnd || ""))}</strong></article>
                         <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
                         <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
+                        <article class="key-metric-card"><span>CH source</span><strong>${escapeHTML(String(workspace?.chSource || "Unavailable"))}</strong></article>
+                        <article class="key-metric-card"><span>Xero source</span><strong>${escapeHTML(String(workspace?.xeroSource || "Unavailable"))}</strong></article>
                         <article class="key-metric-card"><span>Variance to clear</span><strong>${escapeHTML(compare.label)}</strong></article>
                         <article class="key-metric-card"><span>Comparison mode</span><strong>${escapeHTML(analysis.mode === "balance_sheet_compare" ? "CH filed vs Xero balance sheet" : "Transaction delta")}</strong></article>
                         <article class="key-metric-card"><span>Variance</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>

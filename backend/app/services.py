@@ -13992,6 +13992,15 @@ def _code_breaker_xero_net_assets(
     as_at_date: date | None = None,
     header_dates: list[date | None] | None = None,
 ) -> Decimal | None:
+    value, _ = _code_breaker_xero_net_assets_with_source(lines, as_at_date=as_at_date, header_dates=header_dates)
+    return value
+
+
+def _code_breaker_xero_net_assets_with_source(
+    lines: list[dict],
+    as_at_date: date | None = None,
+    header_dates: list[date | None] | None = None,
+) -> tuple[Decimal | None, str]:
     def preferred_amount(amounts: list[Decimal]) -> Decimal | None:
         if not amounts:
             return None
@@ -14011,7 +14020,7 @@ def _code_breaker_xero_net_assets(
             amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
             chosen = preferred_amount(amounts)
             if chosen is not None:
-                return chosen
+                return chosen, "xero_balance_sheet:summary_row"
 
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
@@ -14020,7 +14029,7 @@ def _code_breaker_xero_net_assets(
         if "net assets" in label:
             amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
             if amounts:
-                return _money(amounts[0])
+                return _money(amounts[0]), "xero_balance_sheet:net_assets_row"
     assets_total = None
     liabilities_total = None
     for line in lines:
@@ -14034,8 +14043,45 @@ def _code_breaker_xero_net_assets(
         elif "total liabilities" in label:
             liabilities_total = amount
     if assets_total is not None and liabilities_total is not None:
-        return _money(assets_total - liabilities_total)
-    return None
+        return _money(assets_total - liabilities_total), "xero_balance_sheet:assets_minus_liabilities"
+    return None, "xero_balance_sheet:unavailable"
+
+
+def _code_breaker_net_assets_value_strict(payload: object) -> Decimal | None:
+    if not isinstance(payload, dict):
+        return None
+    candidates: list[Decimal] = []
+    direct_keys = (
+        "netAssets",
+        "net_assets",
+        "balanceSheetNetAssets",
+        "net_assets_total",
+        "totalNetAssets",
+        "total_net_assets",
+    )
+    for key in direct_keys:
+        if key in payload:
+            value = _code_breaker_net_assets_value(payload.get(key))
+            if value is not None:
+                candidates.append(value)
+    for key, value in payload.items():
+        key_text = str(key or "").strip().lower()
+        if "net assets" in key_text or "net_assets" in key_text:
+            extracted = _code_breaker_net_assets_value(value)
+            if extracted is not None:
+                candidates.append(extracted)
+    description_values = payload.get("description_values")
+    if isinstance(description_values, dict):
+        for key, value in description_values.items():
+            key_text = str(key or "").strip().lower()
+            if "net assets" in key_text or "net_assets" in key_text:
+                extracted = _code_breaker_net_assets_value(value)
+                if extracted is not None:
+                    candidates.append(extracted)
+    if not candidates:
+        return None
+    non_zero = [value for value in candidates if value.copy_abs() > Decimal("0.00")]
+    return _money(non_zero[-1] if non_zero else candidates[-1])
 
 
 def _code_breaker_is_accounts_filing(item: dict | None) -> bool:
@@ -14121,7 +14167,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         {"date": as_at_date.isoformat()},
     )
     balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
-    xero_net_assets = _code_breaker_xero_net_assets(
+    xero_net_assets, xero_source = _code_breaker_xero_net_assets_with_source(
         _xero_report_lines(balance_sheet_data),
         as_at_date=as_at_date,
         header_dates=_xero_report_header_dates(balance_sheet_data),
@@ -14168,12 +14214,26 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     selected_accounts_filing = None
     selected_accounts_made_up_to = None
     filing_date_match = "unavailable"
+    ch_reason = ""
     if ch_company:
         selected_accounts_filing, selected_accounts_made_up_to, filing_date_match = _code_breaker_select_accounts_filing_for_date(
             ch_company.get("filing_history"),
             as_at_date,
         )
-    ch_net_assets = _code_breaker_net_assets_value(selected_accounts_filing)
+    if selected_accounts_made_up_to != as_at_date:
+        ch_reason = (
+            f"Exact filed accounts period for {as_at_date.isoformat()} was not found in Companies House filing history."
+            if selected_accounts_made_up_to is not None
+            else f"No filed accounts period was available for {as_at_date.isoformat()} in Companies House filing history."
+        )
+        selected_accounts_filing = None
+        selected_accounts_made_up_to = None
+        filing_date_match = f"{filing_date_match}:exact_period_required"
+    ch_net_assets = _code_breaker_net_assets_value_strict(selected_accounts_filing)
+    if selected_accounts_filing and ch_net_assets is None:
+        ch_reason = (
+            f"Exact filed accounts period {as_at_date.isoformat()} does not include a readable net assets value in filing history."
+        )
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
@@ -14192,13 +14252,19 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if ch_company and selected_accounts_filing
                 else "unavailable"
             ),
+            "reason": ch_reason,
             "matchedAccountsMadeUpTo": _iso(selected_accounts_made_up_to),
             "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
             "latestSubmissionCompletedAt": _iso((ch_company or {}).get("latest_submission_completed_at")),
         },
         "xero": {
             "netAssets": float(xero_net_assets) if xero_net_assets is not None else None,
-            "source": "xero_balance_sheet",
+            "source": xero_source,
+            "reason": (
+                f"Xero Balance Sheet did not return a readable net assets value for {as_at_date.isoformat()}."
+                if xero_net_assets is None
+                else ""
+            ),
         },
         "match": {
             "matches": bool(ch_net_assets is not None and xero_net_assets is not None and abs(_money(xero_net_assets - ch_net_assets)) <= Decimal("0.01")),
