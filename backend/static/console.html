@@ -19715,12 +19715,12 @@
             }
             .toast-stack {
                 position: fixed;
-                right: 24px;
-                bottom: 24px;
+                top: max(18px, env(safe-area-inset-top));
+                right: max(18px, env(safe-area-inset-right));
                 z-index: 100;
                 display: grid;
-                gap: 10px;
-                max-width: min(380px, calc(100vw - 48px));
+                gap: 12px;
+                width: min(440px, calc(100vw - 36px));
             }
             .toast-message {
                 --toast-accent: var(--blue);
@@ -19728,23 +19728,23 @@
                 --toast-duration-ms: 7000ms;
                 position: relative;
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) auto;
-                align-items: center;
-                gap: 10px;
-                padding: 14px 14px 14px 16px;
-                border-radius: 16px;
+                grid-template-columns: auto minmax(0, 1fr) auto;
+                align-items: start;
+                column-gap: 12px;
+                row-gap: 10px;
+                padding: 14px 14px 12px 14px;
+                border-radius: 20px;
                 overflow: hidden;
                 background:
-                    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92)),
-                    linear-gradient(90deg, rgba(var(--toast-accent-rgb), 0.11), rgba(39, 176, 95, 0.07));
-                border: 1px solid rgba(var(--toast-accent-rgb), 0.22);
+                    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.94)),
+                    linear-gradient(90deg, rgba(var(--toast-accent-rgb), 0.14), rgba(39, 176, 95, 0.06));
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.25);
                 box-shadow:
-                    0 16px 36px rgba(var(--toast-accent-rgb), 0.12),
-                    0 10px 24px rgba(30, 47, 77, 0.10);
-                color: var(--ink);
-                font-weight: 800;
+                    0 18px 44px rgba(var(--toast-accent-rgb), 0.12),
+                    0 10px 26px rgba(30, 47, 77, 0.10);
+                color: #1f2f4d;
                 cursor: pointer;
-                transform-origin: right bottom;
+                transform-origin: right top;
                 transition: transform 0.2s ease, box-shadow 0.2s ease;
                 animation: toast-bounce-in 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
@@ -19752,27 +19752,27 @@
                 content: "";
                 position: absolute;
                 inset: 0 auto 0 0;
-                width: 4px;
-                background: linear-gradient(180deg, var(--toast-accent), rgba(39, 176, 95, 0.86));
+                width: 5px;
+                background: linear-gradient(180deg, var(--toast-accent), rgba(39, 176, 95, 0.88));
                 pointer-events: none;
             }
             .toast-message::after {
                 content: "";
                 position: absolute;
-                left: 8px;
-                right: 8px;
-                bottom: 6px;
+                left: 10px;
+                right: 10px;
+                bottom: 7px;
                 height: 3px;
                 border-radius: 999px;
-                background: rgba(var(--toast-accent-rgb), 0.25);
+                background: rgba(var(--toast-accent-rgb), 0.24);
                 transform-origin: left center;
                 animation: toast-timeout var(--toast-duration-ms) linear forwards;
             }
             .toast-message:hover {
-                transform: translateY(-2px) scale(1.01);
+                transform: translateY(-2px);
                 box-shadow:
-                    0 22px 44px rgba(var(--toast-accent-rgb), 0.18),
-                    0 14px 30px rgba(30, 47, 77, 0.16);
+                    0 24px 48px rgba(var(--toast-accent-rgb), 0.18),
+                    0 14px 30px rgba(30, 47, 77, 0.14);
             }
             .toast-message.is-closing {
                 animation: toast-slide-out 0.2s ease-in forwards;
@@ -19780,64 +19780,117 @@
             .toast-message.success {
                 --toast-accent: var(--green);
                 --toast-accent-rgb: 39, 176, 95;
-                color: var(--green);
             }
             .toast-message.error {
                 --toast-accent: var(--red);
                 --toast-accent-rgb: 255, 83, 83;
-                color: var(--red);
             }
             .toast-message.info {
                 --toast-accent: var(--blue);
                 --toast-accent-rgb: 29, 103, 242;
-                color: var(--blue);
+            }
+            .toast-message.is-sync {
+                --toast-duration-ms: 9000ms;
+            }
+            .toast-icon {
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 11px;
+                margin-top: 2px;
+                background: rgba(var(--toast-accent-rgb), 0.14);
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.28);
+                color: rgb(var(--toast-accent-rgb));
+                font-size: 1rem;
+                font-weight: 950;
+                line-height: 1;
+                letter-spacing: -0.01em;
+            }
+            .toast-content {
+                min-width: 0;
+                display: grid;
+                gap: 4px;
+            }
+            .toast-title {
+                font-size: 0.94rem;
+                font-weight: 900;
+                line-height: 1.2;
+                letter-spacing: -0.01em;
+                color: #17294a;
             }
             .toast-copy {
                 min-width: 0;
+                color: #27416d;
+                font-size: 0.97rem;
+                font-weight: 800;
                 line-height: 1.35;
             }
+            .toast-meta {
+                color: #6b7f9f;
+                font-size: 0.76rem;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
             .toast-actions {
-                grid-column: 1 / -1;
+                grid-column: 2 / 4;
                 display: inline-flex;
                 flex-wrap: wrap;
                 gap: 8px;
                 align-items: center;
             }
             .toast-action {
-                padding: 0 0 1px;
-                border: 0;
-                background: transparent;
-                color: inherit;
+                padding: 6px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.28);
+                background: rgba(255, 255, 255, 0.82);
+                color: rgb(var(--toast-accent-rgb));
                 font-weight: 900;
-                text-decoration: underline;
+                font-size: 0.88rem;
                 cursor: pointer;
+                text-decoration: none;
+            }
+            .toast-action:hover {
+                background: rgba(var(--toast-accent-rgb), 0.12);
             }
             .toast-history-action {
-                text-decoration: none;
-                padding: 5px 10px;
-                border-radius: 999px;
-                border: 1px solid rgba(var(--toast-accent-rgb), 0.24);
-                background: rgba(255, 255, 255, 0.78);
-            }
-            .toast-history-action:hover {
-                background: rgba(var(--toast-accent-rgb), 0.12);
+                border-style: dashed;
             }
             .toast-dismiss {
                 width: 30px;
                 height: 30px;
                 display: inline-grid;
                 place-items: center;
-                border: 1px solid rgba(var(--toast-accent-rgb), 0.22);
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.24);
                 border-radius: 999px;
-                background: rgba(255, 255, 255, 0.78);
-                color: inherit;
+                background: rgba(255, 255, 255, 0.86);
+                color: rgb(var(--toast-accent-rgb));
                 font-size: 1rem;
                 font-weight: 950;
                 line-height: 1;
                 cursor: pointer;
             }
             .toast-dismiss:hover {
-                background: rgba(var(--toast-accent-rgb), 0.10);
+                background: rgba(var(--toast-accent-rgb), 0.14);
+            }
+            @media (max-width: 640px) {
+                .toast-stack {
+                    left: 12px;
+                    right: 12px;
+                    top: max(12px, env(safe-area-inset-top));
+                    width: auto;
+                }
+                .toast-message {
+                    grid-template-columns: auto minmax(0, 1fr);
+                }
+                .toast-dismiss {
+                    grid-column: 2;
+                    justify-self: end;
+                }
+                .toast-actions {
+                    grid-column: 1 / -1;
+                }
             }
             .sync-progress-overlay {
                 position: fixed;
@@ -24477,6 +24530,7 @@
                                     <p class="eyebrow">Non-CS01 secretarial operating system</p>
                                     <h3>Company Secretarial Submission System</h3>
                                     <p class="detail-meta">Controlled workflow for incorporations, NM01, AD01, DS01, officers, PSCs, share updates, approvals, evidence capture, submission tracking and permanent audit trail. CS01 remains out of scope in this page.</p>
+                                    <div class="company-secretarial-summary-grid company-secretarial-hero-summary" id="companySecretarialSummaryGrid"></div>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="companySecretarialSeedDemoButton" type="button">Load sample queue</button>
@@ -24518,7 +24572,6 @@
                                         <p class="eyebrow">Operational queue</p>
                                         <h3 id="companySecretarialQueueTitle">No filings in queue</h3>
                                         <p class="detail-meta">Each filing records company data, approvals, evidence, submission method, Companies House response and post-submission actions.</p>
-                                        <div class="company-secretarial-summary-grid company-secretarial-queue-summary" id="companySecretarialSummaryGrid"></div>
                                     </div>
                                 </div>
                                 <div class="company-secretarial-table-wrap">
@@ -69957,7 +70010,13 @@
             }
 
             function identityVerificationTenantRows() {
-                return Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                const rows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                return rows.filter((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    if (!tenantId) return false;
+                    const tenantType = String(row?.tenantType || "").trim().toLowerCase();
+                    return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                });
             }
 
             function identityVerificationCompanies() {
@@ -71508,12 +71567,30 @@
                 window.setTimeout(() => toast.remove(), 220);
             }
 
-            function showToast(message, type = "info", action = null, duration = null) {
+            function showToast(message, type = "info", action = null, duration = null, options = {}) {
                 const signature = `${type}|${String(message || "")}`;
                 const now = Date.now();
                 if (signature === lastToastSignature && now - lastToastShownAt < UI_TOAST_DEDUPE_WINDOW_MS) return;
                 lastToastSignature = signature;
                 lastToastShownAt = now;
+                const context = String(options?.context || "").trim().toLowerCase();
+                const toastTitle = String(options?.title || "").trim()
+                    || (type === "error"
+                        ? "Action needed"
+                        : type === "success"
+                            ? "Completed"
+                            : context === "sync"
+                                ? "Sync update"
+                                : "Notification");
+                const toastMeta = String(options?.meta || "").trim();
+                const toastIcon = String(options?.icon || "").trim()
+                    || (context === "sync"
+                        ? "↻"
+                        : type === "error"
+                            ? "!"
+                            : type === "success"
+                                ? "✓"
+                                : "i");
                 pushSystemActivity({
                     type,
                     label: type === "error" ? "Error message" : type === "success" ? "Completed" : "Notification",
@@ -71524,10 +71601,33 @@
                 if (!stack) return;
                 const toast = document.createElement("div");
                 toast.className = `toast-message ${type}`;
+                if (context === "sync") toast.classList.add("is-sync");
+
+                const icon = document.createElement("span");
+                icon.className = "toast-icon";
+                icon.textContent = toastIcon;
+                toast.appendChild(icon);
+
+                const content = document.createElement("div");
+                content.className = "toast-content";
+
+                const title = document.createElement("span");
+                title.className = "toast-title";
+                title.textContent = toastTitle;
+                content.appendChild(title);
+
                 const copy = document.createElement("span");
                 copy.className = "toast-copy";
                 copy.textContent = message;
-                toast.appendChild(copy);
+                content.appendChild(copy);
+
+                if (toastMeta) {
+                    const meta = document.createElement("span");
+                    meta.className = "toast-meta";
+                    meta.textContent = toastMeta;
+                    content.appendChild(meta);
+                }
+                toast.appendChild(content);
 
                 const actions = document.createElement("div");
                 actions.className = "toast-actions";
@@ -71597,7 +71697,17 @@
                 if (!force && signature === lastSyncToastSignature && now - lastSyncToastAt < UI_SYNC_TOAST_DEDUPE_WINDOW_MS) return;
                 lastSyncToastSignature = signature;
                 lastSyncToastAt = now;
-                showToast(normalized, type, action);
+                const syncTitle = type === "error"
+                    ? "Xero sync issue"
+                    : type === "success"
+                        ? "Xero sync complete"
+                        : "Xero sync update";
+                showToast(normalized, type, action, null, {
+                    context: "sync",
+                    title: syncTitle,
+                    meta: "Live update stream",
+                    icon: type === "error" ? "!" : type === "success" ? "✓" : "↻",
+                });
             }
 
             function formatDeveloperLogStamp(value) {
@@ -74309,7 +74419,6 @@
                 let retryAfterSigtermInterruption = false;
                 if (automatic) hasAutoStartedInitialSync = true;
                 startSyncFeedback();
-                showToast(automatic ? "Xero syncing" : "Starting Xero sync", "info");
                 try {
                     const payload = await requestJSON(api.endpoints.sync, {
                         method: "POST",
