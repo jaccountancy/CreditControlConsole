@@ -33387,8 +33387,9 @@
             }
 
             function syncCreditControlGroupState(activeSection = activeNavForView()) {
+                const resolvedOpenGroup = String(openSidebarNavGroup || "").trim();
                 Object.keys(sidebarNavGroups).forEach((group) => {
-                    setCreditControlGroupOpen(group, true, false);
+                    setCreditControlGroupOpen(group, resolvedOpenGroup === group, false);
                 });
             }
 
@@ -33398,7 +33399,12 @@
                 const toggle = event?.currentTarget?.dataset?.appNavToggle
                     || event?.target?.closest?.("[data-app-nav-toggle]")?.dataset?.appNavToggle
                     || "credit-control";
-                if (toggle) setCreditControlGroupOpen(toggle, true, true);
+                const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${toggle}"]`);
+                if (!targetGroup) return;
+                const willOpen = !targetGroup.classList.contains("is-open");
+                Object.keys(sidebarNavGroups).forEach((group) => {
+                    setCreditControlGroupOpen(group, group === toggle ? willOpen : false, true);
+                });
             }
 
             function handleAppNavigation(section, event = null) {
