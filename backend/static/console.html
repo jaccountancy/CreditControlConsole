@@ -26952,6 +26952,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="codeBreakerSetupWorkspaceButton" type="button">Set up workspace</button>
+                                    <button class="ghost-button" id="codeBreakerCalculateAllButton" type="button">Calculate all</button>
                                     <button class="ghost-button" id="codeBreakerConnectTenantButton" type="button">Connect Xero tenant</button>
                                     <button class="ghost-button" id="codeBreakerRefreshButton" type="button">Refresh</button>
                                 </div>
@@ -28996,6 +28997,7 @@
             let codeBreakerWorkspaceSubView = "workspace";
             const codeBreakerCrackByWorkspaceId = {};
             const codeBreakerQuickSetupInFlightTenantIds = new Set();
+            let codeBreakerBulkCalculationInFlight = false;
             let codeBreakerWizardState = {
                 open: false,
                 workspaceId: "",
@@ -31121,7 +31123,16 @@
                             xeroTenantName: String(row?.xeroTenantName || "").trim(),
                             xeroContactId: String(row?.xeroContactId || "").trim(),
                             companyNumber: String(row?.companyNumber || "").trim().toUpperCase(),
+                            periodStartDate: String(row?.periodStartDate || "").trim(),
+                            yearEndDate: String(row?.yearEndDate || "").trim(),
                             submittedAt: String(row?.submittedAt || "").trim(),
+                            chNetAssets: codeBreakerExtractNetAssets(row?.chNetAssets),
+                            xeroNetAssets: codeBreakerExtractNetAssets(row?.xeroNetAssets),
+                            netAssetsDifference: codeBreakerExtractNetAssets(row?.netAssetsDifference),
+                            chSource: String(row?.chSource || "").trim(),
+                            xeroSource: String(row?.xeroSource || "").trim(),
+                            lastCalculatedAt: String(row?.lastCalculatedAt || "").trim(),
+                            lastAnalysis: row?.lastAnalysis && typeof row.lastAnalysis === "object" ? row.lastAnalysis : null,
                             createdAt: String(row?.createdAt || "").trim(),
                             updatedAt: String(row?.updatedAt || "").trim(),
                         }))
@@ -64609,7 +64620,7 @@
 
             function renderPracticePackReviewWorkspace() {
                 const workspace = document.getElementById("practicePackReviewWorkspace");
-                if (!workspace) return;
+                if (!workspace) return false;
                 const ready = Boolean(practicePackClientCsvData && practicePackTaskCsvData && practicePackTaskDraftRows.length);
                 workspace.hidden = !ready;
                 if (!ready) {
@@ -70244,7 +70255,7 @@
 
             async function crackCodeBreakerVariance(workspaceId = "") {
                 const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
-                if (!workspace) return;
+                if (!workspace) return false;
                 selectedCodeBreakerWorkspaceId = workspace.id;
                 codeBreakerWorkspaceSubView = "crack";
                 const variance = Number(workspace?.netAssetsDifference || 0);
@@ -70665,13 +70676,15 @@
                 }
             }
 
-            async function runCodeBreakerAnalysisWizard(workspaceId = "") {
+            async function runCodeBreakerAnalysisWizard(workspaceId = "", options = {}) {
                 const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
-                if (!workspace) return;
+                if (!workspace) return false;
+                const silent = Boolean(options?.silent);
+                const suppressErrorToast = Boolean(options?.suppressErrorToast);
                 selectedCodeBreakerWorkspaceId = workspace.id;
                 codeBreakerWorkspaceSubView = "workspace";
                 resetCodeBreakerWizardState(workspace.id);
-                codeBreakerWizardState.open = true;
+                codeBreakerWizardState.open = !silent;
                 codeBreakerWizardState.running = true;
                 codeBreakerWizardState.status = "running";
                 codeBreakerWizardState.runToken = `cbw-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -70999,6 +71012,10 @@
                         })),
                         recommendations: guidance,
                     };
+                    workspace.lastAnalysis = codeBreakerAnalysisByWorkspaceId[workspace.id];
+                    workspace.lastCalculatedAt = new Date().toISOString();
+                    workspace.updatedAt = workspace.lastCalculatedAt;
+                    persistCodeBreakerWorkspaces();
                     codeBreakerWizardState.rows = [...(codeBreakerAnalysisByWorkspaceId[workspace.id].rows || [])];
                     codeBreakerWizardState.guidance = guidance;
                     codeBreakerWizardState.summary = {
@@ -71020,16 +71037,39 @@
                     codeBreakerWizardState.status = "complete";
                     renderCodeBreakerScreen();
                     renderCodeBreakerWizardModal();
+                    return true;
                 } catch (error) {
                     const message = error?.message || "Equity Montior wizard failed.";
                     const runningStepIndex = codeBreakerWizardState.stepStatus.findIndex((value) => value === "running");
                     if (runningStepIndex >= 0) setCodeBreakerWizardStep(runningStepIndex, "failed", message);
+                    const errorAnalysis = {
+                        mode: "balance_sheet_compare",
+                        submittedAt: String(workspace?.submittedAt || "").slice(0, 10),
+                        periodStart: codeBreakerPeriodStartDate(workspace),
+                        periodEnd: String(workspace?.yearEndDate || workspace?.submittedAt || "").slice(0, 10),
+                        changedCount: 0,
+                        matches: false,
+                        immaterialVariance: false,
+                        netDelta: Number(workspace?.netAssetsDifference || 0),
+                        reversalTarget: Number(workspace?.netAssetsDifference || 0),
+                        rows: [],
+                        recommendations: [],
+                        error: message,
+                    };
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = errorAnalysis;
+                    workspace.lastAnalysis = errorAnalysis;
+                    workspace.lastCalculatedAt = new Date().toISOString();
+                    workspace.updatedAt = workspace.lastCalculatedAt;
+                    persistCodeBreakerWorkspaces();
                     codeBreakerWizardState.running = false;
                     codeBreakerWizardState.status = "failed";
                     renderCodeBreakerScreen();
                     renderCodeBreakerWizardModal();
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    showToast(message, "error");
+                    if (!suppressErrorToast) {
+                        showToast(message, "error");
+                    }
+                    return false;
                 }
             }
 
@@ -71833,7 +71873,12 @@
             }
 
             function codeBreakerWorkspaceStatus(workspace = {}) {
-                const analysis = codeBreakerAnalysisByWorkspaceId[String(workspace?.id || "")] || null;
+                const workspaceId = String(workspace?.id || "");
+                const analysis = codeBreakerAnalysisByWorkspaceId[workspaceId]
+                    || (workspace?.lastAnalysis && typeof workspace.lastAnalysis === "object" ? workspace.lastAnalysis : null);
+                if (analysis && !codeBreakerAnalysisByWorkspaceId[workspaceId]) {
+                    codeBreakerAnalysisByWorkspaceId[workspaceId] = analysis;
+                }
                 if (!analysis) return { label: "Pending analysis", className: "is-review" };
                 if (analysis.error) return { label: "Error", className: "is-overdue" };
                 if (analysis.mode === "balance_sheet_compare") {
@@ -71856,7 +71901,14 @@
                 const meta = document.getElementById("codeBreakerAnalysisMeta");
                 const output = document.getElementById("codeBreakerAnalysisOutput");
                 if (!panel || !title || !meta || !output) return;
-                const analysis = workspace ? codeBreakerAnalysisByWorkspaceId[String(workspace.id || "")] : null;
+                const workspaceId = String(workspace?.id || "");
+                const analysis = workspace
+                    ? (codeBreakerAnalysisByWorkspaceId[workspaceId]
+                        || (workspace?.lastAnalysis && typeof workspace.lastAnalysis === "object" ? workspace.lastAnalysis : null))
+                    : null;
+                if (analysis && workspaceId && !codeBreakerAnalysisByWorkspaceId[workspaceId]) {
+                    codeBreakerAnalysisByWorkspaceId[workspaceId] = analysis;
+                }
                 if (!workspace || !analysis) {
                     panel.hidden = !workspace;
                     if (!workspace) panel.hidden = true;
@@ -72009,8 +72061,40 @@
                 });
             }
 
-            async function runCodeBreakerAnalysis(workspaceId = "") {
-                await runCodeBreakerAnalysisWizard(workspaceId);
+            async function runCodeBreakerAnalysis(workspaceId = "", options = {}) {
+                return await runCodeBreakerAnalysisWizard(workspaceId, options);
+            }
+
+            async function calculateAllCodeBreakerWorkspaces() {
+                if (codeBreakerBulkCalculationInFlight) return;
+                const workspaceIds = (codeBreakerWorkspaces || []).map((workspace) => String(workspace?.id || "")).filter(Boolean);
+                if (!workspaceIds.length) {
+                    showToast("Set up at least one workspace before running Calculate all.", "info");
+                    return;
+                }
+                codeBreakerBulkCalculationInFlight = true;
+                renderCodeBreakerScreen();
+                let successCount = 0;
+                let failedCount = 0;
+                try {
+                    for (const workspaceId of workspaceIds) {
+                        const success = await runCodeBreakerAnalysis(workspaceId, { silent: true, suppressErrorToast: true });
+                        if (success) successCount += 1;
+                        else failedCount += 1;
+                    }
+                } finally {
+                    codeBreakerBulkCalculationInFlight = false;
+                    persistCodeBreakerWorkspaces();
+                    renderCodeBreakerScreen();
+                }
+                if (failedCount > 0) {
+                    showToast(
+                        `Calculate all complete: ${successCount.toLocaleString("en-GB")} succeeded, ${failedCount.toLocaleString("en-GB")} failed.`,
+                        "info"
+                    );
+                } else {
+                    showToast(`Calculate all complete: ${successCount.toLocaleString("en-GB")} workspace${successCount === 1 ? "" : "s"} updated.`, "success");
+                }
             }
 
             function openCodeBreakerWorkspace(workspaceId = "") {
@@ -72080,6 +72164,7 @@
                 if (!screen) return;
                 const summary = document.getElementById("codeBreakerSummary");
                 const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
+                const calculateAllButton = document.getElementById("codeBreakerCalculateAllButton");
                 const connectTenantButton = document.getElementById("codeBreakerConnectTenantButton");
                 const refreshButton = document.getElementById("codeBreakerRefreshButton");
                 const workspaceListSection = document.getElementById("codeBreakerWorkspaceListSection");
@@ -72088,7 +72173,7 @@
                 const workspaceViewMeta = document.getElementById("codeBreakerWorkspaceViewMeta");
                 const workspaceBackButton = document.getElementById("codeBreakerWorkspaceBackButton");
                 const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
-                if (!summary || !setupButton || !connectTenantButton || !refreshButton || !tableBody) return;
+                if (!summary || !setupButton || !calculateAllButton || !connectTenantButton || !refreshButton || !tableBody) return;
 
                 setupButton.textContent = "Set up workspace";
                 const connectionCount = codeBreakerConnections().length;
@@ -72110,6 +72195,12 @@
                             return;
                         }
                         window.location.href = connectUrl;
+                    });
+                }
+                if (calculateAllButton.dataset.cbWired !== "true") {
+                    calculateAllButton.dataset.cbWired = "true";
+                    calculateAllButton.addEventListener("click", async () => {
+                        await calculateAllCodeBreakerWorkspaces();
                     });
                 }
                 if (refreshButton.dataset.cbWired !== "true") {
@@ -72212,6 +72303,11 @@
                 const viewingWorkspace = Boolean(selectedWorkspace);
                 if (summary) summary.hidden = viewingWorkspace;
                 if (setupButton) setupButton.hidden = viewingWorkspace;
+                if (calculateAllButton) {
+                    calculateAllButton.hidden = viewingWorkspace;
+                    calculateAllButton.disabled = codeBreakerBulkCalculationInFlight || !(codeBreakerWorkspaces || []).length;
+                    calculateAllButton.textContent = codeBreakerBulkCalculationInFlight ? "Calculating all..." : "Calculate all";
+                }
                 if (connectTenantButton) connectTenantButton.hidden = viewingWorkspace;
                 if (refreshButton) refreshButton.hidden = viewingWorkspace;
                 if (workspaceListSection) workspaceListSection.hidden = viewingWorkspace;
