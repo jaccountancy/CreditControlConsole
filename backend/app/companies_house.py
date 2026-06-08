@@ -849,13 +849,31 @@ def _latest_confirmation_statement_filed_date(filing_history: list[dict]) -> dat
     return max(filed_dates) if filed_dates else None
 
 
+def _company_type_label(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "Private limited company"
+    normalised = raw.lower().replace("_", "-")
+    known = {
+        "ltd": "Private limited company",
+        "private-limited-guarant-nsc": "Private company limited by guarantee (no share capital)",
+        "private-limited-guarant-nsc-limited-exemption": "Private company limited by guarantee (no share capital)",
+        "private-unlimited": "Private unlimited company",
+        "plc": "Public limited company",
+        "llp": "Limited liability partnership",
+    }
+    if normalised in known:
+        return known[normalised]
+    return raw.replace("-", " ").strip().title()
+
+
 def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COMPANY_SNAPSHOT_CACHE_TTL) -> dict | None:
     cutoff = utcnow() - max_age
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT company_number, company_name, company_status, incorporation_date, registered_office,
+                SELECT company_number, company_name, company_type, company_status, incorporation_date, registered_office,
                        sic_codes, officers, pscs, next_made_up_to_date, next_due_date, last_filed_date, filing_history
                 FROM ch_companies
                 WHERE company_number = %s
@@ -872,6 +890,7 @@ def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COM
     return {
         "companyNumber": company_number,
         "companyName": str(row.get("company_name") or "").strip(),
+        "companyType": _company_type_label(row.get("company_type")),
         "companyStatus": str(row.get("company_status") or "").strip(),
         "incorporationDate": row.get("incorporation_date"),
         "registeredOffice": str(row.get("registered_office") or "").strip(),
@@ -939,6 +958,7 @@ def _fetch_ch_company_snapshot(
     return {
         "companyNumber": company_number,
         "companyName": str(company_payload.get("company_name") or "").strip(),
+        "companyType": _company_type_label(company_payload.get("type")),
         "companyStatus": str(company_payload.get("company_status") or "").strip(),
         "incorporationDate": _parse_date_from_text(company_payload.get("date_of_creation")),
         "registeredOffice": _format_registered_office(company_payload.get("registered_office_address")),
@@ -958,6 +978,7 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
         """
         UPDATE ch_companies
         SET company_name = COALESCE(NULLIF(%s, ''), company_name),
+            company_type = COALESCE(NULLIF(%s, ''), company_type),
             registered_office = %s,
             company_status = %s,
             incorporation_date = %s,
@@ -974,6 +995,7 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
         """,
         (
             snapshot.get("companyName") or "",
+            snapshot.get("companyType") or "",
             snapshot.get("registeredOffice") or "",
             snapshot.get("companyStatus") or "",
             snapshot.get("incorporationDate"),
@@ -5771,6 +5793,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "id": str(row.get("id")) if row.get("id") else None,
         "companyNumber": row.get("company_number") or "",
         "companyName": row.get("company_name") or "",
+        "companyType": _company_type_label(row.get("company_type")),
         "clientId": row.get("client_id") or "",
         "clientName": row.get("client_name") or "",
         "contactEmail": row.get("contact_email") or "",
