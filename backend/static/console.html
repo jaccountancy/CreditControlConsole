@@ -642,6 +642,39 @@
                 animation: factory-reset-pin-shake 0.34s ease;
                 border-color: rgba(255, 83, 83, 0.36);
             }
+            .app-nav-group[data-app-nav-group="settings"].is-pin-locked .app-nav-submenu > :not(.settings-menu-pin-gate) {
+                display: none !important;
+            }
+            .settings-menu-pin-gate {
+                display: block;
+                margin: 4px 0 10px;
+                border-radius: 14px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: rgba(247, 250, 255, 0.9);
+                box-shadow: 0 8px 22px rgba(30, 47, 77, 0.08);
+                padding: 10px;
+                min-height: 0;
+                order: 0;
+            }
+            .settings-menu-pin-gate[hidden] {
+                display: none !important;
+            }
+            .settings-menu-pin-gate .factory-reset-trigger {
+                display: none;
+            }
+            .settings-menu-pin-gate .factory-reset-pin-panel {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 8px;
+                max-height: 0;
+            }
+            .settings-menu-pin-gate .factory-reset-pin-submit,
+            .settings-menu-pin-gate .factory-reset-pin-cancel {
+                width: 100%;
+            }
+            .app-nav-group[data-app-nav-group="settings"].is-pin-invalid .settings-menu-pin-gate {
+                animation: factory-reset-pin-shake 0.34s ease;
+            }
             @keyframes factory-reset-drop-in {
                 0% {
                     opacity: 0;
@@ -23885,6 +23918,17 @@
                                 <span class="app-nav-copy"><strong>Settings</strong><span>Focused controls</span></span>
                             </button>
                             <div class="app-nav-submenu" role="group" aria-label="Settings sections">
+                                <div class="factory-reset-gate-wrap settings-menu-pin-gate" id="menuSettingsPinGateWrap" hidden>
+                                    <button class="app-nav-button factory-reset-trigger" id="menuSettingsPinGateTrigger" type="button" aria-expanded="false" aria-controls="menuSettingsPinPanel">
+                                        <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="9" width="16" height="11" rx="2"></rect><path d="M8 9V7a4 4 0 0 1 8 0v2"></path></svg></span>
+                                        <span class="app-nav-copy"><strong>Settings locked</strong><span>PIN required</span></span>
+                                    </button>
+                                    <form class="factory-reset-pin-panel" id="menuSettingsPinPanel" hidden>
+                                        <input class="factory-reset-pin-input" id="menuSettingsPinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter settings PIN" aria-label="Settings PIN">
+                                        <button class="ghost-button factory-reset-pin-submit" id="menuSettingsPinSubmit" type="submit">Unlock</button>
+                                        <button class="ghost-button factory-reset-pin-cancel" id="menuSettingsPinCancel" type="button">Cancel</button>
+                                    </form>
+                                </div>
                                 <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span><span class="settings-nav-group-text">Connections</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="data-import">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
@@ -77765,6 +77809,7 @@
                 "product-releases": "technical-settings",
                 "developer-log": "technical-settings",
             };
+            const SETTINGS_MENU_PIN_CODE = "1973";
             let expandedSettingsNavGroups = new Set();
 
             function settingsGroupForSection(section) {
@@ -77794,6 +77839,74 @@
 
             function closeSettingsSidebar(persist = false) {
                 setCreditControlGroupOpen("settings", false, persist);
+                hideMenuSettingsPinGate();
+            }
+
+            function hideMenuSettingsPinGate() {
+                const settingsGroup = document.querySelector('.app-nav-group[data-app-nav-group="settings"]');
+                const gateWrap = document.getElementById("menuSettingsPinGateWrap");
+                const pinPanel = document.getElementById("menuSettingsPinPanel");
+                const pinInput = document.getElementById("menuSettingsPinInput");
+                if (settingsGroup) {
+                    settingsGroup.classList.remove("is-pin-locked", "is-pin-invalid");
+                }
+                if (gateWrap) {
+                    gateWrap.hidden = true;
+                    gateWrap.classList.remove("is-pin-mode", "is-pin-invalid");
+                }
+                if (pinPanel) pinPanel.hidden = true;
+                if (pinInput) pinInput.value = "";
+            }
+
+            function showMenuSettingsPinGate() {
+                const settingsGroup = document.querySelector('.app-nav-group[data-app-nav-group="settings"]');
+                const gateWrap = document.getElementById("menuSettingsPinGateWrap");
+                const pinPanel = document.getElementById("menuSettingsPinPanel");
+                const pinInput = document.getElementById("menuSettingsPinInput");
+                if (!settingsGroup || !gateWrap || !pinPanel || !pinInput) {
+                    openSettingsScreen("data-import", "settings");
+                    return;
+                }
+                closeTopbarMenu();
+                setCreditControlGroupOpen("settings", true, true);
+                settingsGroup.classList.add("is-pin-locked");
+                settingsGroup.classList.remove("is-pin-invalid");
+                gateWrap.hidden = false;
+                gateWrap.classList.add("is-pin-mode");
+                gateWrap.classList.remove("is-pin-invalid");
+                pinPanel.hidden = false;
+                pinInput.value = "";
+                setTimeout(() => pinInput.focus(), 0);
+            }
+
+            function submitMenuSettingsPin(event) {
+                event?.preventDefault?.();
+                const settingsGroup = document.querySelector('.app-nav-group[data-app-nav-group="settings"]');
+                const gateWrap = document.getElementById("menuSettingsPinGateWrap");
+                const pinInput = document.getElementById("menuSettingsPinInput");
+                const enteredPin = String(pinInput?.value || "").trim();
+                if (enteredPin === SETTINGS_MENU_PIN_CODE) {
+                    hideMenuSettingsPinGate();
+                    openSettingsScreen("data-import", "settings");
+                    showToast("Settings unlocked", "success");
+                    return;
+                }
+                if (settingsGroup) {
+                    settingsGroup.classList.add("is-pin-invalid");
+                }
+                if (gateWrap) {
+                    gateWrap.classList.add("is-pin-invalid");
+                }
+                if (pinInput) {
+                    pinInput.value = "";
+                    pinInput.focus();
+                }
+                showToast("Incorrect PIN", "error");
+            }
+
+            function cancelMenuSettingsPin() {
+                hideMenuSettingsPinGate();
+                closeTopbarMenu();
             }
 
             function renderSettingsNavigation() {
@@ -77822,6 +77935,7 @@
             }
 
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
+                hideMenuSettingsPinGate();
                 activeView = "settings";
                 activeSettingsSection = settingsSectionCopy[section] ? section : "data-import";
                 if (activeSettingsSection === "developer-log") applyDeveloperLogDefaultFilters();
@@ -78492,7 +78606,9 @@
                     });
                 }
                 const menuSettingsButton = document.getElementById("menuSettingsButton");
-                if (menuSettingsButton) menuSettingsButton.addEventListener("click", openSettingsScreen);
+                if (menuSettingsButton) menuSettingsButton.addEventListener("click", showMenuSettingsPinGate);
+                document.getElementById("menuSettingsPinPanel")?.addEventListener("submit", submitMenuSettingsPin);
+                document.getElementById("menuSettingsPinCancel")?.addEventListener("click", cancelMenuSettingsPin);
                 document.getElementById("settingsBackToMainSidebarButton")?.addEventListener("click", closeSettingsSidebar);
                 document.querySelectorAll("[data-settings-nav]").forEach((button) => {
                     button.addEventListener("click", () => openSettingsScreen(button.dataset.settingsNav || "data-import", "settings"));
