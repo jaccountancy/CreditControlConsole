@@ -22072,6 +22072,35 @@
             .ch-table tbody tr { cursor: pointer; }
             .ch-table tbody tr:hover { background: var(--blue-soft); }
             .ch-table tbody tr.is-selected { background: var(--blue-soft); }
+            #codeBreakerWorkspaceTableBody tr {
+                border-left: 4px solid transparent;
+                transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+            }
+            #codeBreakerWorkspaceTableBody tr:hover {
+                transform: translateY(-1px);
+                box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.12);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-matched {
+                border-left-color: #21a35d;
+                background: linear-gradient(90deg, rgba(39, 176, 95, 0.13), rgba(39, 176, 95, 0.04) 18%, rgba(255, 255, 255, 0.96) 52%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-matched:hover {
+                background: linear-gradient(90deg, rgba(39, 176, 95, 0.16), rgba(39, 176, 95, 0.06) 18%, rgba(255, 255, 255, 0.98) 52%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-variance {
+                border-left-color: #e34b4b;
+                background: linear-gradient(90deg, rgba(255, 83, 83, 0.16), rgba(255, 83, 83, 0.06) 18%, rgba(255, 255, 255, 0.96) 52%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-variance:hover {
+                background: linear-gradient(90deg, rgba(255, 83, 83, 0.2), rgba(255, 83, 83, 0.08) 18%, rgba(255, 255, 255, 0.98) 52%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-awaiting {
+                border-left-color: #ffb648;
+                background: linear-gradient(90deg, rgba(255, 182, 72, 0.2), rgba(255, 182, 72, 0.08) 22%, rgba(255, 255, 255, 0.96) 56%);
+            }
+            #codeBreakerWorkspaceTableBody tr.code-breaker-row-awaiting:hover {
+                background: linear-gradient(90deg, rgba(255, 182, 72, 0.24), rgba(255, 182, 72, 0.1) 22%, rgba(255, 255, 255, 0.98) 56%);
+            }
             @media (max-width: 1260px) {
                 .ch-companies-toolbar-top {
                     grid-template-columns: 1fr;
@@ -72462,6 +72491,18 @@
                 return { label: `${Number(analysis.changedCount || 0)} change${Number(analysis.changedCount || 0) === 1 ? "" : "s"} found`, className: "is-due" };
             }
 
+            function codeBreakerWorkspaceRowTone(workspace = null, compare = null) {
+                if (!workspace) return "code-breaker-row-awaiting";
+                const ch = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xero = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
+                if (Number.isFinite(ch) && Number.isFinite(xero)) {
+                    const delta = Math.abs(xero - ch);
+                    if (delta > CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP) return "code-breaker-row-variance";
+                    if (compare?.isMatch) return "code-breaker-row-matched";
+                }
+                return "code-breaker-row-neutral";
+            }
+
             function renderCodeBreakerAnalysis(workspace = null) {
                 const panel = document.getElementById("codeBreakerAnalysisPanel");
                 const crackPanel = document.getElementById("codeBreakerCrackPanel");
@@ -72830,7 +72871,7 @@
                         if (!workspace) {
                             const setupBusy = Boolean(tenantId) && codeBreakerQuickSetupInFlightTenantIds.has(tenantId);
                             return `
-                                <tr>
+                                <tr class="code-breaker-row-awaiting">
                                     <td><strong>${escapeHTML(tenantLabel)}</strong></td>
                                     <td><small>${escapeHTML(connectionCopy)}</small></td>
                                     <td><small>No workspace set up</small></td>
@@ -72859,12 +72900,13 @@
                             )
                             : status;
                         const compare = codeBreakerCompareStatus(workspace);
+                        const rowTone = codeBreakerWorkspaceRowTone(workspace, compare);
                         const workspaceName = String(workspace.clientName || "Workspace").trim();
                         const normalisedWorkspaceName = workspaceName.toLowerCase().replace(/\s+/g, " ").trim();
                         const normalisedTenantLabel = String(tenantLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
                         const showTenantLine = Boolean(normalisedTenantLabel) && normalisedTenantLabel !== normalisedWorkspaceName;
                         return `
-                            <tr>
+                            <tr class="${escapeHTML(rowTone)}">
                                 <td><strong>${escapeHTML(tenantLabel)}</strong></td>
                                 <td><small>${escapeHTML(connectionCopy)}</small></td>
                                 <td><button class="text-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">${escapeHTML(workspaceName || "Workspace")}</button>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
