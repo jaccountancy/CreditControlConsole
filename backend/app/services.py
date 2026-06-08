@@ -24,7 +24,7 @@ from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import formataddr
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urljoin
 from uuid import UUID, uuid4
 from xml.sax.saxutils import escape as xml_escape
 
@@ -34,6 +34,7 @@ from psycopg import errors as pg_errors
 
 from .config import get_settings
 from .database import get_connection, utcnow
+from .security import decrypt_secret
 from .ignition import (
     IGNITION_DATASETS,
     fetch_ignition_collection,
@@ -76,6 +77,7 @@ from .xero import (
 )
 
 logger = logging.getLogger(__name__)
+CH_API_KEY_LABEL = "ch:api_key"
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
 IGNITION_SYNC_STALE_AFTER = timedelta(minutes=45)
@@ -14143,6 +14145,315 @@ def _code_breaker_select_accounts_filing_for_date(
     return latest_row, latest_date, "latest_accounts_filing"
 
 
+def _code_breaker_companies_house_api_base() -> str:
+    settings = get_settings()
+    environment = str(settings.companies_house_environment or "sandbox").strip().lower()
+    if environment == "production":
+        return str(settings.companies_house_production_api_base or "https://api.company-information.service.gov.uk").strip()
+    return str(settings.companies_house_sandbox_api_base or "https://api-sandbox.company-information.service.gov.uk").strip()
+
+
+def _code_breaker_companies_house_api_key() -> str:
+    settings = get_settings()
+    env_value = str(settings.companies_house_api_key or "").strip()
+    if env_value:
+        return env_value
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT api_key_encrypted
+                    FROM ch_settings
+                    WHERE singleton_id = 1
+                    """
+                )
+                row = cursor.fetchone() or {}
+            connection.commit()
+    except Exception:
+        logger.exception("Code Breaker: unable to load Companies House API key from settings")
+        return ""
+    encrypted = str(row.get("api_key_encrypted") or "").strip()
+    if not encrypted:
+        return ""
+    try:
+        return str(decrypt_secret(encrypted, CH_API_KEY_LABEL) or "").strip()
+    except Exception:
+        logger.exception("Code Breaker: unable to decrypt Companies House API key")
+        return ""
+
+
+def _code_breaker_fetch_companies_house_filing_history_live(
+    *,
+    company_number: str,
+    api_key: str,
+    api_base: str,
+) -> list[dict]:
+    number = str(company_number or "").strip().upper()
+    if not number or not api_key or not api_base:
+        return []
+    endpoint = f"{api_base.rstrip('/')}/company/{quote(number)}/filing-history"
+    try:
+        with httpx.Client(auth=(api_key, ""), timeout=20.0, follow_redirects=True) as client:
+            response = client.get(endpoint, params={"items_per_page": 100})
+            response.raise_for_status()
+            payload = response.json() if response.content else {}
+    except Exception:
+        logger.exception("Code Breaker: Companies House filing history fetch failed for %s", number)
+        return []
+    items = payload.get("items") if isinstance(payload, dict) else []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _code_breaker_ch_document_metadata_url(filing_item: dict, api_base: str) -> str:
+    links = filing_item.get("links") if isinstance(filing_item.get("links"), dict) else {}
+    path = str(links.get("document_metadata") or links.get("documentMetadata") or "").strip()
+    if not path:
+        return ""
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    return urljoin(f"{api_base.rstrip('/')}/", path.lstrip("/"))
+
+
+def _code_breaker_fetch_companies_house_document(
+    *,
+    filing_item: dict,
+    api_key: str,
+    api_base: str,
+) -> tuple[bytes | None, str, str]:
+    metadata_url = _code_breaker_ch_document_metadata_url(filing_item, api_base)
+    if not metadata_url:
+        return None, "", ""
+    try:
+        with httpx.Client(auth=(api_key, ""), timeout=20.0, follow_redirects=True) as client:
+            metadata_response = client.get(metadata_url)
+            metadata_response.raise_for_status()
+            metadata_payload = metadata_response.json() if metadata_response.content else {}
+            metadata_links = metadata_payload.get("links") if isinstance(metadata_payload, dict) else {}
+            document_link = str((metadata_links or {}).get("document") or "").strip()
+            if not document_link:
+                return None, "", ""
+            document_url = (
+                document_link
+                if document_link.startswith("http://") or document_link.startswith("https://")
+                else urljoin(metadata_url, document_link)
+            )
+            for accept in (
+                "application/xhtml+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.7",
+                "application/pdf",
+                "application/octet-stream",
+            ):
+                response = client.get(document_url, headers={"Accept": accept})
+                if response.status_code >= 400:
+                    continue
+                content = response.content or b""
+                if not content:
+                    continue
+                content_type = str(response.headers.get("content-type") or "").split(";")[0].strip().lower()
+                return content, content_type, document_url
+    except Exception:
+        logger.exception("Code Breaker: Companies House document fetch failed")
+    return None, "", ""
+
+
+def _code_breaker_ixbrl_fact_value(fact: ET.Element) -> Decimal | None:
+    text_value = " ".join(part.strip() for part in fact.itertext() if part and part.strip())
+    value = _code_breaker_net_assets_value(text_value)
+    if value is None:
+        value = _code_breaker_net_assets_value(fact.attrib.get("value"))
+    if value is None:
+        return None
+    sign = str(fact.attrib.get("sign") or "").strip()
+    scale_raw = str(fact.attrib.get("scale") or "").strip()
+    scaled = value
+    if scale_raw:
+        try:
+            scale = int(scale_raw)
+            scaled = _money(scaled * (Decimal(10) ** scale))
+        except Exception:
+            pass
+    if sign in {"-", "negative"}:
+        scaled = _money(-scaled.copy_abs())
+    return _money(scaled)
+
+
+def _code_breaker_ixbrl_context_dates(root: ET.Element) -> dict[str, date]:
+    output: dict[str, date] = {}
+    for element in root.iter():
+        tag_name = str(element.tag or "")
+        if tag_name.split("}")[-1].lower() != "context":
+            continue
+        context_id = str(element.attrib.get("id") or "").strip()
+        if not context_id:
+            continue
+        parsed_date = None
+        for child in element.iter():
+            child_name = str(child.tag or "").split("}")[-1].lower()
+            if child_name not in {"instant", "enddate"}:
+                continue
+            parsed_date = _parse_optional_iso_date((child.text or "").strip())
+            if parsed_date is not None:
+                break
+        if parsed_date is not None:
+            output[context_id] = parsed_date
+    return output
+
+
+def _code_breaker_extract_net_assets_from_ixbrl(content: bytes, as_at_date: date | None) -> Decimal | None:
+    try:
+        root = ET.fromstring(content)
+    except Exception:
+        return None
+    context_dates = _code_breaker_ixbrl_context_dates(root)
+    candidates: list[tuple[int, Decimal]] = []
+    for fact in root.iter():
+        local_name = str(fact.tag or "").split("}")[-1].lower()
+        if local_name != "nonfraction":
+            continue
+        concept_name = str(fact.attrib.get("name") or "").strip().lower()
+        if not concept_name:
+            continue
+        if "netassets" not in concept_name and "net_assets" not in concept_name:
+            continue
+        amount = _code_breaker_ixbrl_fact_value(fact)
+        if amount is None:
+            continue
+        context_ref = str(fact.attrib.get("contextref") or fact.attrib.get("contextRef") or "").strip()
+        context_date = context_dates.get(context_ref)
+        score = 0
+        if "netassetsliabilitiesincluding" in concept_name:
+            score += 4
+        elif "netassetsliabilities" in concept_name:
+            score += 3
+        else:
+            score += 2
+        if as_at_date is not None and context_date == as_at_date:
+            score += 10
+        if amount.copy_abs() > Decimal("0.00"):
+            score += 1
+        candidates.append((score, _money(amount)))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return _money(candidates[0][1])
+
+
+def _code_breaker_extract_net_assets_from_pdf(content: bytes) -> Decimal | None:
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return None
+    try:
+        reader = PdfReader(io.BytesIO(content))
+    except Exception:
+        return None
+    lines: list[str] = []
+    for page in reader.pages[:40]:
+        try:
+            page_text = page.extract_text() or ""
+        except Exception:
+            page_text = ""
+        if not page_text:
+            continue
+        lines.extend([line.strip() for line in page_text.splitlines() if line.strip()])
+    amount_pattern = re.compile(r"\(?-?\s*£?\s*\d[\d,]*(?:\.\d+)?\)?")
+    candidates: list[Decimal] = []
+    for index, line in enumerate(lines):
+        label = line.lower()
+        if "net assets" not in label and "net liabilities" not in label:
+            continue
+        spans = [line]
+        if index + 1 < len(lines):
+            spans.append(lines[index + 1])
+        joined = " ".join(spans)
+        matches = amount_pattern.findall(joined)
+        for match in matches:
+            parsed = _code_breaker_net_assets_value(match)
+            if parsed is not None:
+                candidates.append(_money(parsed))
+    if not candidates:
+        return None
+    non_zero = [value for value in candidates if value.copy_abs() > Decimal("0.00")]
+    return _money(non_zero[-1] if non_zero else candidates[-1])
+
+
+def _code_breaker_document_variants(content: bytes, content_type: str) -> list[tuple[bytes, str]]:
+    variants: list[tuple[bytes, str]] = [(content, content_type)]
+    lower_type = str(content_type or "").lower()
+    is_zip = "zip" in lower_type or content.startswith(b"PK\x03\x04")
+    if not is_zip:
+        return variants
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                name = str(member.filename or "").lower()
+                if not name.endswith((".xhtml", ".html", ".htm", ".xml", ".ixbrl", ".pdf")):
+                    continue
+                extracted = archive.read(member)
+                if not extracted:
+                    continue
+                if name.endswith(".pdf"):
+                    variants.append((extracted, "application/pdf"))
+                else:
+                    variants.append((extracted, "application/xhtml+xml"))
+    except Exception:
+        logger.exception("Code Breaker: unable to unpack Companies House ZIP document")
+    return variants
+
+
+def _code_breaker_companies_house_net_assets_from_document(
+    *,
+    company_number: str,
+    as_at_date: date | None,
+) -> tuple[Decimal | None, str, str]:
+    api_key = _code_breaker_companies_house_api_key()
+    api_base = _code_breaker_companies_house_api_base()
+    if not api_key:
+        return None, "unavailable", "Companies House API key is not configured for document extraction."
+    filing_items = _code_breaker_fetch_companies_house_filing_history_live(
+        company_number=company_number,
+        api_key=api_key,
+        api_base=api_base,
+    )
+    selected_filing, selected_made_up_to, _ = _code_breaker_select_accounts_filing_for_date(filing_items, as_at_date)
+    if selected_filing is None or (as_at_date is not None and selected_made_up_to != as_at_date):
+        if as_at_date is not None:
+            return None, "unavailable", f"Companies House did not return an exact accounts filing for {as_at_date.isoformat()}."
+        return None, "unavailable", "Companies House did not return a usable accounts filing."
+    content, content_type, document_url = _code_breaker_fetch_companies_house_document(
+        filing_item=selected_filing,
+        api_key=api_key,
+        api_base=api_base,
+    )
+    if not content:
+        return None, "unavailable", "Companies House accounts document could not be downloaded for the matched period."
+    extracted: Decimal | None = None
+    source = ""
+    for variant_content, variant_type in _code_breaker_document_variants(content, content_type):
+        if (
+            "xml" in variant_type
+            or "xhtml" in variant_type
+            or "html" in variant_type
+            or variant_content.lstrip().startswith(b"<?xml")
+            or b"<ix:" in variant_content[:5000]
+        ):
+            extracted = _code_breaker_extract_net_assets_from_ixbrl(variant_content, as_at_date)
+            source = "companies_house_document:ixbrl"
+        if extracted is None:
+            extracted = _code_breaker_extract_net_assets_from_pdf(variant_content)
+            if extracted is not None:
+                source = "companies_house_document:pdf"
+        if extracted is not None:
+            break
+    if extracted is None or not source:
+        return None, "unavailable", "Matched Companies House accounts document did not contain a readable net assets figure."
+    if document_url:
+        source = f"{source}:{document_url}"
+    return _money(extracted), source, ""
+
+
 async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     tenant_id = str(payload.get("tenantId") or "").strip()
@@ -14230,10 +14541,26 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         selected_accounts_made_up_to = None
         filing_date_match = f"{filing_date_match}:exact_period_required"
     ch_net_assets = _code_breaker_net_assets_value_strict(selected_accounts_filing)
+    ch_source = (
+        f"companies_house_filing_history:{filing_date_match}"
+        if ch_company and selected_accounts_filing
+        else "unavailable"
+    )
     if selected_accounts_filing and ch_net_assets is None:
         ch_reason = (
             f"Exact filed accounts period {as_at_date.isoformat()} does not include a readable net assets value in filing history."
         )
+    if ch_net_assets is None and company_number:
+        doc_net_assets, doc_source, doc_reason = _code_breaker_companies_house_net_assets_from_document(
+            company_number=company_number,
+            as_at_date=as_at_date,
+        )
+        if doc_net_assets is not None:
+            ch_net_assets = doc_net_assets
+            ch_source = doc_source
+            ch_reason = ""
+        elif doc_reason:
+            ch_reason = doc_reason if not ch_reason else f"{ch_reason} {doc_reason}"
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
@@ -14247,11 +14574,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "ch": {
             "companyName": str((ch_company or {}).get("company_name") or ""),
             "netAssets": float(ch_net_assets) if ch_net_assets is not None else None,
-            "source": (
-                f"companies_house_filing_history:{filing_date_match}"
-                if ch_company and selected_accounts_filing
-                else "unavailable"
-            ),
+            "source": ch_source,
             "reason": ch_reason,
             "matchedAccountsMadeUpTo": _iso(selected_accounts_made_up_to),
             "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
