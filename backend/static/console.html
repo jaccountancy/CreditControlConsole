@@ -20215,6 +20215,66 @@
             .developer-log-entry.is-error .developer-log-highlights li {
                 background: rgba(255, 83, 83, 0.12);
             }
+            .developer-log-diagnosis {
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+                border-radius: 10px;
+                border: 1px solid rgba(255, 83, 83, 0.18);
+                background: rgba(255, 255, 255, 0.72);
+            }
+            .developer-log-diagnosis h4 {
+                margin: 0;
+                font-size: 0.84rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #a12a2a;
+            }
+            .developer-log-diagnosis-copy {
+                margin: 0;
+                display: grid;
+                gap: 4px;
+                color: #334767;
+                font-size: 0.86rem;
+                line-height: 1.45;
+                font-weight: 720;
+            }
+            .developer-log-diagnosis-actions {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 4px;
+                color: #30415f;
+                font-size: 0.84rem;
+                line-height: 1.5;
+                font-weight: 700;
+            }
+            .developer-log-debug-grid {
+                display: grid;
+                grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+                gap: 6px 10px;
+                margin: 0;
+                padding: 10px;
+                border-radius: 10px;
+                background: rgba(30, 47, 77, 0.04);
+                border: 1px solid rgba(61, 85, 130, 0.14);
+            }
+            .developer-log-debug-grid dt {
+                margin: 0;
+                color: #627492;
+                font-size: 0.75rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .developer-log-debug-grid dd {
+                margin: 0;
+                color: #203453;
+                font-size: 0.82rem;
+                font-weight: 720;
+                line-height: 1.42;
+                word-break: break-word;
+            }
             .developer-log-entry-actions {
                 display: flex;
                 flex-wrap: wrap;
@@ -69805,6 +69865,11 @@
                     method: "POST",
                     body: JSON.stringify(payload),
                 }, { suppressFailurePanel: true });
+                if (String(response?.status || "").toLowerCase() !== "ok") {
+                    throw new Error(
+                        String(response?.result?.error || response?.detail || "Code Breaker snapshot failed.")
+                    );
+                }
                 return response?.result || {};
             }
 
@@ -70290,6 +70355,7 @@
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
                     if (!Number.isFinite(workspace.chNetAssets) || !Number.isFinite(workspace.xeroNetAssets)) {
+                        const snapshotError = String(snapshot?.error || "").trim();
                         const chReason = String(snapshot?.ch?.reason || "").trim();
                         const xeroReason = String(snapshot?.xero?.reason || "").trim();
                         const chSource = String(snapshot?.ch?.source || "unavailable").trim();
@@ -70298,6 +70364,7 @@
                             `Exact YE net assets unavailable for ${filedYearEnd}. `
                             + `CH source: ${chSource}${chReason ? ` (${chReason})` : ""}. `
                             + `Xero source: ${xeroSource}${xeroReason ? ` (${xeroReason})` : ""}.`
+                            + (snapshotError ? ` Snapshot error: ${snapshotError}.` : "")
                         );
                     }
                     const extractionMeta = snapshot?.ch?.documentExtraction || {};
@@ -70843,6 +70910,7 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     showToast(error?.message || "Unable to read net asset values for this setup.", "error");
+                    return false;
                 }
 
                 const now = new Date().toISOString();
@@ -70860,9 +70928,13 @@
                     periodStartDate: decision.periodStartDate || "",
                     yearEndDate: decision.yearEndDate,
                     submittedAt: decision.submittedAt || "",
-                    chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
-                    xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : null,
-                    netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null,
+                    chNetAssets: codeBreakerFiniteNumber(snapshot?.ch?.netAssets) ? snapshot.ch.netAssets : codeBreakerExtractNetAssets(snapshot?.ch?.netAssets),
+                    xeroNetAssets: codeBreakerFiniteNumber(snapshot?.xero?.netAssets) ? snapshot.xero.netAssets : codeBreakerExtractNetAssets(snapshot?.xero?.netAssets),
+                    netAssetsDifference: codeBreakerFiniteNumber(snapshot?.match?.difference) ? snapshot.match.difference : (
+                        codeBreakerFiniteNumber(snapshot?.xero?.netAssets) && codeBreakerFiniteNumber(snapshot?.ch?.netAssets)
+                            ? (snapshot.xero.netAssets - snapshot.ch.netAssets)
+                            : null
+                    ),
                     chSource: String(snapshot?.ch?.source || "unavailable"),
                     xeroSource: String(snapshot?.xero?.source || "unavailable"),
                     createdAt: now,
@@ -73393,12 +73465,68 @@
                     message: item.message || "System notification",
                     payload: {
                         label: item.label || "System",
-                        detail: item.detail || ""
+                        detail: item.detail || "",
+                        relatedFailure: developerLogRelatedUserFailure(item)
                     },
                     createdAt: item.at || "",
                     syncRunId: "",
                     syncStatus: ""
                 }));
+            }
+
+            function developerLogFirstString(value) {
+                if (value == null) return "";
+                if (typeof value === "string") return value.trim();
+                if (typeof value === "number" || typeof value === "boolean") return String(value);
+                if (Array.isArray(value)) {
+                    const joined = value.map((item) => developerLogFirstString(item)).filter(Boolean).join(" | ");
+                    return joined.trim();
+                }
+                if (typeof value === "object") {
+                    if (typeof value.message === "string") return value.message.trim();
+                    if (typeof value.detail === "string") return value.detail.trim();
+                    if (typeof value.error === "string") return value.error.trim();
+                    try {
+                        return JSON.stringify(value);
+                    } catch {
+                        return "";
+                    }
+                }
+                return "";
+            }
+
+            function developerLogPathOrEndpoint(payload) {
+                return String(payload?.path || payload?.endpoint || payload?.url || "").trim();
+            }
+
+            function developerLogRelatedUserFailure(systemItem) {
+                if (!systemItem || String(systemItem.type || "").toLowerCase() !== "error") return null;
+                const itemTime = Date.parse(systemItem.at || "");
+                const candidates = (userActivityEntries || [])
+                    .filter((entry) => developerLogSeverity(entry) === "error")
+                    .map((entry) => ({ entry, time: Date.parse(entry.createdAt || "") }))
+                    .filter((row) => Number.isFinite(row.time))
+                    .filter((row) => !Number.isFinite(itemTime) || Math.abs(row.time - itemTime) <= 25000)
+                    .sort((left, right) => right.time - left.time);
+                const related = candidates[0]?.entry;
+                if (!related) return null;
+                const payload = related.payload && typeof related.payload === "object" ? related.payload : {};
+                return {
+                    eventType: related.eventType || "",
+                    message: related.message || "",
+                    method: payload.method || "",
+                    path: payload.path || payload.endpoint || "",
+                    statusCode: payload.statusCode || payload.status_code || "",
+                    durationMs: payload.durationMs || "",
+                    error: payload.error || "",
+                    view: payload.view || "",
+                    section: payload.section || "",
+                    target: payload.target && typeof payload.target === "object" ? payload.target : {},
+                    source: payload.source || "",
+                    line: payload.line || "",
+                    column: payload.column || "",
+                    response: payload.response || payload.reason || null
+                };
             }
 
             function combinedDeveloperLogEntries() {
@@ -73451,6 +73579,15 @@
             function developerLogHighlights(entry) {
                 const highlights = [];
                 const payload = entry.payload || {};
+                if (payload.relatedFailure && typeof payload.relatedFailure === "object") {
+                    const related = payload.relatedFailure;
+                    const relatedBits = [];
+                    if (related.method && related.path) relatedBits.push(`${related.method} ${related.path}`);
+                    if (related.statusCode) relatedBits.push(`HTTP ${related.statusCode}`);
+                    if (related.durationMs) relatedBits.push(`${related.durationMs}ms`);
+                    if (relatedBits.length) highlights.push(`Related failure: ${relatedBits.join(" · ")}`);
+                    if (related.error) highlights.push(`Related error: ${developerLogFirstString(related.error)}`);
+                }
                 if (payload.heartbeatAt) {
                     const age = secondsSinceTimestamp(payload.heartbeatAt);
                     highlights.push(`Heartbeat ${formatDeveloperLogStamp(payload.heartbeatAt)} (${formatDuration(age)} ago)`);
@@ -73504,7 +73641,156 @@
                         highlights.push(`Duration: ${payload.durationMs}ms`);
                     }
                 }
+                if (payload.statusCode || payload.status_code) {
+                    highlights.push(`HTTP ${payload.statusCode || payload.status_code}`);
+                }
+                if (payload.durationMs != null) {
+                    highlights.push(`Duration: ${payload.durationMs}ms`);
+                }
                 return highlights;
+            }
+
+            function developerLogFailureDiagnosis(entry) {
+                const payload = entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+                const related = payload.relatedFailure && typeof payload.relatedFailure === "object" ? payload.relatedFailure : {};
+                const statusCode = Number(payload.statusCode || payload.status_code || related.statusCode || 0);
+                const failureText = [
+                    entry.message,
+                    payload.error,
+                    payload.detail,
+                    payload.message,
+                    payload.reason,
+                    related.error,
+                    related.message,
+                    related.response
+                ].map((value) => developerLogFirstString(value)).join(" ").toLowerCase();
+                const requestPath = developerLogPathOrEndpoint(payload) || String(related.path || "");
+                const requestMethod = String(payload.method || related.method || "").toUpperCase();
+                const diagnosis = {
+                    rootCause: "Failure reason returned by the app was generic.",
+                    why: "The operation failed, but no explicit backend cause was included in this single log entry.",
+                    nextSteps: [
+                        "Check the matched API/browser error context below in Debug Data.",
+                        "Use endpoint and HTTP status to reproduce quickly with the same request."
+                    ]
+                };
+                if ([401, 403].includes(statusCode) || /session|unauthori|forbidden|auth/.test(failureText)) {
+                    diagnosis.rootCause = "Authentication/session failure.";
+                    diagnosis.why = "The API rejected the request because the browser session or token is expired or invalid.";
+                    diagnosis.nextSteps = [
+                        "Reconnect Xero/login again.",
+                        "Retry the same action and confirm status no longer returns 401/403."
+                    ];
+                    return diagnosis;
+                }
+                if (statusCode === 429 || /rate limit|too many requests|retry-after/.test(failureText)) {
+                    diagnosis.rootCause = "Rate limit reached.";
+                    diagnosis.why = "The target API throttled requests, so this call was refused temporarily.";
+                    diagnosis.nextSteps = [
+                        "Wait for the retry window shown in payload/retry headers.",
+                        "Reduce burst/concurrent retries for this endpoint."
+                    ];
+                    return diagnosis;
+                }
+                if ([500, 502, 503, 504].includes(statusCode) || /internal server error|bad gateway|service unavailable|timeout|timed out/.test(failureText)) {
+                    diagnosis.rootCause = "Backend service failure or timeout.";
+                    diagnosis.why = "The request reached the backend but the server failed or did not complete in time.";
+                    diagnosis.nextSteps = [
+                        "Inspect backend logs using the exact timestamp and endpoint.",
+                        "Check upstream provider health and timeout configuration."
+                    ];
+                    return diagnosis;
+                }
+                if (statusCode === 404 || /not found/.test(failureText)) {
+                    diagnosis.rootCause = "Endpoint or resource not found.";
+                    diagnosis.why = "The API route or target resource was missing for this request.";
+                    diagnosis.nextSteps = [
+                        "Verify request path and path parameters.",
+                        "Confirm the backend route exists in this deployment."
+                    ];
+                    return diagnosis;
+                }
+                if (statusCode >= 400 && statusCode < 500) {
+                    diagnosis.rootCause = "Client-side request validation failed.";
+                    diagnosis.why = "The API rejected request data or request state for this endpoint.";
+                    diagnosis.nextSteps = [
+                        "Check request body/params shown in Debug Data.",
+                        "Validate required fields and allowed state transitions."
+                    ];
+                    return diagnosis;
+                }
+                if (/networkerror|failed to fetch|network request failed|offline/.test(failureText)) {
+                    diagnosis.rootCause = "Network transport failure.";
+                    diagnosis.why = "The browser could not complete a network roundtrip to the API.";
+                    diagnosis.nextSteps = [
+                        "Check API host reachability and TLS from this machine.",
+                        "Check VPN/proxy/firewall and CORS settings."
+                    ];
+                    return diagnosis;
+                }
+                if (requestMethod && requestPath) {
+                    diagnosis.why = `Request ${requestMethod} ${requestPath} failed with insufficient structured cause in this log line.`;
+                }
+                return diagnosis;
+            }
+
+            function developerLogDebugRows(entry) {
+                const payload = entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+                const related = payload.relatedFailure && typeof payload.relatedFailure === "object" ? payload.relatedFailure : {};
+                const statusCode = payload.statusCode || payload.status_code || related.statusCode || "";
+                const method = payload.method || related.method || "";
+                const path = developerLogPathOrEndpoint(payload) || related.path || "";
+                const duration = payload.durationMs || related.durationMs || "";
+                const requestBody = payload.requestBody || {};
+                const rows = [
+                    ["Event type", entry.eventType || ""],
+                    ["Severity", developerLogSeverity(entry)],
+                    ["Source", entry.source || ""],
+                    ["Timestamp", formatDeveloperLogStamp(entry.createdAt)],
+                    ["Request", method && path ? `${method} ${path}` : path || ""],
+                    ["Status code", statusCode ? `HTTP ${statusCode}` : ""],
+                    ["Duration", duration ? `${duration}ms` : ""],
+                    ["Sync run", entry.syncRunId || payload.syncRunId || payload.sync_run_id || ""],
+                    ["View", payload.view || related.view || ""],
+                    ["Section", payload.section || related.section || ""],
+                    ["Error text", developerLogFirstString(payload.error || related.error || payload.detail || payload.message || related.message)],
+                    ["Request params", payload.params ? developerLogFirstString(payload.params) : ""],
+                    ["Request body", requestBody && requestBody.type ? `${requestBody.type} ${developerLogFirstString(requestBody.value || "")}` : ""],
+                    ["Response detail", developerLogFirstString(payload.response || related.response || payload.reason || "")],
+                    ["Browser source", [related.source, related.line, related.column].filter(Boolean).join(":")],
+                    ["Target control", related.target?.label || related.target?.id || ""]
+                ];
+                return rows.filter((row) => String(row[1] || "").trim());
+            }
+
+            function appendDeveloperLogDiagnosis(article, entry) {
+                const diagnosis = developerLogFailureDiagnosis(entry);
+                const wrap = document.createElement("section");
+                wrap.className = "developer-log-diagnosis";
+                const heading = document.createElement("h4");
+                heading.textContent = "Failure diagnosis";
+                const copy = document.createElement("p");
+                copy.className = "developer-log-diagnosis-copy";
+                copy.innerHTML = `<span><strong>Root cause:</strong> ${escapeHTML(diagnosis.rootCause)}</span><span><strong>Why it failed:</strong> ${escapeHTML(diagnosis.why)}</span>`;
+                const actions = document.createElement("ul");
+                actions.className = "developer-log-diagnosis-actions";
+                (diagnosis.nextSteps || []).forEach((step) => {
+                    const item = document.createElement("li");
+                    item.textContent = step;
+                    actions.appendChild(item);
+                });
+                const rows = developerLogDebugRows(entry);
+                const debugGrid = document.createElement("dl");
+                debugGrid.className = "developer-log-debug-grid";
+                rows.forEach(([label, value]) => {
+                    const dt = document.createElement("dt");
+                    dt.textContent = label;
+                    const dd = document.createElement("dd");
+                    dd.textContent = String(value);
+                    debugGrid.append(dt, dd);
+                });
+                wrap.append(heading, copy, actions, debugGrid);
+                article.appendChild(wrap);
             }
 
             function developerLogEntrySupportsFreshIgnitionSync(entry) {
@@ -73564,6 +73850,10 @@
                     message.textContent = entry.message || "";
 
                     article.append(meta, title, message);
+
+                    if (severity === "error") {
+                        appendDeveloperLogDiagnosis(article, entry);
+                    }
 
                     if (developerLogEntrySupportsFreshIgnitionSync(entry)) {
                         const actionRow = document.createElement("div");
