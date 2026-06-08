@@ -26111,7 +26111,7 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="identityVerificationSummary">Loading tenant workspaces and Companies House records.</p>
-                            <section class="ch-companies-table-wrap">
+                            <section class="ch-companies-table-wrap" id="identityVerificationTenantListSection">
                                 <table class="ch-table" aria-label="Identity verification tenant table">
                                     <thead>
                                         <tr>
@@ -26132,6 +26132,7 @@
                                         <p class="detail-meta" id="identityVerificationWorkspaceMeta">Open a tenant to review officers, PSCs and verification evidence.</p>
                                     </div>
                                     <div class="detail-actions">
+                                        <button class="ghost-button" id="identityVerificationBackButton" type="button">Back to tenant list</button>
                                         <button class="ghost-button" id="identityVerificationOpenSubmissionButton" type="button">Submit to Companies House</button>
                                     </div>
                                 </div>
@@ -28223,6 +28224,7 @@
                 loading: false,
                 saving: false,
                 saveStatus: "",
+                workspaceMode: "list",
             };
             let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateFixInFlightTenantIds = new Set();
@@ -70200,9 +70202,11 @@
 
             function renderIdentityVerificationScreen() {
                 const summary = document.getElementById("identityVerificationSummary");
+                const tenantListSection = document.getElementById("identityVerificationTenantListSection");
                 const tableBody = document.getElementById("identityVerificationTenantTableBody");
                 const refreshButton = document.getElementById("identityVerificationRefreshButton");
                 const workspace = document.getElementById("identityVerificationWorkspace");
+                const backButton = document.getElementById("identityVerificationBackButton");
                 const workspaceTitle = document.getElementById("identityVerificationWorkspaceTitle");
                 const workspaceMeta = document.getElementById("identityVerificationWorkspaceMeta");
                 const metrics = document.getElementById("identityVerificationMetrics");
@@ -70212,7 +70216,7 @@
                 const saveStatus = document.getElementById("identityVerificationSaveStatus");
                 const officersBody = document.getElementById("identityVerificationOfficersBody");
                 const pscBody = document.getElementById("identityVerificationPscBody");
-                if (!summary || !tableBody || !refreshButton || !workspace || !workspaceTitle || !workspaceMeta || !metrics || !mappingForm || !verificationForm || !openSubmissionButton || !saveStatus || !officersBody || !pscBody) return;
+                if (!summary || !tenantListSection || !tableBody || !refreshButton || !workspace || !backButton || !workspaceTitle || !workspaceMeta || !metrics || !mappingForm || !verificationForm || !openSubmissionButton || !saveStatus || !officersBody || !pscBody) return;
 
                 if (refreshButton.dataset.identityVerificationWired !== "true") {
                     refreshButton.dataset.identityVerificationWired = "true";
@@ -70230,6 +70234,13 @@
                     openSubmissionButton.dataset.identityVerificationWired = "true";
                     openSubmissionButton.addEventListener("click", openIdentityVerificationSubmissionWorkspace);
                 }
+                if (backButton.dataset.identityVerificationWired !== "true") {
+                    backButton.dataset.identityVerificationWired = "true";
+                    backButton.addEventListener("click", () => {
+                        identityVerificationState.workspaceMode = "list";
+                        renderIdentityVerificationScreen();
+                    });
+                }
 
                 const rows = identityVerificationTenantRows();
                 if (!rows.length) {
@@ -70237,6 +70248,8 @@
                         ? "Loading tenant workspaces and Companies House records."
                         : "No Xero tenant connections found. Connect Xero to begin.";
                     tableBody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No tenants</p><h4>Connect Xero first</h4><p>Once tenant connections are available, open each workspace to verify directors and PSCs.</p></div></td></tr>';
+                    identityVerificationState.workspaceMode = "list";
+                    tenantListSection.hidden = false;
                     workspace.hidden = true;
                     return;
                 }
@@ -70269,16 +70282,26 @@
                 tableBody.querySelectorAll("[data-identity-open]").forEach((button) => {
                     button.addEventListener("click", () => {
                         identityVerificationState.selectedTenantId = String(button.dataset.identityOpen || "").trim();
+                        identityVerificationState.workspaceMode = "workspace";
                         renderIdentityVerificationScreen();
                     });
                 });
 
                 const selectedRow = sortedRows.find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
                 if (!selectedRow) {
+                    identityVerificationState.workspaceMode = "list";
+                    tenantListSection.hidden = false;
                     workspace.hidden = true;
                     return;
                 }
-                workspace.hidden = false;
+
+                const showWorkspace = identityVerificationState.workspaceMode === "workspace";
+                tenantListSection.hidden = showWorkspace;
+                workspace.hidden = !showWorkspace;
+                if (!showWorkspace) {
+                    summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
+                    return;
+                }
 
                 const selectedCompany = identityVerificationCompanyByTenant(selectedRow);
                 const details = identityVerificationDetails(selectedCompany);
@@ -70290,6 +70313,7 @@
                 const verifiedPeopleCount = [...details.peopleByKey.values()].filter((row) => Boolean(row?.verified)).length;
 
                 workspaceTitle.textContent = `${tenantLabel} · Identity verification`;
+                summary.textContent = `Tenant workspace open: ${tenantLabel}.`;
                 workspaceMeta.textContent = selectedCompany
                     ? `${selectedCompany.companyName || "Mapped company"} (${selectedCompany.companyNumber || "No number"}) · ${status.label}`
                     : "No Companies House company is mapped to this tenant yet.";
