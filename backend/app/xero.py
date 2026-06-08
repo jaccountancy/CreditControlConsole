@@ -94,6 +94,34 @@ def _xero_validation_summary(detail) -> str:
     return " ".join(messages[:4])
 
 
+def _xero_detail_summary(detail) -> str:
+    if isinstance(detail, dict):
+        candidates = [
+            detail.get("message"),
+            detail.get("Message"),
+            detail.get("detail"),
+            detail.get("Detail"),
+            detail.get("title"),
+            detail.get("Title"),
+            detail.get("error"),
+            detail.get("Error"),
+            detail.get("error_description"),
+        ]
+        for candidate in candidates:
+            text = str(candidate or "").strip()
+            if text:
+                return text
+    if isinstance(detail, list):
+        for item in detail:
+            text = _xero_detail_summary(item)
+            if text:
+                return text
+    text = str(detail or "").strip()
+    if text and text not in {"{}", "[]"}:
+        return text[:300]
+    return ""
+
+
 def _xero_rate_limit_headers(response: httpx.Response) -> dict:
     return {
         "retry_after": response.headers.get("Retry-After", ""),
@@ -134,11 +162,18 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
     auth_header = response.headers.get("WWW-Authenticate", "")
     detail_text = str(detail)
     scope_error_text = f"{auth_header} {detail_text}".lower()
-    if response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN) and (
+    is_auth_or_scope_error = response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN) and (
         "insufficient_scope" in scope_error_text
         or "insufficent_scope" in scope_error_text
         or "insufficient scope" in scope_error_text
-    ):
+        or "authenticationunsuccessful" in scope_error_text
+        or "invalid_token" in scope_error_text
+        or "token expired" in scope_error_text
+        or "unauthorised" in scope_error_text
+        or "unauthorized" in scope_error_text
+        or "forbidden" in scope_error_text
+    )
+    if is_auth_or_scope_error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
@@ -151,8 +186,10 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
 
     message = f"Xero {action} failed."
     validation_summary = _xero_validation_summary(detail)
-    if validation_summary:
-        message = f"{message} {validation_summary}"
+    fallback_summary = _xero_detail_summary(detail)
+    summary = validation_summary or fallback_summary
+    if summary:
+        message = f"{message} {summary}"
 
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
