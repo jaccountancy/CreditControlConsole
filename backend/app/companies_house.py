@@ -999,13 +999,49 @@ def _int_from_any(value: object) -> int | None:
     return None
 
 
+def _decimal_from_any(value: object) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return None
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    match = re.search(r"[-+]?\d*\.?\d+", text)
+    if not match:
+        return None
+    try:
+        return Decimal(match.group(0))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _decimal_to_text(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
 def _extract_shareholder_signals(company_payload: dict | None, filing_history: list[dict]) -> dict:
     payload = company_payload if isinstance(company_payload, dict) else {}
     accounts = payload.get("accounts") if isinstance(payload.get("accounts"), dict) else {}
     confirmation_statement = payload.get("confirmation_statement") if isinstance(payload.get("confirmation_statement"), dict) else {}
     nested_last_accounts = accounts.get("last_accounts") if isinstance(accounts.get("last_accounts"), dict) else {}
     nested_next_accounts = accounts.get("next_accounts") if isinstance(accounts.get("next_accounts"), dict) else {}
-    payload_share_capital = payload.get("share_capital") if isinstance(payload.get("share_capital"), dict) else {}
+    raw_share_capital = payload.get("share_capital")
+    payload_share_capital = raw_share_capital if isinstance(raw_share_capital, dict) else {}
+    if isinstance(raw_share_capital, list):
+        payload_share_capital_rows = [item for item in raw_share_capital if isinstance(item, dict)]
+    elif isinstance(raw_share_capital, dict):
+        payload_share_capital_rows = [raw_share_capital]
+    else:
+        payload_share_capital_rows = []
 
     shareholder_count: int | None = None
     source = ""
@@ -1052,17 +1088,73 @@ def _extract_shareholder_signals(company_payload: dict | None, filing_history: l
             if shareholder_count is not None:
                 break
 
-    if shareholder_count is None:
-        return {}
+    shareholdings: list[dict] = []
+    total_shares_issued = _decimal_from_any(
+        payload_share_capital.get("total_number_of_shares_issued")
+        or payload_share_capital.get("number_of_shares_issued")
+        or payload_share_capital.get("totalNumberOfSharesIssued")
+    )
+    total_aggregate_nominal = _decimal_from_any(
+        payload_share_capital.get("total_aggregate_nominal_value")
+        or payload_share_capital.get("aggregate_nominal_value")
+        or payload_share_capital.get("totalAggregateNominalValue")
+    )
+    computed_total_shares = Decimal("0")
+    has_computed_total_shares = False
+    computed_total_nominal = Decimal("0")
+    has_computed_total_nominal = False
+    for row in payload_share_capital_rows:
+        share_class = str(row.get("share_class") or row.get("class") or row.get("shareClass") or "").strip()
+        number_held = _decimal_from_any(
+            row.get("number_of_shares_issued")
+            or row.get("number_allotted")
+            or row.get("numberHeld")
+            or row.get("number_held")
+        )
+        aggregate_nominal = _decimal_from_any(
+            row.get("aggregate_nominal_value")
+            or row.get("total_aggregate_nominal_value")
+            or row.get("totalAggregateNominalValue")
+        )
+        nominal_value_per_share = _decimal_from_any(
+            row.get("nominal_value")
+            or row.get("nominalValue")
+            or row.get("value")
+        )
+        if aggregate_nominal is None and number_held is not None and nominal_value_per_share is not None:
+            aggregate_nominal = number_held * nominal_value_per_share
+        if number_held is not None:
+            computed_total_shares += number_held
+            has_computed_total_shares = True
+        if aggregate_nominal is not None:
+            computed_total_nominal += aggregate_nominal
+            has_computed_total_nominal = True
+        if share_class:
+            shareholdings.append(
+                {
+                    "shareClass": share_class,
+                    "numberHeld": _decimal_to_text(number_held) if number_held is not None else "",
+                    "shareholders": [],
+                }
+            )
 
-    return {
-        "confirmationStatement": {
-            "numberOfShareholders": shareholder_count,
-        },
-        "ingestion": {
-            "shareholderCountSource": source or "unknown",
-        },
-    }
+    if total_shares_issued is None and has_computed_total_shares:
+        total_shares_issued = computed_total_shares
+    if total_aggregate_nominal is None and has_computed_total_nominal:
+        total_aggregate_nominal = computed_total_nominal
+
+    result: dict[str, object] = {}
+    if shareholder_count is not None:
+        result["confirmationStatement"] = {"numberOfShareholders": shareholder_count}
+        result["ingestion"] = {"shareholderCountSource": source or "unknown"}
+    if shareholdings:
+        result["shareholdings"] = shareholdings
+    if total_shares_issued is not None or total_aggregate_nominal is not None:
+        result["statementOfCapital"] = {
+            "totalNumberOfSharesIssued": _decimal_to_text(total_shares_issued) if total_shares_issued is not None else "",
+            "totalAggregateNominalValue": _decimal_to_text(total_aggregate_nominal) if total_aggregate_nominal is not None else "",
+        }
+    return result
 
 
 def _is_confirmation_statement_filing(item: dict | None) -> bool:

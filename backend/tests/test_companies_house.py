@@ -224,6 +224,38 @@ class CompaniesHouseTests(unittest.TestCase):
             "filing_history.descriptionValues.members",
         )
 
+    def test_extract_shareholder_signals_pulls_share_capital_rows_and_statement_of_capital(self):
+        payload = {
+            "share_capital": [
+                {
+                    "share_class": "Ordinary",
+                    "number_of_shares_issued": "100",
+                    "aggregate_nominal_value": "100",
+                },
+                {
+                    "share_class": "Preference",
+                    "number_allotted": "50",
+                    "nominal_value": "1",
+                },
+            ]
+        }
+        signals = ch._extract_shareholder_signals(payload, [])
+        self.assertEqual(
+            signals.get("statementOfCapital", {}).get("totalNumberOfSharesIssued"),
+            "150",
+        )
+        self.assertEqual(
+            signals.get("statementOfCapital", {}).get("totalAggregateNominalValue"),
+            "150",
+        )
+        self.assertEqual(
+            signals.get("shareholdings", []),
+            [
+                {"shareClass": "Ordinary", "numberHeld": "100", "shareholders": []},
+                {"shareClass": "Preference", "numberHeld": "50", "shareholders": []},
+            ],
+        )
+
     def test_validate_cs01_payload_rejection_matrix(self):
         today = date.today()
         base_row = {
