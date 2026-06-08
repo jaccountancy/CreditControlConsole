@@ -1214,7 +1214,27 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
 
 @app.get("/api/developer/logs")
 def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
-    return {"logs": list_developer_logs(user, limit), "runtime": runtime_diagnostics_payload()}
+    try:
+        return {"logs": list_developer_logs(user, limit), "runtime": runtime_diagnostics_payload()}
+    except Exception as exc:
+        logger.exception("Unable to load developer logs")
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return {
+            "logs": [
+                {
+                    "id": f"developer.logs.error:{now_iso}",
+                    "level": "error",
+                    "source": "server",
+                    "eventType": "developer.logs.unavailable",
+                    "message": str(exc) or exc.__class__.__name__,
+                    "payload": {"type": exc.__class__.__name__},
+                    "createdAt": now_iso,
+                    "syncRunId": "",
+                    "syncStatus": "",
+                }
+            ],
+            "runtime": runtime_diagnostics_payload(),
+        }
 
 
 @app.post("/api/developer/logs/clear")

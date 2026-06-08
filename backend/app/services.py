@@ -12493,10 +12493,21 @@ async def _me_xero_optional_get(connection_row: dict, url: str, params: dict | N
 def _xero_connection_scope_set(connection_row: dict | None) -> set[str]:
     if not isinstance(connection_row, dict):
         return set()
-    raw_scope = str(connection_row.get("scope") or "").strip()
-    if not raw_scope:
+    raw_scope_value = connection_row.get("scope")
+    if isinstance(raw_scope_value, (list, tuple, set)):
+        return {
+            str(item).strip().lower()
+            for item in raw_scope_value
+            if str(item).strip()
+        }
+    raw_scope = str(raw_scope_value or "").strip()
+    if not raw_scope or raw_scope.lower() in {"none", "null"}:
         return set()
-    return {item.strip() for item in raw_scope.split() if item.strip()}
+    return {
+        item.strip().lower()
+        for item in re.split(r"[\s,]+", raw_scope)
+        if item.strip()
+    }
 
 
 def _xero_connection_has_reports_scope(connection_row: dict | None) -> bool:
@@ -25598,12 +25609,57 @@ async def customer_xero_transactions(
     include_diagnostics: bool = False,
 ) -> dict:
     customer, connection_row = _validate_customer_xero_access(customer_id, user)
-    return await _customer_xero_transactions_payload(
-        customer,
-        connection_row,
-        page_limit=page_limit,
-        include_diagnostics=include_diagnostics,
-    )
+    try:
+        return await _customer_xero_transactions_payload(
+            customer,
+            connection_row,
+            page_limit=page_limit,
+            include_diagnostics=include_diagnostics,
+        )
+    except HTTPException as exc:
+        if int(exc.status_code or 0) != status.HTTP_502_BAD_GATEWAY:
+            raise
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        message = str(detail.get("message") or exc.detail or "Unable to load live Xero transactions.").strip()
+        diagnostics = {
+            "bounded": page_limit is not None,
+            "xeroPageLimit": int(page_limit) if page_limit is not None else None,
+            "mode": "bounded" if page_limit is not None else "full",
+            "endpoint": "/api/customers/{customerId}/xero-transactions",
+            "rowsFetched": {
+                "outstandingInvoices": 0,
+                "unallocatedCredits": 0,
+                "overpayments": 0,
+                "allocatedCredits": 0,
+            },
+            "warning": message,
+            "upstreamStatusCode": detail.get("status_code"),
+        }
+        logger.warning(
+            "Returning empty xero-transactions payload for customer %s after upstream 502: %s",
+            str(customer.get("id") or customer_id),
+            message,
+        )
+        return {
+            "customerId": str(customer.get("id") or customer_id),
+            "xeroContactId": str(customer.get("xeroContactId") or customer.get("xero_contact_id") or ""),
+            "fetchedAt": utcnow().isoformat(),
+            "outstandingInvoices": [],
+            "unallocatedCredits": [],
+            "overpayments": [],
+            "allocatedCredits": [],
+            "summary": {
+                "outstandingTotal": 0.0,
+                "outstandingInvoiceCount": 0,
+                "outstandingLineCount": 0,
+                "unallocatedCreditTotal": 0.0,
+                "unallocatedCreditCount": 0,
+                "overpaymentCount": 0,
+                "allocatedCreditTotal": 0.0,
+                "allocatedCreditCount": 0,
+            },
+            "diagnostics": diagnostics,
+        }
 
 
 def _code_breaker_duplicate_line_items(lines: list[dict] | None) -> list[dict]:

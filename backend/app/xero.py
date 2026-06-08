@@ -37,8 +37,8 @@ XERO_DAILY_LIMIT_GUARD_REMAINING = 120
 XERO_HISTORY_SIGNATURE = "By Jenius AI"
 MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 XERO_PERMISSION_MESSAGE = (
-    "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
-    "and contact note write-back access, then try again."
+    "Xero permissions need updating. Reconnect Xero to approve reports, journals, invoice, credit note, "
+    "allocation, and contact note write-back access, then try again."
 )
 
 
@@ -400,6 +400,7 @@ async def refresh_connection(connection_id: str) -> dict:
                 SET access_token = %s,
                     refresh_token = %s,
                     expires_at = %s,
+                    scope = COALESCE(NULLIF(%s, ''), scope),
                     updated_at = %s
                 WHERE user_id = %s
                   AND refresh_token = %s
@@ -408,6 +409,7 @@ async def refresh_connection(connection_id: str) -> dict:
                     payload["access_token"],
                     payload["refresh_token"],
                     expires_at,
+                    str(payload.get("scope") or "").strip(),
                     now,
                     row["user_id"],
                     refresh_token_used,
