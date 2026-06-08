@@ -69697,6 +69697,14 @@
             }
 
             function codeBreakerConnectXeroStartUrl() {
+                const forced = typeof forceXeroConnectURL === "function"
+                    ? String(forceXeroConnectURL("code-breaker") || "").trim()
+                    : "";
+                if (forced) return forced;
+                const login = typeof loginURL === "function"
+                    ? String(loginURL() || "").trim()
+                    : "";
+                if (login) return login;
                 return String(
                     document.getElementById("connectAdditionalXeroButton")?.getAttribute("href")
                     || document.getElementById("headerConnectXeroButton")?.getAttribute("href")
