@@ -69631,6 +69631,10 @@
                 return escapeHTML(formatCurrency(resolved));
             }
 
+            function codeBreakerFiniteNumber(value) {
+                return typeof value === "number" && Number.isFinite(value);
+            }
+
             function codeBreakerPeriodStartDate(workspace = {}) {
                 const explicit = String(workspace?.periodStartDate || "").slice(0, 10);
                 if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
@@ -70154,9 +70158,9 @@
 
                 const summary = codeBreakerWizardState.summary || {};
                 const metrics = [
-                    ["CH net assets", Number.isFinite(Number(summary.chNetAssets)) ? formatCurrency(Number(summary.chNetAssets)) : "Unavailable"],
-                    ["Xero net assets", Number.isFinite(Number(summary.xeroNetAssets)) ? formatCurrency(Number(summary.xeroNetAssets)) : "Unavailable"],
-                    ["Variance", Number.isFinite(Number(summary.variance)) ? formatCurrency(Number(summary.variance)) : "Unavailable"],
+                    ["CH net assets", codeBreakerFiniteNumber(summary.chNetAssets) ? formatCurrency(summary.chNetAssets) : "Unavailable"],
+                    ["Xero net assets", codeBreakerFiniteNumber(summary.xeroNetAssets) ? formatCurrency(summary.xeroNetAssets) : "Unavailable"],
+                    ["Variance", codeBreakerFiniteNumber(summary.variance) ? formatCurrency(summary.variance) : "Unavailable"],
                     ["CH extraction engine", String(summary.chExtractionEngine || "Unavailable")],
                     ["CH source", String(summary.chSource || "Unavailable")],
                     ["Xero source", String(summary.xeroSource || "Unavailable")],
@@ -70265,14 +70269,14 @@
                     } finally {
                         clearInterval(stepOneTicker);
                     }
-                    const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
-                        ? Number(snapshot.ch.netAssets)
-                        : codeBreakerExtractNetAssets(snapshot?.ch);
-                    const resolvedXero = Number.isFinite(Number(snapshot?.xero?.netAssets))
-                        ? Number(snapshot.xero.netAssets)
-                        : codeBreakerExtractNetAssets(snapshot?.xero);
-                    const resolvedDifference = Number.isFinite(Number(snapshot?.match?.difference))
-                        ? Number(snapshot.match.difference)
+                    const resolvedCh = codeBreakerFiniteNumber(snapshot?.ch?.netAssets)
+                        ? snapshot.ch.netAssets
+                        : codeBreakerExtractNetAssets(snapshot?.ch?.netAssets);
+                    const resolvedXero = codeBreakerFiniteNumber(snapshot?.xero?.netAssets)
+                        ? snapshot.xero.netAssets
+                        : codeBreakerExtractNetAssets(snapshot?.xero?.netAssets);
+                    const resolvedDifference = codeBreakerFiniteNumber(snapshot?.match?.difference)
+                        ? snapshot.match.difference
                         : (
                             Number.isFinite(resolvedCh) && Number.isFinite(resolvedXero)
                                 ? (resolvedXero - resolvedCh)
