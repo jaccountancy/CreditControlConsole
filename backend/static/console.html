@@ -22490,6 +22490,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="15" r="1.2"></circle></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Lock Date</strong><span>Period locks</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-identity-verification" data-app-nav="identity-verification">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v6c0 4.7 2.8 8.3 7 9 4.2-.7 7-4.3 7-9V6l-7-3Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Identity Verification</strong><span>PSC + director checks</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-hmrc-64-8s" data-app-nav="hmrc-64-8s">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path><path d="m15 17 2 2 3-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>HMRC 64-8s</strong><span>Agent authority</span></span>
@@ -25965,6 +25969,108 @@
                         </section>
                     </section>
 
+                    <section class="late-charges-screen detail-card" id="identityVerificationScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>Identity Verification</h3>
+                                    <p class="detail-meta">Review Xero tenant connections, open a dedicated workspace per tenant, cross-reference directors and PSCs, and submit identity-verification flags for Companies House filing as an authorised ACSP.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="identityVerificationRefreshButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="identityVerificationSummary">Loading Xero tenant connections for identity checks.</p>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Identity verification tenant connections">
+                                    <thead>
+                                        <tr>
+                                            <th>Xero tenant</th>
+                                            <th>Mapped Companies House record</th>
+                                            <th>Identity status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="identityVerificationTenantTableBody"></tbody>
+                                </table>
+                            </section>
+                            <section class="detail-panel" id="identityVerificationWorkspace" hidden>
+                                <div class="detail-hero">
+                                    <div>
+                                        <p class="eyebrow">Tenant workspace</p>
+                                        <h4 id="identityVerificationWorkspaceTitle">Identity verification workspace</h4>
+                                        <p class="detail-meta" id="identityVerificationWorkspaceMeta">Select a tenant to verify directors and PSCs before filing.</p>
+                                    </div>
+                                </div>
+                                <div class="key-metrics-grid" id="identityVerificationMetrics"></div>
+                                <form class="bank-account-form" id="identityVerificationMappingForm" autocomplete="off">
+                                    <label>
+                                        Company number
+                                        <input id="identityVerificationCompanyNumberInput" type="text" placeholder="e.g. 12345678">
+                                    </label>
+                                    <label>
+                                        Company name
+                                        <input id="identityVerificationCompanyNameInput" type="text" placeholder="Mapped company name">
+                                    </label>
+                                    <label>
+                                        Client name
+                                        <input id="identityVerificationClientNameInput" type="text" placeholder="Internal client name">
+                                    </label>
+                                    <label>
+                                        Mapping notes
+                                        <input id="identityVerificationMappingNotesInput" type="text" placeholder="Optional mapping notes">
+                                    </label>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="identityVerificationSaveMappingButton" type="submit">Save mapping</button>
+                                    </div>
+                                </form>
+                                <form class="bank-account-form" id="identityVerificationForm" autocomplete="off">
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationRequiredInput" type="checkbox"> Identity verification required for this filing</label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationStatementInput" type="checkbox"> Verification statement confirmed</label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationDirectorCodeInput" type="checkbox"> Director personal code supplied</label>
+                                    <label>
+                                        Relevant officer
+                                        <input id="identityVerificationRelevantOfficerInput" type="text" placeholder="Officer confirming verification">
+                                    </label>
+                                    <label>
+                                        Companies House auth code
+                                        <input id="identityVerificationAuthCodeInput" type="text" maxlength="6" autocomplete="off" placeholder="Enter 6-character auth code">
+                                    </label>
+                                    <label class="ch-checkbox-inline"><input id="identityVerificationClientCheckedInput" type="checkbox"> Client identity checked by ACSP team</label>
+                                    <div class="detail-actions">
+                                        <button class="primary-button" id="identityVerificationSaveButton" type="submit">Save and push to Companies House record</button>
+                                    </div>
+                                    <p class="detail-meta" id="identityVerificationSaveStatus">No pending changes.</p>
+                                </form>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Company officers">
+                                        <thead>
+                                            <tr>
+                                                <th>Directors and officers</th>
+                                                <th>Role</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="identityVerificationOfficersBody"></tbody>
+                                    </table>
+                                </section>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Persons with significant control">
+                                        <thead>
+                                            <tr>
+                                                <th>PSC</th>
+                                                <th>Control type</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="identityVerificationPscBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+                        </section>
+                    </section>
+
                     <section class="late-charges-screen detail-card" id="vaultScreen" hidden>
                         <section class="detail-panel vault-top-card" id="vaultTopCard">
                             <div class="detail-hero">
@@ -27806,6 +27912,7 @@
                 "hmrc-64-8-history": "HMRC 64-8 History",
                 "aml-verification": "AML Verification",
                 "xero-lock-date": "Xero Lock Date",
+                "identity-verification": "Identity Verification",
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 "supplier-reconciliation": "Supplier Reconciliation",
@@ -27836,6 +27943,7 @@
                 "hmrc-64-8-history": "Review HMRC 64-8 audit history and sent-client summaries.",
                 "aml-verification": "Review AML/KYC readiness and unresolved compliance blockers.",
                 "xero-lock-date": "Review lock dates across all connected Xero tenants and flag filed accounts that are still unlocked.",
+                "identity-verification": "Verify PSC and director identity controls per Xero tenant and write filing-ready identity flags into Companies House records.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 "supplier-reconciliation": "",
@@ -27959,6 +28067,12 @@
             let xeroAccountsLoaded = false;
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let identityVerificationState = {
+                selectedTenantId: "",
+                loading: false,
+                saving: false,
+                saveStatus: "",
+            };
             let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateFixInFlightTenantIds = new Set();
             let xeroLockDateSearchTerm = "";
@@ -31677,6 +31791,7 @@
                 if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
                 if (activeView === "aml-verification") return "aml-verification";
                 if (activeView === "xero-lock-date") return "xero-lock-date";
+                if (activeView === "identity-verification") return "identity-verification";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "supplier-reconciliation") return "supplier-reconciliation";
@@ -31830,6 +31945,7 @@
                 if (activeView === "hmrc-64-8s") return "credit";
                 if (activeView === "aml-verification") return "credit";
                 if (activeView === "xero-lock-date") return "credit";
+                if (activeView === "identity-verification") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank";
                 if (activeView === "supplier-reconciliation") return "bank";
@@ -31957,6 +32073,7 @@
                 setElementVisible(document.getElementById("hmrc648Screen"), activeView === "hmrc-64-8s");
                 setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
                 setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
+                setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
@@ -31974,7 +32091,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "identity-verification", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -32111,6 +32228,7 @@
                 if (section === "hmrc-64-8s") return openHmrc648Screen();
                 if (section === "aml-verification") return openAmlVerificationScreen();
                 if (section === "xero-lock-date") return openXeroLockDateScreen();
+                if (section === "identity-verification") return openIdentityVerificationScreen();
                 if (section === "jashflow") return openJashflowScreen();
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "supplier-reconciliation") return openSupplierReconciliationScreen();
@@ -32377,6 +32495,7 @@
                 "hmrc-64-8s": "credit-control-hmrc-64-8s",
                 "aml-verification": "credit-control-aml-verification",
                 "xero-lock-date": "credit-control-xero-lock-date",
+                "identity-verification": "credit-control-identity-verification",
                 jashflow: "credit-control-jashflow",
                 "bank-statements": "credit-control-bank-statements",
                 "supplier-reconciliation": "credit-control-supplier-reconciliation",
@@ -35525,6 +35644,16 @@
                 scrollConsoleToTop();
             }
 
+            function openIdentityVerificationScreen() {
+                activeView = "identity-verification";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadIdentityVerificationData();
+                scrollConsoleToTop();
+            }
+
             function companySecretarialTypeConfig(code = "") {
                 return companySecretarialFilingTypeRegistry.find((item) => item.code === code) || null;
             }
@@ -36828,6 +36957,7 @@
                 if (xeroLockDateLoading && !force) return;
                 xeroLockDateLoading = true;
                 if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                if (activeView === "identity-verification") renderIdentityVerificationScreen();
                 if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 try {
@@ -36847,16 +36977,19 @@
                         [...xeroLockDateFixInFlightTenantIds].filter((tenantId) => visibleTenantIds.has(String(tenantId || "")))
                     );
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 } catch (error) {
                     console.error("Unable to load Xero lock-date overview", error);
                     if (activeView === "xero-lock-date") showToast(error.message || "Unable to load lock-date overview", "error");
+                    if (activeView === "identity-verification") showToast(error.message || "Unable to load Xero tenant connections", "error");
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") showToast(error.message || "Unable to load lock-date overview", "error");
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") showToast(error.message || "Unable to load Xero tenant connections", "error");
                 } finally {
                     xeroLockDateLoading = false;
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 }
@@ -60770,6 +60903,7 @@
                 if (activeView === "ignition-clients") return "Client register";
                 if (activeView === "confirmation-statements") return `${(companiesHouseState.companies || []).length.toLocaleString("en-GB")} companies in workflow`;
                 if (activeView === "xero-lock-date") return `${(xeroLockDateOverview.rows || []).length.toLocaleString("en-GB")} Xero tenants`;
+                if (activeView === "identity-verification") return `${(xeroLockDateOverview.rows || []).length.toLocaleString("en-GB")} tenant workspaces`;
                 if (activeView === "settings") return syncScopeLabels[syncSettings.invoiceScope] || "System settings";
                 return "Opened from sidebar";
             }
@@ -61415,6 +61549,7 @@
                 else if (activeView === "hmrc-64-8s") activeNavSection = "hmrc-64-8s";
                 else if (activeView === "aml-verification") activeNavSection = "aml-verification";
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
+                else if (activeView === "identity-verification") activeNavSection = "identity-verification";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
                 else if (activeView === "bank-statements") activeNavSection = "bank-statements";
                 else if (activeView === "supplier-reconciliation" || activeView === "supplier-reconciliation-statement-page") activeNavSection = "supplier-reconciliation";
@@ -68341,8 +68476,8 @@
             }
 
             function codeBreakerCompareStatus(workspace = {}) {
-                const ch = Number(workspace?.chNetAssets);
-                const xero = Number(workspace?.xeroNetAssets);
+                const ch = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xero = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
                 if (!Number.isFinite(ch) || !Number.isFinite(xero)) {
                     return { label: "Awaiting values", className: "is-review" };
                 }
@@ -68351,6 +68486,12 @@
                     return { label: "JOB DONE", className: "is-open" };
                 }
                 return { label: `LUK variance ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+            }
+
+            function codeBreakerMetricValue(value) {
+                const resolved = codeBreakerExtractNetAssets(value);
+                if (!Number.isFinite(resolved)) return "Pending";
+                return escapeHTML(formatCurrency(resolved));
             }
 
             function codeBreakerPeriodStartDate(workspace = {}) {
@@ -69012,8 +69153,8 @@
                     yearEndDate: decision.yearEndDate,
                     submittedAt: decision.submittedAt || "",
                     chNetAssets: Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : codeBreakerExtractNetAssets(snapshot?.ch) || null,
-                    xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : null,
-                    netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null,
+                    xeroNetAssets: Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : codeBreakerExtractNetAssets(snapshot?.xero),
+                    netAssetsDifference: Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : codeBreakerExtractNetAssets(snapshot?.match?.difference),
                     createdAt: now,
                     updatedAt: now,
                 });
@@ -69137,8 +69278,8 @@
                         <div class="key-metrics-grid">
                             <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(workspace.submittedAt || ""))}</strong></article>
                             <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(codeBreakerPeriodStartDate(workspace) || ""))} to ${escapeHTML(formatDate(workspace.yearEndDate || ""))}</strong></article>
-                            <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
-                            <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                            <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
+                            <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
                         </div>
                         <div class="code-breaker-workspace-actions">
                             <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
@@ -69168,8 +69309,8 @@
                     <div class="key-metrics-grid">
                         <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
                         <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(analysis.periodStart || ""))} to ${escapeHTML(formatDate(analysis.periodEnd || ""))}</strong></article>
-                        <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
-                        <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                        <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
+                        <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
                         <article class="key-metric-card"><span>Variance to clear</span><strong>${escapeHTML(compare.label)}</strong></article>
                         <article class="key-metric-card"><span>Comparison mode</span><strong>${escapeHTML(analysis.mode === "balance_sheet_compare" ? "CH filed vs Xero balance sheet" : "Transaction delta")}</strong></article>
                         <article class="key-metric-card"><span>Variance</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>
@@ -69223,9 +69364,22 @@
                         companyNumber: workspace.companyNumber,
                         asAtDate: workspace.yearEndDate || workspace.submittedAt,
                     });
-                    workspace.chNetAssets = Number.isFinite(Number(snapshot?.ch?.netAssets)) ? Number(snapshot.ch.netAssets) : (workspace.chNetAssets ?? null);
-                    workspace.xeroNetAssets = Number.isFinite(Number(snapshot?.xero?.netAssets)) ? Number(snapshot.xero.netAssets) : (workspace.xeroNetAssets ?? null);
-                    workspace.netAssetsDifference = Number.isFinite(Number(snapshot?.match?.difference)) ? Number(snapshot.match.difference) : null;
+                    const resolvedCh = Number.isFinite(Number(snapshot?.ch?.netAssets))
+                        ? Number(snapshot.ch.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.ch);
+                    const resolvedXero = Number.isFinite(Number(snapshot?.xero?.netAssets))
+                        ? Number(snapshot.xero.netAssets)
+                        : codeBreakerExtractNetAssets(snapshot?.xero);
+                    const resolvedDifference = Number.isFinite(Number(snapshot?.match?.difference))
+                        ? Number(snapshot.match.difference)
+                        : (
+                            Number.isFinite(resolvedCh) && Number.isFinite(resolvedXero)
+                                ? (resolvedXero - resolvedCh)
+                                : null
+                        );
+                    workspace.chNetAssets = Number.isFinite(resolvedCh) ? resolvedCh : null;
+                    workspace.xeroNetAssets = Number.isFinite(resolvedXero) ? resolvedXero : null;
+                    workspace.netAssetsDifference = Number.isFinite(resolvedDifference) ? resolvedDifference : null;
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
                 } catch (error) {
@@ -69257,7 +69411,16 @@
                     renderCodeBreakerScreen();
                     return;
                 }
-                const reversalTarget = Number(workspace?.netAssetsDifference || 0);
+                const reversalTarget = codeBreakerExtractNetAssets(workspace?.netAssetsDifference);
+                const chValue = codeBreakerExtractNetAssets(workspace?.chNetAssets);
+                const xeroValue = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
+                if (!Number.isFinite(chValue) || !Number.isFinite(xeroValue)) {
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = {
+                        error: "Unable to calculate net assets for this workspace. Check Companies House filing history and Xero balance sheet availability, then recalculate.",
+                    };
+                    renderCodeBreakerScreen();
+                    return;
+                }
                 const matches = Math.abs(reversalTarget) <= 0.01;
                 const recommendations = [];
                 if (matches) {
@@ -69385,8 +69548,8 @@
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(workspace.xeroContactId || "--")}</td>
-                                <td>${Number.isFinite(Number(workspace.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</td>
-                                <td>${Number.isFinite(Number(workspace.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</td>
+                                <td>${codeBreakerMetricValue(workspace.chNetAssets)}</td>
+                                <td>${codeBreakerMetricValue(workspace.xeroNetAssets)}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
                                 <td>
@@ -69425,6 +69588,322 @@
                     ? `Company ${selectedWorkspace.companyNumber || "—"} · Submitted ${formatDate(selectedWorkspace.submittedAt || "") || "—"}`
                     : "Review post-filing delta analysis for this workspace.";
                 renderCodeBreakerAnalysis(selectedWorkspace);
+            }
+
+            function identityVerificationTenantRows() {
+                return Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+            }
+
+            function identityVerificationCompanies() {
+                return Array.isArray(identityVerificationState.companies) ? identityVerificationState.companies : [];
+            }
+
+            function identityVerificationCompanyIndex() {
+                const byNumber = new Map();
+                const byId = new Map();
+                identityVerificationCompanies().forEach((company) => {
+                    const companyId = String(company?.id || "").trim();
+                    const companyNumber = normaliseCompanyNumberInput(company?.companyNumber || "");
+                    if (companyId) byId.set(companyId, company);
+                    if (companyNumber && !byNumber.has(companyNumber)) byNumber.set(companyNumber, company);
+                });
+                return { byNumber, byId };
+            }
+
+            function identityVerificationCompanyForTenant(tenantRow = null) {
+                if (!tenantRow) return null;
+                const index = identityVerificationCompanyIndex();
+                const mappedCompanyNumber = normaliseCompanyNumberInput(
+                    tenantRow?.mapping?.companyNumber || tenantRow?.companiesHouse?.companyNumber || ""
+                );
+                if (mappedCompanyNumber && index.byNumber.has(mappedCompanyNumber)) return index.byNumber.get(mappedCompanyNumber);
+                return null;
+            }
+
+            function identityVerificationDetails(company = null) {
+                const confirmationStatement = company?.shareCapital?.confirmationStatement || {};
+                const identity = (confirmationStatement?.identityVerification && typeof confirmationStatement.identityVerification === "object")
+                    ? confirmationStatement.identityVerification
+                    : {};
+                const required = Boolean(identity.required);
+                const verificationStatementGiven = identity.verificationStatementGiven !== false;
+                const directorPersonalCodeSupplied = Boolean(identity.directorPersonalCodeSupplied);
+                const relevantOfficer = String(identity.relevantOfficer || "").trim();
+                const readyForFiling = required
+                    ? (verificationStatementGiven && directorPersonalCodeSupplied)
+                    : verificationStatementGiven;
+                return {
+                    required,
+                    verificationStatementGiven,
+                    directorPersonalCodeSupplied,
+                    relevantOfficer,
+                    readyForFiling,
+                };
+            }
+
+            function identityVerificationStatusLabel(company = null) {
+                if (!company) return { label: "Needs mapping", className: "is-warn" };
+                const details = identityVerificationDetails(company);
+                if (details.readyForFiling) return { label: "Ready to push", className: "is-open" };
+                if (!details.required) return { label: "Optional check pending", className: "is-review" };
+                return { label: "Verification pending", className: "is-overdue" };
+            }
+
+            function identityVerificationPersonName(person = {}, fallback = "Unknown") {
+                const direct = String(person?.name || "").trim();
+                if (direct) return direct;
+                const forename = String(person?.forename || person?.firstName || "").trim();
+                const surname = String(person?.surname || person?.lastName || "").trim();
+                const combined = `${forename} ${surname}`.trim();
+                return combined || fallback;
+            }
+
+            function identityVerificationApplyAcspNote(notes = "", checked = false) {
+                const markerPattern = /(?:^|\n)Client identity verified by ACSP:[^\n]*/gi;
+                const base = String(notes || "").replace(markerPattern, "").trim();
+                const line = `Client identity verified by ACSP: ${checked ? "Yes" : "No"} (${new Date().toISOString().slice(0, 10)})`;
+                return [base, line].filter(Boolean).join("\n");
+            }
+
+            async function loadIdentityVerificationData(force = false) {
+                if (identityVerificationState.loading && !force) return;
+                identityVerificationState.loading = true;
+                renderIdentityVerificationScreen();
+                try {
+                    await loadXeroLockDateOverview(force);
+                    const payload = await requestJSON("/api/companies-house/companies");
+                    identityVerificationState.companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                    const tenantIds = new Set(identityVerificationTenantRows().map((row) => String(row?.tenantId || "")).filter(Boolean));
+                    if (!tenantIds.has(String(identityVerificationState.selectedTenantId || ""))) {
+                        identityVerificationState.selectedTenantId = identityVerificationTenantRows()[0]?.tenantId || "";
+                    }
+                } catch (error) {
+                    console.error("Unable to load identity verification workspace data", error);
+                    showToast(error?.message || "Unable to load identity verification data.", "error");
+                } finally {
+                    identityVerificationState.loading = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            async function saveIdentityVerificationMapping(event) {
+                event?.preventDefault?.();
+                const tenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                if (!tenantId) return;
+                const companyNumber = normaliseCompanyNumberInput(document.getElementById("identityVerificationCompanyNumberInput")?.value || "");
+                const companyName = String(document.getElementById("identityVerificationCompanyNameInput")?.value || "").trim();
+                const clientName = String(document.getElementById("identityVerificationClientNameInput")?.value || "").trim();
+                const notes = String(document.getElementById("identityVerificationMappingNotesInput")?.value || "").trim();
+                identityVerificationState.saving = true;
+                identityVerificationState.saveStatus = "Saving tenant mapping…";
+                renderIdentityVerificationScreen();
+                try {
+                    await requestJSON(endpointURL(api.endpoints.xeroTenantMapping, { tenantId }), {
+                        method: "POST",
+                        body: JSON.stringify({ companyNumber, companyName, clientName, notes }),
+                    });
+                    await loadXeroLockDateOverview(true);
+                    identityVerificationState.saveStatus = "Tenant mapping saved.";
+                    showToast("Tenant mapping saved.", "success");
+                } catch (error) {
+                    identityVerificationState.saveStatus = error?.message || "Unable to save tenant mapping.";
+                    showToast(identityVerificationState.saveStatus, "error");
+                } finally {
+                    identityVerificationState.saving = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            async function saveIdentityVerificationRecord(event) {
+                event?.preventDefault?.();
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                const tenantRow = identityVerificationTenantRows().find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                const company = identityVerificationCompanyForTenant(tenantRow);
+                const companyId = String(company?.id || "").trim();
+                if (!companyId) {
+                    showToast("Map this tenant to a Companies House company first.", "info");
+                    return;
+                }
+                const required = Boolean(document.getElementById("identityVerificationRequiredInput")?.checked);
+                const verificationStatementGiven = Boolean(document.getElementById("identityVerificationStatementInput")?.checked);
+                const directorPersonalCodeSupplied = Boolean(document.getElementById("identityVerificationDirectorCodeInput")?.checked);
+                const relevantOfficer = String(document.getElementById("identityVerificationRelevantOfficerInput")?.value || "").trim();
+                const clientIdentityChecked = Boolean(document.getElementById("identityVerificationClientCheckedInput")?.checked);
+                const nextNotes = identityVerificationApplyAcspNote(company?.notes || "", clientIdentityChecked);
+                identityVerificationState.saving = true;
+                identityVerificationState.saveStatus = "Saving identity verification…";
+                renderIdentityVerificationScreen();
+                try {
+                    const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({
+                            identityVerification: {
+                                required,
+                                verificationStatementGiven,
+                                directorPersonalCodeSupplied,
+                                relevantOfficer,
+                            },
+                            notes: nextNotes,
+                        }),
+                    });
+                    const updatedCompany = payload?.company || null;
+                    if (updatedCompany?.id) {
+                        const updatedId = String(updatedCompany.id);
+                        identityVerificationState.companies = identityVerificationCompanies().map((row) => (
+                            String(row?.id || "") === updatedId ? updatedCompany : row
+                        ));
+                        if (Array.isArray(companiesHouseState?.companies)) {
+                            companiesHouseState.companies = companiesHouseState.companies.map((row) => (
+                                String(row?.id || "") === updatedId ? updatedCompany : row
+                            ));
+                        }
+                    }
+                    identityVerificationState.saveStatus = "Identity verification saved to Companies House workspace.";
+                    showToast("Identity verification saved.", "success");
+                } catch (error) {
+                    identityVerificationState.saveStatus = error?.message || "Unable to save identity verification.";
+                    showToast(identityVerificationState.saveStatus, "error");
+                } finally {
+                    identityVerificationState.saving = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            function renderIdentityVerificationScreen() {
+                const summary = document.getElementById("identityVerificationSummary");
+                const tableBody = document.getElementById("identityVerificationTenantTableBody");
+                const refreshButton = document.getElementById("identityVerificationRefreshButton");
+                const workspace = document.getElementById("identityVerificationWorkspace");
+                const workspaceTitle = document.getElementById("identityVerificationWorkspaceTitle");
+                const workspaceMeta = document.getElementById("identityVerificationWorkspaceMeta");
+                const metrics = document.getElementById("identityVerificationMetrics");
+                const mappingForm = document.getElementById("identityVerificationMappingForm");
+                const verificationForm = document.getElementById("identityVerificationForm");
+                const saveStatus = document.getElementById("identityVerificationSaveStatus");
+                const officersBody = document.getElementById("identityVerificationOfficersBody");
+                const pscBody = document.getElementById("identityVerificationPscBody");
+                if (!summary || !tableBody || !refreshButton || !workspace || !workspaceTitle || !workspaceMeta || !metrics || !mappingForm || !verificationForm || !saveStatus || !officersBody || !pscBody) return;
+
+                if (refreshButton.dataset.identityVerificationWired !== "true") {
+                    refreshButton.dataset.identityVerificationWired = "true";
+                    refreshButton.addEventListener("click", () => loadIdentityVerificationData(true));
+                }
+                if (mappingForm.dataset.identityVerificationWired !== "true") {
+                    mappingForm.dataset.identityVerificationWired = "true";
+                    mappingForm.addEventListener("submit", saveIdentityVerificationMapping);
+                }
+                if (verificationForm.dataset.identityVerificationWired !== "true") {
+                    verificationForm.dataset.identityVerificationWired = "true";
+                    verificationForm.addEventListener("submit", saveIdentityVerificationRecord);
+                }
+
+                const rows = identityVerificationTenantRows();
+                if (!rows.length) {
+                    summary.textContent = identityVerificationState.loading
+                        ? "Loading Xero tenant connections for identity checks."
+                        : "No Xero tenant connections found. Connect Xero to begin identity verification.";
+                    tableBody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No tenants</p><h4>Connect Xero first</h4><p>Once tenant connections exist, open each workspace to verify directors and PSC records.</p></div></td></tr>';
+                    workspace.hidden = true;
+                    return;
+                }
+
+                const sortedRows = [...rows].sort((left, right) => {
+                    const rank = Number(Boolean(right?.isMainTenant)) - Number(Boolean(left?.isMainTenant));
+                    if (rank !== 0) return rank;
+                    return String(left?.tenantName || left?.tenantId || "").localeCompare(String(right?.tenantName || right?.tenantId || ""), "en-GB");
+                });
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || sortedRows[0]?.tenantId || "");
+                identityVerificationState.selectedTenantId = selectedTenantId;
+                summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
+                tableBody.innerHTML = sortedRows.map((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    const tenantLabel = xeroWorkspaceLabel(row?.tenantName, tenantId, "Xero tenant");
+                    const company = identityVerificationCompanyForTenant(row);
+                    const status = identityVerificationStatusLabel(company);
+                    const mappedCompanyLabel = company
+                        ? `${company.companyName || "Mapped company"} (${company.companyNumber || "No number"})`
+                        : (row?.mapping?.companyNumber ? `${row.mapping.companyNumber} (mapping only)` : "Not mapped");
+                    return `
+                        <tr class="${tenantId === selectedTenantId ? "is-selected" : ""}">
+                            <td><strong>${escapeHTML(tenantLabel)}</strong><small>${escapeHTML(tenantId)}</small></td>
+                            <td>${escapeHTML(mappedCompanyLabel)}</td>
+                            <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
+                            <td><button class="ghost-button" type="button" data-identity-open="${escapeHTML(tenantId)}">Open workspace</button></td>
+                        </tr>
+                    `;
+                }).join("");
+                tableBody.querySelectorAll("[data-identity-open]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        identityVerificationState.selectedTenantId = String(button.dataset.identityOpen || "").trim();
+                        renderIdentityVerificationScreen();
+                    });
+                });
+
+                const selectedRow = sortedRows.find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                if (!selectedRow) {
+                    workspace.hidden = true;
+                    return;
+                }
+                workspace.hidden = false;
+                const selectedCompany = identityVerificationCompanyForTenant(selectedRow);
+                const selectedStatus = identityVerificationStatusLabel(selectedCompany);
+                const details = identityVerificationDetails(selectedCompany);
+                const tenantLabel = xeroWorkspaceLabel(selectedRow?.tenantName, selectedTenantId, "Xero tenant");
+                const tenantCustomers = codeBreakerCustomersForTenant(selectedTenantId);
+                const officers = Array.isArray(selectedCompany?.officers) ? selectedCompany.officers : [];
+                const pscs = Array.isArray(selectedCompany?.pscs) ? selectedCompany.pscs : [];
+                const activePscs = pscs.filter((row) => !String(row?.ceasedOn || "").trim());
+                workspaceTitle.textContent = `${tenantLabel} · Identity verification`;
+                workspaceMeta.textContent = selectedCompany
+                    ? `${selectedCompany.companyName || "Mapped company"} (${selectedCompany.companyNumber || "No number"}) · ${selectedStatus.label}`
+                    : "No Companies House company is mapped to this tenant yet.";
+
+                metrics.innerHTML = [
+                    ["Xero contacts in tenant", `${tenantCustomers.length.toLocaleString("en-GB")}`],
+                    ["Directors/officers", `${officers.length.toLocaleString("en-GB")}`],
+                    ["Active PSCs", `${activePscs.length.toLocaleString("en-GB")}`],
+                    ["Filing identity status", selectedStatus.label],
+                ].map(([label, value]) => `<article class="key-metric-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`).join("");
+
+                const mappedCompanyNumber = normaliseCompanyNumberInput(selectedRow?.mapping?.companyNumber || selectedCompany?.companyNumber || selectedRow?.companiesHouse?.companyNumber || "");
+                document.getElementById("identityVerificationCompanyNumberInput").value = mappedCompanyNumber;
+                document.getElementById("identityVerificationCompanyNameInput").value = String(selectedRow?.mapping?.companyName || selectedCompany?.companyName || "").trim();
+                document.getElementById("identityVerificationClientNameInput").value = String(selectedRow?.mapping?.clientName || selectedCompany?.clientName || "").trim();
+                document.getElementById("identityVerificationMappingNotesInput").value = String(selectedRow?.mapping?.notes || "").trim();
+
+                const identityDisabled = !selectedCompany?.id;
+                document.getElementById("identityVerificationRequiredInput").checked = details.required;
+                document.getElementById("identityVerificationStatementInput").checked = details.verificationStatementGiven;
+                document.getElementById("identityVerificationDirectorCodeInput").checked = details.directorPersonalCodeSupplied;
+                document.getElementById("identityVerificationRelevantOfficerInput").value = details.relevantOfficer;
+                document.getElementById("identityVerificationClientCheckedInput").checked = /Client identity verified by ACSP:\s*Yes/i.test(String(selectedCompany?.notes || ""));
+                verificationForm.querySelectorAll("input, button").forEach((node) => {
+                    node.disabled = identityDisabled || identityVerificationState.saving;
+                });
+                document.getElementById("identityVerificationSaveMappingButton").disabled = identityVerificationState.saving;
+                saveStatus.textContent = identityVerificationState.saveStatus || (identityDisabled
+                    ? "Save a tenant mapping to enable Companies House identity updates."
+                    : "No pending changes.");
+
+                officersBody.innerHTML = officers.length
+                    ? officers.map((officer) => {
+                        const name = identityVerificationPersonName(officer, "Unknown officer");
+                        const role = String(officer?.role || officer?.officerRole || "Officer").trim();
+                        const ceasedOn = String(officer?.ceasedOn || "").trim();
+                        const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
+                        return `<tr><td>${escapeHTML(name)}</td><td>${escapeHTML(role)}</td><td>${escapeHTML(statusText)}</td></tr>`;
+                    }).join("")
+                    : '<tr><td colspan="3"><div class="ch-empty-state">No officer records loaded for this company.</div></td></tr>';
+
+                pscBody.innerHTML = pscs.length
+                    ? pscs.map((psc) => {
+                        const name = identityVerificationPersonName(psc, "Unnamed PSC");
+                        const controlType = String(psc?.kind || psc?.natureOfControl || "Control not provided").trim();
+                        const ceasedOn = String(psc?.ceasedOn || "").trim();
+                        const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
+                        return `<tr><td>${escapeHTML(name)}</td><td>${escapeHTML(controlType)}</td><td>${escapeHTML(statusText)}</td></tr>`;
+                    }).join("")
+                    : '<tr><td colspan="3"><div class="ch-empty-state">No PSC records loaded for this company.</div></td></tr>';
             }
 
             async function refreshMicroAnalyzerRows() {
@@ -70424,6 +70903,7 @@
                     ["renderPracticePackScreen", () => renderPracticePackScreen()],
                     ["renderTaskTrackerScreen", () => renderTaskTrackerScreen()],
                     ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],
+                    ["renderIdentityVerificationScreen", () => renderIdentityVerificationScreen()],
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderClientScreen", () => renderClientScreen()],
                     ["enhanceConsoleButtons", () => enhanceConsoleButtons()],
