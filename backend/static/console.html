@@ -35,10 +35,10 @@
                 --purple: #8d62ff;
                 --purple-soft: #eee8ff;
                 --shadow: 0 8px 24px rgba(41, 79, 148, 0.07);
-                --app-sidebar-width: 176px;
-                --sidebar-panel-bg: linear-gradient(180deg, rgba(244, 248, 255, 0.96), rgba(240, 245, 255, 0.9));
-                --sidebar-panel-line: rgba(61, 85, 130, 0.12);
-                --sidebar-panel-shadow: 0 14px 34px rgba(30, 47, 77, 0.08);
+                --app-sidebar-width: 164px;
+                --sidebar-panel-bg: linear-gradient(180deg, rgba(238, 243, 252, 0.98), rgba(231, 238, 249, 0.94));
+                --sidebar-panel-line: rgba(61, 85, 130, 0.14);
+                --sidebar-panel-shadow: 0 12px 28px rgba(30, 47, 77, 0.09);
             }
 
             * { box-sizing: border-box; }
@@ -65,12 +65,46 @@
                 gap: 20px;
                 padding: 0 10px 32px 10px;
             }
+            .console-app-frame {
+                position: relative;
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+                align-items: start;
+                gap: 20px;
+                min-height: calc(100vh - 16px);
+                padding: 8px;
+                border-radius: 28px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: linear-gradient(180deg, rgba(232, 238, 249, 0.96), rgba(225, 234, 247, 0.92));
+                box-shadow: 0 20px 40px rgba(30, 47, 77, 0.1);
+            }
+            .console-app-frame::before {
+                content: "";
+                position: absolute;
+                top: 10px;
+                bottom: 10px;
+                left: calc(var(--app-sidebar-width) + 10px);
+                width: 1px;
+                background: linear-gradient(180deg, rgba(61, 85, 130, 0.18), rgba(61, 85, 130, 0.08));
+                pointer-events: none;
+            }
+            @media (max-width: 980px) {
+                .console-app-frame {
+                    grid-template-columns: 1fr;
+                    min-height: auto;
+                    gap: 10px;
+                }
+                .console-app-frame::before {
+                    display: none;
+                }
+            }
             button, input, textarea, select { font: inherit; }
             button { cursor: pointer; }
-            .ledger-shell {                                 
+            .ledger-shell {
                 grid-column: 2;
                 width: min(1320px, 100%);
-                margin: 10px auto 32px;
+                margin: 10px auto 24px;
             }
             body.is-tool-page .ledger-shell {
                 width: 100%;
@@ -1028,9 +1062,9 @@
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
-                padding: 10px 10px 12px;
-                border-radius: 22px;
+                gap: 8px;
+                padding: 8px 8px 10px;
+                border-radius: 20px;
                 overflow: hidden;
                 transition: flex-basis 0.3s cubic-bezier(0.16, 1, 0.3, 1), min-height 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s ease;
             }
@@ -1063,13 +1097,13 @@
             }
             .app-nav {
                 display: grid;
-                gap: 4px;
+                gap: 2px;
             }
             .app-nav > .app-nav-group + .app-nav-group,
             .app-nav > .app-nav-button + .app-nav-group,
             .app-nav > .app-nav-group + .app-nav-button {
-                margin-top: 6px;
-                padding-top: 6px;
+                margin-top: 4px;
+                padding-top: 4px;
                 border-top: 1px solid rgba(61, 85, 130, 0.10);
             }
             .app-nav-group {
@@ -1115,10 +1149,10 @@
                 transform: translateY(-2px) rotate(-6deg) scale(1.06);
             }
             .app-nav-submenu .app-nav-button {
-                min-height: 34px;
-                grid-template-columns: 22px minmax(0, 1fr);
-                padding: 6px 7px;
-                border-radius: 11px;
+                min-height: 32px;
+                grid-template-columns: 20px minmax(0, 1fr);
+                padding: 5px 6px;
+                border-radius: 10px;
                 background: rgba(248, 251, 255, 0.64);
                 opacity: 0;
                 transform: translateY(-5px);
@@ -1152,15 +1186,12 @@
                 opacity: 0.84;
             }
             .app-nav-submenu .app-nav-icon {
-                width: 22px;
-                height: 22px;
-                border-radius: 8px;
+                width: 20px;
+                height: 20px;
+                border-radius: 7px;
             }
             .app-nav-submenu .app-nav-copy strong {
-                font-size: 0.8rem;
-            }
-            .app-nav-submenu .app-nav-copy > span {
-                font-size: 0.64rem;
+                font-size: 0.79rem;
             }
             .app-sidebar-card.is-practice-tools-focus .app-nav > :not(.app-nav-group[data-app-nav-group="practice-tools"]),
             .app-sidebar-card.is-credit-control-focus .app-nav > :not(.app-nav-group[data-app-nav-group="credit-control"]),
@@ -1287,38 +1318,38 @@
             .app-sidebar-connect {
                 position: relative;
                 width: 100%;
-                min-height: 42px;
+                min-height: 36px;
                 display: grid;
-                grid-template-columns: 26px minmax(0, 1fr);
+                grid-template-columns: 22px minmax(0, 1fr);
                 align-items: center;
                 align-content: center;
-                gap: 8px;
+                gap: 7px;
                 border: 1px solid transparent;
-                border-radius: 14px;
-                padding: 8px 9px;
+                border-radius: 12px;
+                padding: 6px 7px;
                 text-align: left;
                 color: var(--ink);
                 background: transparent;
                 text-decoration: none;
                 font-weight: 900;
-                line-height: 1.18;
+                line-height: 1.15;
                 transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
             }
             .app-nav-icon {
-                width: 26px;
-                height: 26px;
+                width: 22px;
+                height: 22px;
                 display: inline-grid;
                 place-items: center;
-                border-radius: 9px;
+                border-radius: 8px;
                 color: var(--blue);
                 background: linear-gradient(135deg, rgba(233, 241, 255, 0.96), rgba(238, 232, 255, 0.88));
                 border: 1px solid rgba(29, 103, 242, 0.13);
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 6px 12px rgba(29, 103, 242, 0.08);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 4px 10px rgba(29, 103, 242, 0.08);
                 transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
             }
             .app-nav-icon svg {
-                width: 15px;
-                height: 15px;
+                width: 14px;
+                height: 14px;
                 fill: none;
                 stroke: currentColor;
                 stroke-width: 2;
@@ -1328,18 +1359,16 @@
             .app-nav-copy {
                 min-width: 0;
                 display: grid;
-                gap: 2px;
+                gap: 0;
             }
             .app-nav-copy strong {
                 overflow-wrap: anywhere;
-                font-size: 0.9rem;
+                font-size: 0.88rem;
                 font-weight: 900;
                 line-height: 1.08;
             }
-            .app-nav-copy > span {
-                color: var(--muted);
-                font-size: 0.7rem;
-                font-weight: 800;
+            .app-sidebar .app-nav-copy > span {
+                display: none;
             }
             .app-nav-button:focus-visible,
             .app-sidebar-link:focus-visible,
@@ -1544,10 +1573,10 @@
                 margin-bottom: 10px;
                 isolation: isolate;
                 background:
-                    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.9)),
-                    linear-gradient(90deg, rgba(var(--topbar-accent-rgb), 0.08), rgba(39, 176, 95, 0.05));
-                border-color: rgba(var(--topbar-accent-rgb), 0.08);
-                box-shadow: 0 12px 34px rgba(30, 47, 77, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.76);
+                    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(244, 248, 255, 0.84)),
+                    linear-gradient(90deg, rgba(var(--topbar-accent-rgb), 0.06), rgba(39, 176, 95, 0.04));
+                border-color: rgba(var(--topbar-accent-rgb), 0.1);
+                box-shadow: 0 6px 16px rgba(30, 47, 77, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
                 transition:
                     box-shadow 0.36s cubic-bezier(0.16, 1, 0.3, 1),
                     gap 0.34s cubic-bezier(0.16, 1, 0.3, 1),
@@ -1569,9 +1598,9 @@
                 top: 0;
                 height: 3px;
                 border-radius: 999px;
-                background: linear-gradient(90deg, transparent, rgba(var(--topbar-accent-rgb), 0.72), var(--topbar-accent-2), transparent);
-                opacity: 0.58;
-                transform: scaleX(0.72);
+                background: linear-gradient(90deg, transparent, rgba(var(--topbar-accent-rgb), 0.6), var(--topbar-accent-2), transparent);
+                opacity: 0.4;
+                transform: scaleX(0.7);
                 transform-origin: center;
                 transition: opacity 0.36s ease, transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
             }
@@ -1579,8 +1608,8 @@
                 inset: 1px;
                 border-radius: inherit;
                 background:
-                    linear-gradient(110deg, rgba(255, 255, 255, 0.54), transparent 32%, rgba(var(--topbar-accent-rgb), 0.08) 100%);
-                opacity: 0.48;
+                    linear-gradient(110deg, rgba(255, 255, 255, 0.4), transparent 32%, rgba(var(--topbar-accent-rgb), 0.06) 100%);
+                opacity: 0.34;
             }
             .ledger-topbar[data-topbar-tone="credit"] {
                 --topbar-accent: #1d67f2;
@@ -1623,11 +1652,11 @@
             .ledger-topbar.has-inline-status {
                 gap: 8px;
                 align-items: center;
-                border-color: rgba(var(--topbar-accent-rgb), 0.2);
+                border-color: rgba(var(--topbar-accent-rgb), 0.18);
                 background:
-                    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.94)),
-                    linear-gradient(90deg, rgba(var(--topbar-accent-rgb), 0.14), rgba(39, 176, 95, 0.08));
-                box-shadow: 0 18px 54px rgba(var(--topbar-accent-rgb), 0.13), 0 12px 30px rgba(30, 47, 77, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+                    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 255, 0.88)),
+                    linear-gradient(90deg, rgba(var(--topbar-accent-rgb), 0.11), rgba(39, 176, 95, 0.06));
+                box-shadow: 0 10px 24px rgba(var(--topbar-accent-rgb), 0.1), 0 8px 18px rgba(30, 47, 77, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.78);
             }
             .ledger-topbar.has-topbar-refresh-action {
                 padding-right: 124px;
@@ -1643,8 +1672,8 @@
                 opacity: 0.68;
             }
             .ledger-topbar:hover {
-                border-color: rgba(var(--topbar-accent-rgb), 0.18);
-                box-shadow: 0 18px 44px rgba(30, 47, 77, 0.1), 0 8px 24px rgba(var(--topbar-accent-rgb), 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+                border-color: rgba(var(--topbar-accent-rgb), 0.16);
+                box-shadow: 0 10px 22px rgba(30, 47, 77, 0.08), 0 6px 16px rgba(var(--topbar-accent-rgb), 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
             }
             .ledger-topbar.is-topbar-dense {
                 gap: 7px;
@@ -1658,9 +1687,9 @@
                 gap: 8px;
             }
             .ledger-topbar.is-activity-open {
-                border-color: rgba(29, 103, 242, 0.24);
-                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
-                box-shadow: 0 24px 64px rgba(30, 47, 77, 0.16);
+                border-color: rgba(29, 103, 242, 0.22);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 255, 0.9));
+                box-shadow: 0 14px 32px rgba(30, 47, 77, 0.11);
             }
             @keyframes topbar-accent-breathe {
                 0%, 100% { opacity: 0.68; transform: scaleX(0.74); }
@@ -22719,6 +22748,7 @@
             </head>
             <body>
                 <div class="console-app">
+                <div class="console-app-frame">
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <div class="app-sidebar-card">
                         <button class="app-sidebar-brand" id="sidebarSupportBubbleToggle" type="button" aria-label="Background processing status">
@@ -27243,6 +27273,7 @@
                         </div>
                     </section>
                 </main>
+                </div>
                 </div>
 
                 <template id="emptyStateTemplate">
