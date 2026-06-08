@@ -1244,6 +1244,112 @@ async def update_invoice_status(connection_row: dict, invoice_id: str, status_va
         return response.json()
 
 
+async def update_credit_note_status(connection_row: dict, credit_note_id: str, status_value: str) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {
+        "CreditNotes": [
+            {
+                "CreditNoteID": str(credit_note_id or "").strip(),
+                "Status": str(status_value or "").strip(),
+            }
+        ]
+    }
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.post(
+                CREDIT_NOTES_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json=request_payload,
+            )
+        except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                CREDIT_NOTES_URL,
+                "POST credit note status update",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
+            _raise_xero_request_error(exc, "credit note status update")
+        _record_xero_usage(
+            connection_row,
+            CREDIT_NOTES_URL,
+            "POST credit note status update",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
+        if response.is_error:
+            _raise_xero_http_error(response, "credit note status update")
+        if not response.content:
+            return {}
+        return response.json()
+
+
+async def update_overpayment_status(connection_row: dict, overpayment_id: str, status_value: str) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {
+        "Overpayments": [
+            {
+                "OverpaymentID": str(overpayment_id or "").strip(),
+                "Status": str(status_value or "").strip(),
+            }
+        ]
+    }
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.post(
+                OVERPAYMENTS_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json=request_payload,
+            )
+        except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                OVERPAYMENTS_URL,
+                "POST overpayment status update",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
+            _raise_xero_request_error(exc, "overpayment status update")
+        _record_xero_usage(
+            connection_row,
+            OVERPAYMENTS_URL,
+            "POST overpayment status update",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
+        if response.is_error:
+            _raise_xero_http_error(response, "overpayment status update")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def update_bank_transaction_status(connection_row: dict, bank_transaction_id: str, status_value: str) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     started = time.monotonic()

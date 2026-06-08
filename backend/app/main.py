@@ -85,6 +85,7 @@ from .services import (
     add_bank_statement_client,
     create_bad_debt_write_offs,
     create_bank_statement_account,
+    code_breaker_apply_xero_transaction_action,
     code_breaker_workspace_snapshot,
     create_late_payment_charges,
     company_calendar_payload,
@@ -2573,6 +2574,12 @@ async def api_customer_xero_transactions(
         page_limit=pageLimit if pageLimit > 0 else None,
         include_diagnostics=includeDiagnostics,
     )
+
+
+@app.post("/api/customers/{customer_id}/xero-transactions/actions")
+async def api_code_breaker_xero_transaction_action(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return await code_breaker_apply_xero_transaction_action(customer_id, user, payload)
 
 
 @app.get("/api/xero/vat-returns")

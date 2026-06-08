@@ -71,7 +71,9 @@ from .xero import (
     normalise_invoice,
     normalise_payment,
     update_bank_transaction_status,
+    update_credit_note_status,
     update_invoice_status,
+    update_overpayment_status,
     update_organisation_period_lock_date,
     xero_api_get,
 )
@@ -25451,6 +25453,65 @@ async def customer_xero_transactions(
         page_limit=page_limit,
         include_diagnostics=include_diagnostics,
     )
+
+
+async def code_breaker_apply_xero_transaction_action(customer_id: str, user: dict, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    customer, connection_row = _validate_customer_xero_access(customer_id, user)
+    transaction_type = str(payload.get("transactionType") or "").strip().lower()
+    transaction_id = str(payload.get("transactionId") or "").strip()
+    requested_action = str(payload.get("action") or "").strip().lower()
+    if not transaction_type or not transaction_id or not requested_action:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="transactionType, transactionId, and action are required.")
+
+    allowed = {
+        "invoice": {"void": "VOIDED", "delete": "DELETED"},
+        "credit_note": {"void": "VOIDED"},
+        "overpayment": {"void": "VOIDED"},
+        "bank_transaction": {"delete": "DELETED"},
+    }
+    status_map = allowed.get(transaction_type) or {}
+    status_value = status_map.get(requested_action)
+    if not status_value:
+        supported = ", ".join(sorted(status_map.keys())) if status_map else "none"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Action '{requested_action}' is not supported for transactionType '{transaction_type}'. Supported: {supported}.",
+        )
+
+    if transaction_type == "invoice":
+        await update_invoice_status(connection_row, transaction_id, status_value)
+    elif transaction_type == "credit_note":
+        await update_credit_note_status(connection_row, transaction_id, status_value)
+    elif transaction_type == "overpayment":
+        await update_overpayment_status(connection_row, transaction_id, status_value)
+    elif transaction_type == "bank_transaction":
+        await update_bank_transaction_status(connection_row, transaction_id, status_value)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported transactionType '{transaction_type}'.")
+
+    record_audit_event(
+        "customer",
+        str(customer.get("id") or ""),
+        "code_breaker.transaction_action_applied",
+        {
+            "transactionType": transaction_type,
+            "transactionId": transaction_id,
+            "action": requested_action,
+            "statusValue": status_value,
+            "tenantId": str(connection_row.get("tenant_id") or ""),
+        },
+        user.get("id"),
+    )
+    return {
+        "status": "ok",
+        "customerId": str(customer.get("id") or ""),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "transactionType": transaction_type,
+        "transactionId": transaction_id,
+        "action": requested_action,
+        "statusValue": status_value,
+    }
 
 
 async def customer_vat_return_transactions(

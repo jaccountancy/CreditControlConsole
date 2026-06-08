@@ -18159,6 +18159,71 @@
                 font-weight: 700;
                 line-height: 1.45;
             }
+            .code-breaker-variance-panel {
+                width: min(1160px, calc(100vw - 32px));
+                max-height: calc(100vh - 28px);
+            }
+            .code-breaker-variance-meta {
+                display: grid;
+                gap: 6px;
+                margin-top: 6px;
+            }
+            .code-breaker-variance-status {
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 760;
+            }
+            .code-breaker-variance-insight {
+                margin-top: 10px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                background: rgba(236, 244, 255, 0.7);
+                border-radius: 12px;
+                padding: 10px 12px;
+                display: grid;
+                gap: 6px;
+            }
+            .code-breaker-variance-insight h5 {
+                margin: 0;
+                font-size: 0.9rem;
+                color: var(--ink);
+            }
+            .code-breaker-variance-insight p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.82rem;
+                line-height: 1.45;
+                font-weight: 650;
+            }
+            .code-breaker-variance-tag {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border-radius: 999px;
+                padding: 3px 9px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                background: rgba(236, 244, 255, 0.75);
+                color: #2659bc;
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+            .code-breaker-variance-action {
+                display: inline-flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            .code-breaker-variance-table th:last-child,
+            .code-breaker-variance-table td:last-child {
+                text-align: right;
+            }
+            .code-breaker-variance-delta.is-good {
+                color: #1f8a4b;
+            }
+            .code-breaker-variance-delta.is-bad {
+                color: #bc3a3a;
+            }
             @media (max-width: 1100px) {
                 .code-breaker-live-stats {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -18166,12 +18231,18 @@
                 .code-breaker-wizard-panel {
                     width: min(960px, calc(100vw - 20px));
                 }
+                .code-breaker-variance-panel {
+                    width: min(980px, calc(100vw - 20px));
+                }
             }
             @media (max-width: 620px) {
                 .code-breaker-live-stats {
                     grid-template-columns: 1fr;
                 }
                 .code-breaker-wizard-panel {
+                    width: calc(100vw - 12px);
+                }
+                .code-breaker-variance-panel {
                     width: calc(100vw - 12px);
                 }
             }
@@ -27054,6 +27125,7 @@
                                         <div class="detail-actions">
                                             <button class="ghost-button" id="codeBreakerWizardRefreshButton" type="button">Refresh</button>
                                             <button class="ghost-button" id="codeBreakerWizardReconnectButton" type="button" hidden>Reconnect Xero</button>
+                                            <button class="ghost-button" id="codeBreakerWizardVarianceButton" type="button" hidden>Work out variance</button>
                                             <button class="ghost-button" id="codeBreakerWizardCloseButton" type="button">Close</button>
                                         </div>
                                     </div>
@@ -27064,6 +27136,7 @@
                                         <ul class="code-breaker-wizard-guidance" id="codeBreakerWizardGuidance"></ul>
                                         <div class="detail-actions">
                                             <button class="ghost-button" id="codeBreakerWizardRetryButton" type="button">Run wizard again</button>
+                                            <button class="ghost-button" id="codeBreakerWizardVarianceSecondaryButton" type="button" hidden>Work out variance</button>
                                             <button class="primary-button" id="codeBreakerWizardSecondaryCloseButton" type="button">Done</button>
                                         </div>
                                     </section>
@@ -27082,6 +27155,50 @@
                                             <tbody id="codeBreakerWizardRowsBody"></tbody>
                                         </table>
                                     </section>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="codeBreakerVarianceModal" hidden>
+                                <section class="company-secretarial-modal-panel code-breaker-variance-panel" role="dialog" aria-modal="true" aria-labelledby="codeBreakerVarianceTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Equity Montior</p>
+                                            <h4 id="codeBreakerVarianceTitle">Variance deep dive</h4>
+                                            <div class="code-breaker-variance-meta">
+                                                <p class="detail-meta" id="codeBreakerVarianceSubtitle">Pulling all available Xero rows and mapping variance contributors.</p>
+                                                <p class="code-breaker-variance-status" id="codeBreakerVarianceStatus">Ready.</p>
+                                            </div>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="codeBreakerVarianceRefreshButton" type="button">Refresh analysis</button>
+                                            <button class="ghost-button" id="codeBreakerVarianceCloseButton" type="button">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="xero-transaction-summary" id="codeBreakerVarianceSummary"></div>
+                                    <div class="code-breaker-variance-insight">
+                                        <h5>Jenius AI variance explanation</h5>
+                                        <p id="codeBreakerVarianceNarrative">Run the deep dive to explain how the variance was introduced.</p>
+                                        <p id="codeBreakerVarianceResidual">Residual variance will be calculated after matching rows.</p>
+                                    </div>
+                                    <section class="ch-companies-table-wrap">
+                                        <table class="ch-table code-breaker-variance-table" aria-label="Equity Montior variance contributors">
+                                            <thead>
+                                                <tr>
+                                                    <th>Type</th>
+                                                    <th>Reference</th>
+                                                    <th>Posted date</th>
+                                                    <th>Status</th>
+                                                    <th>Amount</th>
+                                                    <th>Impact used</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="codeBreakerVarianceRowsBody"></tbody>
+                                        </table>
+                                    </section>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="codeBreakerVarianceRecalculateButton" type="button">Recalculate workspace</button>
+                                        <button class="primary-button" id="codeBreakerVarianceDoneButton" type="button">Done</button>
+                                    </div>
                                 </section>
                             </div>
                         </section>
@@ -29009,6 +29126,17 @@
                 guidance: [],
                 summary: null,
             };
+            let codeBreakerVarianceState = {
+                open: false,
+                workspaceId: "",
+                running: false,
+                status: "idle",
+                summary: null,
+                rows: [],
+                events: [],
+                aiNarrative: "",
+                residualVariance: null,
+            };
             let microAnalyzerRows = [];
             let microAnalyzerLoading = false;
             const microAnalyzerResultsByCustomerId = {};
@@ -30109,6 +30237,7 @@
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
+                        customerTransactionActions: config.endpoints?.customerTransactionActions || "/api/customers/:customerId/xero-transactions/actions",
                         vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
                         vatNoVatSuggestions: config.endpoints?.vatNoVatSuggestions || "/api/customers/:customerId/vat-returns/:periodEnd/no-vat-suggestions",
@@ -70531,6 +70660,362 @@
                     .sort((left, right) => right.absoluteAmount - left.absoluteAmount);
             }
 
+            const codeBreakerVarianceActionInFlight = new Set();
+
+            function closeCodeBreakerVarianceModal() {
+                const modal = document.getElementById("codeBreakerVarianceModal");
+                if (!modal) return;
+                codeBreakerVarianceState.open = false;
+                modal.hidden = true;
+            }
+
+            function codeBreakerVarianceRowsFromPayload(workspace = {}, customerPayload = {}) {
+                const submittedMs = dateSortValue(workspace?.submittedAt || "");
+                const invoices = Array.isArray(customerPayload?.outstandingInvoices) ? customerPayload.outstandingInvoices : [];
+                const credits = Array.isArray(customerPayload?.unallocatedCredits) ? customerPayload.unallocatedCredits : [];
+                const overpayments = Array.isArray(customerPayload?.overpayments) ? customerPayload.overpayments : [];
+                const allocatedCredits = Array.isArray(customerPayload?.allocatedCredits) ? customerPayload.allocatedCredits : [];
+                const rows = [
+                    ...invoices.map((row) => ({
+                        sourceType: "Invoice",
+                        reference: String(row?.invoiceNumber || row?.xeroInvoiceId || "").trim() || "Invoice",
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.invoiceDate || row?.dueDate || "").slice(0, 10),
+                        amount: Number(row?.total || row?.amountDue || 0),
+                        transactionType: "invoice",
+                        transactionId: String(row?.xeroInvoiceId || "").trim(),
+                        isAllocation: false,
+                    })),
+                    ...credits.map((row) => ({
+                        sourceType: "Credit note",
+                        reference: String(row?.creditNumber || row?.invoiceNumber || row?.id || "").trim() || "Credit",
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.date || row?.creditNoteDate || "").slice(0, 10),
+                        amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                        transactionType: "credit_note",
+                        transactionId: String(row?.id || "").trim(),
+                        isAllocation: false,
+                    })),
+                    ...overpayments.map((row) => ({
+                        sourceType: "Overpayment",
+                        reference: String(row?.reference || row?.id || "").trim() || "Overpayment",
+                        status: String(row?.status || "AUTHORISED"),
+                        postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
+                        amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                        transactionType: "overpayment",
+                        transactionId: String(row?.id || "").trim(),
+                        isAllocation: false,
+                    })),
+                    ...allocatedCredits.flatMap((row) => {
+                        const allocations = Array.isArray(row?.allocations) ? row.allocations : [];
+                        const sourceType = row?.sourceType === "overpayment" ? "Allocated overpayment" : "Allocated credit";
+                        const transactionType = row?.sourceType === "overpayment" ? "overpayment" : "credit_note";
+                        const transactionId = String(row?.id || "").trim();
+                        if (!allocations.length) {
+                            const applied = Math.abs(Number(row?.appliedAmount || 0));
+                            if (!(applied > 0)) return [];
+                            return [{
+                                sourceType,
+                                reference: String(row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                status: String(row?.status || "AUTHORISED"),
+                                postedDate: String(row?.date || "").slice(0, 10),
+                                amount: applied * -1,
+                                transactionType,
+                                transactionId,
+                                isAllocation: true,
+                            }];
+                        }
+                        return allocations
+                            .map((allocation) => {
+                                const amount = Math.abs(Number(allocation?.amount || 0));
+                                if (!(amount > 0)) return null;
+                                return {
+                                    sourceType,
+                                    reference: String(allocation?.invoiceNumber || row?.number || row?.reference || row?.id || "").trim() || "Allocation",
+                                    status: String(row?.status || "AUTHORISED"),
+                                    postedDate: String(allocation?.date || row?.date || "").slice(0, 10),
+                                    amount: amount * -1,
+                                    transactionType,
+                                    transactionId,
+                                    isAllocation: true,
+                                };
+                            })
+                            .filter(Boolean);
+                    }),
+                ].map((row, index) => {
+                    const postedMs = dateSortValue(row.postedDate || "");
+                    const postedSinceFiling = Number.isFinite(submittedMs) && submittedMs !== Number.MAX_SAFE_INTEGER
+                        ? (Number.isFinite(postedMs) && postedMs !== Number.MAX_SAFE_INTEGER && postedMs > submittedMs)
+                        : false;
+                    const amount = Number(row.amount || 0);
+                    return {
+                        ...row,
+                        amount,
+                        absoluteAmount: Math.abs(amount),
+                        postedSinceFiling,
+                        key: `${String(row.transactionType || "row")}:${String(row.transactionId || "")}:${String(row.reference || "")}:${String(row.postedDate || "")}:${index}`,
+                    };
+                });
+                return rows.sort((left, right) => {
+                    const sinceDelta = Number(Boolean(right.postedSinceFiling)) - Number(Boolean(left.postedSinceFiling));
+                    if (sinceDelta !== 0) return sinceDelta;
+                    const amountDelta = Number(right.absoluteAmount || 0) - Number(left.absoluteAmount || 0);
+                    if (amountDelta !== 0) return amountDelta;
+                    return dateSortValue(right.postedDate || "") - dateSortValue(left.postedDate || "");
+                });
+            }
+
+            function codeBreakerVarianceActionOptions(row = {}) {
+                if (!row || row.isAllocation) return [];
+                const transactionType = String(row.transactionType || "").toLowerCase();
+                const transactionId = String(row.transactionId || "").trim();
+                const statusText = String(row.status || "").trim().toUpperCase();
+                if (!transactionId || !transactionType) return [];
+                if (transactionType === "invoice") {
+                    const options = [{ action: "void", label: "Void in Xero" }];
+                    if (statusText === "DRAFT") options.push({ action: "delete", label: "Delete in Xero" });
+                    return options;
+                }
+                if (transactionType === "credit_note" || transactionType === "overpayment") {
+                    return [{ action: "void", label: "Void in Xero" }];
+                }
+                return [];
+            }
+
+            function renderCodeBreakerVarianceModal() {
+                const modal = document.getElementById("codeBreakerVarianceModal");
+                const subtitle = document.getElementById("codeBreakerVarianceSubtitle");
+                const status = document.getElementById("codeBreakerVarianceStatus");
+                const summary = document.getElementById("codeBreakerVarianceSummary");
+                const narrative = document.getElementById("codeBreakerVarianceNarrative");
+                const residual = document.getElementById("codeBreakerVarianceResidual");
+                const rowsBody = document.getElementById("codeBreakerVarianceRowsBody");
+                const refreshButton = document.getElementById("codeBreakerVarianceRefreshButton");
+                const closeButton = document.getElementById("codeBreakerVarianceCloseButton");
+                const doneButton = document.getElementById("codeBreakerVarianceDoneButton");
+                const recalculateButton = document.getElementById("codeBreakerVarianceRecalculateButton");
+                if (!modal || !subtitle || !status || !summary || !narrative || !residual || !rowsBody) return;
+                modal.hidden = !codeBreakerVarianceState.open;
+                if (!codeBreakerVarianceState.open) return;
+
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(codeBreakerVarianceState.workspaceId || "")) || null;
+                subtitle.textContent = workspace
+                    ? `${workspace.clientName || "Workspace"} · CH ${codeBreakerMetricValue(workspace.chNetAssets)} vs Xero ${codeBreakerMetricValue(workspace.xeroNetAssets)}`
+                    : "Pulling all available Xero rows and mapping variance contributors.";
+                status.textContent = codeBreakerVarianceState.status === "running"
+                    ? "Running deep dive across Xero transactions and AI guidance."
+                    : codeBreakerVarianceState.status === "failed"
+                        ? "Deep dive failed."
+                        : "Deep dive complete.";
+                const stateSummary = codeBreakerVarianceState.summary || {};
+                summary.innerHTML = [
+                    { label: "Variance target", value: formatCurrency(Number(stateSummary.varianceTarget || 0)), className: "is-highlighted" },
+                    { label: "Rows pulled", value: Number(stateSummary.rowsPulled || 0).toLocaleString("en-GB") },
+                    { label: "Rows used", value: Number(stateSummary.rowsUsed || 0).toLocaleString("en-GB") },
+                    { label: "Explained", value: formatCurrency(Number(stateSummary.explainedVariance || 0)) },
+                    { label: "Residual", value: formatCurrency(Number(codeBreakerVarianceState.residualVariance || 0)), className: Math.abs(Number(codeBreakerVarianceState.residualVariance || 0)) <= 5 ? "is-highlighted" : "" },
+                ].map((item) => `
+                    <article class="${escapeHTML(String(item.className || ""))}">
+                        <span>${escapeHTML(String(item.label || ""))}</span>
+                        <strong>${escapeHTML(String(item.value || "0"))}</strong>
+                    </article>
+                `).join("");
+                narrative.textContent = String(codeBreakerVarianceState.aiNarrative || "").trim()
+                    || "Jenius AI could not provide an additional narrative for this run.";
+                const residualValue = Number(codeBreakerVarianceState.residualVariance || 0);
+                residual.innerHTML = `Residual variance: <strong class="code-breaker-variance-delta ${Math.abs(residualValue) <= 5 ? "is-good" : "is-bad"}">${escapeHTML(formatCurrency(residualValue))}</strong>${Math.abs(residualValue) <= 5 ? " (within £5 write-off threshold)." : " (needs further review or manual journal)."}`;
+
+                const rows = Array.isArray(codeBreakerVarianceState.rows) ? codeBreakerVarianceState.rows : [];
+                rowsBody.innerHTML = rows.length
+                    ? rows.map((row) => {
+                        const actions = codeBreakerVarianceActionOptions(row);
+                        return `
+                            <tr>
+                                <td>${escapeHTML(String(row.sourceType || ""))}</td>
+                                <td>${escapeHTML(String(row.reference || ""))}</td>
+                                <td>${escapeHTML(formatDate(row.postedDate || ""))}</td>
+                                <td>${escapeHTML(String(row.status || ""))}</td>
+                                <td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
+                                <td>${row.usedForVariance ? '<span class="code-breaker-variance-tag">Matched</span>' : '<span class="code-breaker-variance-tag" style="opacity:0.64;">Observed</span>'}</td>
+                                <td>
+                                    <div class="code-breaker-variance-action">
+                                        ${actions.length
+                                            ? actions.map((actionRow) => {
+                                                const inFlight = codeBreakerVarianceActionInFlight.has(`${row.key}:${actionRow.action}`);
+                                                return `<button class="ghost-button" type="button" data-code-breaker-variance-action="${escapeHTML(String(actionRow.action))}" data-code-breaker-variance-row="${escapeHTML(String(row.key || ""))}" ${codeBreakerVarianceState.running || inFlight ? "disabled" : ""}>${escapeHTML(inFlight ? "Applying..." : actionRow.label)}</button>`;
+                                            }).join("")
+                                            : '<span style="color:var(--muted);font-size:0.76rem;font-weight:700;">No action</span>'}
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows yet</p><h4>No Xero contributors found</h4><p>Refresh analysis to pull live rows from Xero.</p></div></td></tr>';
+
+                if (refreshButton && refreshButton.dataset.cbWired !== "true") {
+                    refreshButton.dataset.cbWired = "true";
+                    refreshButton.addEventListener("click", () => runCodeBreakerVarianceDeepDive(codeBreakerVarianceState.workspaceId, { openModal: true }));
+                }
+                if (recalculateButton && recalculateButton.dataset.cbWired !== "true") {
+                    recalculateButton.dataset.cbWired = "true";
+                    recalculateButton.addEventListener("click", async () => {
+                        const workspaceId = codeBreakerVarianceState.workspaceId;
+                        if (!workspaceId) return;
+                        await runCodeBreakerAnalysisWizard(workspaceId);
+                        await runCodeBreakerVarianceDeepDive(workspaceId, { openModal: true });
+                    });
+                }
+                if (closeButton && closeButton.dataset.cbWired !== "true") {
+                    closeButton.dataset.cbWired = "true";
+                    closeButton.addEventListener("click", closeCodeBreakerVarianceModal);
+                }
+                if (doneButton && doneButton.dataset.cbWired !== "true") {
+                    doneButton.dataset.cbWired = "true";
+                    doneButton.addEventListener("click", closeCodeBreakerVarianceModal);
+                }
+                rowsBody.querySelectorAll("[data-code-breaker-variance-action]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const action = String(button.dataset.codeBreakerVarianceAction || "");
+                        const rowKey = String(button.dataset.codeBreakerVarianceRow || "");
+                        applyCodeBreakerVarianceRowAction(rowKey, action);
+                    });
+                });
+                if (refreshButton) {
+                    refreshButton.disabled = codeBreakerVarianceState.running;
+                    refreshButton.textContent = codeBreakerVarianceState.running ? "Refreshing..." : "Refresh analysis";
+                }
+                if (recalculateButton) {
+                    recalculateButton.disabled = codeBreakerVarianceState.running;
+                }
+            }
+
+            async function applyCodeBreakerVarianceRowAction(rowKey = "", action = "") {
+                const cleanRowKey = String(rowKey || "").trim();
+                const cleanAction = String(action || "").trim().toLowerCase();
+                if (!cleanRowKey || !cleanAction || codeBreakerVarianceState.running) return;
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(codeBreakerVarianceState.workspaceId || "")) || null;
+                if (!workspace) return;
+                const customer = codeBreakerWorkspaceCustomer(workspace);
+                if (!customer?.id) {
+                    showToast("No linked Xero client found for this workspace.", "error");
+                    return;
+                }
+                const row = (codeBreakerVarianceState.rows || []).find((item) => String(item.key || "") === cleanRowKey) || null;
+                if (!row) return;
+                const actionLabel = cleanAction === "delete" ? "delete" : "void";
+                if (!window.confirm(`This will ${actionLabel} ${row.sourceType || "transaction"} ${row.reference || ""} in Xero. Continue?`)) return;
+                const inFlightKey = `${cleanRowKey}:${cleanAction}`;
+                codeBreakerVarianceActionInFlight.add(inFlightKey);
+                renderCodeBreakerVarianceModal();
+                try {
+                    await requestJSON(
+                        api.endpoints.customerTransactionActions,
+                        {
+                            method: "POST",
+                            body: JSON.stringify({
+                                transactionType: row.transactionType,
+                                transactionId: row.transactionId,
+                                action: cleanAction,
+                            }),
+                            suppressFailurePanel: true,
+                        },
+                        { customerId: customer.id }
+                    );
+                    showToast(`${row.sourceType || "Transaction"} ${cleanAction} request sent to Xero.`, "success");
+                    await runCodeBreakerVarianceDeepDive(codeBreakerVarianceState.workspaceId, { openModal: true });
+                } catch (error) {
+                    showToast(error?.message || "Unable to apply Xero action for this row.", "error");
+                } finally {
+                    codeBreakerVarianceActionInFlight.delete(inFlightKey);
+                    renderCodeBreakerVarianceModal();
+                }
+            }
+
+            async function runCodeBreakerVarianceDeepDive(workspaceId = "", options = {}) {
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
+                if (!workspace) return false;
+                if (options?.openModal !== false) codeBreakerVarianceState.open = true;
+                codeBreakerVarianceState.workspaceId = workspace.id;
+                codeBreakerVarianceState.running = true;
+                codeBreakerVarianceState.status = "running";
+                codeBreakerVarianceState.rows = [];
+                codeBreakerVarianceState.aiNarrative = "";
+                codeBreakerVarianceState.residualVariance = Number(workspace?.netAssetsDifference || 0);
+                renderCodeBreakerVarianceModal();
+                try {
+                    const customer = codeBreakerWorkspaceCustomer(workspace);
+                    if (!customer?.id) {
+                        throw new Error("No linked Xero client found for this workspace.");
+                    }
+                    const snapshot = await codeBreakerWorkspaceSnapshot({
+                        tenantId: workspace.xeroTenantId,
+                        xeroContactId: workspace.xeroContactId,
+                        companyNumber: workspace.companyNumber,
+                        asAtDate: workspace.yearEndDate,
+                    });
+                    const customerPayload = await requestJSON(
+                        api.endpoints.customerTransactions,
+                        { suppressFailurePanel: true },
+                        { customerId: customer.id }
+                    );
+                    const allRows = codeBreakerVarianceRowsFromPayload(workspace, customerPayload);
+                    const varianceTarget = Number(workspace?.netAssetsDifference || 0);
+                    const targetDirection = Math.sign(varianceTarget || 0) || 1;
+                    const candidates = allRows
+                        .filter((row) => row.postedSinceFiling && row.absoluteAmount > 0 && Math.sign(Number(row.amount || 0)) === targetDirection);
+                    const fallbackCandidates = allRows.filter((row) => row.postedSinceFiling && row.absoluteAmount > 0);
+                    const ranked = (candidates.length ? candidates : fallbackCandidates).sort((left, right) => right.absoluteAmount - left.absoluteAmount);
+                    const selectedKeys = new Set();
+                    let residualVariance = Number(varianceTarget || 0);
+                    ranked.forEach((row) => {
+                        if (Math.abs(residualVariance) <= 5) return;
+                        const nextResidual = residualVariance - Number(row.amount || 0);
+                        if (Math.abs(nextResidual) < Math.abs(residualVariance) || selectedKeys.size < 2) {
+                            selectedKeys.add(row.key);
+                            residualVariance = nextResidual;
+                        }
+                    });
+                    const rows = allRows.map((row) => ({
+                        ...row,
+                        usedForVariance: selectedKeys.has(row.key),
+                    }));
+                    const explainedVariance = Number(varianceTarget || 0) - residualVariance;
+                    const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
+                        ? snapshot.postFilingAnalysis
+                        : {};
+                    const aiNarrativeParts = [
+                        String(postFiling?.summary || "").trim(),
+                        String(postFiling?.reason || "").trim(),
+                        Array.isArray(postFiling?.warnings) ? postFiling.warnings.map((item) => String(item || "").trim()).filter(Boolean).join(" ") : "",
+                    ].filter(Boolean);
+                    const aiNarrative = aiNarrativeParts.join(" ").trim() || (
+                        Math.abs(residualVariance) <= 5
+                            ? `Identified post-filing Xero rows now explain the variance to within £5. Residual difference ${formatCurrency(residualVariance)} can be written off and manually adjusted.`
+                            : `Mapped ${selectedKeys.size.toLocaleString("en-GB")} likely contributors, but residual variance remains ${formatCurrency(residualVariance)} and needs additional journal review.`
+                    );
+                    codeBreakerVarianceState.summary = {
+                        varianceTarget,
+                        rowsPulled: allRows.length,
+                        rowsUsed: selectedKeys.size,
+                        explainedVariance,
+                    };
+                    codeBreakerVarianceState.rows = rows;
+                    codeBreakerVarianceState.aiNarrative = aiNarrative;
+                    codeBreakerVarianceState.residualVariance = residualVariance;
+                    codeBreakerVarianceState.running = false;
+                    codeBreakerVarianceState.status = "complete";
+                    renderCodeBreakerVarianceModal();
+                    return true;
+                } catch (error) {
+                    codeBreakerVarianceState.running = false;
+                    codeBreakerVarianceState.status = "failed";
+                    codeBreakerVarianceState.aiNarrative = error?.message || "Variance deep dive failed.";
+                    renderCodeBreakerVarianceModal();
+                    showToast(codeBreakerVarianceState.aiNarrative, "error");
+                    return false;
+                }
+            }
+
             function renderCodeBreakerWizardModal() {
                 const modal = document.getElementById("codeBreakerWizardModal");
                 const subtitle = document.getElementById("codeBreakerWizardSubtitle");
@@ -70543,6 +71028,8 @@
                 const retryButton = document.getElementById("codeBreakerWizardRetryButton");
                 const refreshButton = document.getElementById("codeBreakerWizardRefreshButton");
                 const reconnectButton = document.getElementById("codeBreakerWizardReconnectButton");
+                const varianceButton = document.getElementById("codeBreakerWizardVarianceButton");
+                const varianceSecondaryButton = document.getElementById("codeBreakerWizardVarianceSecondaryButton");
                 const closeButton = document.getElementById("codeBreakerWizardCloseButton");
                 const secondaryCloseButton = document.getElementById("codeBreakerWizardSecondaryCloseButton");
                 if (!modal || !subtitle || !status || !stepsTarget || !metricsTarget || !guidanceTarget || !rowsBody) return;
@@ -70609,9 +71096,13 @@
                     { label: "Residual variance", value: codeBreakerFiniteNumber(summary.residualVariance) ? formatCurrency(summary.residualVariance) : "Unavailable", className: "is-variance" },
                     { label: "Tolerance check", value: toleranceState, className: "is-tolerance" },
                 ];
-                metricsTarget.innerHTML = metrics.map((item) => (
-                    `<article class="key-metric-card ${escapeHTML(String(item.className || ""))}"><span>${escapeHTML(String(item.label))}</span><strong>${escapeHTML(String(item.value))}</strong></article>`
-                )).join("");
+                const showWizardMetrics = false;
+                metricsTarget.hidden = !showWizardMetrics;
+                metricsTarget.innerHTML = showWizardMetrics
+                    ? metrics.map((item) => (
+                        `<article class="key-metric-card ${escapeHTML(String(item.className || ""))}"><span>${escapeHTML(String(item.label))}</span><strong>${escapeHTML(String(item.value))}</strong></article>`
+                    )).join("")
+                    : "";
 
                 const guidance = Array.isArray(codeBreakerWizardState.guidance) ? codeBreakerWizardState.guidance : [];
                 guidanceTarget.innerHTML = guidance.length
@@ -70659,6 +71150,20 @@
                         window.location.href = connectUrl;
                     });
                 }
+                if (varianceButton && varianceButton.dataset.cbWired !== "true") {
+                    varianceButton.dataset.cbWired = "true";
+                    varianceButton.addEventListener("click", () => {
+                        closeCodeBreakerWizardModal();
+                        runCodeBreakerVarianceDeepDive(codeBreakerWizardState.workspaceId, { openModal: true });
+                    });
+                }
+                if (varianceSecondaryButton && varianceSecondaryButton.dataset.cbWired !== "true") {
+                    varianceSecondaryButton.dataset.cbWired = "true";
+                    varianceSecondaryButton.addEventListener("click", () => {
+                        closeCodeBreakerWizardModal();
+                        runCodeBreakerVarianceDeepDive(codeBreakerWizardState.workspaceId, { openModal: true });
+                    });
+                }
                 if (retryButton) {
                     retryButton.disabled = codeBreakerWizardState.running || !workspace;
                     retryButton.textContent = codeBreakerWizardState.running ? "Running wizard..." : "Run wizard again";
@@ -70673,6 +71178,20 @@
                     reconnectButton.textContent = codeBreakerWizardState.showReconnectXero
                         ? "Reconnect Xero (Reports Scope)"
                         : "Reconnect Xero";
+                }
+                const canWorkOutVariance = Boolean(
+                    workspace
+                    && !codeBreakerWizardState.running
+                    && Number.isFinite(Number(summary?.variance))
+                    && summary?.varianceWithinTolerance === false
+                );
+                if (varianceButton) {
+                    varianceButton.hidden = !canWorkOutVariance;
+                    varianceButton.disabled = !canWorkOutVariance;
+                }
+                if (varianceSecondaryButton) {
+                    varianceSecondaryButton.hidden = !canWorkOutVariance;
+                    varianceSecondaryButton.disabled = !canWorkOutVariance;
                 }
             }
 
@@ -72033,6 +72552,7 @@
                     <div class="code-breaker-workspace-actions">
                         <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
                         ${canCrack ? `<button class="ghost-button" type="button" data-code-breaker-crack="${escapeHTML(workspace.id)}">Crack the code</button>` : ""}
+                        ${canCrack ? `<button class="ghost-button" type="button" data-code-breaker-variance="${escapeHTML(workspace.id)}">Work out variance</button>` : ""}
                     </div>
                     <div class="detail-panel" style="margin-top:10px;">
                         <h4>Jenius AI adjustment guidance</h4>
@@ -72058,6 +72578,10 @@
                 output.querySelector("[data-code-breaker-crack]")?.addEventListener("click", (event) => {
                     const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCrack || "");
                     crackCodeBreakerVariance(workspaceId);
+                });
+                output.querySelector("[data-code-breaker-variance]")?.addEventListener("click", (event) => {
+                    const workspaceId = String(event.currentTarget?.dataset?.codeBreakerVariance || "");
+                    runCodeBreakerVarianceDeepDive(workspaceId, { openModal: true });
                 });
             }
 
