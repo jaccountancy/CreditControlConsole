@@ -12210,6 +12210,46 @@ def _xero_report_lines(report_payload: dict) -> list[dict]:
     return lines
 
 
+def _xero_report_header_dates(report_payload: dict) -> list[date | None]:
+    def parse_header_date(value: object) -> date | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        iso = _parse_optional_iso_date(text)
+        if iso:
+            return iso
+        for fmt in ("%d %b %Y", "%d %B %Y", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(text, fmt).date()
+            except Exception:
+                continue
+        return None
+
+    def visit(rows: object) -> list[date | None] | None:
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            row_type = str(row.get("RowType") or row.get("rowType") or "").strip().lower()
+            cells = row.get("Cells") or row.get("cells") or []
+            if row_type == "header" and isinstance(cells, list) and len(cells) > 1:
+                parsed = [
+                    parse_header_date((cell or {}).get("Value") if isinstance(cell, dict) else "")
+                    for cell in cells[1:]
+                ]
+                if any(item is not None for item in parsed):
+                    return parsed
+            nested = visit(row.get("Rows") or row.get("rows") or [])
+            if nested:
+                return nested
+        return None
+
+    for report in report_payload.get("Reports") or report_payload.get("reports") or []:
+        header_dates = visit(report.get("Rows") or report.get("rows") or [])
+        if header_dates:
+            return header_dates
+    return []
+
+
 def _report_amount(lines: list[dict], keywords: tuple[str, ...], fallback: Decimal = Decimal("0.00")) -> Decimal:
     for line in lines:
         label = (line.get("label") or "").lower()
@@ -13908,38 +13948,84 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
     return None
 
 
-def _code_breaker_report_line_amounts(line: dict) -> list[Decimal]:
+def _code_breaker_report_line_amounts(
+    line: dict,
+    as_at_date: date | None = None,
+    header_dates: list[date | None] | None = None,
+) -> list[Decimal]:
     raw = line.get("raw") if isinstance(line, dict) else None
     cells = raw.get("Cells") or raw.get("cells") or [] if isinstance(raw, dict) else []
     parsed: list[Decimal] = []
+    parsed_at_date: list[Decimal] = []
     if isinstance(cells, list):
-        for cell in cells[1:]:
+        for idx, cell in enumerate(cells[1:]):
             if not isinstance(cell, dict):
                 continue
             value = _code_breaker_net_assets_value(cell.get("Value") or cell.get("value"))
             if isinstance(value, Decimal):
                 parsed.append(value)
+                if (
+                    as_at_date is not None
+                    and isinstance(header_dates, list)
+                    and idx < len(header_dates)
+                    and header_dates[idx] == as_at_date
+                ):
+                    parsed_at_date.append(value)
+    if parsed_at_date:
+        return parsed_at_date
     if parsed:
         return parsed
-    return [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+    fallback_amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+    if (
+        as_at_date is not None
+        and isinstance(header_dates, list)
+        and fallback_amounts
+    ):
+        for idx, amount in enumerate(fallback_amounts):
+            if idx < len(header_dates) and header_dates[idx] == as_at_date:
+                return [amount]
+    return fallback_amounts
 
 
-def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
+def _code_breaker_xero_net_assets(
+    lines: list[dict],
+    as_at_date: date | None = None,
+    header_dates: list[date | None] | None = None,
+) -> Decimal | None:
+    def preferred_amount(amounts: list[Decimal]) -> Decimal | None:
+        if not amounts:
+            return None
+        non_zero = [value for value in amounts if value.copy_abs() > Decimal("0.00")]
+        return _money(non_zero[-1] if non_zero else amounts[-1])
+
+    # Prefer the bottom summary figure from the report as this is the final
+    # balance-sheet net position regardless of section ordering above.
+    for line in reversed(lines):
+        label = str(line.get("label") or "").strip().lower()
+        if not label:
+            continue
+        if any(
+            key in label
+            for key in ("net assets", "total equity", "capital and reserves", "equity total")
+        ):
+            amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
+            chosen = preferred_amount(amounts)
+            if chosen is not None:
+                return chosen
+
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
         if not label:
             continue
         if "net assets" in label:
-            amounts = _code_breaker_report_line_amounts(line)
+            amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
             if amounts:
-                # Xero Balance Sheet reports can include comparative columns.
-                # Use the first amount column, which aligns to the requested report date.
                 return _money(amounts[0])
     assets_total = None
     liabilities_total = None
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
-        amounts = _code_breaker_report_line_amounts(line)
+        amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
         if not label or not amounts:
             continue
         amount = _money(amounts[0])
@@ -13949,6 +14035,13 @@ def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
             liabilities_total = amount
     if assets_total is not None and liabilities_total is not None:
         return _money(assets_total - liabilities_total)
+
+    for line in reversed(lines):
+        amounts = _code_breaker_report_line_amounts(line, as_at_date=as_at_date, header_dates=header_dates)
+        chosen = preferred_amount(amounts)
+        if chosen is not None:
+            return chosen
+
     return None
 
 
@@ -14034,7 +14127,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
         {"date": as_at_date.isoformat()},
     )
-    xero_net_assets = _code_breaker_xero_net_assets(_xero_report_lines(balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}))
+    balance_sheet_data = balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}
+    xero_net_assets = _code_breaker_xero_net_assets(
+        _xero_report_lines(balance_sheet_data),
+        as_at_date=as_at_date,
+        header_dates=_xero_report_header_dates(balance_sheet_data),
+    )
 
     ch_company = None
     try:
