@@ -50894,11 +50894,23 @@
                 return String(matched?.tenantId || "").trim();
             }
 
+            function meReportMasterTenantId() {
+                const connections = meReportOrganisationConnections();
+                if (!connections.length) return "";
+                const explicitMain = connections.find((connection) => connection?.isMainTenant) || null;
+                if (explicitMain?.tenantId) return String(explicitMain.tenantId || "").trim();
+                const jaccountancyNamed = connections.find((connection) => /jaccountancy/i.test(String(connection?.tenantName || ""))) || null;
+                if (jaccountancyNamed?.tenantId) return String(jaccountancyNamed.tenantId || "").trim();
+                return String(connections[0]?.tenantId || "").trim();
+            }
+
             function meReportActiveTenantId() {
                 const selectedWorkspace = String(meReportSelectedWorkspaceTenantId || "").trim();
                 if (selectedWorkspace) return selectedWorkspace;
                 const configured = String(meReportBulkMatchTenantId || "").trim();
                 if (configured) return configured;
+                const masterTenant = meReportMasterTenantId();
+                if (masterTenant) return masterTenant;
                 const fallback = String(meReportData.xero?.tenantId || "").trim();
                 if (fallback) return fallback;
                 const first = meReportOrganisationConnections()[0] || meReportXeroConnections()[0];
@@ -50967,10 +50979,16 @@
                 }
             }
 
-            function meReportConnectedPanelClientsForBulkFlows() {
-                // Intentionally disabled for monthly-flow candidate generation.
-                // We only want system-linked clients (not raw tenant contact lists).
-                return [];
+            function meReportConnectedPanelClientsForBulkFlows(tenantId = "") {
+                return meReportContactOptions(tenantId)
+                    .map((contact) => ({
+                        xeroContactId: String(contact?.xeroContactId || "").trim(),
+                        name: String(contact?.name || "Unnamed client"),
+                        email: String(contact?.email || "").trim(),
+                        tenantId: String(contact?.tenantId || "").trim(),
+                        tenantName: String(contact?.tenantName || "").trim(),
+                    }))
+                    .filter((contact) => contact.xeroContactId);
             }
 
             function meReportBulkFlowCandidates(companies = [], tenantId = "") {
@@ -50992,6 +51010,17 @@
                         xeroContactId: contactId,
                         name: String(company?.companyName || company?.clientName || contact?.name || "Unnamed client"),
                         email: String(company?.contactEmail || contact?.email || ""),
+                        tenantId: String(contact?.tenantId || "").trim(),
+                        tenantName: String(contact?.tenantName || "").trim(),
+                    });
+                });
+                meReportConnectedPanelClientsForBulkFlows(tenantId).forEach((contact) => {
+                    const contactId = String(contact?.xeroContactId || "").trim();
+                    if (!contactId || candidatesByContactId.has(contactId)) return;
+                    candidatesByContactId.set(contactId, {
+                        xeroContactId: contactId,
+                        name: String(contact?.name || "Unnamed client"),
+                        email: String(contact?.email || ""),
                         tenantId: String(contact?.tenantId || "").trim(),
                         tenantName: String(contact?.tenantName || "").trim(),
                     });
@@ -52085,7 +52114,7 @@
                 if (!meReportBulkPeriodDialogState) return;
                 meReportBulkPeriodDialogState.loadingContacts = true;
                 renderMeReportBulkPeriodPanel();
-                const activeTenantId = meReportActiveTenantId();
+                const activeTenantId = meReportMasterTenantId() || meReportActiveTenantId();
                 const periodConfig = {
                     periodStart: String(meReportBulkPeriodDialogState.periodStart || ""),
                     periodEnd: String(meReportBulkPeriodDialogState.periodEnd || "")
