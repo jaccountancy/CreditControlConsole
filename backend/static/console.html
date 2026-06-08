@@ -82804,40 +82804,7 @@
                 });
             }
 
-            function emergencyRecoveryBootstrap(reason = null) {
-                console.error("Emergency recovery bootstrap activated", reason);
-                const bindOnce = (selector, handler) => {
-                    document.querySelectorAll(selector).forEach((node) => {
-                        if (!node || node.dataset.emergencyRecoveryBound === "true") return;
-                        node.dataset.emergencyRecoveryBound = "true";
-                        node.addEventListener("click", handler);
-                    });
-                };
-                bindOnce("#connectXeroButton, #headerConnectXeroButton", (event) => {
-                    event.preventDefault();
-                    const url = loginURL();
-                    if (url) {
-                        window.location.assign(url);
-                    } else {
-                        window.location.reload();
-                    }
-                });
-                bindOnce("#topbarRefreshDataButton, #globalActivityToggle", (event) => {
-                    event.preventDefault();
-                    window.location.reload();
-                });
-                bindOnce("[data-app-nav]", (event) => {
-                    const target = event.currentTarget;
-                    const section = String(target?.dataset?.appNav || "").trim();
-                    if (!section) return;
-                    event.preventDefault();
-                    window.location.hash = `#credit-control-${section}`;
-                    window.location.reload();
-                });
-            }
-
             async function init() {
-                try {
                 const runInitStep = (label, step, fallbackValue = undefined) => {
                     try {
                         const value = step();
@@ -83017,15 +82984,8 @@
                 } catch (error) {
                     console.error("Unable to auto-start Ignition sync", error);
                 }
-                } catch (fatalError) {
-                    console.error("Fatal console initialisation error", fatalError);
-                    emergencyRecoveryBootstrap(fatalError);
-                }
             }
-            init().catch((fatalError) => {
-                console.error("Unhandled console initialisation rejection", fatalError);
-                emergencyRecoveryBootstrap(fatalError);
-            });
+            init();
                 </script>
             </body>
             </html>
