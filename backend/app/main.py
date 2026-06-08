@@ -2561,8 +2561,18 @@ async def api_supplier_reconciliation_email(request: Request, user: dict = Depen
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")
-async def api_customer_xero_transactions(customer_id: str, user: dict = Depends(require_panel_user)):
-    return await customer_xero_transactions(customer_id, user)
+async def api_customer_xero_transactions(
+    customer_id: str,
+    pageLimit: int = Query(default=0, ge=0, le=25),
+    includeDiagnostics: bool = Query(default=False),
+    user: dict = Depends(require_panel_user),
+):
+    return await customer_xero_transactions(
+        customer_id,
+        user,
+        page_limit=pageLimit if pageLimit > 0 else None,
+        include_diagnostics=includeDiagnostics,
+    )
 
 
 @app.get("/api/xero/vat-returns")

@@ -28833,6 +28833,8 @@
             let vatReturnSelectedWorkspaceTenantId = "";
             let vatReturnDetailTab = "transactions";
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
+            const CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP = 2;
+            const CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT = 3;
             let codeBreakerWorkspaces = loadCodeBreakerWorkspaces();
             let codeBreakerCompanies = [];
             let codeBreakerSetupOpen = false;
@@ -69830,13 +69832,28 @@
                 const ch = codeBreakerExtractNetAssets(workspace?.chNetAssets);
                 const xero = codeBreakerExtractNetAssets(workspace?.xeroNetAssets);
                 if (!Number.isFinite(ch) || !Number.isFinite(xero)) {
-                    return { label: "Awaiting values", className: "is-review" };
+                    return { label: "Awaiting values", className: "is-review", icon: "…" };
                 }
                 const delta = Math.abs(xero - ch);
                 if (delta <= 0.01) {
-                    return { label: "JOB DONE", className: "is-open" };
+                    return { label: "Match confirmed", className: "is-open", icon: "✓", isMatch: true, isImmaterial: false };
                 }
-                return { label: `LUK variance ${formatCurrency(xero - ch)}`, className: "is-overdue" };
+                if (delta < CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP) {
+                    return {
+                        label: `Immaterial variance ${formatCurrency(xero - ch)}`,
+                        className: "is-open",
+                        icon: "✓",
+                        isMatch: true,
+                        isImmaterial: true,
+                    };
+                }
+                return {
+                    label: `Mismatch ${formatCurrency(xero - ch)}`,
+                    className: "is-overdue",
+                    icon: "✕",
+                    isMatch: false,
+                    isImmaterial: false,
+                };
             }
 
             function codeBreakerMetricValue(value) {
@@ -70604,6 +70621,7 @@
                         `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance). ${extractionInfo} ${xeroInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
                     );
 
+                    let stepTwoWarningMessage = "";
                     setCodeBreakerWizardStep(2, "running", "Pulling post-filing Xero transactions created after filing submission.");
                     const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
                         ? snapshot.postFilingAnalysis
@@ -70639,24 +70657,59 @@
                                 reason || "No linked Xero client was found for this workspace, so transaction-level mapping was skipped."
                             );
                         } else {
-                            const customerPayload = await requestJSON(
-                                api.endpoints.customerTransactions,
-                                { suppressFailurePanel: true },
-                                { customerId: customer.id }
-                            );
-                            candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
-                            setCodeBreakerWizardStep(
-                                2,
-                                "complete",
-                                `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
-                            );
+                            const fallbackParams = {
+                                customerId: customer.id,
+                                pageLimit: CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT,
+                                includeDiagnostics: 1,
+                            };
+                            try {
+                                const customerPayload = await requestJSON(
+                                    api.endpoints.customerTransactions,
+                                    { suppressFailurePanel: true },
+                                    fallbackParams
+                                );
+                                candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
+                                const diagnostics = customerPayload?.diagnostics || {};
+                                const bounded = Boolean(diagnostics?.bounded);
+                                const pageLimit = Number(diagnostics?.xeroPageLimit || 0);
+                                const modeCopy = bounded && pageLimit > 0
+                                    ? `bounded pull (${pageLimit} page${pageLimit === 1 ? "" : "s"} per source).`
+                                    : "full pull.";
+                                setCodeBreakerWizardStep(
+                                    2,
+                                    "complete",
+                                    `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}`
+                                );
+                            } catch (fallbackError) {
+                                const statusCode = Number(fallbackError?.statusCode || 0);
+                                const detail = fallbackError?.details && typeof fallbackError.details === "object"
+                                    ? fallbackError.details
+                                    : {};
+                                const upstreamStatus = Number(detail?.status_code || detail?.statusCode || 0);
+                                const detailMessage = String(detail?.message || fallbackError?.message || "Application failed to respond.").trim();
+                                const endpoint = `/api/customers/${encodeURIComponent(String(customer.id || ""))}/xero-transactions?pageLimit=${CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT}&includeDiagnostics=1`;
+                                stepTwoWarningMessage = [
+                                    `Fallback transaction pull failed${statusCode ? ` (${statusCode})` : ""}.`,
+                                    detailMessage,
+                                    upstreamStatus && upstreamStatus !== statusCode ? `Upstream status ${upstreamStatus}.` : "",
+                                    `Endpoint: ${endpoint}.`,
+                                ].filter(Boolean).join(" ");
+                                setCodeBreakerWizardStep(
+                                    2,
+                                    "complete",
+                                    `Fallback transaction pull unavailable. Continuing with snapshot-only guidance. ${stepTwoWarningMessage}`
+                                );
+                                candidateRows = [];
+                            }
                         }
                     }
 
                     setCodeBreakerWizardStep(3, "running", "Building suggested reversal rows to close the variance.");
                     const variance = Number(workspace.netAssetsDifference || 0);
                     const varianceTarget = Math.abs(variance);
-                    const matches = Math.abs(variance) <= 0.01;
+                    const isExactMatch = Math.abs(variance) <= 0.01;
+                    const isImmaterialVariance = !isExactMatch && Math.abs(variance) < CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP;
+                    const matches = isExactMatch || isImmaterialVariance;
                     const guidance = [];
                     let suggested = [];
                     let unresolvedVariance = variance;
@@ -70702,8 +70755,13 @@
                     if (String(postFiling?.reason || "").trim()) {
                         guidance.push(String(postFiling.reason).trim());
                     }
-                    if (matches) {
+                    if (stepTwoWarningMessage) {
+                        guidance.push(`Transaction pull warning: ${stepTwoWarningMessage}`);
+                    }
+                    if (isExactMatch) {
                         guidance.push("No action required. Companies House and Xero net assets match for the filed period.");
+                    } else if (isImmaterialVariance) {
+                        guidance.push(`Immaterial variance detected: ${formatCurrency(variance)}. Difference is below ${formatCurrency(CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP)} tolerance and is deemed too low to investigate.`);
                     } else {
                         guidance.push(`Variance detected: ${formatCurrency(variance)} between CH and Xero net assets.`);
                         guidance.push(
@@ -70726,6 +70784,8 @@
                         periodEnd: String(workspace.yearEndDate || submittedAt || "").slice(0, 10),
                         changedCount: candidateRows.length,
                         matches,
+                        exactMatch: isExactMatch,
+                        immaterialVariance: isImmaterialVariance,
                         netDelta: variance,
                         reversalTarget: variance,
                         rows: suggested.map((row) => ({
@@ -71415,9 +71475,12 @@
                 if (!analysis) return { label: "Pending analysis", className: "is-review" };
                 if (analysis.error) return { label: "Error", className: "is-overdue" };
                 if (analysis.mode === "balance_sheet_compare") {
-                    return analysis.matches
-                        ? { label: "Match confirmed", className: "is-open" }
-                        : { label: "Variance open", className: "is-overdue" };
+                    if (analysis.matches) {
+                        return analysis.immaterialVariance
+                            ? { label: "Immaterial difference", className: "is-open" }
+                            : { label: "Match confirmed", className: "is-open" };
+                    }
+                    return { label: "Variance open", className: "is-overdue" };
                 }
                 if (!Number(analysis.changedCount || 0)) return { label: "No post-filing deltas", className: "is-open" };
                 return { label: `${Number(analysis.changedCount || 0)} change${Number(analysis.changedCount || 0) === 1 ? "" : "s"} found`, className: "is-due" };
@@ -71527,7 +71590,9 @@
                 if (analysis.error) meta.textContent = analysis.error;
                 else if (analysis.mode === "balance_sheet_compare") {
                     meta.textContent = analysis.matches
-                        ? `CH and Xero net assets match for the filed date.`
+                        ? (analysis.immaterialVariance
+                            ? `CH and Xero net assets differ by ${formatCurrency(analysis.reversalTarget || 0)}, which is below materiality tolerance and deemed immaterial.`
+                            : `CH and Xero net assets match for the filed date.`)
                         : `CH and Xero net assets differ by ${formatCurrency(analysis.reversalTarget || 0)} for the filed date.`;
                 } else {
                     meta.textContent = analysis.changedCount
@@ -71747,7 +71812,7 @@
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
                                 <td>${codeBreakerMetricValue(workspace.chNetAssets)}</td>
                                 <td>${codeBreakerMetricValue(workspace.xeroNetAssets)}</td>
-                                <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
+                                <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${compare.icon ? `<span aria-hidden="true">${escapeHTML(compare.icon)}</span> ` : ""}${escapeHTML(compare.label)}</span></td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
                                 <td>
                                     <button class="ghost-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">Open</button>

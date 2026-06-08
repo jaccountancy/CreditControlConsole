@@ -25283,20 +25283,21 @@ def _local_invoice_lookup(customer_id: str) -> dict[str, dict]:
     return {row["xero_invoice_id"]: row for row in rows if row.get("xero_invoice_id")}
 
 
-async def _fetch_contact_invoices(connection_row: dict, contact_id: str) -> list[dict]:
+async def _fetch_contact_invoices(connection_row: dict, contact_id: str, max_pages: int | None = None) -> list[dict]:
     params = {
         "ContactIDs": contact_id,
         "where": OUTSTANDING_INVOICE_WHERE,
         "order": "DueDate ASC",
     }
     try:
-        return await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params=params)
+        return await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params=params, max_pages=max_pages)
     except HTTPException:
         records = await fetch_paginated_collection(
             connection_row,
             INVOICES_URL,
             "Invoices",
             params={"where": f"{OUTSTANDING_INVOICE_WHERE}&&{_xero_contact_where(contact_id)}", "order": "DueDate ASC"},
+            max_pages=max_pages,
         )
         return [record for record in records if _xero_transaction_contact_id(record) == contact_id.lower()]
 
@@ -25310,11 +25311,24 @@ async def _fetch_contact_credit_sources(
     fallback_where: str,
     serializer,
     include_allocated: bool = False,
+    max_pages: int | None = None,
 ) -> list[dict]:
     try:
-        records = await fetch_paginated_collection(connection_row, url, collection_key, params={"where": where, "order": "Date DESC"})
+        records = await fetch_paginated_collection(
+            connection_row,
+            url,
+            collection_key,
+            params={"where": where, "order": "Date DESC"},
+            max_pages=max_pages,
+        )
     except HTTPException:
-        records = await fetch_paginated_collection(connection_row, url, collection_key, params={"where": fallback_where, "order": "Date DESC"})
+        records = await fetch_paginated_collection(
+            connection_row,
+            url,
+            collection_key,
+            params={"where": fallback_where, "order": "Date DESC"},
+            max_pages=max_pages,
+        )
 
     contact_id_lower = contact_id.lower()
     items = []
@@ -25333,10 +25347,17 @@ async def _fetch_contact_credit_sources(
     return items
 
 
-async def _customer_xero_transactions_payload(customer: dict, connection_row: dict) -> dict:
+async def _customer_xero_transactions_payload(
+    customer: dict,
+    connection_row: dict,
+    *,
+    page_limit: int | None = None,
+    include_diagnostics: bool = False,
+) -> dict:
     contact_id = customer["xero_contact_id"]
     local_lookup = _local_invoice_lookup(customer["id"])
-    raw_invoices = await _fetch_contact_invoices(connection_row, contact_id)
+    bounded_page_limit = int(page_limit) if isinstance(page_limit, int) and page_limit > 0 else None
+    raw_invoices = await _fetch_contact_invoices(connection_row, contact_id, max_pages=bounded_page_limit)
     outstanding_invoices = []
     for raw_invoice in raw_invoices:
         invoice = _serialize_xero_invoice_transaction(raw_invoice, local_lookup)
@@ -25355,6 +25376,7 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
         'Type=="ACCRECCREDIT"&&Status=="AUTHORISED"',
         _serialize_credit_note_transaction,
         include_allocated=True,
+        max_pages=bounded_page_limit,
     )
     overpayment_where = f'{_xero_contact_where(contact_id)}&&Status=="AUTHORISED"'
     overpayments = await _fetch_contact_credit_sources(
@@ -25366,6 +25388,7 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
         'Status=="AUTHORISED"',
         _serialize_overpayment_transaction,
         include_allocated=True,
+        max_pages=bounded_page_limit,
     )
 
     unallocated_credits = [item for item in credit_notes if _money(item.get("remainingCredit")) > 0]
@@ -25379,7 +25402,7 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
     credit_total = sum(_money(item.get("remainingCredit")) for item in [*unallocated_credits, *unallocated_overpayments])
     allocated_credit_total = sum(_money(item.get("appliedAmount")) for item in allocated_credit_sources)
     line_count = sum(len(invoice.get("lineItems") or []) for invoice in outstanding_invoices)
-    return {
+    payload = {
         "customerId": str(customer["id"]),
         "xeroContactId": contact_id,
         "fetchedAt": utcnow().isoformat(),
@@ -25398,11 +25421,36 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
             "allocatedCreditCount": len(allocated_credit_sources),
         },
     }
+    if include_diagnostics:
+        payload["diagnostics"] = {
+            "bounded": bounded_page_limit is not None,
+            "xeroPageLimit": bounded_page_limit,
+            "mode": "bounded" if bounded_page_limit is not None else "full",
+            "endpoint": "/api/customers/{customerId}/xero-transactions",
+            "rowsFetched": {
+                "outstandingInvoices": len(outstanding_invoices),
+                "unallocatedCredits": len(unallocated_credits),
+                "overpayments": len(unallocated_overpayments),
+                "allocatedCredits": len(allocated_credit_sources),
+            },
+        }
+    return payload
 
 
-async def customer_xero_transactions(customer_id: str, user: dict) -> dict:
+async def customer_xero_transactions(
+    customer_id: str,
+    user: dict,
+    *,
+    page_limit: int | None = None,
+    include_diagnostics: bool = False,
+) -> dict:
     customer, connection_row = _validate_customer_xero_access(customer_id, user)
-    return await _customer_xero_transactions_payload(customer, connection_row)
+    return await _customer_xero_transactions_payload(
+        customer,
+        connection_row,
+        page_limit=page_limit,
+        include_diagnostics=include_diagnostics,
+    )
 
 
 async def customer_vat_return_transactions(
