@@ -70968,12 +70968,47 @@
                         companyNumber: workspace.companyNumber,
                         asAtDate: workspace.yearEndDate,
                     });
+                    const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
+                        ? snapshot.postFilingAnalysis
+                        : {};
                     const customerPayload = await requestJSON(
                         api.endpoints.customerTransactions,
                         { suppressFailurePanel: true },
                         { customerId: customer.id }
                     );
-                    const allRows = codeBreakerVarianceRowsFromPayload(workspace, customerPayload);
+                    const xeroRows = codeBreakerVarianceRowsFromPayload(workspace, customerPayload);
+                    const journalRows = (Array.isArray(postFiling?.transactions) ? postFiling.transactions : [])
+                        .map((row, index) => {
+                            const impact = Number(row?.impact || 0);
+                            return {
+                                sourceType: String(row?.sourceType || "Journal"),
+                                reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
+                                status: String(row?.reason || "Journal contributor"),
+                                postedDate: String(row?.journalDate || "").slice(0, 10),
+                                amount: impact,
+                                absoluteAmount: Math.abs(impact),
+                                postedSinceFiling: true,
+                                transactionType: "journal",
+                                transactionId: String(row?.journalId || row?.candidateId || "").trim(),
+                                isAllocation: false,
+                                key: `journal:${String(row?.journalId || row?.candidateId || "")}:${index}`,
+                            };
+                        });
+                    const voidedRows = (Array.isArray(postFiling?.voidedTransactions) ? postFiling.voidedTransactions : [])
+                        .map((row, index) => ({
+                            sourceType: String(row?.sourceType || "Voided transaction"),
+                            reference: String(row?.reference || row?.transactionId || "Voided transaction"),
+                            status: String(row?.status || "VOIDED"),
+                            postedDate: String(row?.journalDate || "").slice(0, 10),
+                            amount: Number(row?.impact || 0),
+                            absoluteAmount: Math.abs(Number(row?.impact || 0)),
+                            postedSinceFiling: true,
+                            transactionType: String(row?.transactionType || "unknown"),
+                            transactionId: String(row?.transactionId || "").trim(),
+                            isAllocation: false,
+                            key: `voided:${String(row?.transactionType || "")}:${String(row?.transactionId || "")}:${index}`,
+                        }));
+                    const allRows = [...journalRows, ...voidedRows, ...xeroRows];
                     const varianceTarget = Number(workspace?.netAssetsDifference || 0);
                     const targetDirection = Math.sign(varianceTarget || 0) || 1;
                     const candidates = allRows
@@ -70995,9 +71030,6 @@
                         usedForVariance: selectedKeys.has(row.key),
                     }));
                     const explainedVariance = Number(varianceTarget || 0) - residualVariance;
-                    const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
-                        ? snapshot.postFilingAnalysis
-                        : {};
                     const aiNarrativeParts = [
                         String(postFiling?.summary || "").trim(),
                         String(postFiling?.reason || "").trim(),

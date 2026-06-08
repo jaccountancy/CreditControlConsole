@@ -15412,9 +15412,11 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     if difference is not None:
         if connection_row is None:
             post_filing_analysis["reason"] = "Xero connection unavailable, so post-filing transactions could not be analysed."
-        elif submission_completed_at is None:
-            post_filing_analysis["reason"] = "Submission completion date is unavailable for this filing."
         else:
+            if submission_completed_at is None:
+                post_filing_analysis["warnings"] = [
+                    "Submission completion date is unavailable; journal matching uses broader date logic and may include extra candidates."
+                ]
             journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
             if journals_reason:
                 post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
@@ -15427,8 +15429,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 post_filing_analysis["candidateCount"] = len(candidates)
                 if not candidates:
                     post_filing_analysis["reason"] = (
-                        f"No post-filing journals found with journal dates on or before {as_at_date.isoformat()} "
-                        f"and created after {submission_completed_at.isoformat()}."
+                        f"No journal candidates found on or before {as_at_date.isoformat()}."
+                        if submission_completed_at is None
+                        else (
+                            f"No post-filing journals found with journal dates on or before {as_at_date.isoformat()} "
+                            f"and created after {submission_completed_at.isoformat()}."
+                        )
                     )
                 else:
                     try:
