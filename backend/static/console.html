@@ -78063,6 +78063,7 @@
                         reviewPeriodEnd: String(company.reviewPeriodEnd || confirmationStatement.reviewPeriodEnd || company.nextMadeUpToDate || ""),
                         identityVerification: {
                             required: Boolean(identityVerification.required),
+                            directorPersonalCodeSupplied: Boolean(identityVerification.directorPersonalCodeSupplied),
                             verificationStatementGiven: identityVerification.verificationStatementGiven !== false,
                             relevantOfficer: String(identityVerification.relevantOfficer || ""),
                         },
@@ -78076,7 +78077,7 @@
                     address: ["contactEmail", "reviewPeriodStart", "reviewPeriodEnd"],
                     sic: ["sicCodes", "tradingOnMarket", "dtr5Applies"],
                     capital: ["totalNumberOfSharesIssued", "totalAggregateNominalValue"],
-                    authority: ["filingAuthorityStatus", "filingAuthorityReference", "lawfulPurposeStatement", "stateConfirmation", "identityRequired", "identityStatementGiven", "identityRelevantOfficer"],
+                    authority: ["filingAuthorityStatus", "filingAuthorityReference", "lawfulPurposeStatement", "stateConfirmation", "identityRequired", "directorPersonalCodeSupplied", "identityStatementGiven", "identityRelevantOfficer"],
                 };
                 const cs01ValidationForCard = (card, row) => {
                     const emptyResult = {
@@ -78132,6 +78133,9 @@
                     }
                     const identityRequired = getFieldValue("identityRequired") === "true";
                     if (identityRequired) {
+                        if (getFieldValue("directorPersonalCodeSupplied") !== "true") {
+                            pushError("authority", "directorPersonalCodeSupplied", "Confirm that Companies House personal code checks have been completed.");
+                        }
                         if (getFieldValue("identityStatementGiven") !== "true") {
                             pushError("authority", "identityStatementGiven", "Identity verification statement must be confirmed when identity verification is required.");
                         }
@@ -78341,6 +78345,14 @@
                                                 </select>
                                             </label>
                                             <label class="is-wide">
+                                                Companies House personal code
+                                                <select data-ch-review-field="directorPersonalCodeSupplied">
+                                                    <option value="true" ${row.identityVerification.directorPersonalCodeSupplied ? "selected" : ""}>Confirmed for filing</option>
+                                                    <option value="false" ${!row.identityVerification.directorPersonalCodeSupplied ? "selected" : ""}>Not yet confirmed</option>
+                                                </select>
+                                                <small class="operation-review-muted">Use this to confirm director/member personal code checks for this filing. This is separate from the 6-character company authentication code above.</small>
+                                            </label>
+                                            <label class="is-wide">
                                                 Relevant officer/member
                                                 <input type="text" data-ch-review-field="identityRelevantOfficer" value="${escapeHTML(row.identityVerification.relevantOfficer)}" placeholder="Name on filing">
                                             </label>
@@ -78527,6 +78539,7 @@
                             const nextLawfulPurpose = fromSelect(card.querySelector('[data-ch-review-field="lawfulPurposeStatement"]')?.value);
                             const nextStateConfirmation = fromSelect(card.querySelector('[data-ch-review-field="stateConfirmation"]')?.value);
                             const nextIdentityRequired = fromSelect(card.querySelector('[data-ch-review-field="identityRequired"]')?.value);
+                            const nextDirectorPersonalCodeSupplied = fromSelect(card.querySelector('[data-ch-review-field="directorPersonalCodeSupplied"]')?.value);
                             const nextIdentityStatementGiven = fromSelect(card.querySelector('[data-ch-review-field="identityStatementGiven"]')?.value);
                             const nextIdentityRelevantOfficer = String(card.querySelector('[data-ch-review-field="identityRelevantOfficer"]')?.value || "").trim();
                             const nextSicCodes = toSicCodes(String(card.querySelector('[data-ch-review-field="sicCodes"]')?.value || ""));
@@ -78581,6 +78594,7 @@
                             }
                             const nextIdentityVerification = {
                                 required: nextIdentityRequired === true,
+                                directorPersonalCodeSupplied: nextDirectorPersonalCodeSupplied === true,
                                 verificationStatementGiven: nextIdentityStatementGiven !== false,
                                 relevantOfficer: nextIdentityRelevantOfficer,
                             };
