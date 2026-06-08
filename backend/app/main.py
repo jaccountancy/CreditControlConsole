@@ -206,6 +206,7 @@ from .services import (
     xero_lock_date_mismatch_pdf,
     xero_chart_of_accounts_payload,
     xero_vat_returns_payload,
+    xero_scope_audit_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
@@ -1289,6 +1290,14 @@ async def api_xero_disconnect(request: Request, user: dict = Depends(require_pan
 @app.get("/api/xero/chart-of-accounts")
 async def api_xero_chart_of_accounts(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await xero_chart_of_accounts_payload(user)}
+
+
+@app.get("/api/xero/scope-audit")
+def api_xero_scope_audit(
+    tenant_id: str = Query("", alias="tenantId"),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **xero_scope_audit_payload(user, tenant_id=tenant_id)}
 
 
 @app.post("/api/xero/posting-settings")

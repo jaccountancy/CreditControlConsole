@@ -24815,6 +24815,8 @@
                                         <span>Connection status not loaded</span>
                                         <span>Open this panel to refresh master/sub-tenant status.</span>
                                     </div>
+                                    <p class="settings-help" id="settingsXeroScopeAuditSummary">Scope audit not loaded.</p>
+                                    <div class="database-metrics-list settings-usage-list" id="settingsXeroScopeAuditList"></div>
                                     <div class="ch-companies-table-wrap">
                                         <table class="ch-table" aria-label="Xero tenant connections">
                                             <thead>
@@ -29679,6 +29681,9 @@
             let xeroAccountsLoaded = false;
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let xeroScopeAudit = { generatedAt: "", connections: [], summary: {}, configured: {}, migration: {} };
+            let xeroScopeAuditLoading = false;
+            let xeroScopeAuditError = "";
             let identityVerificationState = {
                 selectedTenantId: "",
                 companies: [],
@@ -30475,6 +30480,7 @@
                         pendingXeroActions: config.endpoints?.pendingXeroActions || "/api/xero/pending-actions",
                         pendingXeroActionsSync: config.endpoints?.pendingXeroActionsSync || "/api/xero/pending-actions/sync",
                         xeroAccounts: config.endpoints?.xeroAccounts || "/api/xero/chart-of-accounts",
+                        xeroScopeAudit: config.endpoints?.xeroScopeAudit || "/api/xero/scope-audit",
                         postingSettings: config.endpoints?.postingSettings || "/api/xero/posting-settings",
                         xeroLockDates: config.endpoints?.xeroLockDates || "/api/xero/lock-dates",
                         xeroLockFix: config.endpoints?.xeroLockFix || "/api/xero/lock-dates/:tenantId/fix",
@@ -38808,6 +38814,29 @@
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                     if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                    if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
+                }
+            }
+
+            async function loadXeroScopeAudit(force = false) {
+                if (xeroScopeAuditLoading && !force) return;
+                xeroScopeAuditLoading = true;
+                xeroScopeAuditError = "";
+                if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
+                try {
+                    const payload = await requestJSON(api.endpoints.xeroScopeAudit, { suppressFailurePanel: true });
+                    xeroScopeAudit = {
+                        generatedAt: String(payload?.generatedAt || ""),
+                        connections: Array.isArray(payload?.connections) ? payload.connections : [],
+                        summary: payload?.summary || {},
+                        configured: payload?.configured || {},
+                        migration: payload?.migration || {},
+                    };
+                } catch (error) {
+                    xeroScopeAuditError = error?.message || "Unable to load Xero scope audit.";
+                    console.error("Unable to load Xero scope audit", error);
+                } finally {
+                    xeroScopeAuditLoading = false;
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
                 }
             }
@@ -70275,29 +70304,52 @@
                 ).trim();
             }
 
-            function codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot = {}) {
+            function codeBreakerSnapshotMissingScopes(snapshot = {}) {
+                const auditMissing = Array.isArray(snapshot?.xero?.scopeAudit?.missingRequiredScopes)
+                    ? snapshot.xero.scopeAudit.missingRequiredScopes
+                    : Array.isArray(snapshot?.xero?.diagnostics?.missingRequiredScopes)
+                        ? snapshot.xero.diagnostics.missingRequiredScopes
+                        : [];
+                if (auditMissing.length) {
+                    return auditMissing.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+                }
                 const source = String(snapshot?.xero?.source || "").trim().toLowerCase();
-                if (source.includes("scope_missing")) return true;
                 const combined = [
+                    source,
                     snapshot?.error,
                     snapshot?._requestError,
                     snapshot?.xero?.reason,
                     snapshot?.xero?.diagnostics?.requestError,
+                    snapshot?.postFilingAnalysis?.reason,
                 ]
                     .map((value) => String(value || "").trim().toLowerCase())
                     .filter(Boolean)
                     .join(" ");
-                if (!combined) return false;
-                const scopeHints = [
+                const missing = [];
+                const reportHints = [
                     "scope_missing",
                     "accounting.reports.read",
                     "accounting.reports.balancesheet.read",
                     "reports.read",
-                    "insufficient scope",
                     "missing reports access",
-                    "xero permissions need updating",
                 ];
-                return scopeHints.some((hint) => combined.includes(hint));
+                const journalHints = [
+                    "accounting.journals.read",
+                    "accounting.manualjournals",
+                    "journals scope",
+                    "missing journal scope",
+                ];
+                if (reportHints.some((hint) => combined.includes(hint))) {
+                    missing.push("accounting.reports.balancesheet.read");
+                }
+                if (journalHints.some((hint) => combined.includes(hint))) {
+                    missing.push("accounting.journals.read");
+                }
+                return [...new Set(missing)];
+            }
+
+            function codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot = {}) {
+                return codeBreakerSnapshotMissingScopes(snapshot).some((scope) => scope.includes("reports"));
             }
 
             function codeBreakerCompanyByNumberOrContact(companyNumber = "", xeroContactId = "") {
@@ -71040,7 +71092,6 @@
                         : "Deep dive complete.";
                 const stateSummary = codeBreakerVarianceState.summary || {};
                 summary.innerHTML = [
-                    { label: "Variance target", value: formatCurrency(Number(stateSummary.varianceTarget || 0)), className: "is-highlighted" },
                     { label: "Rows pulled", value: Number(stateSummary.rowsPulled || 0).toLocaleString("en-GB") },
                     { label: "Rows used", value: Number(stateSummary.rowsUsed || 0).toLocaleString("en-GB") },
                     { label: "Explained", value: formatCurrency(Number(stateSummary.explainedVariance || 0)) },
@@ -71443,7 +71494,7 @@
                     reconnectButton.hidden = !codeBreakerWizardState.showReconnectXero;
                     reconnectButton.disabled = codeBreakerWizardState.running;
                     reconnectButton.textContent = codeBreakerWizardState.showReconnectXero
-                        ? "Reconnect Xero (Reports Scope)"
+                        ? "Reconnect Xero (Reports + Journals)"
                         : "Reconnect Xero";
                 }
                 const canWorkOutVariance = Boolean(
@@ -71542,8 +71593,12 @@
                     workspace.updatedAt = new Date().toISOString();
                     persistCodeBreakerWorkspaces();
                     const xeroScopeMissing = codeBreakerSnapshotIndicatesReportsScopeMissing(snapshot);
+                    const missingScopes = codeBreakerSnapshotMissingScopes(snapshot);
                     if (xeroScopeMissing) {
                         const xeroReason = String(snapshot?.xero?.reason || snapshot?.error || snapshot?._requestError || "").trim();
+                        const missingScopeText = missingScopes.length
+                            ? missingScopes.join(", ")
+                            : "accounting.reports.balancesheet.read, accounting.journals.read";
                         if (Number.isFinite(workspace.chNetAssets)) {
                             setCodeBreakerWizardStep(1, "complete", `CH check complete for ${filedYearEnd}: net assets ${formatCurrency(workspace.chNetAssets)} from ${codeBreakerWizardSourceCopy(workspace.chSource)}.`);
                         } else {
@@ -71562,12 +71617,12 @@
                             suggestedCount: 0,
                         };
                         codeBreakerWizardState.guidance = [
-                            "Reconnect Xero and approve reports scope (accounting.reports.balancesheet.read or accounting.reports.read), then run the wizard again.",
-                            xeroReason ? `Xero API detail: ${xeroReason}` : "Xero balance sheet call is blocked until reports scope is approved.",
+                            `Reconnect Xero and approve required scopes (${missingScopeText}), then run the wizard again.`,
+                            xeroReason ? `Xero API detail: ${xeroReason}` : "Xero data calls are blocked until reports + journals scopes are approved.",
                         ];
-                        setCodeBreakerWizardStep(2, "failed", xeroReason || "Xero reports scope is missing and Xero net assets could not be read.");
+                        setCodeBreakerWizardStep(2, "failed", xeroReason || `Xero scopes are missing (${missingScopeText}) and Xero net assets could not be read.`);
                         throw new Error(
-                            "Xero reports scope is missing (accounting.reports.balancesheet.read or accounting.reports.read). Reconnect Xero, approve reports scope, then run Equity Montior again."
+                            `Xero required scopes are missing (${missingScopeText}). Reconnect Xero, approve the scopes, then run Equity Montior again.`
                         );
                     }
                     if (!Number.isFinite(workspace.chNetAssets) || !Number.isFinite(workspace.xeroNetAssets)) {
@@ -72754,7 +72809,6 @@
                                     <span>${escapeHTML(crack?.status === "running" ? "Processing live Xero feed..." : crack?.status === "complete" ? "Processing complete" : "Awaiting run")}</span>
                                 </div>
                                 <div class="code-breaker-live-stats">
-                                    <article><span>Variance target</span><strong>${escapeHTML(formatCurrency(Number(workspace?.netAssetsDifference || 0)))}</strong></article>
                                     <article><span>Rows pulled</span><strong>${Number(crack?.pulledCount || 0).toLocaleString("en-GB")}</strong></article>
                                     <article><span>Rows considered</span><strong>${Number(crack?.consideredCount || 0).toLocaleString("en-GB")}</strong></article>
                                     <article><span>Suggested rows</span><strong>${suggestedRows.length.toLocaleString("en-GB")}</strong></article>
@@ -72791,8 +72845,6 @@
                             <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(codeBreakerPeriodStartDate(workspace) || ""))} to ${escapeHTML(formatDate(workspace.yearEndDate || ""))}</strong></article>
                             <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
                             <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
-                            <article class="key-metric-card"><span>CH source</span><strong>${escapeHTML(String(workspace?.chSource || "Unavailable"))}</strong></article>
-                            <article class="key-metric-card"><span>Xero source</span><strong>${escapeHTML(String(workspace?.xeroSource || "Unavailable"))}</strong></article>
                         </div>
                         <div class="code-breaker-workspace-actions">
                             <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
@@ -72826,9 +72878,6 @@
                         <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(analysis.periodStart || ""))} to ${escapeHTML(formatDate(analysis.periodEnd || ""))}</strong></article>
                         <article class="key-metric-card"><span>CH net assets</span><strong>${codeBreakerMetricValue(workspace?.chNetAssets)}</strong></article>
                         <article class="key-metric-card"><span>Xero net assets</span><strong>${codeBreakerMetricValue(workspace?.xeroNetAssets)}</strong></article>
-                        <article class="key-metric-card"><span>CH source</span><strong>${escapeHTML(String(workspace?.chSource || "Unavailable"))}</strong></article>
-                        <article class="key-metric-card"><span>Xero source</span><strong>${escapeHTML(String(workspace?.xeroSource || "Unavailable"))}</strong></article>
-                        <article class="key-metric-card"><span>Variance to clear</span><strong>${escapeHTML(compare.label)}</strong></article>
                         <article class="key-metric-card"><span>Comparison mode</span><strong>${escapeHTML(analysis.mode === "balance_sheet_compare" ? "CH filed vs Xero balance sheet" : "Transaction delta")}</strong></article>
                         <article class="key-metric-card"><span>Variance</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>
                         <article class="key-metric-card"><span>Target variance</span><strong>${escapeHTML(formatCurrency(0))}</strong></article>
@@ -77712,38 +77761,87 @@
             function renderSettingsXeroConnection() {
                 const status = document.getElementById("settingsXeroConnectionStatus");
                 const tableBody = document.getElementById("settingsXeroConnectionTableBody");
-                if (!status || !tableBody) return;
+                const scopeSummary = document.getElementById("settingsXeroScopeAuditSummary");
+                const scopeList = document.getElementById("settingsXeroScopeAuditList");
+                if (!status || !tableBody || !scopeSummary || !scopeList) return;
                 if (xeroLockDateLoading) {
                     status.innerHTML = "<span>Loading Xero tenant connections…</span><span>Checking master/sub-tenant state.</span>";
                     tableBody.innerHTML = '<tr><td colspan="3"><div class="ch-empty-state">Loading Xero tenants…</div></td></tr>';
+                } else {
+                    const rows = settingsXeroConnectionRows();
+                    const masterTenantName = String(xeroLockDateOverview?.mainTenantName || "jaccountancy").trim();
+                    const masterRow = rows.find((row) => row.isMainTenant) || null;
+                    if (!rows.length) {
+                        status.innerHTML = "<span>No Xero tenants connected</span><span>Connect Xero to load master/sub-tenant controls.</span>";
+                        tableBody.innerHTML = '<tr><td colspan="3"><div class="ch-empty-state">No connected Xero tenants.</div></td></tr>';
+                    } else {
+                        status.innerHTML = `
+                            <span>${masterRow ? `Master tenant active: ${escapeHTML(masterRow.tenantName || masterTenantName)}` : `Master tenant target: ${escapeHTML(masterTenantName)}`}</span>
+                            <span>${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} connected · debtor sync is pinned to the master tenant.</span>
+                        `;
+                        tableBody.innerHTML = rows
+                            .sort((left, right) => {
+                                const role = Number(Boolean(right.isMainTenant)) - Number(Boolean(left.isMainTenant));
+                                if (role !== 0) return role;
+                                return String(left.tenantName || left.tenantId).localeCompare(String(right.tenantName || right.tenantId));
+                            })
+                            .map((row) => `
+                                <tr>
+                                    <td>${row.isMainTenant ? '<span class="ch-pill is-info">Master tenant</span>' : '<span class="ch-pill">Sub-tenant</span>'}</td>
+                                    <td><strong>${escapeHTML(row.tenantName || row.tenantId)}</strong></td>
+                                    <td><small>${escapeHTML(row.tenantId)}</small></td>
+                                </tr>
+                            `)
+                            .join("");
+                    }
+                }
+                if (xeroScopeAuditLoading) {
+                    scopeSummary.textContent = "Checking scope coverage (reports + journals)…";
+                    scopeList.innerHTML = "";
                     return;
                 }
-                const rows = settingsXeroConnectionRows();
-                const masterTenantName = String(xeroLockDateOverview?.mainTenantName || "jaccountancy").trim();
-                const masterRow = rows.find((row) => row.isMainTenant) || null;
-                if (!rows.length) {
-                    status.innerHTML = "<span>No Xero tenants connected</span><span>Connect Xero to load master/sub-tenant controls.</span>";
-                    tableBody.innerHTML = '<tr><td colspan="3"><div class="ch-empty-state">No connected Xero tenants.</div></td></tr>';
+                if (xeroScopeAuditError) {
+                    scopeSummary.textContent = `Scope audit unavailable: ${xeroScopeAuditError}`;
+                    scopeList.innerHTML = "";
                     return;
                 }
-                status.innerHTML = `
-                    <span>${masterRow ? `Master tenant active: ${escapeHTML(masterRow.tenantName || masterTenantName)}` : `Master tenant target: ${escapeHTML(masterTenantName)}`}</span>
-                    <span>${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} connected · debtor sync is pinned to the master tenant.</span>
+                const auditedConnections = Array.isArray(xeroScopeAudit?.connections) ? xeroScopeAudit.connections : [];
+                const missingCount = Number(xeroScopeAudit?.summary?.connectionsMissingRequiredScopes || 0);
+                const configuredHasReports = Boolean(xeroScopeAudit?.configured?.hasReportsScope);
+                const configuredHasJournals = Boolean(xeroScopeAudit?.configured?.hasJournalScope);
+                if (!auditedConnections.length) {
+                    scopeSummary.textContent = "Scope audit ready. No active Xero connection was found for this user.";
+                    scopeList.innerHTML = "";
+                    return;
+                }
+                scopeSummary.textContent = missingCount > 0
+                    ? `Scope audit: ${missingCount.toLocaleString("en-GB")} of ${auditedConnections.length.toLocaleString("en-GB")} connection${auditedConnections.length === 1 ? "" : "s"} missing reports and/or journals scope.`
+                    : `Scope audit: all ${auditedConnections.length.toLocaleString("en-GB")} connection${auditedConnections.length === 1 ? "" : "s"} include reports + journals scope.`;
+                scopeList.innerHTML = `
+                    <article class="settings-usage-row">
+                        <strong>Configured requested scopes</strong>
+                        <small>
+                            Reports scope: ${configuredHasReports ? "yes" : "missing"} · Journals scope: ${configuredHasJournals ? "yes" : "missing"}.
+                            ${escapeHTML(String(xeroScopeAudit?.migration?.note || ""))}
+                        </small>
+                    </article>
+                    ${auditedConnections.map((row) => {
+                        const tenantName = String(row?.tenantName || row?.tenantId || "Tenant");
+                        const missingScopes = Array.isArray(row?.missingRequiredScopes) ? row.missingRequiredScopes : [];
+                        const scopeSample = Array.isArray(row?.scopes) ? row.scopes.slice(0, 8) : [];
+                        const scopeSummaryText = scopeSample.length ? scopeSample.join(", ") : "No scope value stored on token.";
+                        const healthLabel = missingScopes.length ? "Reconnect required" : "Ready";
+                        return `
+                            <article class="settings-usage-row">
+                                <strong>${escapeHTML(tenantName)} · ${escapeHTML(healthLabel)}</strong>
+                                <small>
+                                    ${missingScopes.length ? `Missing: ${escapeHTML(missingScopes.join(", "))}. ` : ""}
+                                    Scope sample: ${escapeHTML(scopeSummaryText)}
+                                </small>
+                            </article>
+                        `;
+                    }).join("")}
                 `;
-                tableBody.innerHTML = rows
-                    .sort((left, right) => {
-                        const role = Number(Boolean(right.isMainTenant)) - Number(Boolean(left.isMainTenant));
-                        if (role !== 0) return role;
-                        return String(left.tenantName || left.tenantId).localeCompare(String(right.tenantName || right.tenantId));
-                    })
-                    .map((row) => `
-                        <tr>
-                            <td>${row.isMainTenant ? '<span class="ch-pill is-info">Master tenant</span>' : '<span class="ch-pill">Sub-tenant</span>'}</td>
-                            <td><strong>${escapeHTML(row.tenantName || row.tenantId)}</strong></td>
-                            <td><small>${escapeHTML(row.tenantId)}</small></td>
-                        </tr>
-                    `)
-                    .join("");
             }
 
             const settingsSectionCopy = {
@@ -77997,7 +78095,10 @@
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
                 if (activeSettingsSection === "confirmation-settings") loadCompaniesHouseSettings();
-                if (activeSettingsSection === "xero-connection") loadXeroLockDateOverview();
+                if (activeSettingsSection === "xero-connection") {
+                    loadXeroLockDateOverview();
+                    loadXeroScopeAudit();
+                }
                 if (activeSettingsSection === "lock-date-mapping") {
                     loadXeroLockDateOverview();
                     loadXeroLockDateCHHealth();

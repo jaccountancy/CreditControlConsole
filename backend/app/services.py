@@ -12539,6 +12539,96 @@ def _xero_connection_has_journal_scope(connection_row: dict | None) -> bool:
     return any(scope in scopes for scope in journal_scopes)
 
 
+XERO_SCOPE_AUDIT_BROAD_SCOPES = {
+    "accounting.transactions",
+    "accounting.reports.read",
+    "accounting.settings",
+    "accounting.contacts",
+}
+XERO_SCOPE_BROAD_SCOPES_RETIREMENT_DATE = "2027-09-30"
+
+
+def _xero_scope_audit_row(connection_row: dict | None) -> dict:
+    if not isinstance(connection_row, dict):
+        return {
+            "tenantId": "",
+            "tenantName": "",
+            "tenantType": "",
+            "connectionCreatedAt": "",
+            "connectionUpdatedAt": "",
+            "scopeRaw": "",
+            "scopes": [],
+            "hasReportsScope": False,
+            "hasJournalScope": False,
+            "missingRequiredScopes": ["accounting.reports.balancesheet.read", "accounting.journals.read"],
+            "usesBroadScopes": False,
+            "broadScopesDetected": [],
+            "requiresReconnect": True,
+        }
+    raw_scope_value = connection_row.get("scope")
+    if isinstance(raw_scope_value, (list, tuple, set)):
+        scope_raw = " ".join(str(item).strip() for item in raw_scope_value if str(item).strip())
+    else:
+        scope_raw = str(raw_scope_value or "").strip()
+    scopes = sorted(_xero_connection_scope_set(connection_row))
+    has_reports_scope = _xero_connection_has_reports_scope(connection_row)
+    has_journal_scope = _xero_connection_has_journal_scope(connection_row)
+    missing_required_scopes: list[str] = []
+    if not has_reports_scope:
+        missing_required_scopes.append("accounting.reports.balancesheet.read")
+    if not has_journal_scope:
+        missing_required_scopes.append("accounting.journals.read")
+    broad_scopes_detected = sorted(scope for scope in scopes if scope in XERO_SCOPE_AUDIT_BROAD_SCOPES)
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "tenantType": str(connection_row.get("tenant_type") or ""),
+        "connectionCreatedAt": _iso(connection_row.get("created_at")) or "",
+        "connectionUpdatedAt": _iso(connection_row.get("updated_at")) or "",
+        "scopeRaw": scope_raw,
+        "scopes": scopes,
+        "hasReportsScope": has_reports_scope,
+        "hasJournalScope": has_journal_scope,
+        "missingRequiredScopes": missing_required_scopes,
+        "usesBroadScopes": bool(broad_scopes_detected),
+        "broadScopesDetected": broad_scopes_detected,
+        "requiresReconnect": bool(missing_required_scopes),
+    }
+
+
+def xero_scope_audit_payload(user: dict, tenant_id: str | None = None) -> dict:
+    requested_tenant_id = str(tenant_id or "").strip()
+    rows = list_xero_connections_for_user(user["id"], include_fallback=False)
+    audits = [_xero_scope_audit_row(row) for row in rows]
+    if requested_tenant_id:
+        audits = [row for row in audits if str(row.get("tenantId") or "").strip() == requested_tenant_id]
+    configured_scopes = sorted(_xero_connection_scope_set({"scope": get_settings().xero_scopes}))
+    configured_has_reports_scope = _xero_connection_has_reports_scope({"scope": get_settings().xero_scopes})
+    configured_has_journal_scope = _xero_connection_has_journal_scope({"scope": get_settings().xero_scopes})
+    return {
+        "generatedAt": _iso(utcnow()),
+        "connections": audits,
+        "summary": {
+            "connectionsChecked": len(audits),
+            "connectionsMissingRequiredScopes": sum(1 for row in audits if row.get("requiresReconnect")),
+            "connectionsUsingBroadScopes": sum(1 for row in audits if row.get("usesBroadScopes")),
+        },
+        "configured": {
+            "scopeRaw": str(get_settings().xero_scopes or "").strip(),
+            "scopes": configured_scopes,
+            "hasReportsScope": configured_has_reports_scope,
+            "hasJournalScope": configured_has_journal_scope,
+        },
+        "migration": {
+            "broadScopesRetireOn": XERO_SCOPE_BROAD_SCOPES_RETIREMENT_DATE,
+            "note": (
+                "Xero broad accounting scopes still work for existing apps, but granular scopes should be used before "
+                "September 30, 2027."
+            ),
+        },
+    }
+
+
 def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
     if not fields:
         return
@@ -15310,6 +15400,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
 
     xero_net_assets = None
     xero_source = "unavailable"
+    xero_scope_audit = _xero_scope_audit_row(connection_row)
     xero_diagnostics = {"scopeIncludesReportsRead": False, "scopeIncludesJournalRead": False}
     xero_reason = connection_lookup_error.strip()
     if connection_row:
@@ -15330,6 +15421,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         if isinstance(xero_diagnostics, dict):
             xero_diagnostics["scopeIncludesReportsRead"] = xero_scope_has_reports
             xero_diagnostics["scopeIncludesJournalRead"] = xero_scope_has_journals
+            xero_diagnostics["missingRequiredScopes"] = xero_scope_audit.get("missingRequiredScopes") or []
             if xero_balance_sheet_error:
                 xero_diagnostics["requestError"] = xero_balance_sheet_error
         if xero_net_assets is None:
@@ -15340,7 +15432,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 xero_reason = (
                     "Xero connection is missing reports access "
                     "(accounting.reports.balancesheet.read or accounting.reports.read). "
-                    "Reconnect Xero and approve reports scope, then re-run Equity Montior."
+                    "Reconnect Xero and approve reports and journals scopes, then re-run Equity Montior."
                 )
                 if xero_balance_sheet_error:
                     xero_reason = f"{xero_reason} API response: {xero_balance_sheet_error}"
@@ -15443,7 +15535,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if journal_scope_missing:
                     post_filing_analysis["reason"] = (
                         "Unable to fetch Xero journals because the connection is missing journal scope "
-                        "(accounting.journals.read). Reconnect Xero and approve journals scope, then re-run Equity Montior."
+                        "(accounting.journals.read). Reconnect Xero and approve reports and journals scopes, then re-run Equity Montior."
                     )
                     if journals_reason:
                         post_filing_analysis["reason"] = f"{post_filing_analysis['reason']} API response: {journals_reason}"
@@ -15532,6 +15624,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             "source": xero_source,
             "reason": xero_reason,
             "diagnostics": xero_diagnostics,
+            "scopeAudit": xero_scope_audit,
         },
         "match": {
             "matches": bool(ch_net_assets is not None and xero_net_assets is not None and abs(_money(xero_net_assets - ch_net_assets)) <= Decimal("0.01")),
