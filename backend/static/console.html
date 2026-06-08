@@ -17890,6 +17890,21 @@
                 border-top: 1px solid var(--line);
                 background: rgba(248, 251, 255, 0.6);
             }
+            .operation-review-actions.has-cs01-nav {
+                display: grid;
+                grid-template-columns: auto auto;
+                justify-content: end;
+                align-items: center;
+                row-gap: 8px;
+                column-gap: 10px;
+            }
+            .ch-review-footer-nav {
+                grid-column: 1 / -1;
+                justify-self: end;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
             .operation-review-panel.is-fullscreen {
                 place-items: stretch;
                 padding: 12px;
@@ -35470,12 +35485,15 @@
                 const body = document.getElementById("operationReviewBody");
                 const confirmButton = document.getElementById("confirmOperationReviewButton");
                 const cancelButton = document.getElementById("cancelOperationReviewButton");
-                if (!panel || !eyebrow || !title || !subtitle || !summary || !body || !confirmButton || !cancelButton) return false;
+                const actions = panel?.querySelector(".operation-review-actions");
+                if (!panel || !eyebrow || !title || !subtitle || !summary || !body || !confirmButton || !cancelButton || !actions) return false;
                 if (operationReviewResolver) closeOperationReviewPanel(false);
                 panel.classList.toggle("is-fullscreen", config.panelMode === "fullscreen");
                 if (operationReviewPanelVariantClass) panel.classList.remove(operationReviewPanelVariantClass);
                 operationReviewPanelVariantClass = String(config.panelClass || "").trim();
                 if (operationReviewPanelVariantClass) panel.classList.add(operationReviewPanelVariantClass);
+                actions.classList.remove("has-cs01-nav");
+                actions.querySelectorAll(".ch-review-footer-nav").forEach((node) => node.remove());
                 if (card) {
                     card.scrollTop = 0;
                 }
@@ -35521,7 +35539,7 @@
                     renderReviewRows();
                 }
                 if (typeof config.onRender === "function") {
-                    config.onRender({ panel, eyebrow, title, subtitle, summary, body, confirmButton, cancelButton });
+                    config.onRender({ panel, eyebrow, title, subtitle, summary, body, confirmButton, cancelButton, actions });
                 }
                 if (typeof config.resultProvider === "function") {
                     operationReviewResultProvider = config.resultProvider;
@@ -80419,7 +80437,7 @@
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
                     rows: [{ companyName: "Loading..." }],
-                    onRender: ({ body, confirmButton }) => {
+                    onRender: ({ panel, body, confirmButton, actions }) => {
                         const stepDefinitions = [
                             { key: "company", label: "Company details" },
                             { key: "people", label: "Officers + PSC" },
@@ -80623,8 +80641,6 @@
                                             </label>
                                         </div>
                                         <div class="ch-settings-actions" style="margin-top: 8px;">
-                                            <button type="button" class="ghost-button" data-ch-step-nav="prev">Previous section</button>
-                                            <button type="button" class="ghost-button" data-ch-step-nav="next">Next section</button>
                                             <span class="ch-settings-status is-muted" data-ch-step-status>Step 1 of ${stepDefinitions.length}: Company details</span>
                                             <p class="ch-step-error" data-ch-step-error hidden></p>
                                         </div>
@@ -80632,8 +80648,26 @@
                                 `).join("")}
                             </div>
                         `;
+                        let activeCard = null;
+                        let footerPrevButton = null;
+                        let footerNextButton = null;
+                        let footerStatusNode = null;
+                        const setActiveCard = (card) => {
+                            if (!card) return;
+                            activeCard = card;
+                        };
                         const getCurrentStep = (card) => String(card?.getAttribute("data-ch-step-active") || cs01StepOrder[0]);
                         const indexForStep = (stepKey) => Math.max(0, cs01StepOrder.indexOf(stepKey));
+                        const isLastStep = (card) => indexForStep(getCurrentStep(card)) === cs01StepOrder.length - 1;
+                        const updateFooterNavState = () => {
+                            if (!footerPrevButton || !footerNextButton || !footerStatusNode || !activeCard) return;
+                            const currentStepKey = getCurrentStep(activeCard);
+                            const currentIndex = indexForStep(currentStepKey);
+                            const activeStep = stepDefinitions[currentIndex] || stepDefinitions[0];
+                            footerPrevButton.disabled = currentIndex === 0;
+                            footerNextButton.disabled = currentIndex === cs01StepOrder.length - 1;
+                            footerStatusNode.textContent = `Step ${currentIndex + 1} of ${stepDefinitions.length}: ${activeStep.label}`;
+                        };
                         const refreshCardValidationState = (card) => {
                             const companyId = String(card?.getAttribute("data-ch-review-company-id") || "");
                             const row = rowById.get(companyId);
@@ -80671,12 +80705,16 @@
                             if (!confirmButton) return;
                             const editableCards = Array.from(body.querySelectorAll('[data-ch-review-company-id][data-ch-review-editable="true"]'));
                             const hasBlockingErrors = editableCards.some((card) => !refreshCardValidationState(card).isValid);
-                            confirmButton.disabled = hasBlockingErrors;
+                            const workflowReady = activeCard ? isLastStep(activeCard) : false;
+                            confirmButton.disabled = hasBlockingErrors || !workflowReady;
                             if (hasBlockingErrors) {
                                 confirmButton.title = "Complete all required fields before continuing.";
+                            } else if (!workflowReady) {
+                                confirmButton.title = "Move to the final section before continuing.";
                             } else {
                                 confirmButton.removeAttribute("title");
                             }
+                            updateFooterNavState();
                         };
                         const setStep = (card, nextStepKey) => {
                             if (!card) return;
@@ -80697,11 +80735,8 @@
                                 }
                             });
                             const resolvedIndex = indexForStep(resolvedStep);
-                            const prevButton = card.querySelector('[data-ch-step-nav="prev"]');
-                            const nextButton = card.querySelector('[data-ch-step-nav="next"]');
-                            if (prevButton) prevButton.disabled = resolvedIndex === 0;
-                            if (nextButton) nextButton.disabled = resolvedIndex === cs01StepOrder.length - 1;
                             refreshCardValidationState(card);
+                            if (card === activeCard) updateFooterNavState();
                         };
                         const canMoveForward = (card) => {
                             const companyId = String(card?.getAttribute("data-ch-review-company-id") || "");
@@ -80722,6 +80757,28 @@
                             setStep(card, cs01StepOrder[nextIndex]);
                             syncConfirmState();
                         };
+                        if (actions) {
+                            actions.classList.add("has-cs01-nav");
+                            const footerNav = document.createElement("div");
+                            footerNav.className = "ch-review-footer-nav";
+                            footerNav.innerHTML = `
+                                <button type="button" class="ghost-button" data-ch-footer-step-nav="prev">Previous section</button>
+                                <button type="button" class="ghost-button" data-ch-footer-step-nav="next">Next section</button>
+                                <span class="ch-settings-status is-muted" data-ch-footer-step-status>Step 1 of ${stepDefinitions.length}: Company details</span>
+                            `;
+                            actions.prepend(footerNav);
+                            footerPrevButton = footerNav.querySelector('[data-ch-footer-step-nav="prev"]');
+                            footerNextButton = footerNav.querySelector('[data-ch-footer-step-nav="next"]');
+                            footerStatusNode = footerNav.querySelector("[data-ch-footer-step-status]");
+                            footerPrevButton?.addEventListener("click", () => {
+                                if (!activeCard) return;
+                                moveStep(activeCard, -1);
+                            });
+                            footerNextButton?.addEventListener("click", () => {
+                                if (!activeCard) return;
+                                moveStep(activeCard, 1);
+                            });
+                        }
                         body.querySelectorAll("[data-ch-review-company-id]").forEach((card) => {
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const row = rowById.get(companyId);
@@ -80742,10 +80799,9 @@
                                     }
                                 });
                             }
-                            card.querySelector('[data-ch-step-nav="prev"]')?.addEventListener("click", () => moveStep(card, -1));
-                            card.querySelector('[data-ch-step-nav="next"]')?.addEventListener("click", () => moveStep(card, 1));
                             card.querySelectorAll("[data-ch-step-jump]").forEach((jumpButton) => {
                                 jumpButton.addEventListener("click", () => {
+                                    setActiveCard(card);
                                     const stepKey = String(jumpButton.getAttribute("data-ch-step-jump") || "company");
                                     const currentStep = getCurrentStep(card);
                                     if (indexForStep(stepKey) > indexForStep(currentStep) && !canMoveForward(card)) {
@@ -80760,8 +80816,17 @@
                                 fieldNode.addEventListener("input", syncConfirmState);
                                 fieldNode.addEventListener("change", syncConfirmState);
                             });
+                            card.addEventListener("click", () => {
+                                setActiveCard(card);
+                                syncConfirmState();
+                            });
+                            card.addEventListener("focusin", () => {
+                                setActiveCard(card);
+                                syncConfirmState();
+                            });
                             setStep(card, "company");
                         });
+                        setActiveCard(body.querySelector("[data-ch-review-company-id]"));
                         syncConfirmState();
                     },
                     resultProvider: () => {
