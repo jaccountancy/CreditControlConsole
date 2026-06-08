@@ -13837,15 +13837,33 @@ async def me_report_juk_invoice_check(user: dict, client_id: str, payload: dict 
 
 
 def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
+    def parse_numeric(value: object) -> Decimal | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float, Decimal)):
+            return _money(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            negative = text.startswith("(") and text.endswith(")")
+            clean = text.strip("()").replace(",", "").replace("£", "").replace("%", "").strip()
+            if not clean:
+                return None
+            if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", clean):
+                return None
+            try:
+                amount = Decimal(clean)
+            except Exception:
+                return None
+            return _money(-amount if negative else amount)
+        return None
+
     if payload is None:
         return None
-    if isinstance(payload, (int, float, Decimal)):
-        return _money(payload)
-    if isinstance(payload, str):
-        text = payload.strip()
-        if not text:
-            return None
-        return _money_from_report_cell(text)
+    numeric = parse_numeric(payload)
+    if numeric is not None:
+        return numeric
     if isinstance(payload, dict):
         candidate_keys = (
             "netAssets",
@@ -13860,7 +13878,15 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
                 value = _code_breaker_net_assets_value(payload.get(key))
                 if value is not None:
                     return value
+        for key, value in payload.items():
+            key_text = str(key or "").strip().lower()
+            if "net assets" in key_text or "net_assets" in key_text:
+                extracted = _code_breaker_net_assets_value(value)
+                if extracted is not None:
+                    return extracted
         for value in payload.values():
+            if not isinstance(value, (dict, list)):
+                continue
             extracted = _code_breaker_net_assets_value(value)
             if extracted is not None:
                 return extracted
@@ -13873,20 +13899,36 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
     return None
 
 
+def _code_breaker_report_line_amounts(line: dict) -> list[Decimal]:
+    raw = line.get("raw") if isinstance(line, dict) else None
+    cells = raw.get("Cells") or raw.get("cells") or [] if isinstance(raw, dict) else []
+    parsed: list[Decimal] = []
+    if isinstance(cells, list):
+        for cell in cells[1:]:
+            if not isinstance(cell, dict):
+                continue
+            value = _code_breaker_net_assets_value(cell.get("Value") or cell.get("value"))
+            if isinstance(value, Decimal):
+                parsed.append(value)
+    if parsed:
+        return parsed
+    return [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+
+
 def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
         if not label:
             continue
         if "net assets" in label:
-            amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+            amounts = _code_breaker_report_line_amounts(line)
             if amounts:
                 return _money(amounts[-1])
     assets_total = None
     liabilities_total = None
     for line in lines:
         label = str(line.get("label") or "").strip().lower()
-        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        amounts = _code_breaker_report_line_amounts(line)
         if not label or not amounts:
             continue
         amount = _money(amounts[-1])
@@ -13925,7 +13967,6 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     xero_net_assets = _code_breaker_xero_net_assets(_xero_report_lines(balance_sheet_payload if isinstance(balance_sheet_payload, dict) else {}))
 
     ch_company = None
-    me_report_net_assets = None
     try:
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -13959,43 +14000,6 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                         except Exception:
                             logger.exception("Code Breaker snapshot: unable to query Companies House cache")
                             ch_company = None
-                if xero_contact_id:
-                    try:
-                        cursor.execute(
-                            """
-                            SELECT id
-                            FROM me_report_clients
-                            WHERE user_id = %s
-                              AND xero_contact_id = %s
-                            ORDER BY updated_at DESC
-                            LIMIT 1
-                            """,
-                            (user["id"], xero_contact_id),
-                        )
-                        me_client = cursor.fetchone()
-                    except Exception:
-                        me_client = None
-                    if me_client:
-                        try:
-                            cursor.execute(
-                                """
-                                SELECT calculation
-                                FROM me_report_submissions
-                                WHERE client_id = %s
-                                ORDER BY COALESCE(completed_at, created_at) DESC
-                                LIMIT 5
-                                """,
-                                (str(me_client.get("id") or ""),),
-                            )
-                            submission_rows = cursor.fetchall() or []
-                        except Exception:
-                            submission_rows = []
-                        for row in submission_rows:
-                            calculation = row.get("calculation")
-                            extracted = _code_breaker_net_assets_value(calculation)
-                            if extracted is not None:
-                                me_report_net_assets = extracted
-                                break
             connection.commit()
     except Exception:
         logger.exception("Code Breaker snapshot: database lookup failed")
@@ -14003,8 +14007,6 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     ch_net_assets = None
     if ch_company:
         ch_net_assets = _code_breaker_net_assets_value(ch_company.get("filing_history"))
-    if ch_net_assets is None and me_report_net_assets is not None:
-        ch_net_assets = me_report_net_assets
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
@@ -14018,7 +14020,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "ch": {
             "companyName": str((ch_company or {}).get("company_name") or ""),
             "netAssets": float(ch_net_assets) if ch_net_assets is not None else None,
-            "source": "companies_house_filing_history" if ch_net_assets is not None and ch_company else ("me_report_latest_submission" if ch_net_assets is not None else "unavailable"),
+            "source": "companies_house_filing_history" if ch_net_assets is not None and ch_company else "unavailable",
             "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
             "latestSubmissionCompletedAt": _iso((ch_company or {}).get("latest_submission_completed_at")),
         },

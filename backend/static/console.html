@@ -17218,6 +17218,115 @@
                     grid-template-columns: 1fr;
                 }
             }
+            .code-breaker-workspace-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-top: 10px;
+            }
+            .code-breaker-workspace-actions .primary-button,
+            .code-breaker-workspace-actions .ghost-button {
+                min-width: 140px;
+            }
+            .code-breaker-live {
+                display: grid;
+                gap: 12px;
+            }
+            .code-breaker-live-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: var(--muted);
+                font-size: 0.84rem;
+                font-weight: 780;
+            }
+            .code-breaker-live-spinner {
+                width: 18px;
+                height: 18px;
+                border: 2px solid rgba(29, 103, 242, 0.18);
+                border-top-color: var(--blue);
+                border-radius: 999px;
+                animation: code-breaker-spin 1s linear infinite;
+            }
+            @keyframes code-breaker-spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+            .code-breaker-live-log {
+                max-height: 260px;
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.78);
+                padding: 10px 12px;
+                display: grid;
+                gap: 8px;
+            }
+            .code-breaker-live-log-item {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                gap: 8px;
+                align-items: start;
+                color: var(--ink);
+                font-size: 0.8rem;
+                font-weight: 700;
+                line-height: 1.4;
+            }
+            .code-breaker-live-log-item time {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+                white-space: nowrap;
+            }
+            .code-breaker-live-stats {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .code-breaker-live-stats article {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.78);
+                padding: 10px;
+                display: grid;
+                gap: 4px;
+            }
+            .code-breaker-live-stats article span {
+                font-size: 0.68rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+                font-weight: 820;
+            }
+            .code-breaker-live-stats article strong {
+                font-size: 1.02rem;
+                letter-spacing: -0.02em;
+            }
+            .code-breaker-live-progress {
+                position: relative;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(61, 85, 130, 0.12);
+                overflow: hidden;
+            }
+            .code-breaker-live-progress > span {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #53d5ef);
+                transition: width 0.22s ease;
+            }
+            @media (max-width: 1100px) {
+                .code-breaker-live-stats {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+            @media (max-width: 620px) {
+                .code-breaker-live-stats {
+                    grid-template-columns: 1fr;
+                }
+            }
             .ch-preflight-choice {
                 display: inline-flex;
                 align-items: center;
@@ -25617,8 +25726,21 @@
                             </section>
                             <section class="detail-panel" id="codeBreakerAnalysisPanel" hidden>
                                 <h4 id="codeBreakerAnalysisTitle">Analysis</h4>
-                                <p class="detail-meta" id="codeBreakerAnalysisMeta">Run a workspace analysis to compare Companies House filed balances against Xero.</p>
+                                <p class="detail-meta" id="codeBreakerAnalysisMeta">Open a workspace to review filed balances, then calculate the current variance.</p>
                                 <div id="codeBreakerAnalysisOutput"></div>
+                            </section>
+                            <section class="detail-panel" id="codeBreakerCrackPanel" hidden>
+                                <div class="detail-hero">
+                                    <div>
+                                        <p class="eyebrow">Code Breaker</p>
+                                        <h4 id="codeBreakerCrackTitle">Crack the code</h4>
+                                        <p class="detail-meta" id="codeBreakerCrackMeta">Pulling live Xero transactions to explain the variance.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="codeBreakerCrackBackButton" type="button">Back to workspace</button>
+                                    </div>
+                                </div>
+                                <div class="code-breaker-live" id="codeBreakerCrackOutput"></div>
                             </section>
                         </section>
                     </section>
@@ -27337,6 +27459,8 @@
             let codeBreakerSetupOpen = false;
             let selectedCodeBreakerWorkspaceId = "";
             let codeBreakerAnalysisByWorkspaceId = {};
+            let codeBreakerWorkspaceSubView = "workspace";
+            const codeBreakerCrackByWorkspaceId = {};
             let microAnalyzerRows = [];
             let microAnalyzerLoading = false;
             const microAnalyzerResultsByCustomerId = {};
@@ -68086,6 +68210,165 @@
                 return response?.result || {};
             }
 
+            function codeBreakerWorkspaceCustomer(workspace = null) {
+                if (!workspace) return null;
+                const contactId = String(workspace?.xeroContactId || "").trim();
+                const companyNumber = normaliseCompanyNumberInput(workspace?.companyNumber || "");
+                const tenantId = String(workspace?.xeroTenantId || "").trim();
+                const candidates = codeBreakerCustomersForTenant(tenantId);
+                const exactContact = candidates.find((row) => String(row?.xeroContactId || row?.contactId || "").trim() === contactId) || null;
+                if (exactContact) return exactContact;
+                if (!companyNumber) return null;
+                return candidates.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === companyNumber) || null;
+            }
+
+            function codeBreakerLiveTimeStamp(iso = "") {
+                const date = iso ? new Date(iso) : new Date();
+                if (Number.isNaN(date.getTime())) return "--:--:--";
+                return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            }
+
+            function codeBreakerAppendLiveEvent(workspaceId = "", message = "") {
+                const key = String(workspaceId || "").trim();
+                if (!key || !codeBreakerCrackByWorkspaceId[key]) return;
+                const row = codeBreakerCrackByWorkspaceId[key];
+                const events = Array.isArray(row.events) ? row.events : [];
+                events.push({ stamp: new Date().toISOString(), message: String(message || "").trim() || "Step recorded." });
+                row.events = events.slice(-120);
+            }
+
+            const codeBreakerDelay = (milliseconds = 0) => new Promise((resolve) => setTimeout(resolve, Number(milliseconds || 0)));
+
+            async function crackCodeBreakerVariance(workspaceId = "") {
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
+                if (!workspace) return;
+                selectedCodeBreakerWorkspaceId = workspace.id;
+                codeBreakerWorkspaceSubView = "crack";
+                const variance = Number(workspace?.netAssetsDifference || 0);
+                codeBreakerCrackByWorkspaceId[workspace.id] = {
+                    status: "running",
+                    startedAt: new Date().toISOString(),
+                    finishedAt: "",
+                    pulledCount: 0,
+                    totalCount: 0,
+                    consideredCount: 0,
+                    rows: [],
+                    suggestedRows: [],
+                    events: [],
+                    error: "",
+                    varianceTarget: variance,
+                };
+                codeBreakerAppendLiveEvent(workspace.id, `Crack run started for ${workspace.clientName || "workspace"}.`);
+                renderCodeBreakerScreen();
+
+                try {
+                    const customer = codeBreakerWorkspaceCustomer(workspace);
+                    if (!customer?.id) {
+                        throw new Error("No linked Xero client was found for this workspace. Update the workspace link first.");
+                    }
+                    codeBreakerAppendLiveEvent(workspace.id, `Resolved Xero client ${customer.name || customer.id}.`);
+                    renderCodeBreakerScreen();
+                    await codeBreakerDelay(220);
+
+                    codeBreakerAppendLiveEvent(workspace.id, "Pulling Xero transactions from the connected organisation...");
+                    renderCodeBreakerScreen();
+                    const payload = await requestJSON(
+                        api.endpoints.customerTransactions,
+                        { suppressFailurePanel: true },
+                        { customerId: customer.id }
+                    );
+                    const invoices = Array.isArray(payload?.outstandingInvoices) ? payload.outstandingInvoices : [];
+                    const credits = Array.isArray(payload?.unallocatedCredits) ? payload.unallocatedCredits : [];
+                    const overpayments = Array.isArray(payload?.overpayments) ? payload.overpayments : [];
+                    const crack = codeBreakerCrackByWorkspaceId[workspace.id];
+                    crack.totalCount = invoices.length + credits.length + overpayments.length;
+                    codeBreakerAppendLiveEvent(workspace.id, `Pulled ${crack.totalCount.toLocaleString("en-GB")} live rows (${invoices.length} invoices, ${credits.length} credits, ${overpayments.length} overpayments).`);
+                    renderCodeBreakerScreen();
+
+                    const submittedMs = dateSortValue(workspace?.submittedAt || "");
+                    const sourceRows = [
+                        ...invoices.map((row) => ({
+                            sourceType: "Invoice",
+                            reference: String(row?.invoiceNumber || row?.xeroInvoiceId || "").trim() || "Invoice",
+                            status: String(row?.status || "AUTHORISED"),
+                            postedDate: String(row?.invoiceDate || row?.dueDate || "").slice(0, 10),
+                            amount: Number(row?.total || row?.amountDue || 0),
+                            raw: row,
+                        })),
+                        ...credits.map((row) => ({
+                            sourceType: "Credit note",
+                            reference: String(row?.creditNumber || row?.invoiceNumber || row?.id || "").trim() || "Credit",
+                            status: String(row?.status || "AUTHORISED"),
+                            postedDate: String(row?.date || row?.creditNoteDate || "").slice(0, 10),
+                            amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                            raw: row,
+                        })),
+                        ...overpayments.map((row) => ({
+                            sourceType: "Overpayment",
+                            reference: String(row?.reference || row?.id || "").trim() || "Overpayment",
+                            status: String(row?.status || "AUTHORISED"),
+                            postedDate: String(row?.date || row?.paymentDate || "").slice(0, 10),
+                            amount: Number(row?.remainingCredit || row?.total || 0) * -1,
+                            raw: row,
+                        })),
+                    ];
+                    const renderedRows = [];
+                    for (const row of sourceRows) {
+                        const postedMs = dateSortValue(row.postedDate || "");
+                        const postedSinceFiling = Number.isFinite(submittedMs) && submittedMs !== Number.MAX_SAFE_INTEGER
+                            ? (Number.isFinite(postedMs) && postedMs !== Number.MAX_SAFE_INTEGER && postedMs > submittedMs)
+                            : false;
+                        const normalised = {
+                            ...row,
+                            postedSinceFiling,
+                            absoluteAmount: Math.abs(Number(row.amount || 0)),
+                        };
+                        renderedRows.push(normalised);
+                        crack.rows = [...renderedRows];
+                        crack.pulledCount = renderedRows.length;
+                        codeBreakerAppendLiveEvent(
+                            workspace.id,
+                            `Pulled ${normalised.sourceType} ${normalised.reference} · ${normalised.postedDate ? formatDate(normalised.postedDate) : "no date"} · ${formatCurrency(normalised.amount || 0)}${normalised.postedSinceFiling ? " · posted after filing" : ""}.`
+                        );
+                        renderCodeBreakerScreen();
+                        await codeBreakerDelay(70);
+                    }
+
+                    const candidates = renderedRows
+                        .filter((row) => row.postedSinceFiling && row.absoluteAmount > 0)
+                        .sort((left, right) => right.absoluteAmount - left.absoluteAmount);
+                    crack.consideredCount = candidates.length;
+                    const target = Math.abs(Number(variance || 0));
+                    let remaining = target;
+                    const suggested = [];
+                    for (const row of candidates) {
+                        if (remaining <= 0.01) break;
+                        suggested.push(row);
+                        remaining = Math.max(0, remaining - row.absoluteAmount);
+                    }
+                    if (!suggested.length && candidates.length) suggested.push(...candidates.slice(0, Math.min(8, candidates.length)));
+                    crack.suggestedRows = suggested;
+                    crack.status = "complete";
+                    crack.finishedAt = new Date().toISOString();
+                    codeBreakerAppendLiveEvent(
+                        workspace.id,
+                        suggested.length
+                            ? `Variance investigation complete. ${suggested.length.toLocaleString("en-GB")} transaction${suggested.length === 1 ? "" : "s"} shortlisted against ${formatCurrency(variance)} target variance.`
+                            : "No post-filing transactions were found that can explain the current variance."
+                    );
+                    renderCodeBreakerScreen();
+                } catch (error) {
+                    const crack = codeBreakerCrackByWorkspaceId[workspace.id] || {};
+                    crack.status = "failed";
+                    crack.error = error?.message || "Unable to crack the variance from Xero data.";
+                    crack.finishedAt = new Date().toISOString();
+                    codeBreakerCrackByWorkspaceId[workspace.id] = crack;
+                    codeBreakerAppendLiveEvent(workspace.id, crack.error);
+                    renderCodeBreakerScreen();
+                    showToast(crack.error, "error");
+                }
+            }
+
             async function openCodeBreakerWorkspaceSetupDialog() {
                 let connections = codeBreakerConnections();
                 if (!connections.length && typeof loadMeReport === "function") {
@@ -68552,23 +68835,105 @@
 
             function renderCodeBreakerAnalysis(workspace = null) {
                 const panel = document.getElementById("codeBreakerAnalysisPanel");
+                const crackPanel = document.getElementById("codeBreakerCrackPanel");
+                const crackBackButton = document.getElementById("codeBreakerCrackBackButton");
                 const title = document.getElementById("codeBreakerAnalysisTitle");
                 const meta = document.getElementById("codeBreakerAnalysisMeta");
                 const output = document.getElementById("codeBreakerAnalysisOutput");
                 if (!panel || !title || !meta || !output) return;
                 const analysis = workspace ? codeBreakerAnalysisByWorkspaceId[String(workspace.id || "")] : null;
                 if (!workspace || !analysis) {
-                    panel.hidden = true;
+                    panel.hidden = !workspace;
+                    if (!workspace) panel.hidden = true;
+                }
+                if (!workspace) {
+                    if (crackPanel) crackPanel.hidden = true;
                     return;
                 }
+                if (crackBackButton && crackBackButton.dataset.cbWired !== "true") {
+                    crackBackButton.dataset.cbWired = "true";
+                    crackBackButton.addEventListener("click", () => {
+                        codeBreakerWorkspaceSubView = "workspace";
+                        renderCodeBreakerScreen();
+                    });
+                }
+
+                if (codeBreakerWorkspaceSubView === "crack") {
+                    panel.hidden = true;
+                    if (crackPanel) {
+                        crackPanel.hidden = false;
+                        const crackTitle = document.getElementById("codeBreakerCrackTitle");
+                        const crackMeta = document.getElementById("codeBreakerCrackMeta");
+                        const crackOutput = document.getElementById("codeBreakerCrackOutput");
+                        const crack = codeBreakerCrackByWorkspaceId[String(workspace.id || "")] || null;
+                        if (crackTitle) crackTitle.textContent = `${workspace.clientName || "Workspace"} · Crack the code`;
+                        if (crackMeta) crackMeta.textContent = crack?.status === "running"
+                            ? "Live pull in progress. Reading Xero rows and mapping variance contributors."
+                            : crack?.status === "complete"
+                                ? "Live pull complete. Suggested transactions are shown below."
+                                : crack?.error
+                                    ? crack.error
+                                    : "Ready to pull and map post-filing transactions.";
+                        if (crackOutput) {
+                            const events = Array.isArray(crack?.events) ? crack.events : [];
+                            const progressValue = Math.max(0, Math.min(100, crack?.totalCount ? Math.round((Number(crack.pulledCount || 0) / Number(crack.totalCount || 1)) * 100) : 0));
+                            const suggestedRows = Array.isArray(crack?.suggestedRows) ? crack.suggestedRows : [];
+                            crackOutput.innerHTML = `
+                                <div class="code-breaker-live-head">
+                                    ${crack?.status === "running" ? '<span class="code-breaker-live-spinner" aria-hidden="true"></span>' : ""}
+                                    <span>${escapeHTML(crack?.status === "running" ? "Processing live Xero feed..." : crack?.status === "complete" ? "Processing complete" : "Awaiting run")}</span>
+                                </div>
+                                <div class="code-breaker-live-stats">
+                                    <article><span>Variance target</span><strong>${escapeHTML(formatCurrency(Number(workspace?.netAssetsDifference || 0)))}</strong></article>
+                                    <article><span>Rows pulled</span><strong>${Number(crack?.pulledCount || 0).toLocaleString("en-GB")}</strong></article>
+                                    <article><span>Rows considered</span><strong>${Number(crack?.consideredCount || 0).toLocaleString("en-GB")}</strong></article>
+                                    <article><span>Suggested rows</span><strong>${suggestedRows.length.toLocaleString("en-GB")}</strong></article>
+                                </div>
+                                <div class="code-breaker-live-progress" aria-label="Processing progress"><span style="width:${progressValue}%;"></span></div>
+                                <div class="code-breaker-live-log">
+                                    ${events.length
+                                        ? events.map((event) => `<article class="code-breaker-live-log-item"><time>${escapeHTML(codeBreakerLiveTimeStamp(event?.stamp || ""))}</time><span>${escapeHTML(String(event?.message || ""))}</span></article>`).join("")
+                                        : '<article class="code-breaker-live-log-item"><time>--:--:--</time><span>No processing events yet.</span></article>'}
+                                </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Code Breaker suggested variance rows">
+                                        <thead><tr><th>Type</th><th>Reference</th><th>Posted date</th><th>Status</th><th>Amount</th></tr></thead>
+                                        <tbody>
+                                            ${suggestedRows.length
+                                                ? suggestedRows.map((row) => `<tr><td>${escapeHTML(String(row.sourceType || ""))}</td><td>${escapeHTML(String(row.reference || ""))}</td><td>${escapeHTML(formatDate(row.postedDate || ""))}</td><td>${escapeHTML(String(row.status || ""))}</td><td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td></tr>`).join("")
+                                                : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No rows shortlisted</p><h4>No post-filing transactions mapped yet</h4><p>Run crack mode to pull and rank candidate transactions from Xero.</p></div></td></tr>'}
+                                        </tbody>
+                                    </table>
+                                </section>
+                            `;
+                        }
+                    }
+                    return;
+                }
+                if (crackPanel) crackPanel.hidden = true;
                 panel.hidden = false;
                 title.textContent = `${workspace.clientName} · Delta analysis`;
-                if (analysis.error) {
-                    meta.textContent = analysis.error;
-                    output.innerHTML = "";
+                if (!analysis) {
+                    meta.textContent = "Open workspace loaded. Press Calculate to compare CH filed net assets against live Xero balance sheet.";
+                    output.innerHTML = `
+                        <div class="key-metrics-grid">
+                            <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(workspace.submittedAt || ""))}</strong></article>
+                            <article class="key-metric-card"><span>Locked period</span><strong>${escapeHTML(formatDate(codeBreakerPeriodStartDate(workspace) || ""))} to ${escapeHTML(formatDate(workspace.yearEndDate || ""))}</strong></article>
+                            <article class="key-metric-card"><span>CH net assets</span><strong>${Number.isFinite(Number(workspace?.chNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.chNetAssets || 0))) : "Pending"}</strong></article>
+                            <article class="key-metric-card"><span>Xero net assets</span><strong>${Number.isFinite(Number(workspace?.xeroNetAssets)) ? escapeHTML(formatCurrency(Number(workspace.xeroNetAssets || 0))) : "Pending"}</strong></article>
+                        </div>
+                        <div class="code-breaker-workspace-actions">
+                            <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
+                        </div>
+                    `;
+                    output.querySelector("[data-code-breaker-calculate]")?.addEventListener("click", (event) => {
+                        const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCalculate || "");
+                        runCodeBreakerAnalysis(workspaceId);
+                    });
                     return;
                 }
-                if (analysis.mode === "balance_sheet_compare") {
+                if (analysis.error) meta.textContent = analysis.error;
+                else if (analysis.mode === "balance_sheet_compare") {
                     meta.textContent = analysis.matches
                         ? `CH and Xero net assets match for the filed date.`
                         : `CH and Xero net assets differ by ${formatCurrency(analysis.reversalTarget || 0)} for the filed date.`;
@@ -68580,6 +68945,7 @@
                 const recommendations = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];
                 const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
                 const compare = codeBreakerCompareStatus(workspace);
+                const canCrack = !analysis?.error && analysis?.mode === "balance_sheet_compare" && !analysis?.matches;
                 output.innerHTML = `
                     <div class="key-metrics-grid">
                         <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
@@ -68590,6 +68956,10 @@
                         <article class="key-metric-card"><span>Comparison mode</span><strong>${escapeHTML(analysis.mode === "balance_sheet_compare" ? "CH filed vs Xero balance sheet" : "Transaction delta")}</strong></article>
                         <article class="key-metric-card"><span>Variance</span><strong>${escapeHTML(formatCurrency(analysis.reversalTarget || 0))}</strong></article>
                         <article class="key-metric-card"><span>Target variance</span><strong>${escapeHTML(formatCurrency(0))}</strong></article>
+                    </div>
+                    <div class="code-breaker-workspace-actions">
+                        <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
+                        ${canCrack ? `<button class="ghost-button" type="button" data-code-breaker-crack="${escapeHTML(workspace.id)}">Crack the code</button>` : ""}
                     </div>
                     <div class="detail-panel" style="margin-top:10px;">
                         <h4>Jenius AI adjustment guidance</h4>
@@ -68608,12 +68978,21 @@
                         </table>
                     </section>
                 `;
+                output.querySelector("[data-code-breaker-calculate]")?.addEventListener("click", (event) => {
+                    const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCalculate || "");
+                    runCodeBreakerAnalysis(workspaceId);
+                });
+                output.querySelector("[data-code-breaker-crack]")?.addEventListener("click", (event) => {
+                    const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCrack || "");
+                    crackCodeBreakerVariance(workspaceId);
+                });
             }
 
             async function runCodeBreakerAnalysis(workspaceId = "") {
                 const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
                 if (!workspace) return;
                 selectedCodeBreakerWorkspaceId = workspace.id;
+                codeBreakerWorkspaceSubView = "workspace";
                 try {
                     await codeBreakerSyncWorkspaceDatesFromCompaniesHouse(workspace);
                 } catch (error) {
@@ -68682,6 +69061,14 @@
                     rows: [],
                     recommendations,
                 };
+                renderCodeBreakerScreen();
+            }
+
+            function openCodeBreakerWorkspace(workspaceId = "") {
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
+                if (!workspace) return;
+                selectedCodeBreakerWorkspaceId = workspace.id;
+                codeBreakerWorkspaceSubView = "workspace";
                 renderCodeBreakerScreen();
             }
 
@@ -68772,20 +69159,21 @@
                                 <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
                                 <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
                                 <td>
-                                    <button class="ghost-button" type="button" data-code-breaker-run="${escapeHTML(workspace.id)}">Run</button>
+                                    <button class="ghost-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">Open</button>
                                     <button class="ghost-button danger-button" type="button" data-code-breaker-remove="${escapeHTML(workspace.id)}">Delete</button>
                                 </td>
                             </tr>
                         `;
                     }).join("");
-                    tableBody.querySelectorAll("[data-code-breaker-run]").forEach((button) => {
-                        button.addEventListener("click", () => runCodeBreakerAnalysis(button.dataset.codeBreakerRun || ""));
+                    tableBody.querySelectorAll("[data-code-breaker-open]").forEach((button) => {
+                        button.addEventListener("click", () => openCodeBreakerWorkspace(button.dataset.codeBreakerOpen || ""));
                     });
                     tableBody.querySelectorAll("[data-code-breaker-remove]").forEach((button) => {
                         button.addEventListener("click", () => {
                             const workspaceId = String(button.dataset.codeBreakerRemove || "");
                             codeBreakerWorkspaces = codeBreakerWorkspaces.filter((row) => String(row.id || "") !== workspaceId);
                             delete codeBreakerAnalysisByWorkspaceId[workspaceId];
+                            delete codeBreakerCrackByWorkspaceId[workspaceId];
                             if (selectedCodeBreakerWorkspaceId === workspaceId) selectedCodeBreakerWorkspaceId = "";
                             persistCodeBreakerWorkspaces();
                             renderCodeBreakerScreen();
@@ -68815,10 +69203,12 @@
                             tenantName: String(row?.tenantName || ""),
                         }))
                         .filter((row) => {
+                            const tenantId = String(row.tenantId || "").trim();
+                            if (!tenantId) return false;
                             const hasXeroMatch = Boolean(String(row.customerId || "").trim()) && Boolean(String(row.xeroContactId || "").trim());
                             if (!hasXeroMatch) return false;
                             if (!connectedTenantId) return true;
-                            return String(row.tenantId || "").trim() === connectedTenantId;
+                            return tenantId === connectedTenantId;
                         });
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -68900,9 +69290,14 @@
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
                 const runAllButton = document.getElementById("microAnalyzerRunAllButton");
                 if (!summary || !tableBody || !refreshButton || !runAllButton) return;
+                const connectedTenantCount = new Set(
+                    (microAnalyzerRows || [])
+                        .map((row) => String(row?.tenantId || "").trim())
+                        .filter((tenantId) => Boolean(tenantId))
+                ).size;
                 summary.textContent = microAnalyzerLoading
-                    ? "Loading Xero-connected clients with active Ignition Micro/Starter/Solo plans..."
-                    : `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Xero-connected Micro/Starter/Solo clients loaded.`;
+                    ? "Loading Xero tenant IDs with active Ignition Micro/Starter/Solo plans..."
+                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero tenant ID${connectedTenantCount === 1 ? "" : "s"} connected.`;
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
                     refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
