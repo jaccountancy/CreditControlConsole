@@ -64,3 +64,56 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(made_up_to, date(2024, 12, 31))
         self.assertEqual(services._code_breaker_net_assets_value(row), services.Decimal("120.00"))
 
+    def test_net_assets_value_ignores_unrelated_numeric_fields(self):
+        filing_row = {
+            "type": "AA",
+            "made_up_to": "2025-05-31",
+            "descriptionValues": {
+                "made_up_date": "2025-05-31",
+                "company_number": "14846268",
+            },
+            "meta": {"retryCount": 0},
+        }
+        self.assertIsNone(services._code_breaker_net_assets_value(filing_row))
+
+    def test_net_assets_value_reads_assets_less_liabilities_labels(self):
+        filing_row = {
+            "type": "AA",
+            "made_up_to": "2025-05-31",
+            "sections": [
+                {"label": "assets less liabilities", "value": "4567.89"},
+                {"label": "other", "value": "100"},
+            ],
+        }
+        self.assertEqual(services._code_breaker_net_assets_value(filing_row), services.Decimal("4567.89"))
+
+    def test_extract_net_assets_from_ixhtml_handles_parenthesised_values(self):
+        xhtml = """
+        <table>
+          <tr>
+            <td>Net assets (liabilities)</td>
+            <td>(<ix:nonFraction contextRef="FY_END_20250531">369</ix:nonFraction>)</td>
+            <td><ix:nonFraction contextRef="FY_END_20240531">15</ix:nonFraction></td>
+          </tr>
+        </table>
+        """
+        value, matched = services._code_breaker_net_assets_from_ixhtml(xhtml, date(2025, 5, 31))
+        self.assertEqual(value, services.Decimal("-369.00"))
+        self.assertEqual(matched, date(2025, 5, 31))
+
+    def test_public_filing_rows_extracts_accounts_xhtml_link(self):
+        html = """
+        <table>
+          <tr>
+            <td>16 Jan 2026</td>
+            <td>AA</td>
+            <td>Micro company accounts made up to 31 May 2025</td>
+            <td><a href="/company/14846268/filing-history/abc/document?format=xhtml&amp;download=1">Download iXBRL</a></td>
+          </tr>
+        </table>
+        """
+        rows = services._code_breaker_public_filing_rows(html, "14846268")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["madeUpTo"], date(2025, 5, 31))
+        self.assertEqual(rows[0]["filedOn"], date(2026, 1, 16))
+        self.assertIn("format=xhtml", rows[0]["xhtmlPath"])

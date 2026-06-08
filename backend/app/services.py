@@ -13865,47 +13865,205 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
         non_zero = [value for value in values if value.copy_abs() > Decimal("0.00")]
         return _money(non_zero[-1] if non_zero else values[-1])
 
-    if payload is None:
+    def normalise_key_text(value: object) -> str:
+        text = str(value or "").strip().lower()
+        return re.sub(r"[\s\-]+", "_", text)
+
+    def is_net_assets_key(value: object) -> bool:
+        key = normalise_key_text(value)
+        if not key:
+            return False
+        if "net_assets" in key or "netassets" in key:
+            return True
+        if "assets_less_liabilities" in key or "assetslessliabilities" in key:
+            return True
+        if "shareholders_funds" in key or "shareholdersfunds" in key:
+            return True
+        return False
+
+    def looks_like_net_assets_row(row: dict) -> bool:
+        for key in ("label", "name", "title", "description"):
+            if is_net_assets_key(row.get(key)):
+                return True
+        return False
+
+    def collect(node: object, *, allow_direct_numeric: bool = False) -> list[Decimal]:
+        if node is None:
+            return []
+        if allow_direct_numeric:
+            numeric = parse_numeric(node)
+            if numeric is not None:
+                return [numeric]
+
+        if isinstance(node, dict):
+            candidates: list[Decimal] = []
+            candidate_keys = (
+                "netAssets",
+                "net_assets",
+                "balanceSheetNetAssets",
+                "net_assets_total",
+                "totalNetAssets",
+                "total_net_assets",
+            )
+            for key in candidate_keys:
+                if key in node:
+                    candidates.extend(collect(node.get(key), allow_direct_numeric=True))
+
+            if looks_like_net_assets_row(node):
+                for value_key in ("value", "amount", "total", "figure", "balance", "current", "latest"):
+                    if value_key in node:
+                        candidates.extend(collect(node.get(value_key), allow_direct_numeric=True))
+
+            for key, value in node.items():
+                if is_net_assets_key(key):
+                    candidates.extend(collect(value, allow_direct_numeric=True))
+                elif isinstance(value, (dict, list)):
+                    candidates.extend(collect(value, allow_direct_numeric=False))
+            return candidates
+
+        if isinstance(node, list):
+            candidates: list[Decimal] = []
+            for item in node:
+                candidates.extend(collect(item, allow_direct_numeric=allow_direct_numeric))
+            return candidates
+
+        return []
+
+    return preferred(collect(payload, allow_direct_numeric=False))
+
+
+def _code_breaker_parse_ch_human_date(text: object) -> date | None:
+    raw = str(text or "").strip()
+    if not raw:
         return None
-    numeric = parse_numeric(payload)
-    if numeric is not None:
-        return numeric
-    if isinstance(payload, dict):
-        candidates: list[Decimal] = []
-        candidate_keys = (
-            "netAssets",
-            "net_assets",
-            "balanceSheetNetAssets",
-            "net_assets_total",
-            "totalNetAssets",
-            "total_net_assets",
+    for fmt in ("%d %b %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except Exception:
+            continue
+    return _parse_optional_iso_date(raw)
+
+
+def _code_breaker_public_filing_rows(html_text: str, company_number: str) -> list[dict]:
+    rows: list[dict] = []
+    if not html_text:
+        return rows
+    company_number = str(company_number or "").strip()
+    if not company_number:
+        return rows
+    pattern = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+    for row_html in pattern.findall(html_text):
+        plain = re.sub(r"<[^>]+>", " ", row_html)
+        plain = html.unescape(re.sub(r"\s+", " ", plain)).strip()
+        if not plain:
+            continue
+        if " accounts made up to " not in plain.lower():
+            continue
+        if " aa " not in f" {plain.lower()} ":
+            continue
+        date_match = re.search(r"accounts made up to\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})", plain, flags=re.IGNORECASE)
+        made_up_to = _code_breaker_parse_ch_human_date(date_match.group(1)) if date_match else None
+        filed_match = re.match(r"^(\d{1,2}\s+[A-Za-z]+\s+\d{4})\b", plain)
+        filed_on = _code_breaker_parse_ch_human_date(filed_match.group(1)) if filed_match else None
+        xhtml_match = re.search(
+            rf'href="(/company/{re.escape(company_number)}/filing-history/[^"]+format=xhtml[^"]*)"',
+            row_html,
+            flags=re.IGNORECASE,
         )
-        for key in candidate_keys:
-            if key in payload:
-                value = _code_breaker_net_assets_value(payload.get(key))
-                if value is not None:
-                    candidates.append(value)
-        for key, value in payload.items():
-            key_text = str(key or "").strip().lower()
-            if "net assets" in key_text or "net_assets" in key_text:
-                extracted = _code_breaker_net_assets_value(value)
-                if extracted is not None:
-                    candidates.append(extracted)
-        for value in payload.values():
-            if not isinstance(value, (dict, list)):
-                continue
-            extracted = _code_breaker_net_assets_value(value)
-            if extracted is not None:
-                candidates.append(extracted)
-        return preferred(candidates)
-    if isinstance(payload, list):
-        candidates: list[Decimal] = []
-        for item in payload:
-            value = _code_breaker_net_assets_value(item)
-            if value is not None:
-                candidates.append(value)
-        return preferred(candidates)
-    return None
+        if not xhtml_match:
+            continue
+        rows.append({
+            "madeUpTo": made_up_to,
+            "filedOn": filed_on,
+            "xhtmlPath": html.unescape(xhtml_match.group(1)),
+        })
+    rows.sort(key=lambda item: item.get("filedOn") or date.min, reverse=True)
+    return rows
+
+
+def _code_breaker_net_assets_from_ixhtml(xhtml_text: str, target_date: date | None = None) -> tuple[Decimal | None, date | None]:
+    if not xhtml_text:
+        return None, None
+    table_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", xhtml_text, flags=re.IGNORECASE | re.DOTALL)
+    candidates: list[tuple[date | None, Decimal]] = []
+    label_pattern = re.compile(r"net assets|assets less liabilities|capital and reserves", flags=re.IGNORECASE)
+    context_date_pattern = re.compile(r"(\d{8})$")
+    for row_html in table_rows:
+        row_plain = html.unescape(re.sub(r"<[^>]+>", " ", row_html))
+        row_plain = re.sub(r"\s+", " ", row_plain).strip()
+        if not label_pattern.search(row_plain):
+            continue
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.IGNORECASE | re.DOTALL)
+        for cell_html in cells:
+            for match in re.finditer(
+                r'<ix:nonFraction[^>]*contextRef="([^"]+)"[^>]*>(.*?)</ix:nonFraction>',
+                cell_html,
+                flags=re.IGNORECASE | re.DOTALL,
+            ):
+                context_ref = str(match.group(1) or "").strip()
+                raw_value = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
+                if not raw_value:
+                    continue
+                text_value = f"({raw_value})" if "(" in cell_html and ")" in cell_html else raw_value
+                parsed = _code_breaker_net_assets_value({"netAssets": text_value})
+                if parsed is None:
+                    continue
+                context_date = None
+                context_match = context_date_pattern.search(context_ref)
+                if context_match:
+                    context_date = _parse_optional_iso_date(
+                        f"{context_match.group(1)[0:4]}-{context_match.group(1)[4:6]}-{context_match.group(1)[6:8]}"
+                    )
+                candidates.append((context_date, parsed))
+    if not candidates:
+        return None, None
+    if target_date is not None:
+        for context_date, value in candidates:
+            if context_date == target_date:
+                return _money(value), context_date
+    dated = [(ctx, value) for ctx, value in candidates if isinstance(ctx, date)]
+    if dated:
+        ctx, value = max(dated, key=lambda item: item[0])
+        return _money(value), ctx
+    return _money(candidates[-1][1]), candidates[-1][0]
+
+
+async def _code_breaker_public_ch_net_assets(
+    company_number: str,
+    target_date: date | None,
+) -> tuple[Decimal | None, date | None, str]:
+    company_number = str(company_number or "").strip()
+    if not company_number:
+        return None, None, "unavailable"
+    base = "https://find-and-update.company-information.service.gov.uk"
+    filing_history_url = f"{base}/company/{company_number}/filing-history"
+    timeout = httpx.Timeout(20.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        history_response = await client.get(filing_history_url)
+        if history_response.status_code >= 400:
+            return None, None, "unavailable"
+        filing_rows = _code_breaker_public_filing_rows(history_response.text, company_number)
+        if not filing_rows:
+            return None, None, "unavailable"
+        selected_row = None
+        if target_date is not None:
+            selected_row = next((row for row in filing_rows if row.get("madeUpTo") == target_date), None)
+        if selected_row is None:
+            selected_row = filing_rows[0]
+        xhtml_path = str(selected_row.get("xhtmlPath") or "").strip()
+        if not xhtml_path:
+            return None, selected_row.get("madeUpTo"), "unavailable"
+        xhtml_response = await client.get(f"{base}{xhtml_path}")
+        if xhtml_response.status_code >= 400:
+            return None, selected_row.get("madeUpTo"), "unavailable"
+        net_assets, matched_date = _code_breaker_net_assets_from_ixhtml(
+            xhtml_response.text,
+            target_date=target_date or selected_row.get("madeUpTo"),
+        )
+        if net_assets is None:
+            return None, selected_row.get("madeUpTo"), "unavailable"
+        source = "public_filing_xhtml_exact" if target_date and matched_date == target_date else "public_filing_xhtml_latest"
+        return _money(net_assets), matched_date or selected_row.get("madeUpTo"), source
 
 
 def _code_breaker_report_line_amounts(line: dict) -> list[Decimal]:
@@ -14097,6 +14255,21 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             selected_accounts_filing = latest_accounts_filing
             selected_accounts_made_up_to = latest_accounts_made_up_to
             filing_date_match = f"{latest_match}_fallback"
+
+    if company_number and (ch_net_assets is None or ch_net_assets.copy_abs() == Decimal("0.00")):
+        try:
+            public_net_assets, public_made_up_to, public_match = await _code_breaker_public_ch_net_assets(
+                company_number,
+                selected_accounts_made_up_to or as_at_date,
+            )
+        except Exception:
+            logger.exception("Code Breaker snapshot: public filing fallback failed for %s", company_number)
+            public_net_assets, public_made_up_to, public_match = None, None, "unavailable"
+        if public_net_assets is not None:
+            ch_net_assets = _money(public_net_assets)
+            if isinstance(public_made_up_to, date):
+                selected_accounts_made_up_to = public_made_up_to
+            filing_date_match = public_match
 
     difference = None
     if ch_net_assets is not None and xero_net_assets is not None:
