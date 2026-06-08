@@ -5181,6 +5181,19 @@
                 from { opacity: 0; transform: translateY(6px); }
                 to { opacity: 1; transform: translateY(0); }
             }
+            @keyframes toast-bounce-in {
+                0% { opacity: 0; transform: translate3d(24px, 12px, 0) scale(0.94); filter: blur(2px); }
+                55% { opacity: 1; transform: translate3d(-2px, -1px, 0) scale(1.01); filter: blur(0); }
+                100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+            }
+            @keyframes toast-slide-out {
+                from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+                to { opacity: 0; transform: translate3d(18px, 0, 0) scale(0.98); }
+            }
+            @keyframes toast-timeout {
+                from { transform: scaleX(1); opacity: 1; }
+                to { transform: scaleX(0); opacity: 0.25; }
+            }
             @keyframes topbar-reflow-glide {
                 from { opacity: 0.82; transform: translateY(4px); }
                 to { opacity: 1; transform: translateY(0); }
@@ -19495,6 +19508,28 @@
                 gap: 10px;
                 flex-wrap: wrap;
             }
+            .developer-log-tabs {
+                display: inline-flex;
+                gap: 4px;
+                padding: 4px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.86);
+            }
+            .developer-log-tabs button {
+                border: 0;
+                border-radius: 999px;
+                padding: 8px 12px;
+                background: transparent;
+                color: var(--muted);
+                font-weight: 850;
+                cursor: pointer;
+            }
+            .developer-log-tabs button[aria-pressed="true"] {
+                background: var(--blue);
+                color: #ffffff;
+                box-shadow: 0 8px 18px rgba(29, 103, 242, 0.18);
+            }
             .developer-log-mode {
                 display: inline-flex;
                 gap: 4px;
@@ -19522,6 +19557,9 @@
                 gap: 10px;
                 overflow: auto;
                 padding: 16px 24px 24px;
+            }
+            .developer-log-list[hidden] {
+                display: none;
             }
             .developer-log-entry {
                 display: grid;
@@ -19598,6 +19636,39 @@
                 padding: 8px 12px;
                 font-weight: 800;
             }
+            .notification-history-entry {
+                display: grid;
+                gap: 8px;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: var(--surface-soft);
+            }
+            .notification-history-entry.is-error {
+                border-color: rgba(255, 83, 83, 0.28);
+                background: var(--red-soft);
+            }
+            .notification-history-entry.is-warning {
+                border-color: rgba(255, 159, 47, 0.28);
+                background: var(--orange-soft);
+            }
+            .notification-history-entry.is-success {
+                border-color: rgba(39, 176, 95, 0.28);
+                background: rgba(39, 176, 95, 0.08);
+            }
+            .notification-history-entry strong {
+                font-size: 0.95rem;
+            }
+            .notification-history-entry p {
+                margin: 0;
+                color: var(--ink);
+                font-weight: 700;
+            }
+            .notification-history-detail {
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 800;
+            }
             .settings-developer-log-list {
                 min-height: min(76vh, 980px);
                 max-height: min(90vh, 1280px);
@@ -19654,6 +19725,7 @@
             .toast-message {
                 --toast-accent: var(--blue);
                 --toast-accent-rgb: 29, 103, 242;
+                --toast-duration-ms: 7000ms;
                 position: relative;
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) auto;
@@ -19672,7 +19744,9 @@
                 color: var(--ink);
                 font-weight: 800;
                 cursor: pointer;
-                animation: support-bubble-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+                transform-origin: right bottom;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                animation: toast-bounce-in 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             .toast-message::before {
                 content: "";
@@ -19681,6 +19755,27 @@
                 width: 4px;
                 background: linear-gradient(180deg, var(--toast-accent), rgba(39, 176, 95, 0.86));
                 pointer-events: none;
+            }
+            .toast-message::after {
+                content: "";
+                position: absolute;
+                left: 8px;
+                right: 8px;
+                bottom: 6px;
+                height: 3px;
+                border-radius: 999px;
+                background: rgba(var(--toast-accent-rgb), 0.25);
+                transform-origin: left center;
+                animation: toast-timeout var(--toast-duration-ms) linear forwards;
+            }
+            .toast-message:hover {
+                transform: translateY(-2px) scale(1.01);
+                box-shadow:
+                    0 22px 44px rgba(var(--toast-accent-rgb), 0.18),
+                    0 14px 30px rgba(30, 47, 77, 0.16);
+            }
+            .toast-message.is-closing {
+                animation: toast-slide-out 0.2s ease-in forwards;
             }
             .toast-message.success {
                 --toast-accent: var(--green);
@@ -19701,16 +19796,31 @@
                 min-width: 0;
                 line-height: 1.35;
             }
-            .toast-action {
+            .toast-actions {
                 grid-column: 1 / -1;
-                justify-self: start;
-                padding: 0;
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+            }
+            .toast-action {
+                padding: 0 0 1px;
                 border: 0;
                 background: transparent;
                 color: inherit;
                 font-weight: 900;
                 text-decoration: underline;
                 cursor: pointer;
+            }
+            .toast-history-action {
+                text-decoration: none;
+                padding: 5px 10px;
+                border-radius: 999px;
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.24);
+                background: rgba(255, 255, 255, 0.78);
+            }
+            .toast-history-action:hover {
+                background: rgba(var(--toast-accent-rgb), 0.12);
             }
             .toast-dismiss {
                 width: 30px;
@@ -23629,6 +23739,10 @@
                                     </div>
                                 </div>
                                 <div class="developer-log-filter-bar">
+                                    <div class="developer-log-tabs" role="tablist" aria-label="Developer log tabs">
+                                        <button type="button" data-developer-log-tab="activity" aria-pressed="true">Activity Log</button>
+                                        <button type="button" data-developer-log-tab="notifications" aria-pressed="false">Notification History</button>
+                                    </div>
                                     <div class="developer-log-filter">
                                         <label for="settingsDeveloperLogDateFilter">
                                             Date
@@ -23651,6 +23765,9 @@
                                 <p class="settings-help" id="settingsDeveloperLogSummary">Backend sync events, API calls, and browser errors will appear here.</p>
                                 <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperLogList">
                                     <div class="empty-state">Open Settings after a failed sync to see the exact backend response.</div>
+                                </div>
+                                <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperNotificationHistoryList" hidden>
+                                    <div class="empty-state">Notification history will appear here as popups are shown.</div>
                                 </div>
                             </section>
 
@@ -27509,6 +27626,10 @@
                             </div>
                             <div class="developer-log-actions">
                                 <div class="developer-log-filter-bar">
+                                    <div class="developer-log-tabs" role="tablist" aria-label="Developer log tabs">
+                                        <button type="button" data-developer-log-tab="activity" aria-pressed="true">Activity Log</button>
+                                        <button type="button" data-developer-log-tab="notifications" aria-pressed="false">Notification History</button>
+                                    </div>
                                     <div class="developer-log-filter">
                                         <label for="developerLogDateFilter">
                                             Date
@@ -27536,6 +27657,9 @@
                         </div>
                         <div class="developer-log-list" id="developerLogList">
                             <div class="empty-state">Open the log after a failed sync to see the exact backend response.</div>
+                        </div>
+                        <div class="developer-log-list" id="developerNotificationHistoryList" hidden>
+                            <div class="empty-state">Notification history will appear here as popups are shown.</div>
                         </div>
                     </div>
                 </section>
@@ -28023,6 +28147,7 @@
             let topbarAdaptiveResizeObserver = null;
             let topbarAdaptiveLayoutWired = false;
             let developerLogEntries = [];
+            let developerLogTab = "activity";
             let developerLogDateFilter = "";
             let developerLogModeFilter = activeSettingsSection === "developer-log" ? "system" : "all";
             let developerLogSeverityFilter = activeSettingsSection === "developer-log" ? "error" : "all";
@@ -30213,8 +30338,12 @@
             let lastFailureOpenedAt = 0;
             let lastToastSignature = "";
             let lastToastShownAt = 0;
+            let lastSyncToastSignature = "";
+            let lastSyncToastAt = 0;
+            let hasAnnouncedSyncStall = false;
             const UI_FAILURE_DEDUPE_WINDOW_MS = 12000;
             const UI_TOAST_DEDUPE_WINDOW_MS = 6000;
+            const UI_SYNC_TOAST_DEDUPE_WINDOW_MS = 5000;
 
             function stringifyFailureDetails(value) {
                 if (value == null) return "";
@@ -32833,6 +32962,13 @@
                         event.stopPropagation();
                         developerLogDateFilter = "";
                         renderDeveloperLogs();
+                        return;
+                    }
+                    const developerLogTabButton = event.target.closest?.("[data-developer-log-tab]");
+                    if (developerLogTabButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDeveloperLogTab(developerLogTabButton.dataset.developerLogTab || "activity");
                         return;
                     }
                     const developerLogModeButton = event.target.closest?.("[data-developer-log-mode]");
@@ -50157,6 +50293,7 @@
                 latestIgnitionSyncRun = syncRun || latestIgnitionSyncRun;
                 activeIgnitionSyncRunId = syncRun?.id || activeIgnitionSyncRunId;
                 ignitionSyncStartedAt = syncRunTimestamp(syncRun) || Date.now();
+                showSyncStatusToast("Ignition sync started.", "info");
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner?.dataset.syncContext === "ignition") {
                     inlineBanner.hidden = true;
@@ -50171,6 +50308,10 @@
 
             function showIgnitionSyncFailure(message) {
                 clearTopbarNoticeTimer();
+                showSyncStatusToast(message || "Ignition sync failed. Open Developer log for details.", "error", {
+                    force: true,
+                    action: { label: "Developer log", onClick: () => openDeveloperLog() }
+                });
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner?.dataset.syncContext === "ignition") {
                     inlineBanner.hidden = true;
@@ -58949,6 +59090,7 @@
                 latestMeReportSyncRun = syncRun || latestMeReportSyncRun;
                 activeMeReportSyncRunId = syncRun?.id || activeMeReportSyncRunId;
                 meReportSyncStartedAt = syncRunTimestamp(syncRun) || Date.now();
+                showSyncStatusToast("ME Report sync started.", "info");
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
@@ -58963,6 +59105,10 @@
 
             function showMeReportFailure(message) {
                 clearTopbarNoticeTimer();
+                showSyncStatusToast(message || "ME Report sync failed. Open Developer log for details.", "error", {
+                    force: true,
+                    action: { label: "Developer log", onClick: () => openDeveloperLog() }
+                });
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
@@ -71326,6 +71472,18 @@
                 if (target) window.setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
             }
 
+            function dismissToastElement(toast, { immediate = false } = {}) {
+                if (!toast) return;
+                if (immediate) {
+                    toast.remove();
+                    return;
+                }
+                if (toast.dataset.closing === "true") return;
+                toast.dataset.closing = "true";
+                toast.classList.add("is-closing");
+                window.setTimeout(() => toast.remove(), 220);
+            }
+
             function showToast(message, type = "info", action = null, duration = null) {
                 const signature = `${type}|${String(message || "")}`;
                 const now = Date.now();
@@ -71346,22 +71504,9 @@
                 copy.className = "toast-copy";
                 copy.textContent = message;
                 toast.appendChild(copy);
-                const dismiss = document.createElement("button");
-                dismiss.type = "button";
-                dismiss.className = "toast-dismiss";
-                dismiss.setAttribute("aria-label", "Hide notification");
-                dismiss.title = "Hide notification";
-                dismiss.innerHTML = "&times;";
-                dismiss.addEventListener("click", (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    toast.remove();
-                });
-                toast.appendChild(dismiss);
-                toast.addEventListener("click", (event) => {
-                    if (event.target.closest("button")) return;
-                    toast.remove();
-                });
+
+                const actions = document.createElement("div");
+                actions.className = "toast-actions";
                 if (action?.label) {
                     const link = document.createElement("button");
                     link.type = "button";
@@ -71371,9 +71516,38 @@
                         event.preventDefault();
                         event.stopPropagation();
                         action.onClick?.();
-                        toast.remove();
+                        dismissToastElement(toast);
                     });
-                    toast.appendChild(link);
+                    actions.appendChild(link);
+                }
+                const historyLink = document.createElement("button");
+                historyLink.type = "button";
+                historyLink.className = "toast-action toast-history-action";
+                historyLink.textContent = "History";
+                historyLink.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openDeveloperLog("notifications", { resetTabFilters: true });
+                    dismissToastElement(toast);
+                });
+                actions.appendChild(historyLink);
+                toast.appendChild(actions);
+
+                const dismiss = document.createElement("button");
+                dismiss.type = "button";
+                dismiss.className = "toast-dismiss";
+                dismiss.setAttribute("aria-label", "Hide notification");
+                dismiss.title = "Hide notification";
+                dismiss.innerHTML = "&times;";
+                dismiss.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    dismissToastElement(toast);
+                });
+                toast.appendChild(dismiss);
+                toast.addEventListener("click", (event) => {
+                    if (event.target.closest("button")) return;
+                    dismissToastElement(toast);
                 }
                 stack.appendChild(toast);
                 const requestedDuration = Number(duration);
@@ -71384,7 +71558,22 @@
                         : type === "error"
                             ? ERROR_TOAST_DURATION_MS
                             : TOAST_DURATION_MS;
-                window.setTimeout(() => toast.remove(), durationMs);
+                toast.style.setProperty("--toast-duration-ms", `${durationMs}ms`);
+                window.setTimeout(() => dismissToastElement(toast), durationMs);
+                while (stack.childElementCount > 6) {
+                    dismissToastElement(stack.firstElementChild, { immediate: true });
+                }
+            }
+
+            function showSyncStatusToast(message, type = "info", { action = null, force = false } = {}) {
+                const normalized = String(message || "").trim();
+                if (!normalized) return;
+                const signature = `${type}|${normalized}`;
+                const now = Date.now();
+                if (!force && signature === lastSyncToastSignature && now - lastSyncToastAt < UI_SYNC_TOAST_DEDUPE_WINDOW_MS) return;
+                lastSyncToastSignature = signature;
+                lastSyncToastAt = now;
+                showToast(normalized, type, action);
             }
 
             function formatDeveloperLogStamp(value) {
@@ -71663,9 +71852,80 @@
                 });
             }
 
+            function syncDeveloperLogTabButtons() {
+                document.querySelectorAll("[data-developer-log-tab]").forEach((button) => {
+                    button.setAttribute("aria-pressed", String(button.dataset.developerLogTab === developerLogTab));
+                });
+            }
+
+            function notificationHistorySeverity(type) {
+                const normalized = String(type || "info").toLowerCase();
+                if (normalized === "error") return "error";
+                if (normalized === "warning") return "warning";
+                if (normalized === "success") return "success";
+                return "info";
+            }
+
+            function notificationHistoryVisibleEntries() {
+                return (systemActivityItems || [])
+                    .filter((entry) => {
+                        if (!developerLogDateFilter) return true;
+                        return localDateKey(entry?.at) === developerLogDateFilter;
+                    })
+                    .filter((entry) => {
+                        if (developerLogSeverityFilter === "all") return true;
+                        const severity = notificationHistorySeverity(entry?.type);
+                        if (severity === "success") return developerLogSeverityFilter === "info";
+                        return severity === developerLogSeverityFilter;
+                    })
+                    .sort((left, right) => activityTimestamp(right) - activityTimestamp(left));
+            }
+
+            function renderNotificationHistoryList(list, entries = []) {
+                if (!list) return;
+                list.innerHTML = "";
+                if (!entries.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "empty-state";
+                    empty.textContent = "No notification history entries match the current filters.";
+                    list.appendChild(empty);
+                    return;
+                }
+                entries.forEach((entry) => {
+                    const article = document.createElement("article");
+                    const severity = notificationHistorySeverity(entry?.type);
+                    article.className = `notification-history-entry is-${severity}`;
+                    const meta = document.createElement("div");
+                    meta.className = "developer-log-meta";
+                    [formatDeveloperLogStamp(entry?.at), entry?.label, String(entry?.type || "").toUpperCase()].filter(Boolean).forEach((value) => {
+                        const span = document.createElement("span");
+                        span.textContent = value;
+                        meta.appendChild(span);
+                    });
+                    const title = document.createElement("strong");
+                    title.textContent = entry?.message || "Notification";
+                    article.append(meta, title);
+                    if (entry?.detail) {
+                        const detail = document.createElement("p");
+                        detail.className = "notification-history-detail";
+                        detail.textContent = entry.detail;
+                        article.appendChild(detail);
+                    }
+                    list.appendChild(article);
+                });
+            }
+
+            function setDeveloperLogTab(tab = "activity") {
+                const nextTab = tab === "notifications" ? "notifications" : "activity";
+                if (developerLogTab === nextTab) return;
+                developerLogTab = nextTab;
+                renderDeveloperLogs();
+            }
+
             function renderDeveloperLogs(logs = developerLogEntries) {
                 developerLogEntries = Array.isArray(logs) ? logs : [];
                 const visibleLogs = developerLogVisibleEntries();
+                const visibleNotifications = notificationHistoryVisibleEntries();
                 const allLogs = combinedDeveloperLogEntries();
                 const systemCount = allLogs.length;
                 const errorCount = allLogs.filter((entry) => developerLogSeverity(entry) === "error").length;
@@ -71673,20 +71933,35 @@
                 const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
                 const modeLabel = developerLogModeFilter === "system" ? " system" : "";
                 const severityLabel = developerLogSeverityFilter === "error" ? " error" : developerLogSeverityFilter === "warning" ? " warning" : developerLogSeverityFilter === "info" ? " info" : "";
-                const summaryText = `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${errorCount} error · ${warningCount} warning`;
+                const summaryText = developerLogTab === "notifications"
+                    ? `${visibleNotifications.length} notification entr${visibleNotifications.length === 1 ? "y" : "ies"}${suffix} · ${errorCount} error · ${warningCount} warning`
+                    : `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${errorCount} error · ${warningCount} warning`;
                 document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
                     summary.textContent = summaryText;
                 });
                 document.querySelectorAll("#developerLogList, #settingsDeveloperLogList").forEach((list) => {
+                    list.hidden = developerLogTab !== "activity";
                     renderDeveloperLogList(list, visibleLogs);
+                });
+                document.querySelectorAll("#developerNotificationHistoryList, #settingsDeveloperNotificationHistoryList").forEach((list) => {
+                    list.hidden = developerLogTab !== "notifications";
+                    renderNotificationHistoryList(list, visibleNotifications);
                 });
                 syncDeveloperLogDateInputs();
                 syncDeveloperLogModeButtons();
                 syncDeveloperLogSeverityButtons();
+                syncDeveloperLogTabButtons();
                 renderGlobalActivityCard();
             }
 
             function developerLogCopyText() {
+                if (developerLogTab === "notifications") {
+                    return notificationHistoryVisibleEntries().map((entry) => ([
+                        `[${formatDeveloperLogStamp(entry.at)}] ${String(entry.label || "Notification").trim()} ${String(entry.type || "info").toUpperCase()}`,
+                        entry.message || "",
+                        entry.detail || ""
+                    ]).filter(Boolean).join("\n")).join("\n\n---\n\n");
+                }
                 return developerLogVisibleEntries().map((entry) => {
                     const lines = [
                         `[${formatDeveloperLogStamp(entry.createdAt)}] ${entry.source || ""} ${entry.level || ""} ${entry.eventType || ""} ${entry.syncStatus || ""}`.trim(),
@@ -71805,11 +72080,21 @@
                 developerLogSeverityFilter = "error";
             }
 
-            function openDeveloperLog() {
+            function openDeveloperLog(tab = "activity", { resetTabFilters = false } = {}) {
                 const panel = document.getElementById("developerLogPanel");
                 applyDeveloperLogDefaultFilters();
+                if (tab === "notifications") {
+                    developerLogTab = "notifications";
+                    if (resetTabFilters) {
+                        developerLogModeFilter = "all";
+                        developerLogSeverityFilter = "all";
+                    }
+                } else {
+                    developerLogTab = "activity";
+                }
                 if (panel) panel.hidden = false;
                 closeTopbarMenu();
+                renderDeveloperLogs();
                 loadDeveloperLog();
             }
 
@@ -73054,6 +73339,12 @@
                 const detail = document.getElementById("syncProgressDetail");
                 const heartbeatAge = syncRunHeartbeatAge(latestSyncRun);
                 const syncLooksStalled = heartbeatAge >= SYNC_STALE_HEARTBEAT_SECONDS;
+                if (syncLooksStalled && !hasAnnouncedSyncStall) {
+                    hasAnnouncedSyncStall = true;
+                    showSyncStatusToast(`Xero sync is waiting for backend updates (${formatSyncDuration(heartbeatAge)}).`, "warning", { force: true });
+                } else if (!syncLooksStalled) {
+                    hasAnnouncedSyncStall = false;
+                }
                 if (elapsedLabel) elapsedLabel.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)}`;
                 if (etaLabel) {
                     const backfillEta = syncRunBackfillEta(latestSyncRun, elapsedSeconds);
@@ -73162,6 +73453,8 @@
                 latestOperationRun = operationRun || latestOperationRun;
                 activeOperationRunId = operationRun?.id || activeOperationRunId;
                 operationStartedAt = operationRunTimestamp(operationRun);
+                const operationLabel = String(operationRun?.label || "Xero operation").trim();
+                showSyncStatusToast(`${operationLabel} started.`, "info");
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
@@ -73287,6 +73580,8 @@
 
             function showTopbarNotice(title, detail, variant = "success", duration = TOPBAR_NOTICE_DURATION_MS) {
                 clearTopbarNoticeTimer();
+                const toastType = variant === "error" ? "error" : variant === "warning" ? "warning" : "success";
+                showSyncStatusToast(`${title}: ${detail}`, toastType);
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
@@ -73334,7 +73629,9 @@
                 latestSyncRun = syncRun || latestSyncRun;
                 activeSyncRunId = syncRun?.id || activeSyncRunId;
                 hasLoadedWorkingSyncPanel = false;
+                hasAnnouncedSyncStall = false;
                 syncStartedAt = syncRunTimestamp(syncRun) || Date.now();
+                showSyncStatusToast("Xero sync started. Progress updates will appear in this popup stream.", "info");
                 const overlay = document.getElementById("syncProgressOverlay");
                 if (overlay) overlay.hidden = true;
                 const inlineBanner = document.getElementById("syncInlineBanner");
@@ -73355,6 +73652,10 @@
 
             function showSyncFailure(message) {
                 clearTopbarNoticeTimer();
+                showSyncStatusToast(message || "Xero sync failed. Open Developer log for details.", "error", {
+                    force: true,
+                    action: { label: "Developer log", onClick: () => openDeveloperLog() }
+                });
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
