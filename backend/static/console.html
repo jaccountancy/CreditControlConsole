@@ -21652,6 +21652,33 @@
             .ch-detail-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
             .ch-detail-edit label.is-wide { grid-column: 1 / -1; }
             .ch-detail-edit input, .ch-detail-edit select, .ch-detail-edit textarea { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--ink); }
+            .ch-detail-edit.is-card-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            .ch-detail-edit.is-card-grid label {
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: rgba(248, 251, 255, 0.92);
+                padding: 10px 12px;
+                align-content: start;
+            }
+            .ch-detail-edit.is-card-grid label strong {
+                font-size: 0.76rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+            }
+            .ch-detail-edit.is-card-grid label .operation-review-muted {
+                font-size: 0.82rem;
+                font-weight: 760;
+                line-height: 1.45;
+                color: var(--ink);
+            }
+            .ch-detail-edit.is-card-grid input,
+            .ch-detail-edit.is-card-grid select,
+            .ch-detail-edit.is-card-grid textarea {
+                background: #fff;
+            }
             .ch-detail-summary-grid {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -21728,6 +21755,9 @@
                 padding: 9px 10px;
             }
             @media (max-width: 980px) {
+                .ch-detail-edit.is-card-grid {
+                    grid-template-columns: 1fr;
+                }
                 .ch-detail-summary-grid {
                     grid-template-columns: 1fr;
                 }
@@ -80457,7 +80487,7 @@
                                                 <small>${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small>
                                             </article>
                                         </div>
-                                        <div class="ch-detail-edit" data-ch-step-panel="address" hidden>
+                                        <div class="ch-detail-edit is-card-grid" data-ch-step-panel="address" hidden>
                                             <label class="is-wide">
                                                 Registered office
                                                 <small class="operation-review-muted">${escapeHTML(row.registeredOffice || "Not set")}</small>
@@ -80475,7 +80505,7 @@
                                                 <input type="date" data-ch-review-field="reviewPeriodEnd" value="${escapeHTML(row.reviewPeriodEnd)}">
                                             </label>
                                         </div>
-                                        <div class="ch-detail-edit" data-ch-step-panel="sic" hidden>
+                                        <div class="ch-detail-edit is-card-grid" data-ch-step-panel="sic" hidden>
                                             <label class="is-wide">
                                                 SIC codes (comma-separated)
                                                 <input type="text" data-ch-review-field="sicCodes" value="${escapeHTML(row.sicCodes.join(", "))}" placeholder="e.g. 69201, 62020">
@@ -80506,7 +80536,7 @@
                                                 </select>
                                             </label>
                                         </div>
-                                        <div class="ch-detail-edit" data-ch-step-panel="capital" hidden>
+                                        <div class="ch-detail-edit is-card-grid" data-ch-step-panel="capital" hidden>
                                             <label class="is-wide ch-shareholding-wrap">
                                                 <strong>Shareholdings from Companies House</strong>
                                                 ${Array.isArray(row.shareholdingRows) && row.shareholdingRows.length ? `
