@@ -64,3 +64,12 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(made_up_to, date(2024, 12, 31))
         self.assertEqual(services._code_breaker_net_assets_value(row), services.Decimal("120.00"))
 
+    def test_xero_net_assets_prefers_requested_column_over_comparative(self):
+        lines = [
+            {
+                "label": "Net Assets",
+                "amounts": [services.Decimal("1500.00"), services.Decimal("0.00")],
+                "raw": {},
+            }
+        ]
+        self.assertEqual(services._code_breaker_xero_net_assets(lines), services.Decimal("1500.00"))

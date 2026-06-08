@@ -13932,7 +13932,9 @@ def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
         if "net assets" in label:
             amounts = _code_breaker_report_line_amounts(line)
             if amounts:
-                return _money(amounts[-1])
+                # Xero Balance Sheet reports can include comparative columns.
+                # Use the first amount column, which aligns to the requested report date.
+                return _money(amounts[0])
     assets_total = None
     liabilities_total = None
     for line in lines:
@@ -13940,7 +13942,7 @@ def _code_breaker_xero_net_assets(lines: list[dict]) -> Decimal | None:
         amounts = _code_breaker_report_line_amounts(line)
         if not label or not amounts:
             continue
-        amount = _money(amounts[-1])
+        amount = _money(amounts[0])
         if "total assets" in label:
             assets_total = amount
         elif "total liabilities" in label:

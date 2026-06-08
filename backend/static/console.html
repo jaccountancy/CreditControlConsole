@@ -70017,7 +70017,14 @@
                 modal.hidden = !codeBreakerWizardState.open;
                 const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(codeBreakerWizardState.workspaceId || "")) || null;
                 subtitle.textContent = workspace
-                    ? `${workspace.clientName || "Workspace"} · ${workspace.companyNumber || "No company number"} · submitted ${formatDate(workspace.submittedAt || "") || "--"}`
+                    ? (() => {
+                        const submitted = formatDate(workspace.submittedAt || "") || "--";
+                        const periodStartIso = codeBreakerPeriodStartDate(workspace) || "";
+                        const periodEndIso = String(workspace.yearEndDate || "").slice(0, 10);
+                        const periodStart = formatDate(periodStartIso || "") || "--";
+                        const periodEnd = formatDate(periodEndIso || "") || "--";
+                        return `${workspace.clientName || "Workspace"} · ${workspace.companyNumber || "No company number"} · period in question ${periodStart} to ${periodEnd} (as-at ${periodEnd}) · submitted ${submitted}`;
+                    })()
                     : "Follow the guided steps to sync values, compare balances, and map post-filing Xero transactions.";
                 status.textContent = codeBreakerWizardState.status === "running"
                     ? "Wizard running..."
@@ -70119,15 +70126,16 @@
                     }
                     const filedYearEnd = formatDate(workspace.yearEndDate || "");
                     const filedSubmitted = formatDate(submittedAt || "");
+                    const filedPeriodStart = formatDate(codeBreakerPeriodStartDate(workspace) || "");
                     setCodeBreakerWizardStep(
                         0,
                         "complete",
                         selectedPeriod
-                            ? `Using latest filed accounts period ending ${filedYearEnd} (filed ${filedSubmitted}).`
-                            : `Using workspace filed accounts period ending ${filedYearEnd} (filed ${filedSubmitted}).`
+                            ? `Using latest filed accounts period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}, filed ${filedSubmitted}).`
+                            : `Using workspace filed accounts period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}, filed ${filedSubmitted}).`
                     );
 
-                    setCodeBreakerWizardStep(1, "running", `Fetching Companies House and Xero net assets for period end ${filedYearEnd}.`);
+                    setCodeBreakerWizardStep(1, "running", `Fetching Companies House and Xero net assets for period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}).`);
                     const snapshot = await codeBreakerWorkspaceSnapshot({
                         tenantId: workspace.xeroTenantId,
                         xeroContactId: workspace.xeroContactId,
@@ -70158,7 +70166,7 @@
                     setCodeBreakerWizardStep(
                         1,
                         "complete",
-                        `CH ${formatCurrency(workspace.chNetAssets)} vs Xero ${formatCurrency(workspace.xeroNetAssets)} (${formatCurrency(workspace.netAssetsDifference || 0)} variance).`
+                        `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} vs Xero ${formatCurrency(workspace.xeroNetAssets)} (${formatCurrency(workspace.netAssetsDifference || 0)} variance).`
                     );
 
                     setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
