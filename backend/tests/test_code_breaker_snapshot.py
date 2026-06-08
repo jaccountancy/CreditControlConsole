@@ -97,3 +97,50 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             ),
             services.Decimal("1500.00"),
         )
+
+    def test_journal_candidates_only_include_post_filing_backdated_journals(self):
+        journals = [
+            {
+                "JournalID": "before-submission",
+                "JournalDate": "2025-05-30",
+                "CreatedDateUTC": "2026-01-10T09:00:00Z",
+                "JournalLines": [{"NetAmount": "10.00", "AccountCode": "400"}],
+            },
+            {
+                "JournalID": "wrong-period",
+                "JournalDate": "2025-06-01",
+                "CreatedDateUTC": "2026-01-20T09:00:00Z",
+                "JournalLines": [{"NetAmount": "2.00", "AccountCode": "400"}],
+            },
+            {
+                "JournalID": "included",
+                "JournalDate": "2025-05-31",
+                "CreatedDateUTC": "2026-01-20T09:00:00Z",
+                "JournalLines": [{"NetAmount": "0.40", "AccountCode": "400"}],
+            },
+        ]
+        submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
+        candidates = services._code_breaker_journal_candidates(
+            journals,
+            as_at_date=date(2025, 5, 31),
+            submitted_at=submission,
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["journalId"], "included")
+        self.assertEqual(candidates[0]["journalDate"], "2025-05-31")
+
+    def test_journal_candidates_require_created_date_when_submission_known(self):
+        journals = [
+            {
+                "JournalID": "missing-created",
+                "JournalDate": "2025-05-31",
+                "JournalLines": [{"NetAmount": "0.40", "AccountCode": "400"}],
+            }
+        ]
+        submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
+        candidates = services._code_breaker_journal_candidates(
+            journals,
+            as_at_date=date(2025, 5, 31),
+            submitted_at=submission,
+        )
+        self.assertEqual(candidates, [])

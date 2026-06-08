@@ -79,6 +79,8 @@ from .xero import (
 logger = logging.getLogger(__name__)
 CH_API_KEY_LABEL = "ch:api_key"
 CODE_BREAKER_CH_DOCUMENT_CACHE_TTL = timedelta(hours=24)
+CODE_BREAKER_MAX_JOURNAL_BATCHES = 10
+CODE_BREAKER_MAX_VARIANCE_CANDIDATES = 120
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
 IGNITION_SYNC_STALE_AFTER = timedelta(minutes=45)
@@ -14000,6 +14002,32 @@ CODE_BREAKER_CH_DOCUMENT_EXTRACTION_SCHEMA = {
     },
 }
 
+CODE_BREAKER_VARIANCE_TRANSACTIONS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "confidence", "explainedDifference", "residualDifference", "transactions", "warnings"],
+    "properties": {
+        "summary": {"type": "string"},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "explainedDifference": {"type": "number"},
+        "residualDifference": {"type": "number"},
+        "transactions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["candidateId", "impact", "reason"],
+                "properties": {
+                    "candidateId": {"type": "string"},
+                    "impact": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
 
 def _code_breaker_report_line_amounts(
     line: dict,
@@ -14882,6 +14910,191 @@ async def _code_breaker_companies_house_net_assets_from_document(
     return _money(extracted), source, "", diagnostics
 
 
+async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[dict], str]:
+    journals: list[dict] = []
+    offset = 0
+    for _ in range(CODE_BREAKER_MAX_JOURNAL_BATCHES):
+        payload = await _me_xero_optional_get(
+            connection_row,
+            "https://api.xero.com/api.xro/2.0/Journals",
+            {"offset": offset},
+        )
+        if not isinstance(payload, dict):
+            return journals, "Xero journals request returned an invalid payload."
+        request_error = str(payload.get("_error") or "").strip()
+        if request_error:
+            return journals, request_error
+        batch = payload.get("Journals") or []
+        if not isinstance(batch, list) or not batch:
+            break
+        journals.extend(item for item in batch if isinstance(item, dict))
+        if len(batch) < 100:
+            break
+        offset += len(batch)
+    return journals, ""
+
+
+def _code_breaker_journal_candidates(
+    journals: list[dict],
+    *,
+    as_at_date: date,
+    submitted_at: datetime | None,
+) -> list[dict]:
+    candidates: list[dict] = []
+    for index, row in enumerate(journals):
+        journal_date = _parse_optional_iso_date(row.get("JournalDate") or row.get("Date") or row.get("DateString"))
+        if journal_date is None or journal_date > as_at_date:
+            continue
+        created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
+        if submitted_at is not None:
+            if created_at is None or created_at <= submitted_at:
+                continue
+        journal_id = str(row.get("JournalID") or row.get("Id") or "").strip()
+        lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
+        normalised_lines = []
+        for line in lines[:20]:
+            if not isinstance(line, dict):
+                continue
+            normalised_lines.append(
+                {
+                    "accountCode": str(line.get("AccountCode") or "").strip(),
+                    "accountName": str(line.get("AccountName") or "").strip(),
+                    "accountType": str(line.get("AccountType") or "").strip(),
+                    "accountClass": str(line.get("AccountClass") or "").strip(),
+                    "description": str(line.get("Description") or "").strip(),
+                    "netAmount": float(_money(line.get("NetAmount"))),
+                    "grossAmount": float(_money(line.get("GrossAmount"))),
+                    "taxAmount": float(_money(line.get("TaxAmount"))),
+                }
+            )
+        if not normalised_lines:
+            continue
+        candidates.append(
+            {
+                "candidateId": f"J{index + 1}",
+                "journalId": journal_id,
+                "journalNumber": str(row.get("JournalNumber") or "").strip(),
+                "journalDate": journal_date.isoformat(),
+                "createdAt": _iso(created_at),
+                "reference": str(row.get("Reference") or row.get("SourceID") or "").strip(),
+                "sourceType": str(row.get("SourceType") or "").strip(),
+                "narration": str(row.get("Narration") or "").strip(),
+                "lines": normalised_lines,
+            }
+        )
+    candidates.sort(
+        key=lambda item: (
+            str(item.get("createdAt") or ""),
+            str(item.get("journalDate") or ""),
+            str(item.get("journalId") or ""),
+        ),
+        reverse=True,
+    )
+    return candidates[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES]
+
+
+async def _code_breaker_openai_extract_variance_transactions(
+    *,
+    user_id: str,
+    as_at_date: date,
+    submission_completed_at: datetime | None,
+    target_difference: Decimal,
+    candidates: list[dict],
+) -> dict:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return {
+            "engine": "unavailable",
+            "summary": "",
+            "confidence": 0,
+            "reason": "OpenAI is not configured for transaction variance extraction.",
+            "warnings": [],
+            "transactions": [],
+            "explainedDifference": Decimal("0.00"),
+            "residualDifference": _money(target_difference),
+        }
+    if not candidates:
+        return {
+            "engine": "none",
+            "summary": "",
+            "confidence": 0,
+            "reason": "No post-filing Xero journals were available for analysis.",
+            "warnings": [],
+            "transactions": [],
+            "explainedDifference": Decimal("0.00"),
+            "residualDifference": _money(target_difference),
+        }
+    candidate_lookup = {str(item.get("candidateId") or ""): item for item in candidates}
+    prompt = (
+        "You are reconciling a Companies House vs Xero net-assets variance. "
+        "Identify only post-filing journals that explain the difference and return only those items. "
+        "Use positive impact when the journal increases Xero net assets versus filed accounts and negative when it decreases. "
+        "Keep impact values in GBP to 2 decimal places. "
+        f"Target variance to explain: {target_difference:.2f} GBP. "
+        f"Filed period end date: {as_at_date.isoformat()}. "
+        f"Submission completion timestamp: {(_iso(submission_completed_at) if submission_completed_at else 'unknown')}."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {"type": "input_text", "text": json.dumps({"candidates": candidates}, default=_json_default)},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "code_breaker_variance_transactions",
+                "schema": CODE_BREAKER_VARIANCE_TRANSACTIONS_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1800,
+    }
+    payload = await _post_openai_responses(
+        request_body,
+        "Code Breaker post-filing variance transaction extraction",
+        user_id=user_id,
+        feature="code-breaker",
+        page="code-breaker",
+        preferred_model=settings.openai_model,
+        timeout_seconds=90,
+    )
+    parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for Code Breaker variance transaction extraction.")
+    extracted_rows = parsed.get("transactions") if isinstance(parsed.get("transactions"), list) else []
+    selected = []
+    for row in extracted_rows:
+        if not isinstance(row, dict):
+            continue
+        candidate_id = str(row.get("candidateId") or "").strip()
+        candidate = candidate_lookup.get(candidate_id)
+        if not candidate:
+            continue
+        selected.append(
+            {
+                **candidate,
+                "impact": float(_money(row.get("impact"))),
+                "reason": str(row.get("reason") or "").strip(),
+            }
+        )
+    explained_difference = _money(sum((_money(row.get("impact")) for row in selected), Decimal("0.00")))
+    residual_difference = _money(target_difference - explained_difference)
+    warnings = [str(item).strip() for item in (parsed.get("warnings") or []) if str(item).strip()]
+    return {
+        "engine": "openai",
+        "summary": str(parsed.get("summary") or "").strip(),
+        "confidence": int(parsed.get("confidence") or 0),
+        "reason": "",
+        "warnings": warnings,
+        "transactions": selected,
+        "explainedDifference": explained_difference,
+        "residualDifference": residual_difference,
+    }
+
+
 async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     tenant_id = str(payload.get("tenantId") or "").strip()
@@ -15060,6 +15273,81 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     if ch_net_assets is not None and xero_net_assets is not None:
         difference = _money(xero_net_assets - ch_net_assets)
 
+    submission_completed_at = _parse_optional_iso_datetime((ch_company or {}).get("latest_submission_completed_at"))
+    if submission_completed_at is None:
+        latest_filed_date = _parse_optional_iso_date((ch_company or {}).get("last_filed_date"))
+        if latest_filed_date is not None:
+            submission_completed_at = datetime.combine(latest_filed_date, datetime.min.time(), tzinfo=timezone.utc)
+
+    post_filing_analysis = {
+        "engine": "none",
+        "summary": "",
+        "reason": "",
+        "submissionCompletedAt": _iso(submission_completed_at),
+        "targetDifference": float(difference) if difference is not None else None,
+        "candidateCount": 0,
+        "confidence": 0,
+        "warnings": [],
+        "explainedDifference": None,
+        "residualDifference": float(difference) if difference is not None else None,
+        "transactions": [],
+    }
+    if difference is not None:
+        if connection_row is None:
+            post_filing_analysis["reason"] = "Xero connection unavailable, so post-filing transactions could not be analysed."
+        elif submission_completed_at is None:
+            post_filing_analysis["reason"] = "Submission completion date is unavailable for this filing."
+        else:
+            journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
+            if journals_reason:
+                post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
+            else:
+                candidates = _code_breaker_journal_candidates(
+                    journals,
+                    as_at_date=as_at_date,
+                    submitted_at=submission_completed_at,
+                )
+                post_filing_analysis["candidateCount"] = len(candidates)
+                if not candidates:
+                    post_filing_analysis["reason"] = (
+                        f"No post-filing journals found with journal dates on or before {as_at_date.isoformat()} "
+                        f"and created after {submission_completed_at.isoformat()}."
+                    )
+                else:
+                    try:
+                        ai_variance = await _code_breaker_openai_extract_variance_transactions(
+                            user_id=str(user.get("id") or ""),
+                            as_at_date=as_at_date,
+                            submission_completed_at=submission_completed_at,
+                            target_difference=difference,
+                            candidates=candidates,
+                        )
+                    except Exception as exc:
+                        ai_variance = {
+                            "engine": "error",
+                            "summary": "",
+                            "confidence": 0,
+                            "reason": str(exc),
+                            "warnings": [],
+                            "transactions": [],
+                            "explainedDifference": Decimal("0.00"),
+                            "residualDifference": _money(difference),
+                        }
+                    post_filing_analysis.update(
+                        {
+                            "engine": str(ai_variance.get("engine") or "none"),
+                            "summary": str(ai_variance.get("summary") or ""),
+                            "reason": str(ai_variance.get("reason") or ""),
+                            "confidence": int(ai_variance.get("confidence") or 0),
+                            "warnings": [str(item).strip() for item in (ai_variance.get("warnings") or []) if str(item).strip()],
+                            "transactions": ai_variance.get("transactions") if isinstance(ai_variance.get("transactions"), list) else [],
+                        }
+                    )
+                    explained_difference = _money(ai_variance.get("explainedDifference"))
+                    residual_difference = _money(ai_variance.get("residualDifference"))
+                    post_filing_analysis["explainedDifference"] = float(explained_difference)
+                    post_filing_analysis["residualDifference"] = float(residual_difference)
+
     return {
         "asAtDate": as_at_date.isoformat(),
         "tenantId": str((connection_row or {}).get("tenant_id") or ""),
@@ -15085,6 +15373,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             "matches": bool(ch_net_assets is not None and xero_net_assets is not None and abs(_money(xero_net_assets - ch_net_assets)) <= Decimal("0.01")),
             "difference": float(difference) if difference is not None else None,
         },
+        "postFilingAnalysis": post_filing_analysis,
     }
 
 

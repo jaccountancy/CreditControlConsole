@@ -17708,6 +17708,30 @@
                 margin-top: 8px;
                 width: 100%;
             }
+            #codeBreakerSetupModalForm .code-breaker-auto-status {
+                display: block;
+                margin-top: 8px;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 760;
+                min-height: 1.2em;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field input.jenius-field-updating,
+            #codeBreakerSetupModalForm .code-breaker-field select.jenius-field-updating {
+                border-color: rgba(29, 103, 242, 0.48);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                animation: code-breaker-field-pulse 0.75s ease-in-out infinite;
+            }
+            #codeBreakerSetupModalForm .code-breaker-field input.jenius-field-updated,
+            #codeBreakerSetupModalForm .code-breaker-field select.jenius-field-updated {
+                border-color: rgba(39, 176, 95, 0.55);
+                box-shadow: 0 0 0 3px rgba(39, 176, 95, 0.16);
+                transition: border-color 240ms ease, box-shadow 240ms ease;
+            }
+            @keyframes code-breaker-field-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.20); }
+                100% { box-shadow: 0 0 0 6px rgba(29, 103, 242, 0.04); }
+            }
             @media (max-width: 1320px) {
                 #codeBreakerSetupModalForm {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -26817,13 +26841,11 @@
                                     <thead>
                                         <tr>
                                             <th>Xero account</th>
-                                            <th>Tenant ID</th>
                                             <th>Connection</th>
                                             <th>Workspace</th>
                                             <th>Company no</th>
                                             <th>Year end</th>
                                             <th>Submitted at</th>
-                                            <th>Link (optional)</th>
                                             <th>CH net assets</th>
                                             <th>Xero net assets</th>
                                             <th>Match</th>
@@ -70374,7 +70396,10 @@
                     ["CH net assets", codeBreakerFiniteNumber(summary.chNetAssets) ? formatCurrency(summary.chNetAssets) : "Unavailable"],
                     ["Xero net assets", codeBreakerFiniteNumber(summary.xeroNetAssets) ? formatCurrency(summary.xeroNetAssets) : "Unavailable"],
                     ["Variance", codeBreakerFiniteNumber(summary.variance) ? formatCurrency(summary.variance) : "Unavailable"],
+                    ["Variance explained", codeBreakerFiniteNumber(summary.varianceExplained) ? formatCurrency(summary.varianceExplained) : "Unavailable"],
+                    ["Residual variance", codeBreakerFiniteNumber(summary.residualVariance) ? formatCurrency(summary.residualVariance) : "Unavailable"],
                     ["CH extraction engine", String(summary.chExtractionEngine || "Unavailable")],
+                    ["Transaction engine", String(summary.transactionEngine || "Unavailable")],
                     ["CH source", String(summary.chSource || "Unavailable")],
                     ["Xero source", String(summary.xeroSource || "Unavailable")],
                     ["Suggested rows", Number(summary.suggestedCount || 0).toLocaleString("en-GB")],
@@ -70578,51 +70603,86 @@
                         `Period ${filedPeriodStart} to ${filedYearEnd} (as-at ${filedYearEnd}): CH ${formatCurrency(workspace.chNetAssets)} [${workspace.chSource || "unavailable"}] vs Xero ${formatCurrency(workspace.xeroNetAssets)} [${workspace.xeroSource || "unavailable"}] (${formatCurrency(workspace.netAssetsDifference || 0)} variance). ${extractionInfo} ${xeroInfo} ${extractionStages[extractionStages.length - 1] || ""}`.trim()
                     );
 
-                    setCodeBreakerWizardStep(2, "running", "Pulling live Xero invoices, credits, and overpayments posted after filing.");
-                    const customer = codeBreakerWorkspaceCustomer(workspace);
+                    setCodeBreakerWizardStep(2, "running", "Pulling post-filing Xero transactions created after filing submission.");
+                    const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
+                        ? snapshot.postFilingAnalysis
+                        : {};
+                    const aiTransactions = Array.isArray(postFiling?.transactions) ? postFiling.transactions : [];
                     let candidateRows = [];
-                    if (!customer?.id) {
+                    if (aiTransactions.length) {
+                        candidateRows = aiTransactions.map((row) => {
+                            const impact = Number(row?.impact || 0);
+                            return {
+                                sourceType: String(row?.sourceType || "Journal"),
+                                reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
+                                postedDate: String(row?.journalDate || "").slice(0, 10),
+                                status: String(row?.reason || "Variance contributor"),
+                                amount: impact,
+                                absoluteAmount: Math.abs(impact),
+                                reversalAmount: impact * -1,
+                                raw: row,
+                            };
+                        });
                         setCodeBreakerWizardStep(
                             2,
                             "complete",
-                            "No linked Xero client was found for this workspace, so transaction-level mapping was skipped. Balance-sheet comparison is still available."
+                            `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.`
                         );
                     } else {
-                        const customerPayload = await requestJSON(
-                            api.endpoints.customerTransactions,
-                            { suppressFailurePanel: true },
-                            { customerId: customer.id }
-                        );
-                        candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
-                        setCodeBreakerWizardStep(
-                            2,
-                            "complete",
-                            `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
-                        );
+                        const customer = codeBreakerWorkspaceCustomer(workspace);
+                        if (!customer?.id) {
+                            const reason = String(postFiling?.reason || "").trim();
+                            setCodeBreakerWizardStep(
+                                2,
+                                "complete",
+                                reason || "No linked Xero client was found for this workspace, so transaction-level mapping was skipped."
+                            );
+                        } else {
+                            const customerPayload = await requestJSON(
+                                api.endpoints.customerTransactions,
+                                { suppressFailurePanel: true },
+                                { customerId: customer.id }
+                            );
+                            candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
+                            setCodeBreakerWizardStep(
+                                2,
+                                "complete",
+                                `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found.`
+                            );
+                        }
                     }
 
                     setCodeBreakerWizardStep(3, "running", "Building suggested reversal rows to close the variance.");
                     const variance = Number(workspace.netAssetsDifference || 0);
                     const varianceTarget = Math.abs(variance);
-                    let remaining = varianceTarget;
-                    const suggested = [];
-                    for (const row of candidateRows) {
-                        if (remaining <= 0.01) break;
-                        suggested.push({
-                            ...row,
-                            reversalAmount: Number(row.amount || 0) * -1,
-                        });
-                        remaining = Math.max(0, remaining - Number(row.absoluteAmount || 0));
-                    }
-                    if (!suggested.length && candidateRows.length) {
-                        candidateRows.slice(0, Math.min(8, candidateRows.length)).forEach((row) => {
-                            suggested.push({ ...row, reversalAmount: Number(row.amount || 0) * -1 });
-                        });
-                    }
-                    const suggestedReversalTotal = suggested.reduce((sum, row) => sum + Number(row.reversalAmount || 0), 0);
-                    const unresolvedVariance = variance + suggestedReversalTotal;
                     const matches = Math.abs(variance) <= 0.01;
                     const guidance = [];
+                    let suggested = [];
+                    let unresolvedVariance = variance;
+                    if (aiTransactions.length) {
+                        suggested = [...candidateRows];
+                        const backendResidual = Number(postFiling?.residualDifference);
+                        unresolvedVariance = Number.isFinite(backendResidual)
+                            ? backendResidual
+                            : (variance + suggested.reduce((sum, row) => sum + Number(row.reversalAmount || 0), 0));
+                    } else {
+                        let remaining = varianceTarget;
+                        for (const row of candidateRows) {
+                            if (remaining <= 0.01) break;
+                            suggested.push({
+                                ...row,
+                                reversalAmount: Number(row.amount || 0) * -1,
+                            });
+                            remaining = Math.max(0, remaining - Number(row.absoluteAmount || 0));
+                        }
+                        if (!suggested.length && candidateRows.length) {
+                            candidateRows.slice(0, Math.min(8, candidateRows.length)).forEach((row) => {
+                                suggested.push({ ...row, reversalAmount: Number(row.amount || 0) * -1 });
+                            });
+                        }
+                        const suggestedReversalTotal = suggested.reduce((sum, row) => sum + Number(row.reversalAmount || 0), 0);
+                        unresolvedVariance = variance + suggestedReversalTotal;
+                    }
                     if (extractionEngine) {
                         guidance.push(`Jenius AI extraction engine: ${extractionEngine.replace(/_/g, " ")}.`);
                     }
@@ -70631,6 +70691,15 @@
                     }
                     if (Array.isArray(extractionMeta?.warnings) && extractionMeta.warnings.length) {
                         guidance.push(`Document extraction notes: ${extractionMeta.warnings.join(" ")}`);
+                    }
+                    if (String(postFiling?.summary || "").trim()) {
+                        guidance.push(String(postFiling.summary).trim());
+                    }
+                    if (Array.isArray(postFiling?.warnings) && postFiling.warnings.length) {
+                        guidance.push(`Post-filing analysis notes: ${postFiling.warnings.map((item) => String(item || "").trim()).filter(Boolean).join(" ")}`);
+                    }
+                    if (String(postFiling?.reason || "").trim()) {
+                        guidance.push(String(postFiling.reason).trim());
                     }
                     if (matches) {
                         guidance.push("No action required. Companies House and Xero net assets match for the filed period.");
@@ -70675,7 +70744,10 @@
                         chNetAssets: workspace.chNetAssets,
                         xeroNetAssets: workspace.xeroNetAssets,
                         variance: variance,
+                        varianceExplained: Number(postFiling?.explainedDifference),
+                        residualVariance: Number(postFiling?.residualDifference),
                         chExtractionEngine: extractionEngine || "unavailable",
+                        transactionEngine: String(postFiling?.engine || "local"),
                         chSource: workspace.chSource || "",
                         xeroSource: workspace.xeroSource || "",
                         suggestedCount: codeBreakerWizardState.rows.length,
@@ -70728,6 +70800,8 @@
                 let codeBreakerShowSubmittedAccountsPicker = false;
                 let codeBreakerPopulateBusy = false;
                 let codeBreakerSubmittedAccountsOverride = [];
+                let codeBreakerPopulateStatus = "";
+                let codeBreakerPopulateRunId = 0;
 
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Code Breaker",
@@ -70879,6 +70953,140 @@
                                 }))
                                 .sort((left, right) => right.score - left.score)[0]?.row || null;
                         };
+                        const updateCodeBreakerPopulateStatus = (message = "") => {
+                            codeBreakerPopulateStatus = String(message || "").trim();
+                            const statusTarget = body.querySelector("#codeBreakerAutoPopulateStatus");
+                            if (statusTarget) statusTarget.textContent = codeBreakerPopulateStatus;
+                        };
+                        const animateCodeBreakerFieldValue = async (inputId = "", value = "", runId = 0, delayMs = 220) => {
+                            if (runId !== codeBreakerPopulateRunId) return;
+                            const target = body.querySelector(`#${inputId}`);
+                            if (!target) return;
+                            const nextValue = String(value || "");
+                            if (String(target.value || "") === nextValue) return;
+                            target.classList.remove("jenius-field-updating", "jenius-field-updated");
+                            void target.offsetWidth;
+                            target.classList.add("jenius-field-updating");
+                            await codeBreakerDelay(170);
+                            if (runId !== codeBreakerPopulateRunId) return;
+                            target.value = nextValue;
+                            target.classList.remove("jenius-field-updating");
+                            target.classList.add("jenius-field-updated");
+                            setTimeout(() => target.classList.remove("jenius-field-updated"), 900);
+                            await codeBreakerDelay(delayMs);
+                        };
+                        const populateCodeBreakerSetupFromSelection = async ({ animated = true } = {}) => {
+                            if (!draft.tenantId) return;
+                            const runId = ++codeBreakerPopulateRunId;
+                            codeBreakerPopulateBusy = true;
+                            updateCodeBreakerPopulateStatus("Jenius AI is matching this Xero client to Companies House.");
+                            render();
+                            try {
+                                const latest = latestSubmittedPeriodForTenant(draft.tenantId);
+                                const byName = companyNumberByOrganisationName(draft.clientName);
+                                const byRegister = companyNumberFromClientRegister(latest?.row || null, draft.clientName);
+                                const byMapping = companyNumberFromTenantMapping(draft.tenantId);
+                                const byRow = normaliseCompanyNumberInput(
+                                    latest?.row?.companyNumber
+                                    || latest?.row?.customer?.companyNumber
+                                    || latest?.row?.lockRow?.mapping?.companyNumber
+                                    || latest?.row?.lockRow?.companiesHouse?.companyNumber
+                                    || ""
+                                );
+                                let resolvedCompanyNumber = byName || byRegister || byMapping || byRow || "";
+                                let resolvedCompany = null;
+                                if (!resolvedCompanyNumber && draft.clientName) {
+                                    const payloadByName = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(draft.clientName)}`);
+                                    const companiesByName = Array.isArray(payloadByName?.companies) ? payloadByName.companies : [];
+                                    const bestByName = bestCompaniesHouseMatch(companiesByName, draft.clientName);
+                                    resolvedCompany = bestByName || null;
+                                    resolvedCompanyNumber = normaliseCompanyNumberInput(bestByName?.companyNumber || "");
+                                }
+                                if (runId !== codeBreakerPopulateRunId) return;
+                                draft.companyNumber = resolvedCompanyNumber;
+                                if (animated) {
+                                    await animateCodeBreakerFieldValue("codeBreakerSetupModalCompanyNumber", draft.companyNumber, runId);
+                                }
+                                if (!resolvedCompanyNumber) {
+                                    draft.periodStartDate = "";
+                                    draft.yearEndDate = "";
+                                    draft.submittedAt = "";
+                                    codeBreakerSubmittedAccountsOverride = [];
+                                    updateCodeBreakerPopulateStatus("Jenius AI could not find a Companies House number for this workspace name.");
+                                    return;
+                                }
+                                updateCodeBreakerPopulateStatus("Jenius AI is pulling submitted accounts periods.");
+                                if (!resolvedCompany) {
+                                    const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(resolvedCompanyNumber)}`);
+                                    const companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                                    resolvedCompany = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === resolvedCompanyNumber) || companies[0] || null;
+                                }
+                                if (runId !== codeBreakerPopulateRunId) return;
+                                const filingHistory = Array.isArray(resolvedCompany?.filingHistory) ? resolvedCompany.filingHistory : [];
+                                const accountsPeriods = filingHistory
+                                    .map((row) => {
+                                        const category = String(row?.category || "").toLowerCase();
+                                        const type = String(row?.type || "").toUpperCase();
+                                        const isAccountsFiling = category === "accounts" || type === "AA" || type.startsWith("AA");
+                                        if (!isAccountsFiling) return null;
+                                        const yearEnd = yePrepNormaliseIsoDate(
+                                            row?.made_up_to
+                                            || row?.madeUpTo
+                                            || row?.made_up_date
+                                            || row?.period_end
+                                            || row?.periodEnd
+                                            || ""
+                                        );
+                                        const submittedAt = yePrepNormaliseIsoDate(
+                                            row?.date
+                                            || row?.submittedAt
+                                            || row?.receivedOn
+                                            || row?.received_on
+                                            || row?.filedOn
+                                            || ""
+                                        );
+                                        if (!yearEnd || !submittedAt) return null;
+                                        return {
+                                            yearEnd,
+                                            submittedAt,
+                                            periodStart: periodStartFromYearEnd(yearEnd),
+                                            source: "Companies House",
+                                        };
+                                    })
+                                    .filter(Boolean)
+                                    .sort((left, right) => dateSortValue(right.submittedAt) - dateSortValue(left.submittedAt));
+                                codeBreakerSubmittedAccountsOverride = accountsPeriods;
+                                const latestSubmitted = accountsPeriods[0] || null;
+                                if (latestSubmitted) {
+                                    draft.yearEndDate = latestSubmitted.yearEnd;
+                                    draft.submittedAt = latestSubmitted.submittedAt;
+                                    draft.periodStartDate = latestSubmitted.periodStart || periodStartFromYearEnd(latestSubmitted.yearEnd);
+                                    if (animated) {
+                                        await animateCodeBreakerFieldValue("codeBreakerSetupModalYearEndDate", draft.yearEndDate, runId);
+                                        await animateCodeBreakerFieldValue("codeBreakerSetupModalPeriodStartDate", draft.periodStartDate, runId);
+                                    }
+                                    updateCodeBreakerPopulateStatus(`Jenius AI populated CH number and dates from the latest filed accounts submitted ${formatDate(draft.submittedAt)}.`);
+                                } else {
+                                    draft.periodStartDate = "";
+                                    draft.yearEndDate = "";
+                                    draft.submittedAt = "";
+                                    updateCodeBreakerPopulateStatus("Jenius AI found the company, but no submitted accounts periods were returned.");
+                                    showToast("No submitted accounts periods were returned by Companies House for this company.", "info");
+                                }
+                            } catch (error) {
+                                if (runId !== codeBreakerPopulateRunId) return;
+                                console.warn("Unable to populate Companies House dates for Code Breaker setup", error);
+                                updateCodeBreakerPopulateStatus("Jenius AI could not complete auto-population. You can still enter details manually.");
+                                showToast(error?.message || "Unable to load Companies House accounting periods for this company.", "error");
+                            } finally {
+                                if (runId === codeBreakerPopulateRunId) {
+                                    codeBreakerPopulateBusy = false;
+                                    codeBreakerYearEndManualSelection = false;
+                                    codeBreakerShowSubmittedAccountsPicker = false;
+                                    render();
+                                }
+                            }
+                        };
                         const render = () => {
                             let submittedAccounts = codeBreakerSubmittedAccountsOverride.length ? [...codeBreakerSubmittedAccountsOverride] : [];
                             if (draft.tenantId) {
@@ -70924,7 +71132,7 @@
                                                 }).join("")
                                                 : '<option value="">No Xero connections</option>'}
                                         </select>
-                                        ${draft.tenantId ? `<button class="ghost-button" id="codeBreakerPopulateChDataButton" type="button" ${codeBreakerPopulateBusy ? "disabled" : ""}>${codeBreakerPopulateBusy ? "Populating..." : "Populate CH Number and Dates"}</button>` : ""}
+                                        <span class="code-breaker-auto-status" id="codeBreakerAutoPopulateStatus">${escapeHTML(codeBreakerPopulateStatus || (draft.tenantId ? (codeBreakerPopulateBusy ? "Jenius AI is populating Companies House details..." : "Jenius AI will auto-populate Companies House details once a connection is selected.") : ""))}</span>
                                     </label>
                                     <label class="code-breaker-field code-breaker-field-company-number">Companies House number
                                         <input id="codeBreakerSetupModalCompanyNumber" type="text" value="${escapeHTML(draft.companyNumber)}" placeholder="e.g. 12345678">
@@ -70962,102 +71170,22 @@
                                 draft.yearEndDate = "";
                                 draft.submittedAt = "";
                                 codeBreakerPopulateBusy = false;
+                                codeBreakerPopulateStatus = "";
                                 codeBreakerSubmittedAccountsOverride = [];
                                 codeBreakerYearEndManualSelection = false;
                                 codeBreakerShowSubmittedAccountsPicker = false;
                                 render();
-                            });
-                            body.querySelector("#codeBreakerPopulateChDataButton")?.addEventListener("click", async () => {
-                                if (!draft.tenantId) return;
-                                codeBreakerPopulateBusy = true;
-                                render();
-                                const latest = latestSubmittedPeriodForTenant(draft.tenantId);
-                                const byName = companyNumberByOrganisationName(draft.clientName);
-                                const byRegister = companyNumberFromClientRegister(latest?.row || null, draft.clientName);
-                                const byMapping = companyNumberFromTenantMapping(draft.tenantId);
-                                const byRow = normaliseCompanyNumberInput(
-                                    latest?.row?.companyNumber
-                                    || latest?.row?.customer?.companyNumber
-                                    || latest?.row?.lockRow?.mapping?.companyNumber
-                                    || latest?.row?.lockRow?.companiesHouse?.companyNumber
-                                    || ""
-                                );
-                                let resolvedCompanyNumber = byName || byRegister || byMapping || byRow || "";
-                                let resolvedCompany = null;
-                                try {
-                                    if (!resolvedCompanyNumber && draft.clientName) {
-                                        const payloadByName = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(draft.clientName)}`);
-                                        const companiesByName = Array.isArray(payloadByName?.companies) ? payloadByName.companies : [];
-                                        const bestByName = bestCompaniesHouseMatch(companiesByName, draft.clientName);
-                                        resolvedCompany = bestByName || null;
-                                        resolvedCompanyNumber = normaliseCompanyNumberInput(bestByName?.companyNumber || "");
-                                    }
-                                    draft.companyNumber = resolvedCompanyNumber;
-                                    if (!resolvedCompanyNumber) {
-                                        return;
-                                    }
-                                    if (!resolvedCompany) {
-                                        const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(resolvedCompanyNumber)}`);
-                                        const companies = Array.isArray(payload?.companies) ? payload.companies : [];
-                                        resolvedCompany = companies.find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === resolvedCompanyNumber) || companies[0] || null;
-                                    }
-                                    const filingHistory = Array.isArray(resolvedCompany?.filingHistory) ? resolvedCompany.filingHistory : [];
-                                    const accountsPeriods = filingHistory
-                                        .map((row) => {
-                                            const category = String(row?.category || "").toLowerCase();
-                                            const type = String(row?.type || "").toUpperCase();
-                                            const isAccountsFiling = category === "accounts" || type === "AA" || type.startsWith("AA");
-                                            if (!isAccountsFiling) return null;
-                                            const yearEnd = yePrepNormaliseIsoDate(
-                                                row?.made_up_to
-                                                || row?.madeUpTo
-                                                || row?.made_up_date
-                                                || row?.period_end
-                                                || row?.periodEnd
-                                                || ""
-                                            );
-                                            const submittedAt = yePrepNormaliseIsoDate(
-                                                row?.date
-                                                || row?.submittedAt
-                                                || row?.receivedOn
-                                                || row?.received_on
-                                                || row?.filedOn
-                                                || ""
-                                            );
-                                            if (!yearEnd || !submittedAt) return null;
-                                            return {
-                                                yearEnd,
-                                                submittedAt,
-                                                periodStart: periodStartFromYearEnd(yearEnd),
-                                                source: "Companies House",
-                                            };
-                                        })
-                                        .filter(Boolean)
-                                        .sort((left, right) => dateSortValue(right.submittedAt) - dateSortValue(left.submittedAt));
-                                    codeBreakerSubmittedAccountsOverride = accountsPeriods;
-                                    const latestSubmitted = accountsPeriods[0] || null;
-                                    if (latestSubmitted) {
-                                        draft.yearEndDate = latestSubmitted.yearEnd;
-                                        draft.submittedAt = latestSubmitted.submittedAt;
-                                        draft.periodStartDate = latestSubmitted.periodStart || periodStartFromYearEnd(latestSubmitted.yearEnd);
-                                    } else {
-                                        draft.periodStartDate = "";
-                                        draft.yearEndDate = "";
-                                        draft.submittedAt = "";
-                                        showToast("No submitted accounts periods were returned by Companies House for this company.", "info");
-                                    }
-                                } catch (error) {
-                                    console.warn("Unable to populate Companies House dates for Code Breaker setup", error);
-                                    showToast(error?.message || "Unable to load Companies House accounting periods for this company.", "error");
-                                } finally {
-                                    codeBreakerPopulateBusy = false;
-                                    codeBreakerYearEndManualSelection = false;
-                                    codeBreakerShowSubmittedAccountsPicker = false;
-                                    render();
+                                if (draft.tenantId) {
+                                    populateCodeBreakerSetupFromSelection({ animated: true });
                                 }
                             });
                             body.querySelector("#codeBreakerSetupModalCompanyNumber")?.addEventListener("input", (event) => {
+                                codeBreakerPopulateRunId += 1;
+                                codeBreakerPopulateBusy = false;
                                 draft.companyNumber = String(event.target?.value || "").trim().toUpperCase();
+                                if (!draft.companyNumber) {
+                                    updateCodeBreakerPopulateStatus("");
+                                }
                             });
                             body.querySelector("#codeBreakerSetupModalYearEndChange")?.addEventListener("click", () => {
                                 if (!submittedAccounts.length) return;
@@ -71072,6 +71200,7 @@
                                 draft.periodStartDate = periodStartFromYearEnd(draft.yearEndDate);
                                 codeBreakerYearEndManualSelection = true;
                                 codeBreakerShowSubmittedAccountsPicker = false;
+                                updateCodeBreakerPopulateStatus("Submitted accounts period selected.");
                                 render();
                             });
                         };
@@ -71452,7 +71581,7 @@
 
                 const mergedRows = codeBreakerWorkspaceRowsByConnection();
                 if (!mergedRows.length) {
-                    tableBody.innerHTML = '<tr><td colspan="13"><div class="empty-state"><p class="eyebrow">No Xero connections</p><h4>Connect a Xero tenant first</h4><p>Then set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No Xero connections</p><h4>Connect a Xero tenant first</h4><p>Then set up a workspace to compare filed net assets against Xero net assets at the same year-end date.</p></div></td></tr>';
                 } else {
                     tableBody.innerHTML = mergedRows.map(({ connection, workspace }) => {
                         const tenantId = String(connection?.tenantId || workspace?.xeroTenantId || "").trim();
@@ -71469,10 +71598,8 @@
                             return `
                                 <tr>
                                     <td><strong>${escapeHTML(tenantLabel)}</strong></td>
-                                    <td><code>${escapeHTML(tenantId || "--")}</code></td>
                                     <td><small>${escapeHTML(connectionCopy)}</small></td>
                                     <td><small>No workspace set up</small></td>
-                                    <td>--</td>
                                     <td>--</td>
                                     <td>--</td>
                                     <td>--</td>
@@ -71493,13 +71620,11 @@
                         return `
                             <tr>
                                 <td><strong>${escapeHTML(tenantLabel)}</strong></td>
-                                <td><code>${escapeHTML(tenantId || "--")}</code></td>
                                 <td><small>${escapeHTML(connectionCopy)}</small></td>
                                 <td><button class="text-button" type="button" data-code-breaker-open="${escapeHTML(workspace.id)}">${escapeHTML(workspaceName || "Workspace")}</button>${showTenantLine ? `<small>${escapeHTML(tenantLabel)}</small>` : ""}</td>
                                 <td>${escapeHTML(workspace.companyNumber || "--")}</td>
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
-                                <td>${escapeHTML(workspace.xeroContactId || "--")}</td>
                                 <td>${codeBreakerMetricValue(workspace.chNetAssets)}</td>
                                 <td>${codeBreakerMetricValue(workspace.xeroNetAssets)}</td>
                                 <td><span class="lock-status-pill ${escapeHTML(compare.className)}">${escapeHTML(compare.label)}</span></td>
