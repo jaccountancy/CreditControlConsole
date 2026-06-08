@@ -78,6 +78,7 @@ from .xero import (
 
 logger = logging.getLogger(__name__)
 CH_API_KEY_LABEL = "ch:api_key"
+CODE_BREAKER_CH_DOCUMENT_CACHE_TTL = timedelta(hours=24)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
 IGNITION_SYNC_STALE_AFTER = timedelta(minutes=45)
@@ -13950,6 +13951,21 @@ def _code_breaker_net_assets_value(payload: object) -> Decimal | None:
     return None
 
 
+CODE_BREAKER_CH_DOCUMENT_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["netAssets", "confidence", "matchedLabel", "evidence", "periodEnd", "warnings"],
+    "properties": {
+        "netAssets": {"type": ["number", "null"]},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "matchedLabel": {"type": "string"},
+        "evidence": {"type": "string"},
+        "periodEnd": {"type": ["string", "null"]},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
 def _code_breaker_report_line_amounts(
     line: dict,
     as_at_date: date | None = None,
@@ -14256,6 +14272,121 @@ def _code_breaker_fetch_companies_house_document(
     return None, "", ""
 
 
+def _code_breaker_cached_ch_document_extraction(
+    company_number: str,
+    as_at_date: date | None,
+) -> dict | None:
+    if not company_number or as_at_date is None:
+        return None
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM code_breaker_ch_documents
+                    WHERE UPPER(company_number) = UPPER(%s)
+                      AND as_at_date = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (company_number, as_at_date),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+    except Exception:
+        logger.exception("Code Breaker: unable to read CH document cache for %s", company_number)
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def _code_breaker_store_ch_document_extraction(
+    *,
+    company_number: str,
+    as_at_date: date,
+    document_url: str = "",
+    document_content_type: str = "",
+    document_bytes: bytes | None = None,
+    source: str = "",
+    status_value: str = "completed",
+    reason: str = "",
+    extracted_net_assets: Decimal | None = None,
+    extraction_engine: str = "",
+    extraction_payload: dict | None = None,
+    activity_log: list[str] | None = None,
+) -> None:
+    payload = extraction_payload if isinstance(extraction_payload, dict) else {}
+    log_rows = [str(item).strip() for item in (activity_log or []) if str(item).strip()][:30]
+    file_bytes = document_bytes if isinstance(document_bytes, (bytes, bytearray)) else None
+    file_hash = hashlib.sha256(file_bytes).hexdigest() if file_bytes else ""
+    file_size = len(file_bytes) if file_bytes else 0
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO code_breaker_ch_documents (
+                        company_number,
+                        as_at_date,
+                        document_url,
+                        document_content_type,
+                        document_hash,
+                        document_size,
+                        document_bytes,
+                        source,
+                        status,
+                        reason,
+                        extracted_net_assets,
+                        extraction_engine,
+                        extraction_payload,
+                        activity_log,
+                        fetched_at,
+                        updated_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s
+                    )
+                    ON CONFLICT (company_number, as_at_date)
+                    DO UPDATE SET
+                        document_url = EXCLUDED.document_url,
+                        document_content_type = EXCLUDED.document_content_type,
+                        document_hash = EXCLUDED.document_hash,
+                        document_size = EXCLUDED.document_size,
+                        document_bytes = EXCLUDED.document_bytes,
+                        source = EXCLUDED.source,
+                        status = EXCLUDED.status,
+                        reason = EXCLUDED.reason,
+                        extracted_net_assets = EXCLUDED.extracted_net_assets,
+                        extraction_engine = EXCLUDED.extraction_engine,
+                        extraction_payload = EXCLUDED.extraction_payload,
+                        activity_log = EXCLUDED.activity_log,
+                        fetched_at = EXCLUDED.fetched_at,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        company_number,
+                        as_at_date,
+                        document_url,
+                        document_content_type,
+                        file_hash,
+                        file_size,
+                        bytes(file_bytes) if file_bytes else None,
+                        source,
+                        status_value,
+                        reason,
+                        _money(extracted_net_assets) if extracted_net_assets is not None else None,
+                        extraction_engine,
+                        json.dumps(payload),
+                        json.dumps(log_rows),
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+            connection.commit()
+    except Exception:
+        logger.exception("Code Breaker: unable to persist CH document extraction for %s", company_number)
+
+
 def _code_breaker_ixbrl_fact_value(fact: ET.Element) -> Decimal | None:
     text_value = " ".join(part.strip() for part in fact.itertext() if part and part.strip())
     value = _code_breaker_net_assets_value(text_value)
@@ -14403,15 +14534,139 @@ def _code_breaker_document_variants(content: bytes, content_type: str) -> list[t
     return variants
 
 
-def _code_breaker_companies_house_net_assets_from_document(
+def _code_breaker_document_text_from_variant(content: bytes, content_type: str) -> str:
+    lowered_type = str(content_type or "").lower()
+    if "pdf" in lowered_type:
+        try:
+            from pypdf import PdfReader
+        except Exception:
+            return ""
+        try:
+            reader = PdfReader(io.BytesIO(content))
+        except Exception:
+            return ""
+        chunks: list[str] = []
+        for page in reader.pages[:40]:
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                page_text = ""
+            if page_text.strip():
+                chunks.append(page_text.strip())
+        return "\n".join(chunks).strip()
+    text = content.decode("utf-8", errors="ignore")
+    if not text:
+        return ""
+    stripped = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", text)
+    stripped = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", stripped)
+    stripped = re.sub(r"(?is)<[^>]+>", " ", stripped)
+    stripped = html.unescape(stripped)
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+    return stripped
+
+
+def _code_breaker_ai_document_text(variants: list[tuple[bytes, str]]) -> str:
+    sections: list[str] = []
+    total_chars = 0
+    for content, content_type in variants:
+        text = _code_breaker_document_text_from_variant(content, content_type)
+        if not text:
+            continue
+        capped = text[:50000]
+        if not capped.strip():
+            continue
+        sections.append(capped)
+        total_chars += len(capped)
+        if total_chars >= 120000:
+            break
+    merged = "\n\n---\n\n".join(sections).strip()
+    return merged[:120000]
+
+
+async def _code_breaker_openai_extract_ch_document_net_assets(
     *,
+    user_id: str,
     company_number: str,
     as_at_date: date | None,
-) -> tuple[Decimal | None, str, str]:
+    document_text: str,
+) -> dict:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return {}
+    compact_text = str(document_text or "").strip()
+    if not compact_text:
+        return {}
+    prompt = (
+        "Review this Companies House filed accounts document text and extract the exact net assets figure for the requested year-end. "
+        "Prioritise labels such as Net assets, Net liabilities, Total net assets, Total equity, Capital and reserves total. "
+        "If the requested period does not exist in the document, return netAssets as null and explain in warnings. "
+        "Return numbers as GBP amounts, preserving negatives. "
+        f"Company number: {company_number or 'unknown'}. "
+        f"Requested as-at date: {(as_at_date.isoformat() if as_at_date else 'unknown')}."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {"type": "input_text", "text": compact_text},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "code_breaker_ch_document_extraction",
+                "schema": CODE_BREAKER_CH_DOCUMENT_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1200,
+    }
+    payload = await _post_openai_responses(
+        request_body,
+        "Code Breaker CH net assets extraction",
+        user_id=user_id,
+        feature="code-breaker",
+        page="code-breaker",
+        preferred_model=settings.openai_model,
+        timeout_seconds=90,
+    )
+    return _load_openai_json_response(payload, "OpenAI returned invalid JSON for Code Breaker CH net assets extraction.")
+
+
+async def _code_breaker_companies_house_net_assets_from_document(
+    *,
+    user_id: str,
+    company_number: str,
+    as_at_date: date | None,
+) -> tuple[Decimal | None, str, str, dict]:
     api_key = _code_breaker_companies_house_api_key()
     api_base = _code_breaker_companies_house_api_base()
+    diagnostics = {"stages": [], "engine": "", "cached": False, "confidence": None, "evidence": "", "warnings": []}
+    def stage(message: str) -> None:
+        diagnostics["stages"].append(str(message))
+    cached = _code_breaker_cached_ch_document_extraction(company_number, as_at_date)
+    if cached:
+        cached_updated = cached.get("updated_at")
+        still_fresh = isinstance(cached_updated, datetime) and cached_updated >= (utcnow() - CODE_BREAKER_CH_DOCUMENT_CACHE_TTL)
+        cached_amount = cached.get("extracted_net_assets")
+        if still_fresh and cached_amount is not None:
+            diagnostics["cached"] = True
+            diagnostics["engine"] = str(cached.get("extraction_engine") or "")
+            cached_payload = cached.get("extraction_payload") if isinstance(cached.get("extraction_payload"), dict) else {}
+            openai_payload = cached_payload.get("openai") if isinstance(cached_payload.get("openai"), dict) else {}
+            diagnostics["confidence"] = openai_payload.get("confidence")
+            diagnostics["evidence"] = str(openai_payload.get("evidence") or "")
+            diagnostics["warnings"] = [str(item).strip() for item in (openai_payload.get("warnings") or []) if str(item).strip()]
+            stage("Using cached Companies House document extraction.")
+            return _money(cached_amount), str(cached.get("source") or "companies_house_document:cached"), "", diagnostics
+
     if not api_key:
-        return None, "unavailable", "Companies House API key is not configured for document extraction."
+        stage("Companies House API key missing.")
+        return None, "unavailable", "Companies House API key is not configured for document extraction.", diagnostics
+    stage("Finding exact accounts filing on Companies House.")
     filing_items = _code_breaker_fetch_companies_house_filing_history_live(
         company_number=company_number,
         api_key=api_key,
@@ -14420,18 +14675,38 @@ def _code_breaker_companies_house_net_assets_from_document(
     selected_filing, selected_made_up_to, _ = _code_breaker_select_accounts_filing_for_date(filing_items, as_at_date)
     if selected_filing is None or (as_at_date is not None and selected_made_up_to != as_at_date):
         if as_at_date is not None:
-            return None, "unavailable", f"Companies House did not return an exact accounts filing for {as_at_date.isoformat()}."
-        return None, "unavailable", "Companies House did not return a usable accounts filing."
+            stage("No exact period match in filing history.")
+            return None, "unavailable", f"Companies House did not return an exact accounts filing for {as_at_date.isoformat()}.", diagnostics
+        stage("No usable accounts filing found.")
+        return None, "unavailable", "Companies House did not return a usable accounts filing.", diagnostics
+    stage("Downloading filed accounts document.")
     content, content_type, document_url = _code_breaker_fetch_companies_house_document(
         filing_item=selected_filing,
         api_key=api_key,
         api_base=api_base,
     )
     if not content:
-        return None, "unavailable", "Companies House accounts document could not be downloaded for the matched period."
+        stage("Document download failed.")
+        _code_breaker_store_ch_document_extraction(
+            company_number=company_number,
+            as_at_date=as_at_date if as_at_date is not None else selected_made_up_to,
+            document_url=document_url,
+            document_content_type=content_type,
+            document_bytes=None,
+            source="unavailable",
+            status_value="failed",
+            reason="Companies House accounts document could not be downloaded for the matched period.",
+            extraction_engine="none",
+            extraction_payload={"stages": diagnostics["stages"]},
+            activity_log=diagnostics["stages"],
+        )
+        return None, "unavailable", "Companies House accounts document could not be downloaded for the matched period.", diagnostics
     extracted: Decimal | None = None
     source = ""
-    for variant_content, variant_type in _code_breaker_document_variants(content, content_type):
+    variants = _code_breaker_document_variants(content, content_type)
+    stage(f"Downloaded document ({len(content):,} bytes).")
+    stage("Scanning structured document content for net assets.")
+    for variant_content, variant_type in variants:
         if (
             "xml" in variant_type
             or "xhtml" in variant_type
@@ -14447,11 +14722,73 @@ def _code_breaker_companies_house_net_assets_from_document(
                 source = "companies_house_document:pdf"
         if extracted is not None:
             break
+    rule_extracted = extracted
+    ai_payload = {}
+    ai_extracted = None
+    ai_confidence = None
+    document_text = _code_breaker_ai_document_text(variants)
+    if document_text:
+        stage("Jenius AI is analysing the downloaded accounts document.")
+        try:
+            ai_payload = await _code_breaker_openai_extract_ch_document_net_assets(
+                user_id=user_id,
+                company_number=company_number,
+                as_at_date=as_at_date,
+                document_text=document_text,
+            )
+        except Exception:
+            ai_payload = {}
+        ai_extracted = _code_breaker_net_assets_value(ai_payload.get("netAssets")) if isinstance(ai_payload, dict) else None
+        ai_confidence = int(ai_payload.get("confidence") or 0) if isinstance(ai_payload, dict) else 0
+        diagnostics["confidence"] = ai_confidence
+        diagnostics["evidence"] = str(ai_payload.get("evidence") or "") if isinstance(ai_payload, dict) else ""
+        diagnostics["warnings"] = [str(item).strip() for item in (ai_payload.get("warnings") or []) if str(item).strip()] if isinstance(ai_payload, dict) else []
+        if ai_extracted is not None and ai_confidence >= 55:
+            extracted = _money(ai_extracted)
+            source = "companies_house_document:openai"
+            diagnostics["engine"] = "openai"
+            stage("Jenius AI extracted net assets from the filed accounts document.")
+        elif rule_extracted is not None:
+            extracted = _money(rule_extracted)
+            diagnostics["engine"] = "rules"
+            stage("Using deterministic extraction from filed accounts content.")
+        elif ai_extracted is not None:
+            extracted = _money(ai_extracted)
+            source = "companies_house_document:openai_low_confidence"
+            diagnostics["engine"] = "openai_low_confidence"
+            stage("Using low-confidence Jenius AI extraction because deterministic extraction was unavailable.")
     if extracted is None or not source:
-        return None, "unavailable", "Matched Companies House accounts document did not contain a readable net assets figure."
+        _code_breaker_store_ch_document_extraction(
+            company_number=company_number,
+            as_at_date=as_at_date if as_at_date is not None else selected_made_up_to,
+            document_url=document_url,
+            document_content_type=content_type,
+            document_bytes=content,
+            source="unavailable",
+            status_value="failed",
+            reason="Matched Companies House accounts document did not contain a readable net assets figure.",
+            extraction_engine=str(diagnostics.get("engine") or "none"),
+            extraction_payload={"openai": ai_payload, "stages": diagnostics["stages"]},
+            activity_log=diagnostics["stages"],
+        )
+        return None, "unavailable", "Matched Companies House accounts document did not contain a readable net assets figure.", diagnostics
     if document_url:
         source = f"{source}:{document_url}"
-    return _money(extracted), source, ""
+    _code_breaker_store_ch_document_extraction(
+        company_number=company_number,
+        as_at_date=as_at_date if as_at_date is not None else selected_made_up_to,
+        document_url=document_url,
+        document_content_type=content_type,
+        document_bytes=content,
+        source=source,
+        status_value="completed",
+        reason="",
+        extracted_net_assets=_money(extracted),
+        extraction_engine=str(diagnostics.get("engine") or "rules"),
+        extraction_payload={"openai": ai_payload, "stages": diagnostics["stages"]},
+        activity_log=diagnostics["stages"],
+    )
+    return _money(extracted), source, "", diagnostics
 
 
 async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
@@ -14550,11 +14887,15 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         ch_reason = (
             f"Exact filed accounts period {as_at_date.isoformat()} does not include a readable net assets value in filing history."
         )
+    ch_document_diagnostics = {"stages": [], "engine": "", "cached": False, "confidence": None, "evidence": "", "warnings": []}
     if ch_net_assets is None and company_number:
-        doc_net_assets, doc_source, doc_reason = _code_breaker_companies_house_net_assets_from_document(
+        doc_net_assets, doc_source, doc_reason, doc_diagnostics = await _code_breaker_companies_house_net_assets_from_document(
+            user_id=str(user.get("id") or ""),
             company_number=company_number,
             as_at_date=as_at_date,
         )
+        if isinstance(doc_diagnostics, dict):
+            ch_document_diagnostics = doc_diagnostics
         if doc_net_assets is not None:
             ch_net_assets = doc_net_assets
             ch_source = doc_source
@@ -14579,6 +14920,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             "matchedAccountsMadeUpTo": _iso(selected_accounts_made_up_to),
             "lastFiledDate": _iso((ch_company or {}).get("last_filed_date")),
             "latestSubmissionCompletedAt": _iso((ch_company or {}).get("latest_submission_completed_at")),
+            "documentExtraction": ch_document_diagnostics,
         },
         "xero": {
             "netAssets": float(xero_net_assets) if xero_net_assets is not None else None,

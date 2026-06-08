@@ -76,6 +76,50 @@ ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS xero_error TEXT NO
 ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
 ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE TABLE IF NOT EXISTS code_breaker_ch_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_number TEXT NOT NULL,
+    as_at_date DATE NOT NULL,
+    document_url TEXT NOT NULL DEFAULT '',
+    document_content_type TEXT NOT NULL DEFAULT '',
+    document_hash TEXT NOT NULL DEFAULT '',
+    document_size INTEGER NOT NULL DEFAULT 0,
+    document_bytes BYTEA,
+    source TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    reason TEXT NOT NULL DEFAULT '',
+    extracted_net_assets NUMERIC(14, 2),
+    extraction_engine TEXT NOT NULL DEFAULT '',
+    extraction_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    activity_log JSONB NOT NULL DEFAULT '[]'::jsonb,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (company_number, as_at_date)
+);
+
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS document_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS document_content_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS document_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS document_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS document_bytes BYTEA;
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS extracted_net_assets NUMERIC(14, 2);
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS extraction_engine TEXT NOT NULL DEFAULT '';
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS extraction_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS activity_log JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE code_breaker_ch_documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS code_breaker_ch_documents_company_period_uidx
+ON code_breaker_ch_documents (company_number, as_at_date);
+
+CREATE INDEX IF NOT EXISTS code_breaker_ch_documents_company_updated_idx
+ON code_breaker_ch_documents (company_number, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
