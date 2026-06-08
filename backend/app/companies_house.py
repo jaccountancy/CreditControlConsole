@@ -137,6 +137,29 @@ def _ch_auth_value(method: str, presenter_auth: str) -> str:
     return _ch_md5_auth_value(presenter_auth)
 
 
+def _redact_gateway_request_xml(xml_text: str, *, max_length: int = 30000) -> str:
+    text = str(xml_text or "").strip()
+    if not text:
+        return ""
+
+    try:
+        root = ET.fromstring(text.encode("utf-8"))
+        for node in root.iter():
+            tag = node.tag.split("}", 1)[-1] if isinstance(node.tag, str) else ""
+            if tag in {"CompanyAuthenticationCode", "Value"}:
+                node.text = _mask(_xml_text(node.text))
+        redacted = ET.tostring(root, encoding="unicode")
+    except Exception:
+        redacted = re.sub(
+            r"(<(?:[A-Za-z0-9_]+:)?(?:CompanyAuthenticationCode|Value)>)(.*?)(</(?:[A-Za-z0-9_]+:)?(?:CompanyAuthenticationCode|Value)>)",
+            lambda match: f"{match.group(1)}{_mask(match.group(2))}{match.group(3)}",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+    return redacted[:max_length]
+
+
 def _coerce_decimal(value, field: str) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -212,7 +235,7 @@ def _ch_auth_method() -> str:
         return method.upper()
     if method.lower() == "clear":
         return "clear"
-    return "MD5"
+    return "clear"
 
 
 def _load_settings_row() -> dict | None:
@@ -317,8 +340,10 @@ def get_submission_raw_response(submission_reference: str) -> dict:
         except ValueError:
             payload = {"rawResponse": payload}
     raw_response = ""
+    raw_request = ""
     if isinstance(payload, dict):
         raw_response = _xml_text(payload.get("rawResponse"))
+        raw_request = _xml_text(payload.get("requestXml"))
     return {
         "submissionId": str(row.get("id")),
         "submissionReference": _xml_text(row.get("submission_reference")),
@@ -329,6 +354,7 @@ def get_submission_raw_response(submission_reference: str) -> dict:
         "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
         "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         "completedAt": row.get("completed_at").isoformat() if row.get("completed_at") else None,
+        "rawRequest": raw_request,
         "rawResponse": raw_response,
         "responsePayload": payload if isinstance(payload, dict) else {},
     }
@@ -6023,7 +6049,7 @@ def bulk_submit_confirmation_statements(
         )
     if auth_method not in {"CHMD5", "MD5", "clear"}:
         preflight_errors.append(
-            "Set COMPANIES_HOUSE_AUTH_METHOD to one of: MD5 (default), CHMD5, or clear."
+            "Set COMPANIES_HOUSE_AUTH_METHOD to one of: clear (default), MD5, or CHMD5."
         )
     auth_code_missing: list[str] = []
     for company_id in company_ids:
@@ -6389,6 +6415,8 @@ def bulk_submit_confirmation_statements(
             )
             continue
         submission_id = str(queued_row["id"])
+        request_xml_excerpt = ""
+        request_xml_hash = ""
         def _record_submission_failure(rejection_reason: str, failure_stage: str) -> None:
             with get_connection() as connection:
                 with connection.cursor() as cursor:
@@ -6419,6 +6447,8 @@ def bulk_submit_confirmation_statements(
                                     "companyNumber": company_number,
                                     "workflowAction": workflow_action,
                                     "failureStage": failure_stage,
+                                    "requestXml": request_xml_excerpt,
+                                    "requestXmlHash": request_xml_hash,
                                 }
                             ),
                             now,
@@ -6485,6 +6515,9 @@ def bulk_submit_confirmation_statements(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Generated CS01 XML failed CH XSD validation: {' | '.join(xml_validation_errors[:3])}",
                 )
+            request_xml_text = request_xml.decode("utf-8", errors="replace")
+            request_xml_excerpt = _redact_gateway_request_xml(request_xml_text)
+            request_xml_hash = hashlib.sha256(request_xml_text.encode("utf-8")).hexdigest()
             response_text, response_root = _post_ch_gateway(request_xml)
             parsed_submission = _parse_ch_submission_response(
                 response_text=response_text,
@@ -6559,6 +6592,8 @@ def bulk_submit_confirmation_statements(
                 "gatewayStatusCode": parsed_submission.get("statusCode"),
                 "gatewayStatuses": parsed_submission.get("statuses") or [],
                 "gatewayErrors": parsed_submission.get("errors") or [],
+                "requestXml": request_xml_excerpt,
+                "requestXmlHash": request_xml_hash,
                 "paymentEvidence": payment_evidence,
                 "paymentReconciliation": payment_reconciliation or {},
                 "csPayload": cs_payload,
@@ -8059,8 +8094,12 @@ def export_companies_house_support_report(
         payment_evidence = row.get("payment_evidence") if isinstance(row.get("payment_evidence"), dict) else {}
         status_poll = response_payload.get("statusPoll") if isinstance(response_payload.get("statusPoll"), dict) else {}
         raw_response = _xml_text(response_payload.get("rawResponse")) or _xml_text(status_poll.get("rawResponse"))
+        raw_request = _xml_text(response_payload.get("requestXml"))
+        request_xml_hash = _xml_text(response_payload.get("requestXmlHash"))
         raw_response_excerpt = raw_response[:12000]
+        raw_request_excerpt = raw_request[:12000]
         truncated = len(raw_response) > 12000
+        request_truncated = len(raw_request) > 12000
 
         lines.append(f"----- Submission {index} -----")
         lines.append(f"Submission ID: {_xml_text(row.get('id'))}")
@@ -8093,6 +8132,11 @@ def export_companies_house_support_report(
         lines.append(json.dumps(response_payload.get("gatewayErrors") or [], default=str, indent=2, sort_keys=True))
         lines.append("Payment Evidence JSON:")
         lines.append(json.dumps(payment_evidence, default=str, indent=2, sort_keys=True))
+        lines.append(f"Request XML SHA256: {request_xml_hash or 'Not recorded'}")
+        lines.append("Raw Gateway Request Excerpt (redacted):")
+        lines.append(raw_request_excerpt or "")
+        if request_truncated:
+            lines.append("[Raw request truncated to first 12000 characters]")
         lines.append("Raw Gateway Response Excerpt:")
         lines.append(raw_response_excerpt or "")
         if truncated:

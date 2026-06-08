@@ -77014,6 +77014,9 @@
                 if (/presenter id|presenter authentication code|credit account number/.test(lower)) {
                     return `Submission blocked by Companies House settings. ${combined || "Set presenter details and credit account number in settings."}`;
                 }
+                if (/authorisation failure|authorization failure|gateway rejected presenter credentials|filing authority|authentication/.test(lower)) {
+                    return "Companies House rejected credentials/authority for this XML filing. Download the Support Report (Audit tab) and send it to Companies House with the gateway XML evidence.";
+                }
                 if (/select at least one company/.test(lower)) {
                     return "No companies were selected for submission.";
                 }
@@ -77449,6 +77452,7 @@
                         companyNumber: String(company.companyNumber || "—"),
                         madeUpToDate: company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—",
                         dueDate: company.nextDueDate ? chFormatDate(company.nextDueDate) : "—",
+                        lastFiledDate: company.lastFiledDate ? chFormatDate(company.lastFiledDate) : "—",
                         warning: warningText,
                     };
                 });
@@ -78566,6 +78570,7 @@
                         { key: "companyNumber", label: "Number" },
                         { key: "madeUpToDate", label: "Made up to" },
                         { key: "dueDate", label: "Due date" },
+                        { key: "lastFiledDate", label: "Last filed" },
                         { key: "warning", label: "Warnings" },
                     ],
                     rows: finalRows,
