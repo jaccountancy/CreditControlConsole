@@ -26897,7 +26897,7 @@ def _practice_pack_money_value(row: dict, candidates: list[str]) -> Decimal:
     value = _practice_pack_column_value(row, candidates)
     if not value:
         return Decimal("0.00")
-    return _money_from_report_cell(value)
+    return _money(_money_from_report_cell(value))
 
 
 def _practice_pack_file_name_part(value: str | None) -> str:
