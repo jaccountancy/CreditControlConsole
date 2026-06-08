@@ -17,15 +17,20 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "offline_access",
 )
 REQUIRED_XERO_ACCOUNTING_SCOPES = (
-    "accounting.invoices",
-    "accounting.payments",
+    "accounting.transactions",
     "accounting.contacts",
-    "accounting.settings.read",
+    "accounting.settings",
     "accounting.reports.read",
 )
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
-    "accounting.transactions": ("accounting.invoices", "accounting.payments"),
-    "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read"),
+    "accounting.invoices": ("accounting.transactions",),
+    "accounting.payments": ("accounting.transactions",),
+    "accounting.invoices.read": ("accounting.transactions",),
+    "accounting.payments.read": ("accounting.transactions",),
+    "accounting.transactions.read": ("accounting.transactions",),
+    "accounting.contacts.read": ("accounting.contacts",),
+    "accounting.settings.read": ("accounting.settings",),
+    "accounting.attachments.read": ("accounting.attachments",),
 }
 
 
@@ -40,10 +45,16 @@ def xero_scope_string(configured_scopes: str) -> str:
         if required_scope not in scopes:
             scopes.append(required_scope)
 
-    for write_scope in ("accounting.invoices", "accounting.payments", "accounting.contacts", "accounting.settings"):
-        read_scope = f"{write_scope}.read"
-        if write_scope in scopes and read_scope in scopes:
-            scopes.remove(read_scope)
+    # Xero rejects the authorize flow with `invalid_scope` when a connection/app has not
+    # been assigned granular scopes. Keep a broad-compatible scope set by default.
+    for broad_scope, granular_scopes in (
+        ("accounting.transactions", ("accounting.invoices", "accounting.payments")),
+        ("accounting.contacts", ("accounting.contacts.read",)),
+        ("accounting.settings", ("accounting.settings.read",)),
+        ("accounting.attachments", ("accounting.attachments.read",)),
+    ):
+        if broad_scope in scopes:
+            scopes = [scope for scope in scopes if scope not in granular_scopes]
     return " ".join(scopes)
 
 
