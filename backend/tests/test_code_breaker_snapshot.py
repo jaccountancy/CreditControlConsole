@@ -22,7 +22,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - local runtime guard
     _IMPORT_ERROR = str(exc)
 
 
-@unittest.skipIf(services is None, f"Code Breaker tests skipped: {_IMPORT_ERROR}")
+@unittest.skipIf(services is None, f"Equity Montior tests skipped: {_IMPORT_ERROR}")
 class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
     def test_select_accounts_filing_prefers_exact_made_up_to(self):
         filing_history = [

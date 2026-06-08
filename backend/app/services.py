@@ -14296,7 +14296,7 @@ def _code_breaker_companies_house_api_key() -> str:
                 row = cursor.fetchone() or {}
             connection.commit()
     except Exception:
-        logger.exception("Code Breaker: unable to load Companies House API key from settings")
+        logger.exception("Equity Montior: unable to load Companies House API key from settings")
         return ""
     encrypted = str(row.get("api_key_encrypted") or "").strip()
     if not encrypted:
@@ -14304,7 +14304,7 @@ def _code_breaker_companies_house_api_key() -> str:
     try:
         return str(decrypt_secret(encrypted, CH_API_KEY_LABEL) or "").strip()
     except Exception:
-        logger.exception("Code Breaker: unable to decrypt Companies House API key")
+        logger.exception("Equity Montior: unable to decrypt Companies House API key")
         return ""
 
 
@@ -14324,7 +14324,7 @@ def _code_breaker_fetch_companies_house_filing_history_live(
             response.raise_for_status()
             payload = response.json() if response.content else {}
     except Exception:
-        logger.exception("Code Breaker: Companies House filing history fetch failed for %s", number)
+        logger.exception("Equity Montior: Companies House filing history fetch failed for %s", number)
         return []
     items = payload.get("items") if isinstance(payload, dict) else []
     return [item for item in items if isinstance(item, dict)]
@@ -14377,7 +14377,7 @@ def _code_breaker_fetch_companies_house_document(
                 content_type = str(response.headers.get("content-type") or "").split(";")[0].strip().lower()
                 return content, content_type, document_url
     except Exception:
-        logger.exception("Code Breaker: Companies House document fetch failed")
+        logger.exception("Equity Montior: Companies House document fetch failed")
     return None, "", ""
 
 
@@ -14404,7 +14404,7 @@ def _code_breaker_cached_ch_document_extraction(
                 row = cursor.fetchone()
             connection.commit()
     except Exception:
-        logger.exception("Code Breaker: unable to read CH document cache for %s", company_number)
+        logger.exception("Equity Montior: unable to read CH document cache for %s", company_number)
         return None
     return row if isinstance(row, dict) else None
 
@@ -14493,7 +14493,7 @@ def _code_breaker_store_ch_document_extraction(
                 )
             connection.commit()
     except Exception:
-        logger.exception("Code Breaker: unable to persist CH document extraction for %s", company_number)
+        logger.exception("Equity Montior: unable to persist CH document extraction for %s", company_number)
 
 
 def _code_breaker_ixbrl_fact_value(fact: ET.Element) -> Decimal | None:
@@ -14639,7 +14639,7 @@ def _code_breaker_document_variants(content: bytes, content_type: str) -> list[t
                 else:
                     variants.append((extracted, "application/xhtml+xml"))
     except Exception:
-        logger.exception("Code Breaker: unable to unpack Companies House ZIP document")
+        logger.exception("Equity Montior: unable to unpack Companies House ZIP document")
     return variants
 
 
@@ -14735,14 +14735,14 @@ async def _code_breaker_openai_extract_ch_document_net_assets(
     }
     payload = await _post_openai_responses(
         request_body,
-        "Code Breaker CH net assets extraction",
+        "Equity Montior CH net assets extraction",
         user_id=user_id,
         feature="code-breaker",
         page="code-breaker",
         preferred_model=settings.openai_model,
         timeout_seconds=90,
     )
-    return _load_openai_json_response(payload, "OpenAI returned invalid JSON for Code Breaker CH net assets extraction.")
+    return _load_openai_json_response(payload, "OpenAI returned invalid JSON for Equity Montior CH net assets extraction.")
 
 
 async def _code_breaker_companies_house_net_assets_from_document(
@@ -15056,14 +15056,14 @@ async def _code_breaker_openai_extract_variance_transactions(
     }
     payload = await _post_openai_responses(
         request_body,
-        "Code Breaker post-filing variance transaction extraction",
+        "Equity Montior post-filing variance transaction extraction",
         user_id=user_id,
         feature="code-breaker",
         page="code-breaker",
         preferred_model=settings.openai_model,
         timeout_seconds=90,
     )
-    parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for Code Breaker variance transaction extraction.")
+    parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for Equity Montior variance transaction extraction.")
     extracted_rows = parsed.get("transactions") if isinstance(parsed.get("transactions"), list) else []
     selected = []
     for row in extracted_rows:
@@ -15150,11 +15150,11 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                             )
                             ch_company = cursor.fetchone()
                         except Exception:
-                            logger.exception("Code Breaker snapshot: unable to query Companies House cache")
+                            logger.exception("Equity Montior snapshot: unable to query Companies House cache")
                             ch_company = None
             connection.commit()
     except Exception:
-        logger.exception("Code Breaker snapshot: database lookup failed")
+        logger.exception("Equity Montior snapshot: database lookup failed")
 
     if not as_at_explicit:
         latest_filed_period = _latest_accounts_made_up_to_from_cache(ch_company)
@@ -15212,7 +15212,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 xero_reason = (
                     "Xero connection is missing reports access "
                     "(accounting.reports.balancesheet.read or accounting.reports.read). "
-                    "Reconnect Xero and approve reports scope, then re-run Code Breaker."
+                    "Reconnect Xero and approve reports scope, then re-run Equity Montior."
                 )
                 if xero_balance_sheet_error:
                     xero_reason = f"{xero_reason} API response: {xero_balance_sheet_error}"

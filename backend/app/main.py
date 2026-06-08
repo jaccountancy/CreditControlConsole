@@ -1427,7 +1427,7 @@ async def api_code_breaker_workspace_snapshot(
         result = await code_breaker_workspace_snapshot(user, payload)
         return {"status": "ok", "result": result}
     except Exception as exc:
-        logger.exception("Code Breaker workspace snapshot failed")
+        logger.exception("Equity Montior workspace snapshot failed")
         as_at_value = str((payload or {}).get("asAtDate") or (payload or {}).get("yearEndDate") or "").strip()
         fallback_as_at = as_at_value or datetime.now(timezone.utc).date().isoformat()
         error_text = str(exc)[:300]
@@ -1442,14 +1442,14 @@ async def api_code_breaker_workspace_snapshot(
                     "companyName": "",
                     "netAssets": None,
                     "source": "unavailable",
-                    "reason": f"Code Breaker snapshot failed: {error_text}",
+                    "reason": f"Equity Montior snapshot failed: {error_text}",
                     "lastFiledDate": None,
                     "latestSubmissionCompletedAt": None,
                 },
                 "xero": {
                     "netAssets": None,
                     "source": "unavailable",
-                    "reason": f"Code Breaker snapshot failed: {error_text}",
+                    "reason": f"Equity Montior snapshot failed: {error_text}",
                 },
                 "match": {
                     "matches": False,
@@ -1458,7 +1458,7 @@ async def api_code_breaker_workspace_snapshot(
                 "postFilingAnalysis": {
                     "engine": "error",
                     "summary": "",
-                    "reason": f"Code Breaker snapshot failed: {error_text}",
+                    "reason": f"Equity Montior snapshot failed: {error_text}",
                     "submissionCompletedAt": None,
                     "targetDifference": None,
                     "candidateCount": 0,
