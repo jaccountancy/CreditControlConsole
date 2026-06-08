@@ -195,6 +195,386 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertTrue(payload.get("tradingOnMarket"))
         self.assertTrue(payload.get("pscExemptAsSharesAdmittedOnMarket"))
 
+    def test_extract_shareholder_signals_ingests_company_and_filing_history_variants(self):
+        payload = {
+            "accounts": {
+                "last_accounts": {
+                    "number_of_members": "12",
+                }
+            }
+        }
+        signals = ch._extract_shareholder_signals(payload, [])
+        self.assertEqual(signals.get("confirmationStatement", {}).get("numberOfShareholders"), 12)
+        self.assertEqual(
+            signals.get("ingestion", {}).get("shareholderCountSource"),
+            "accounts.last_accounts.number_of_members",
+        )
+
+        filing_history = [
+            {
+                "descriptionValues": {
+                    "members": "15 shareholders",
+                }
+            }
+        ]
+        fallback_signals = ch._extract_shareholder_signals({}, filing_history)
+        self.assertEqual(fallback_signals.get("confirmationStatement", {}).get("numberOfShareholders"), 15)
+        self.assertEqual(
+            fallback_signals.get("ingestion", {}).get("shareholderCountSource"),
+            "filing_history.descriptionValues.members",
+        )
+
+    def test_validate_cs01_payload_rejection_matrix(self):
+        today = date.today()
+        base_row = {
+            "company_number": "12345678",
+            "next_made_up_to_date": today,
+            "next_due_date": today,
+            "last_filed_date": today - timedelta(days=365),
+            "contact_email": "ops@example.com",
+            "sic_codes": ["62012"],
+            "pscs": [{"name": "Example PSC", "ceasedOn": ""}],
+            "share_capital": {
+                "shareholdings": [
+                    {
+                        "shareClass": "Ordinary",
+                        "numberHeld": "10",
+                        "shareholders": [{"name": "Jay Wilson"}],
+                    }
+                ],
+                "confirmationStatement": {
+                    "stateConfirmation": True,
+                    "acceptLawfulPurposeStatement": True,
+                },
+            },
+        }
+        base_payload = {
+            "reviewPeriodStart": (today - timedelta(days=364)).isoformat(),
+            "reviewPeriodEnd": today.isoformat(),
+            "registeredEmailAddress": "ops@example.com",
+            "acceptLawfulPurposeStatement": True,
+            "stateConfirmation": True,
+            "tradingOnMarket": False,
+            "dtr5Applies": False,
+            "pscExemptAsTradingOnRegulatedMarket": False,
+            "pscExemptAsSharesAdmittedOnMarket": False,
+            "pscExemptAsTradingOnUKRegulatedMarket": False,
+            "sicCodes": ["62012"],
+            "statementOfCapital": {
+                "totalNumberOfSharesIssued": "10",
+                "totalAggregateNominalValue": "10",
+            },
+        }
+        scenarios = [
+            (
+                "invalid_company_number",
+                {"company_number": "12-34"},
+                {},
+                "Company number must be 8 alphanumeric characters.",
+            ),
+            (
+                "review_date_mismatch",
+                {"next_made_up_to_date": today - timedelta(days=1)},
+                {},
+                "Review date must match the recorded made up to date.",
+            ),
+            (
+                "due_date_breach",
+                {"next_due_date": today - timedelta(days=1)},
+                {},
+                "Review date cannot be after the recorded due date.",
+            ),
+            (
+                "review_period_inverted",
+                {},
+                {
+                    "reviewPeriodStart": today.isoformat(),
+                    "reviewPeriodEnd": (today - timedelta(days=1)).isoformat(),
+                },
+                "Review period start cannot be after review period end.",
+            ),
+            (
+                "review_period_end_mismatch",
+                {},
+                {"reviewPeriodEnd": (today - timedelta(days=1)).isoformat()},
+                "Review period end must match the submission review date.",
+            ),
+            (
+                "missing_lawful_statement",
+                {},
+                {"acceptLawfulPurposeStatement": False},
+                "Lawful purpose statement must be accepted for CS01.",
+            ),
+            (
+                "missing_state_confirmation",
+                {},
+                {"stateConfirmation": False},
+                "State confirmation must be set to true for CS01.",
+            ),
+            (
+                "invalid_registered_email",
+                {},
+                {"registeredEmailAddress": "invalid-email"},
+                "Registered email address is required and must be a valid email for CS01.",
+            ),
+            (
+                "dtr5_without_trading",
+                {},
+                {"dtr5Applies": True, "tradingOnMarket": False},
+                "DTR5Applies cannot be true when TradingOnMarket is false.",
+            ),
+            (
+                "exempt_shares_without_dtr5",
+                {},
+                {"pscExemptAsSharesAdmittedOnMarket": True, "dtr5Applies": False},
+                "PSCExemptAsSharesAdmittedOnMarket requires DTR5Applies to be true.",
+            ),
+            (
+                "active_psc_and_exemption_mix",
+                {},
+                {"pscExemptAsTradingOnRegulatedMarket": True, "tradingOnMarket": True},
+                "Active PSC records and PSC exemption flags cannot both be supplied.",
+            ),
+            (
+                "no_psc_and_no_exemption",
+                {"pscs": []},
+                {},
+                "No active PSCs were found and no PSC exemption was selected for CS01.",
+            ),
+            (
+                "invalid_sic_code",
+                {},
+                {"sicCodes": ["ABC12"]},
+                "SIC code 1 must be a 5-digit UK SIC code.",
+            ),
+            (
+                "negative_statement_of_capital",
+                {},
+                {"statementOfCapital": {"totalNumberOfSharesIssued": "-1", "totalAggregateNominalValue": "10"}},
+                "StatementOfCapital totalNumberOfSharesIssued cannot be negative.",
+            ),
+        ]
+
+        for label, row_patch, payload_patch, expected_error in scenarios:
+            with self.subTest(label=label):
+                row = {**base_row, **row_patch}
+                payload = {**base_payload, **payload_patch}
+                errors = ch._validate_cs01_payload(row, today, cs_payload=payload)
+                self.assertTrue(any(expected_error in err for err in errors), f"{label} -> {errors}")
+
+    def test_validate_cs01_payload_catches_shareholding_transfer_and_holder_shape_errors(self):
+        today = date.today()
+        row = {
+            "company_number": "12345678",
+            "next_made_up_to_date": today,
+            "next_due_date": today,
+            "contact_email": "ops@example.com",
+            "sic_codes": ["62012"],
+            "pscs": [{"name": "Example PSC", "ceasedOn": ""}],
+            "share_capital": {
+                "shareholdings": [
+                    {
+                        "shareClass": "Ordinary",
+                        "numberHeld": "0",
+                        "shareholders": [{}, "invalid-holder"],
+                        "transfers": [
+                            {"dateOfTransfer": "invalid-date", "numberSharesTransferred": "foo"},
+                            "invalid-transfer",
+                        ],
+                    }
+                ]
+            },
+        }
+        payload = {
+            "reviewPeriodStart": (today - timedelta(days=364)).isoformat(),
+            "reviewPeriodEnd": today.isoformat(),
+            "registeredEmailAddress": "ops@example.com",
+            "acceptLawfulPurposeStatement": True,
+            "stateConfirmation": True,
+            "tradingOnMarket": False,
+            "dtr5Applies": False,
+            "pscExemptAsTradingOnRegulatedMarket": False,
+            "pscExemptAsSharesAdmittedOnMarket": False,
+            "pscExemptAsTradingOnUKRegulatedMarket": False,
+            "sicCodes": ["62012"],
+        }
+        errors = ch._validate_cs01_payload(row, today, cs_payload=payload)
+        self.assertTrue(any("NumberHeld must be greater than zero" in err for err in errors), errors)
+        self.assertTrue(any("shareholder 1 must include a name" in err for err in errors), errors)
+        self.assertTrue(any("shareholder 2 must be an object" in err for err in errors), errors)
+        self.assertTrue(any("transfer 1 requires a valid transfer date" in err for err in errors), errors)
+        self.assertTrue(any("transfer 1 requires a numeric number of shares" in err for err in errors), errors)
+        self.assertTrue(any("transfer 2 must be an object" in err for err in errors), errors)
+
+    def test_validate_cs01_payload_rejects_payload_shareholding_without_share_class(self):
+        today = date.today()
+        row = {
+            "company_number": "12345678",
+            "next_made_up_to_date": today,
+            "next_due_date": today,
+            "contact_email": "ops@example.com",
+            "sic_codes": ["62012"],
+            "pscs": [{"name": "Example PSC", "ceasedOn": ""}],
+            "share_capital": {},
+        }
+        payload = {
+            "reviewPeriodStart": (today - timedelta(days=364)).isoformat(),
+            "reviewPeriodEnd": today.isoformat(),
+            "registeredEmailAddress": "ops@example.com",
+            "acceptLawfulPurposeStatement": True,
+            "stateConfirmation": True,
+            "tradingOnMarket": False,
+            "dtr5Applies": False,
+            "pscExemptAsTradingOnRegulatedMarket": False,
+            "pscExemptAsSharesAdmittedOnMarket": False,
+            "pscExemptAsTradingOnUKRegulatedMarket": False,
+            "sicCodes": ["62012"],
+            "shareholdings": [
+                {
+                    "numberHeld": "10",
+                    "shareholders": [{"name": "Jay Wilson"}],
+                }
+            ],
+        }
+        errors = ch._validate_cs01_payload(row, today, cs_payload=payload)
+        self.assertTrue(any("Shareholding row 1 is missing ShareClass." in err for err in errors), errors)
+
+    def test_validate_cs01_payload_rejects_shareholding_list_size_caps(self):
+        today = date.today()
+        row = {
+            "company_number": "12345678",
+            "next_made_up_to_date": today,
+            "next_due_date": today,
+            "contact_email": "ops@example.com",
+            "sic_codes": ["62012"],
+            "pscs": [{"name": "Example PSC", "ceasedOn": ""}],
+            "share_capital": {},
+        }
+        payload = {
+            "reviewPeriodStart": (today - timedelta(days=364)).isoformat(),
+            "reviewPeriodEnd": today.isoformat(),
+            "registeredEmailAddress": "ops@example.com",
+            "acceptLawfulPurposeStatement": True,
+            "stateConfirmation": True,
+            "tradingOnMarket": False,
+            "dtr5Applies": False,
+            "pscExemptAsTradingOnRegulatedMarket": False,
+            "pscExemptAsSharesAdmittedOnMarket": False,
+            "pscExemptAsTradingOnUKRegulatedMarket": False,
+            "sicCodes": ["62012"],
+            "shareholdings": [
+                {
+                    "shareClass": "Ordinary",
+                    "numberHeld": "10",
+                    "shareholders": [{"name": f"Holder {index}"} for index in range(11)],
+                    "transfers": [{"dateOfTransfer": "2026-05-01", "numberSharesTransferred": "1"} for _ in range(201)],
+                }
+            ],
+        }
+        errors = ch._validate_cs01_payload(row, today, cs_payload=payload)
+        self.assertTrue(any("cannot include more than 10 shareholders" in err for err in errors), errors)
+        self.assertTrue(any("cannot include more than 200 transfers" in err for err in errors), errors)
+
+    def test_live_like_cs01_payload_variants_render_submission_xml(self):
+        review_date = date(2026, 6, 1)
+        variants = [
+            {
+                "registeredEmailAddress": "ops@example.com",
+                "acceptLawfulPurposeStatement": True,
+                "stateConfirmation": True,
+            },
+            {
+                "registeredEmailAddress": "ops@example.com",
+                "acceptLawfulPurposeStatement": True,
+                "stateConfirmation": True,
+                "sicCodes": ["62012", "63120", "69201"],
+                "statementOfCapital": {
+                    "totalNumberOfSharesIssued": "100",
+                    "totalAggregateNominalValue": "100.00",
+                },
+            },
+            {
+                "registeredEmailAddress": "ops@example.com",
+                "acceptLawfulPurposeStatement": True,
+                "stateConfirmation": True,
+                "shareholdings": [
+                    {
+                        "shareClass": "Ordinary",
+                        "numberHeld": "100",
+                        "shareholders": [
+                            {"name": "Wilson, Jay"},
+                            {"fullName": "Jordan Blake"},
+                        ],
+                        "transfers": [
+                            {"dateOfTransfer": "2026-05-20", "numberSharesTransferred": "10"},
+                        ],
+                    }
+                ],
+            },
+            {
+                "registeredEmailAddress": "ops@example.com",
+                "acceptLawfulPurposeStatement": True,
+                "stateConfirmation": True,
+                "tradingOnMarket": True,
+                "pscExemptAsTradingOnRegulatedMarket": True,
+                "pscExemptAsTradingOnUKRegulatedMarket": True,
+            },
+        ]
+
+        for idx, payload in enumerate(variants, start=1):
+            with self.subTest(variant=idx):
+                xml = ch._build_ch_submission_xml(
+                    presenter_id="00046248000",
+                    presenter_auth="PLCTL2F87WL",
+                    environment="production",
+                    company_number="12345678",
+                    company_name="Example Ltd",
+                    company_auth_code="A1B2C3",
+                    review_date=review_date,
+                    registered_email="ops@example.com",
+                    package_reference=f"pkg-{idx}",
+                    transaction_id=f"tx-{idx}",
+                    submission_number=f"{idx:06d}",
+                    cs_payload=payload,
+                )
+                self.assertIn(b"ConfirmationStatement", xml)
+                self.assertIn(b"ReviewDate", xml)
+
+    def test_prefill_no_changes_payload_removes_change_sections(self):
+        review_date = date(2026, 6, 1)
+        row = {
+            "id": "company-1",
+            "last_filed_date": date(2025, 6, 1),
+            "share_capital": {
+                "statementOfCapital": {
+                    "totalNumberOfSharesIssued": "100",
+                    "totalAggregateNominalValue": "100.00",
+                },
+                "shareholdings": [
+                    {
+                        "shareClass": "Ordinary",
+                        "numberHeld": "100",
+                        "shareholders": [{"name": "Jay Wilson"}],
+                    }
+                ],
+            },
+            "sic_codes": ["62012"],
+        }
+        current_payload = {
+            "sicCodes": ["62012"],
+            "statementOfCapital": {"totalNumberOfSharesIssued": "100"},
+            "shareholdings": [{"shareClass": "Ordinary", "numberHeld": "100"}],
+            "acceptLawfulPurposeStatement": True,
+            "stateConfirmation": True,
+        }
+        with patch.object(ch, "_load_latest_submission_cs01_payload", return_value=current_payload):
+            payload = ch._prefill_no_changes_cs01_payload(row, current_payload, review_date)
+
+        self.assertNotIn("sicCodes", payload)
+        self.assertNotIn("statementOfCapital", payload)
+        self.assertNotIn("shareholdings", payload)
+        self.assertEqual(payload.get("reviewPeriodEnd"), review_date.isoformat())
+
     def test_payment_confirmation_fallback_evidence_contains_audit_marker(self):
         marker = ch._payment_confirmation_fallback_evidence(
             source="status_poll_acceptance",

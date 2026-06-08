@@ -905,9 +905,100 @@ def _normalise_ch_filing_history(payload: dict | None) -> list[dict]:
                     or description_values.get("period_end_date")
                     or ""
                 ).strip(),
+                "descriptionValues": {
+                    str(key): str(value).strip()
+                    for key, value in description_values.items()
+                    if str(value or "").strip()
+                },
             }
         )
     return output[:50]
+
+
+def _int_from_any(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    match = re.search(r"\b\d[\d,]*\b", text)
+    if match:
+        digits = match.group(0).replace(",", "")
+        if digits.isdigit():
+            return int(digits)
+    return None
+
+
+def _extract_shareholder_signals(company_payload: dict | None, filing_history: list[dict]) -> dict:
+    payload = company_payload if isinstance(company_payload, dict) else {}
+    accounts = payload.get("accounts") if isinstance(payload.get("accounts"), dict) else {}
+    confirmation_statement = payload.get("confirmation_statement") if isinstance(payload.get("confirmation_statement"), dict) else {}
+    nested_last_accounts = accounts.get("last_accounts") if isinstance(accounts.get("last_accounts"), dict) else {}
+    nested_next_accounts = accounts.get("next_accounts") if isinstance(accounts.get("next_accounts"), dict) else {}
+    payload_share_capital = payload.get("share_capital") if isinstance(payload.get("share_capital"), dict) else {}
+
+    shareholder_count: int | None = None
+    source = ""
+    for label, candidate in (
+        ("accounts.number_of_shareholders", accounts.get("number_of_shareholders")),
+        ("accounts.number_of_members", accounts.get("number_of_members")),
+        ("accounts.last_accounts.number_of_shareholders", nested_last_accounts.get("number_of_shareholders")),
+        ("accounts.last_accounts.number_of_members", nested_last_accounts.get("number_of_members")),
+        ("accounts.next_accounts.number_of_shareholders", nested_next_accounts.get("number_of_shareholders")),
+        ("accounts.next_accounts.number_of_members", nested_next_accounts.get("number_of_members")),
+        ("confirmation_statement.number_of_shareholders", confirmation_statement.get("number_of_shareholders")),
+        (
+            "confirmation_statement.number_of_shareholders_at_confirmation_date",
+            confirmation_statement.get("number_of_shareholders_at_confirmation_date"),
+        ),
+        ("share_capital.number_of_shareholders", payload_share_capital.get("number_of_shareholders")),
+        ("payload.number_of_shareholders", payload.get("number_of_shareholders")),
+    ):
+        parsed = _int_from_any(candidate)
+        if parsed is not None:
+            shareholder_count = parsed
+            source = label
+            break
+
+    if shareholder_count is None:
+        for filing in filing_history or []:
+            description_values = filing.get("descriptionValues") if isinstance(filing.get("descriptionValues"), dict) else {}
+            for key in (
+                "number_of_shareholders",
+                "number_of_members",
+                "number-of-shareholders",
+                "numberOfShareholders",
+                "shareholders",
+                "members",
+                "total_shareholders",
+                "total_number_of_shareholders",
+            ):
+                parsed = _int_from_any(description_values.get(key))
+                if parsed is None:
+                    continue
+                shareholder_count = parsed
+                source = f"filing_history.descriptionValues.{key}"
+                break
+            if shareholder_count is not None:
+                break
+
+    if shareholder_count is None:
+        return {}
+
+    return {
+        "confirmationStatement": {
+            "numberOfShareholders": shareholder_count,
+        },
+        "ingestion": {
+            "shareholderCountSource": source or "unknown",
+        },
+    }
 
 
 def _is_confirmation_statement_filing(item: dict | None) -> bool:
@@ -963,7 +1054,7 @@ def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COM
             cursor.execute(
                 """
                 SELECT company_number, company_name, company_type, company_status, incorporation_date, registered_office,
-                       sic_codes, officers, pscs, next_made_up_to_date, next_due_date, last_filed_date, filing_history
+                       sic_codes, officers, pscs, share_capital, next_made_up_to_date, next_due_date, last_filed_date, filing_history
                 FROM ch_companies
                 WHERE company_number = %s
                   AND last_synced_at IS NOT NULL
@@ -986,6 +1077,7 @@ def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COM
         "sicCodes": row.get("sic_codes") if isinstance(row.get("sic_codes"), list) else [],
         "officers": row.get("officers") if isinstance(row.get("officers"), list) else [],
         "pscs": row.get("pscs") if isinstance(row.get("pscs"), list) else [],
+        "shareCapital": row.get("share_capital") if isinstance(row.get("share_capital"), dict) else {},
         "nextMadeUpToDate": row.get("next_made_up_to_date"),
         "nextDueDate": row.get("next_due_date"),
         "lastFiledDate": row.get("last_filed_date"),
@@ -1044,6 +1136,7 @@ def _fetch_ch_company_snapshot(
                 raise
     confirmation = company_payload.get("confirmation_statement") or {}
     filing_history = _normalise_ch_filing_history(filing_payload)
+    share_capital = _extract_shareholder_signals(company_payload, filing_history)
     return {
         "companyNumber": company_number,
         "companyName": str(company_payload.get("company_name") or "").strip(),
@@ -1054,6 +1147,7 @@ def _fetch_ch_company_snapshot(
         "sicCodes": company_payload.get("sic_codes") or [],
         "officers": _normalise_ch_officers(officers_payload),
         "pscs": _normalise_ch_pscs(psc_payload),
+        "shareCapital": share_capital,
         "nextMadeUpToDate": _parse_date_from_text(confirmation.get("next_made_up_to")),
         "nextDueDate": _parse_date_from_text(confirmation.get("next_due")),
         "lastFiledDate": _latest_confirmation_statement_filed_date(filing_history)
@@ -1063,6 +1157,8 @@ def _fetch_ch_company_snapshot(
 
 
 def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
+    share_capital_patch = snapshot.get("shareCapital") if isinstance(snapshot.get("shareCapital"), dict) else {}
+    share_capital_patch_json = json.dumps(share_capital_patch)
     cursor.execute(
         """
         UPDATE ch_companies
@@ -1074,6 +1170,10 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
             sic_codes = %s::jsonb,
             officers = %s::jsonb,
             pscs = %s::jsonb,
+            share_capital = CASE
+                WHEN %s::jsonb = '{}'::jsonb THEN share_capital
+                ELSE COALESCE(share_capital, '{}'::jsonb) || %s::jsonb
+            END,
             next_made_up_to_date = %s,
             next_due_date = %s,
             last_filed_date = %s,
@@ -1091,6 +1191,8 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
             json.dumps(snapshot.get("sicCodes") or []),
             json.dumps(snapshot.get("officers") or []),
             json.dumps(snapshot.get("pscs") or []),
+            share_capital_patch_json,
+            share_capital_patch_json,
             snapshot.get("nextMadeUpToDate"),
             snapshot.get("nextDueDate"),
             snapshot.get("lastFiledDate"),
@@ -1636,22 +1738,15 @@ def _prefill_no_changes_cs01_payload(
         "acceptLawfulPurposeStatement",
         "stateConfirmation",
         "identityVerification",
-        "sicCodes",
-        "statementOfCapital",
-        "shareholdings",
     ):
         if _is_empty(payload.get(key)) and not _is_empty(previous_payload.get(key)):
             payload[key] = previous_payload.get(key)
 
-    if _is_empty(payload.get("sicCodes")) and isinstance(company_row.get("sic_codes"), list):
-        payload["sicCodes"] = company_row.get("sic_codes") or []
-    share_capital = company_row.get("share_capital") if isinstance(company_row.get("share_capital"), dict) else {}
-    statement_of_capital = share_capital.get("statementOfCapital") if isinstance(share_capital.get("statementOfCapital"), dict) else {}
-    if _is_empty(payload.get("statementOfCapital")) and statement_of_capital:
-        payload["statementOfCapital"] = statement_of_capital
-    shareholdings = _normalise_shareholdings(share_capital)
-    if _is_empty(payload.get("shareholdings")) and shareholdings:
-        payload["shareholdings"] = shareholdings
+    # No-changes flow should not include change sections; retaining historic values here
+    # can trigger avoidable CH rejections for stale shareholding/SIC data.
+    payload.pop("sicCodes", None)
+    payload.pop("statementOfCapital", None)
+    payload.pop("shareholdings", None)
 
     # Keep submission period aligned to this year's review date.
     previous_review_end = _parse_date_from_text(previous_payload.get("reviewPeriodEnd"))
@@ -1762,6 +1857,22 @@ def _validate_cs01_payload(
     include_change_sections: bool = True,
 ) -> list[str]:
     errors: list[str] = []
+
+    def _is_valid_email(value: object) -> bool:
+        text = str(value or "").strip()
+        if not text or "@" not in text:
+            return False
+        local, _, domain = text.partition("@")
+        return bool(local and domain and "." in domain and " " not in text)
+
+    def _decimal_or_none(value: object) -> Decimal | None:
+        if value in (None, ""):
+            return None
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return None
+
     company_number = normalise_company_number(company_row.get("company_number"))
     if not _is_valid_company_number(company_number):
         errors.append("Company number must be 8 alphanumeric characters.")
@@ -1773,27 +1884,114 @@ def _validate_cs01_payload(
     next_due = company_row.get("next_due_date")
     if isinstance(next_due, date) and review_date > next_due:
         errors.append("Review date cannot be after the recorded due date.")
-    share_capital = company_row.get("share_capital") or {}
-    if include_change_sections:
-        shareholdings = _normalise_shareholdings(share_capital if isinstance(share_capital, dict) else {})
-        if shareholdings:
-            for idx, item in enumerate(shareholdings, start=1):
-                if item.get("numberHeld") in (None, ""):
-                    errors.append(f"Shareholding row {idx} is missing NumberHeld.")
-                if not item.get("shareholders"):
-                    errors.append(f"Shareholding row {idx} must include at least one shareholder.")
-    pscs = company_row.get("pscs") if isinstance(company_row.get("pscs"), list) else []
     payload = (
         cs_payload
         if isinstance(cs_payload, dict)
         else _build_cs01_payload(company_row, include_change_sections=include_change_sections)
     )
+    share_capital = company_row.get("share_capital") or {}
+    if include_change_sections:
+        sic_codes = (
+            payload.get("sicCodes")
+            if isinstance(payload.get("sicCodes"), list)
+            else (company_row.get("sic_codes") if isinstance(company_row.get("sic_codes"), list) else [])
+        )
+        if len(sic_codes) > 4:
+            errors.append("SIC codes cannot contain more than 4 values for CS01.")
+        for idx, code in enumerate(sic_codes, start=1):
+            code_text = str(code or "").strip()
+            if not code_text:
+                errors.append(f"SIC code {idx} cannot be blank.")
+                continue
+            if not re.fullmatch(r"\d{5}", code_text):
+                errors.append(f"SIC code {idx} must be a 5-digit UK SIC code.")
+
+        shareholdings = (
+            payload.get("shareholdings")
+            if isinstance(payload.get("shareholdings"), list)
+            else _normalise_shareholdings(share_capital if isinstance(share_capital, dict) else {})
+        )
+        if shareholdings:
+            for idx, row in enumerate(shareholdings, start=1):
+                if not isinstance(row, dict):
+                    errors.append(f"Shareholding row {idx} must be an object.")
+                    continue
+                item = {
+                    "shareClass": str(row.get("shareClass") or row.get("share_class") or "").strip(),
+                    "numberHeld": row.get("numberHeld") if row.get("numberHeld") is not None else row.get("number_held"),
+                    "shareholders": row.get("shareholders") if isinstance(row.get("shareholders"), list) else [],
+                    "transfers": row.get("transfers") if isinstance(row.get("transfers"), list) else [],
+                }
+                if not item.get("shareClass"):
+                    errors.append(f"Shareholding row {idx} is missing ShareClass.")
+                if item.get("numberHeld") in (None, ""):
+                    errors.append(f"Shareholding row {idx} is missing NumberHeld.")
+                else:
+                    number_held = _decimal_or_none(item.get("numberHeld"))
+                    if number_held is None:
+                        errors.append(f"Shareholding row {idx} NumberHeld must be numeric.")
+                    elif number_held <= Decimal("0"):
+                        errors.append(f"Shareholding row {idx} NumberHeld must be greater than zero.")
+                if not item.get("shareholders"):
+                    errors.append(f"Shareholding row {idx} must include at least one shareholder.")
+                shareholders = item.get("shareholders") if isinstance(item.get("shareholders"), list) else []
+                if len(shareholders) > 10:
+                    errors.append(f"Shareholding row {idx} cannot include more than 10 shareholders.")
+                for holder_idx, holder in enumerate(shareholders, start=1):
+                    if not isinstance(holder, dict):
+                        errors.append(f"Shareholding row {idx} shareholder {holder_idx} must be an object.")
+                        continue
+                    holder_name = str(holder.get("name") or holder.get("fullName") or "").strip()
+                    if not holder_name:
+                        errors.append(f"Shareholding row {idx} shareholder {holder_idx} must include a name.")
+
+                transfers = item.get("transfers") if isinstance(item.get("transfers"), list) else []
+                if len(transfers) > 200:
+                    errors.append(f"Shareholding row {idx} cannot include more than 200 transfers.")
+                for transfer_idx, transfer in enumerate(transfers, start=1):
+                    if not isinstance(transfer, dict):
+                        errors.append(f"Shareholding row {idx} transfer {transfer_idx} must be an object.")
+                        continue
+                    transfer_date = _parse_date_from_text(transfer.get("dateOfTransfer") or transfer.get("date"))
+                    if transfer_date is None:
+                        errors.append(f"Shareholding row {idx} transfer {transfer_idx} requires a valid transfer date.")
+                    transfer_amount = _decimal_or_none(transfer.get("numberSharesTransferred"))
+                    if transfer_amount is None:
+                        errors.append(f"Shareholding row {idx} transfer {transfer_idx} requires a numeric number of shares.")
+                    elif transfer_amount <= Decimal("0"):
+                        errors.append(f"Shareholding row {idx} transfer {transfer_idx} number of shares must be greater than zero.")
+
+        payload_statement_of_capital = (
+            payload.get("statementOfCapital")
+            if isinstance(payload.get("statementOfCapital"), dict)
+            else (
+                share_capital.get("statementOfCapital")
+                if isinstance(share_capital, dict) and isinstance(share_capital.get("statementOfCapital"), dict)
+                else {}
+            )
+        )
+        if payload_statement_of_capital:
+            issued = _decimal_or_none(payload_statement_of_capital.get("totalNumberOfSharesIssued"))
+            nominal = _decimal_or_none(payload_statement_of_capital.get("totalAggregateNominalValue"))
+            if issued is None:
+                errors.append("StatementOfCapital totalNumberOfSharesIssued must be numeric.")
+            elif issued < Decimal("0"):
+                errors.append("StatementOfCapital totalNumberOfSharesIssued cannot be negative.")
+            if nominal is None:
+                errors.append("StatementOfCapital totalAggregateNominalValue must be numeric.")
+            elif nominal < Decimal("0"):
+                errors.append("StatementOfCapital totalAggregateNominalValue cannot be negative.")
+
+    pscs = company_row.get("pscs") if isinstance(company_row.get("pscs"), list) else []
     review_period_start = _parse_date_from_text(payload.get("reviewPeriodStart"))
     review_period_end = _parse_date_from_text(payload.get("reviewPeriodEnd"))
     if review_period_start and review_period_end and review_period_start > review_period_end:
         errors.append("Review period start cannot be after review period end.")
     if review_period_end and review_period_end != review_date:
         errors.append("Review period end must match the submission review date.")
+    registered_email = payload.get("registeredEmailAddress") or company_row.get("contact_email")
+    if not _is_valid_email(registered_email):
+        errors.append("Registered email address is required and must be a valid email for CS01.")
     if payload.get("acceptLawfulPurposeStatement") is not True:
         errors.append("Lawful purpose statement must be accepted for CS01.")
     if payload.get("stateConfirmation") is not True:
