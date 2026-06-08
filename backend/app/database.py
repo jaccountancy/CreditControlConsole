@@ -1514,6 +1514,8 @@ CREATE TABLE IF NOT EXISTS ch_settings (
     presenter_id TEXT NOT NULL DEFAULT '',
     presenter_auth_encrypted TEXT NOT NULL DEFAULT '',
     presenter_auth_hint TEXT NOT NULL DEFAULT '',
+    package_reference TEXT NOT NULL DEFAULT '',
+    ch_guidance JSONB NOT NULL DEFAULT '{}'::jsonb,
     credit_account_number TEXT NOT NULL DEFAULT '',
     xero_invoice_account_code TEXT NOT NULL DEFAULT '',
     xero_invoice_item_code TEXT NOT NULL DEFAULT '',
@@ -1526,6 +1528,8 @@ CREATE TABLE IF NOT EXISTS ch_settings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE ch_settings ADD COLUMN IF NOT EXISTS package_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_settings ADD COLUMN IF NOT EXISTS ch_guidance JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS ch_companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

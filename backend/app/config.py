@@ -66,12 +66,7 @@ class Settings(BaseSettings):
         text = (value or "").strip()
         if not text:
             return "clear"
-        upper = text.upper()
-        if upper == "CLEAR":
-            return "clear"
-        if upper in {"MD5", "CHMD5"}:
-            return upper
-        raise ValueError("companies_house_auth_method must be one of: MD5, CHMD5, clear.")
+        return "clear"
 
     model_config = SettingsConfigDict(
         env_file=".env",

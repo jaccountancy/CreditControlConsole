@@ -60924,6 +60924,9 @@
                 if (activeView === "micro-analyzer") {
                     return `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Micro/Starter clients`;
                 }
+                if (activeView === "identity-verification") {
+                    return `${(xeroLockDateOverview.rows || []).length.toLocaleString("en-GB")} tenant workspaces`;
+                }
                 if (activeView === "vault") {
                     return `${(vaultFiles || []).length.toLocaleString("en-GB")} files · ${(vaultFolders || []).length.toLocaleString("en-GB")} folders · ${(vaultTags || []).length.toLocaleString("en-GB")} tags`;
                 }
@@ -69805,6 +69808,428 @@
                 });
             }
 
+            function identityVerificationTenantRows() {
+                return Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+            }
+
+            function identityVerificationCompanies() {
+                return Array.isArray(identityVerificationState.companies) ? identityVerificationState.companies : [];
+            }
+
+            function identityVerificationCompanyByTenant(tenantRow = null) {
+                if (!tenantRow) return null;
+                const companyNumber = normaliseCompanyNumberInput(
+                    tenantRow?.mapping?.companyNumber || tenantRow?.companiesHouse?.companyNumber || ""
+                );
+                if (!companyNumber) return null;
+                return identityVerificationCompanies().find(
+                    (company) => normaliseCompanyNumberInput(company?.companyNumber || "") === companyNumber
+                ) || null;
+            }
+
+            function identityVerificationPersonName(person = {}, fallback = "Unknown") {
+                const direct = String(person?.name || "").trim();
+                if (direct) return direct;
+                const first = String(person?.forename || person?.firstName || "").trim();
+                const last = String(person?.surname || person?.lastName || "").trim();
+                const full = `${first} ${last}`.trim();
+                return full || fallback;
+            }
+
+            function identityVerificationPersonKey(person = {}, personType = "person", index = 0) {
+                const baseName = identityVerificationPersonName(person, `${personType}-${index + 1}`);
+                const role = String(person?.role || person?.officerRole || person?.kind || "").trim();
+                const stamp = String(person?.appointedOn || person?.notifiedOn || person?.dateOfBirth || "").trim();
+                return `${personType}:${baseName}:${role}:${stamp}`.toLowerCase().replace(/[^a-z0-9:._-]/g, "");
+            }
+
+            function identityVerificationDetails(company = null) {
+                const confirmationStatement = company?.shareCapital?.confirmationStatement || {};
+                const identity = (confirmationStatement?.identityVerification && typeof confirmationStatement.identityVerification === "object")
+                    ? confirmationStatement.identityVerification
+                    : {};
+                const required = Boolean(identity.required);
+                const verificationStatementGiven = identity.verificationStatementGiven !== false;
+                const directorPersonalCodeSupplied = Boolean(identity.directorPersonalCodeSupplied);
+                const relevantOfficer = String(identity.relevantOfficer || "").trim();
+                const client = identity?.client && typeof identity.client === "object" ? identity.client : {};
+                const clientVerified = Boolean(client.verified);
+                const checkedBy = String(client.checkedBy || "").trim();
+                const evidenceRef = String(client.evidenceRef || "").trim();
+                const people = Array.isArray(identity.people) ? identity.people : [];
+                const peopleByKey = new Map(
+                    people
+                        .filter((row) => row && typeof row === "object")
+                        .map((row) => [String(row.personKey || "").trim(), row])
+                        .filter(([key]) => Boolean(key))
+                );
+                const readyForFiling = required
+                    ? (verificationStatementGiven && directorPersonalCodeSupplied && clientVerified)
+                    : verificationStatementGiven;
+                return {
+                    required,
+                    verificationStatementGiven,
+                    directorPersonalCodeSupplied,
+                    relevantOfficer,
+                    clientVerified,
+                    checkedBy,
+                    evidenceRef,
+                    people,
+                    peopleByKey,
+                    readyForFiling,
+                };
+            }
+
+            function identityVerificationStatusLabel(company = null) {
+                if (!company) return { label: "Needs mapping", className: "is-warn" };
+                const details = identityVerificationDetails(company);
+                if (details.readyForFiling) return { label: "Ready for submission", className: "is-open" };
+                if (!details.required) return { label: "Optional check pending", className: "is-review" };
+                return { label: "Verification pending", className: "is-overdue" };
+            }
+
+            function identityVerificationApplyAcspNote(notes = "", checked = false, checkedBy = "") {
+                const markerPattern = /(?:^|\n)Client identity verified by ACSP:[^\n]*/gi;
+                const base = String(notes || "").replace(markerPattern, "").trim();
+                const by = checkedBy ? ` by ${checkedBy}` : "";
+                const line = `Client identity verified by ACSP: ${checked ? "Yes" : "No"}${by} (${new Date().toISOString().slice(0, 10)})`;
+                return [base, line].filter(Boolean).join("\n");
+            }
+
+            function identityVerificationNormaliseAuthCode(value = "") {
+                return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+            }
+
+            async function loadIdentityVerificationData(force = false) {
+                if (identityVerificationState.loading && !force) return;
+                identityVerificationState.loading = true;
+                renderIdentityVerificationScreen();
+                try {
+                    await loadXeroLockDateOverview(force);
+                    const payload = await requestJSON("/api/companies-house/companies?xeroConnected=true");
+                    identityVerificationState.companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                    const tenantIds = new Set(identityVerificationTenantRows().map((row) => String(row?.tenantId || "").trim()).filter(Boolean));
+                    if (!tenantIds.has(String(identityVerificationState.selectedTenantId || "").trim())) {
+                        identityVerificationState.selectedTenantId = identityVerificationTenantRows()[0]?.tenantId || "";
+                    }
+                } catch (error) {
+                    console.error("Unable to load Identity Verification data", error);
+                    showToast(error?.message || "Unable to load Identity Verification data.", "error");
+                } finally {
+                    identityVerificationState.loading = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            async function saveIdentityVerificationMapping(event) {
+                event?.preventDefault?.();
+                const tenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                if (!tenantId) return;
+                const companyNumber = normaliseCompanyNumberInput(document.getElementById("identityVerificationCompanyNumberInput")?.value || "");
+                const companyName = String(document.getElementById("identityVerificationCompanyNameInput")?.value || "").trim();
+                const clientName = String(document.getElementById("identityVerificationClientNameInput")?.value || "").trim();
+                const notes = String(document.getElementById("identityVerificationMappingNotesInput")?.value || "").trim();
+                identityVerificationState.saving = true;
+                identityVerificationState.saveStatus = "Saving tenant mapping…";
+                renderIdentityVerificationScreen();
+                try {
+                    await requestJSON(endpointURL(api.endpoints.xeroTenantMapping, { tenantId }), {
+                        method: "POST",
+                        body: JSON.stringify({ companyNumber, companyName, clientName, notes }),
+                    });
+                    await loadIdentityVerificationData(true);
+                    identityVerificationState.saveStatus = "Tenant mapping saved.";
+                    showToast("Tenant mapping saved.", "success");
+                } catch (error) {
+                    identityVerificationState.saveStatus = error?.message || "Unable to save tenant mapping.";
+                    showToast(identityVerificationState.saveStatus, "error");
+                } finally {
+                    identityVerificationState.saving = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            function openIdentityVerificationSubmissionWorkspace() {
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                const tenantRow = identityVerificationTenantRows().find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                const company = identityVerificationCompanyByTenant(tenantRow);
+                const companyId = String(company?.id || "").trim();
+                openConfirmationStatementsScreen();
+                if (companyId && companiesHouseState && typeof companiesHouseState === "object") {
+                    companiesHouseState.selectedCompanyIds = new Set([companyId]);
+                }
+                if (typeof activateCompaniesHouseTab === "function") activateCompaniesHouseTab("companies");
+                showToast(companyId
+                    ? "Opened Confirmation Statements with selected company ready for submission."
+                    : "Opened Confirmation Statements. Map a company first to prepare submission.",
+                companyId ? "success" : "info");
+            }
+
+            async function saveIdentityVerificationRecord(event) {
+                event?.preventDefault?.();
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || "").trim();
+                const tenantRow = identityVerificationTenantRows().find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                const company = identityVerificationCompanyByTenant(tenantRow);
+                const companyId = String(company?.id || "").trim();
+                if (!companyId) {
+                    showToast("Map this tenant to a Companies House company first.", "info");
+                    return;
+                }
+                const required = Boolean(document.getElementById("identityVerificationRequiredInput")?.checked);
+                const verificationStatementGiven = Boolean(document.getElementById("identityVerificationStatementInput")?.checked);
+                const directorPersonalCodeSupplied = Boolean(document.getElementById("identityVerificationDirectorCodeInput")?.checked);
+                const relevantOfficer = String(document.getElementById("identityVerificationRelevantOfficerInput")?.value || "").trim();
+                const checkedBy = String(document.getElementById("identityVerificationCheckedByInput")?.value || "").trim();
+                const evidenceRef = String(document.getElementById("identityVerificationEvidenceRefInput")?.value || "").trim();
+                const clientIdentityChecked = Boolean(document.getElementById("identityVerificationClientCheckedInput")?.checked);
+                const authCodeRaw = String(document.getElementById("identityVerificationAuthCodeInput")?.value || "").trim();
+                const authCode = identityVerificationNormaliseAuthCode(authCodeRaw);
+                if (authCodeRaw && !/^[A-Z0-9]{6}$/.test(authCode)) {
+                    showToast("Auth code must be exactly 6 letters/numbers.", "error");
+                    return;
+                }
+                const people = [];
+                document.querySelectorAll("[data-identity-person-check]").forEach((node) => {
+                    const personKey = String(node.getAttribute("data-identity-person-key") || "").trim();
+                    if (!personKey) return;
+                    const verified = Boolean(node.checked);
+                    people.push({
+                        personKey,
+                        personType: String(node.getAttribute("data-identity-person-type") || "").trim() || "person",
+                        name: String(node.getAttribute("data-identity-person-name") || "").trim(),
+                        verified,
+                        checkedBy: checkedBy || "",
+                        checkedAt: verified ? new Date().toISOString() : "",
+                        evidenceRef: evidenceRef || "",
+                    });
+                });
+                const nextNotes = identityVerificationApplyAcspNote(company?.notes || "", clientIdentityChecked, checkedBy);
+                identityVerificationState.saving = true;
+                identityVerificationState.saveStatus = "Saving identity verification…";
+                renderIdentityVerificationScreen();
+                try {
+                    const body = {
+                        identityVerification: {
+                            required,
+                            verificationStatementGiven,
+                            directorPersonalCodeSupplied,
+                            relevantOfficer,
+                            people,
+                            client: {
+                                verified: clientIdentityChecked,
+                                checkedBy: checkedBy || "",
+                                checkedAt: clientIdentityChecked ? new Date().toISOString() : "",
+                                evidenceRef: evidenceRef || "",
+                            },
+                        },
+                        notes: nextNotes,
+                    };
+                    if (authCode) {
+                        body.authCode = authCode;
+                        body.filingAuthorityReference = authCode;
+                    }
+                    const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, {
+                        method: "PATCH",
+                        body: JSON.stringify(body),
+                    });
+                    const updatedCompany = payload?.company || null;
+                    if (updatedCompany?.id) {
+                        const updatedId = String(updatedCompany.id);
+                        identityVerificationState.companies = identityVerificationCompanies().map((row) => (
+                            String(row?.id || "") === updatedId ? updatedCompany : row
+                        ));
+                    }
+                    identityVerificationState.saveStatus = "Identity verification saved in workspace.";
+                    showToast("Identity verification saved locally.", "success");
+                    const authCodeInput = document.getElementById("identityVerificationAuthCodeInput");
+                    if (authCodeInput) authCodeInput.value = "";
+                } catch (error) {
+                    identityVerificationState.saveStatus = error?.message || "Unable to save identity verification.";
+                    showToast(identityVerificationState.saveStatus, "error");
+                } finally {
+                    identityVerificationState.saving = false;
+                    renderIdentityVerificationScreen();
+                }
+            }
+
+            function renderIdentityVerificationScreen() {
+                const summary = document.getElementById("identityVerificationSummary");
+                const tableBody = document.getElementById("identityVerificationTenantTableBody");
+                const refreshButton = document.getElementById("identityVerificationRefreshButton");
+                const workspace = document.getElementById("identityVerificationWorkspace");
+                const workspaceTitle = document.getElementById("identityVerificationWorkspaceTitle");
+                const workspaceMeta = document.getElementById("identityVerificationWorkspaceMeta");
+                const metrics = document.getElementById("identityVerificationMetrics");
+                const mappingForm = document.getElementById("identityVerificationMappingForm");
+                const verificationForm = document.getElementById("identityVerificationForm");
+                const openSubmissionButton = document.getElementById("identityVerificationOpenSubmissionButton");
+                const saveStatus = document.getElementById("identityVerificationSaveStatus");
+                const officersBody = document.getElementById("identityVerificationOfficersBody");
+                const pscBody = document.getElementById("identityVerificationPscBody");
+                if (!summary || !tableBody || !refreshButton || !workspace || !workspaceTitle || !workspaceMeta || !metrics || !mappingForm || !verificationForm || !openSubmissionButton || !saveStatus || !officersBody || !pscBody) return;
+
+                if (refreshButton.dataset.identityVerificationWired !== "true") {
+                    refreshButton.dataset.identityVerificationWired = "true";
+                    refreshButton.addEventListener("click", () => loadIdentityVerificationData(true));
+                }
+                if (mappingForm.dataset.identityVerificationWired !== "true") {
+                    mappingForm.dataset.identityVerificationWired = "true";
+                    mappingForm.addEventListener("submit", saveIdentityVerificationMapping);
+                }
+                if (verificationForm.dataset.identityVerificationWired !== "true") {
+                    verificationForm.dataset.identityVerificationWired = "true";
+                    verificationForm.addEventListener("submit", saveIdentityVerificationRecord);
+                }
+                if (openSubmissionButton.dataset.identityVerificationWired !== "true") {
+                    openSubmissionButton.dataset.identityVerificationWired = "true";
+                    openSubmissionButton.addEventListener("click", openIdentityVerificationSubmissionWorkspace);
+                }
+
+                const rows = identityVerificationTenantRows();
+                if (!rows.length) {
+                    summary.textContent = identityVerificationState.loading
+                        ? "Loading tenant workspaces and Companies House records."
+                        : "No Xero tenant connections found. Connect Xero to begin.";
+                    tableBody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No tenants</p><h4>Connect Xero first</h4><p>Once tenant connections are available, open each workspace to verify directors and PSCs.</p></div></td></tr>';
+                    workspace.hidden = true;
+                    return;
+                }
+
+                const sortedRows = [...rows].sort((left, right) => {
+                    const rank = Number(Boolean(right?.isMainTenant)) - Number(Boolean(left?.isMainTenant));
+                    if (rank !== 0) return rank;
+                    return String(left?.tenantName || left?.tenantId || "").localeCompare(String(right?.tenantName || right?.tenantId || ""), "en-GB");
+                });
+                const selectedTenantId = String(identityVerificationState.selectedTenantId || sortedRows[0]?.tenantId || "");
+                identityVerificationState.selectedTenantId = selectedTenantId;
+                summary.textContent = `${sortedRows.length.toLocaleString("en-GB")} tenant workspace${sortedRows.length === 1 ? "" : "s"} ready for identity checks.`;
+                tableBody.innerHTML = sortedRows.map((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    const tenantLabel = xeroWorkspaceLabel(row?.tenantName, tenantId, "Xero tenant");
+                    const company = identityVerificationCompanyByTenant(row);
+                    const status = identityVerificationStatusLabel(company);
+                    const mappedCompany = company
+                        ? `${company.companyName || "Mapped company"} (${company.companyNumber || "No number"})`
+                        : (row?.mapping?.companyNumber ? `${row.mapping.companyNumber} (mapping only)` : "Not mapped");
+                    return `
+                        <tr class="${tenantId === selectedTenantId ? "is-selected" : ""}">
+                            <td><strong>${escapeHTML(tenantLabel)}</strong><small>${escapeHTML(tenantId)}</small></td>
+                            <td>${escapeHTML(mappedCompany)}</td>
+                            <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
+                            <td><button class="ghost-button" type="button" data-identity-open="${escapeHTML(tenantId)}">Open workspace</button></td>
+                        </tr>
+                    `;
+                }).join("");
+                tableBody.querySelectorAll("[data-identity-open]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        identityVerificationState.selectedTenantId = String(button.dataset.identityOpen || "").trim();
+                        renderIdentityVerificationScreen();
+                    });
+                });
+
+                const selectedRow = sortedRows.find((row) => String(row?.tenantId || "") === selectedTenantId) || null;
+                if (!selectedRow) {
+                    workspace.hidden = true;
+                    return;
+                }
+                workspace.hidden = false;
+
+                const selectedCompany = identityVerificationCompanyByTenant(selectedRow);
+                const details = identityVerificationDetails(selectedCompany);
+                const status = identityVerificationStatusLabel(selectedCompany);
+                const tenantLabel = xeroWorkspaceLabel(selectedRow?.tenantName, selectedTenantId, "Xero tenant");
+                const officers = Array.isArray(selectedCompany?.officers) ? selectedCompany.officers : [];
+                const pscs = Array.isArray(selectedCompany?.pscs) ? selectedCompany.pscs : [];
+                const activePscs = pscs.filter((row) => !String(row?.ceasedOn || "").trim());
+                const verifiedPeopleCount = [...details.peopleByKey.values()].filter((row) => Boolean(row?.verified)).length;
+
+                workspaceTitle.textContent = `${tenantLabel} · Identity verification`;
+                workspaceMeta.textContent = selectedCompany
+                    ? `${selectedCompany.companyName || "Mapped company"} (${selectedCompany.companyNumber || "No number"}) · ${status.label}`
+                    : "No Companies House company is mapped to this tenant yet.";
+
+                metrics.innerHTML = [
+                    ["Directors/officers", `${officers.length.toLocaleString("en-GB")}`],
+                    ["Active PSCs", `${activePscs.length.toLocaleString("en-GB")}`],
+                    ["People verified", `${verifiedPeopleCount.toLocaleString("en-GB")}`],
+                    ["Client identity", details.clientVerified ? "Verified" : "Pending"],
+                ].map(([label, value]) => `<article class="key-metric-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`).join("");
+
+                const mappedCompanyNumber = normaliseCompanyNumberInput(
+                    selectedRow?.mapping?.companyNumber || selectedCompany?.companyNumber || selectedRow?.companiesHouse?.companyNumber || ""
+                );
+                document.getElementById("identityVerificationCompanyNumberInput").value = mappedCompanyNumber;
+                document.getElementById("identityVerificationCompanyNameInput").value = String(selectedRow?.mapping?.companyName || selectedCompany?.companyName || "").trim();
+                document.getElementById("identityVerificationClientNameInput").value = String(selectedRow?.mapping?.clientName || selectedCompany?.clientName || "").trim();
+                document.getElementById("identityVerificationMappingNotesInput").value = String(selectedRow?.mapping?.notes || "").trim();
+
+                const identityDisabled = !selectedCompany?.id;
+                document.getElementById("identityVerificationRequiredInput").checked = details.required;
+                document.getElementById("identityVerificationStatementInput").checked = details.verificationStatementGiven;
+                document.getElementById("identityVerificationDirectorCodeInput").checked = details.directorPersonalCodeSupplied;
+                document.getElementById("identityVerificationRelevantOfficerInput").value = details.relevantOfficer;
+                document.getElementById("identityVerificationCheckedByInput").value = details.checkedBy;
+                document.getElementById("identityVerificationEvidenceRefInput").value = details.evidenceRef;
+                document.getElementById("identityVerificationClientCheckedInput").checked = details.clientVerified;
+                const authCodeInput = document.getElementById("identityVerificationAuthCodeInput");
+                const authCodeHint = String(selectedCompany?.authCodeHint || "").trim();
+                const authCodeOnFile = Boolean(selectedCompany?.authCodeOnFile);
+                if (authCodeInput) {
+                    authCodeInput.value = "";
+                    authCodeInput.placeholder = authCodeOnFile
+                        ? `On file (${authCodeHint || "stored"}) · update if changed`
+                        : "Enter 6-character code";
+                }
+                verificationForm.querySelectorAll("input, button").forEach((node) => {
+                    node.disabled = identityDisabled || identityVerificationState.saving;
+                });
+                document.getElementById("identityVerificationSaveMappingButton").disabled = identityVerificationState.saving;
+                openSubmissionButton.disabled = identityDisabled || identityVerificationState.saving;
+                saveStatus.textContent = identityVerificationState.saveStatus || (identityDisabled
+                    ? "Save a tenant mapping to enable identity updates."
+                    : "Save locally to stage updates, then submit through Confirmation Statements.");
+
+                officersBody.innerHTML = officers.length
+                    ? officers.map((officer, index) => {
+                        const name = identityVerificationPersonName(officer, "Unknown officer");
+                        const role = String(officer?.role || officer?.officerRole || "Officer").trim();
+                        const ceasedOn = String(officer?.ceasedOn || "").trim();
+                        const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
+                        const personKey = identityVerificationPersonKey(officer, "officer", index);
+                        const personRecord = details.peopleByKey.get(personKey);
+                        const personMeta = personRecord?.verified
+                            ? `Verified${personRecord?.checkedBy ? ` by ${personRecord.checkedBy}` : ""}${personRecord?.checkedAt ? ` on ${formatDate(personRecord.checkedAt)}` : ""}`
+                            : statusText;
+                        return `<tr>
+                            <td>${escapeHTML(name)}</td>
+                            <td>${escapeHTML(role)}</td>
+                            <td>${escapeHTML(personMeta)}</td>
+                            <td><label class="ch-checkbox-inline"><input type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="officer" data-identity-person-name="${escapeHTML(name)}" ${personRecord?.verified ? "checked" : ""}> Verified</label></td>
+                        </tr>`;
+                    }).join("")
+                    : '<tr><td colspan="4"><div class="ch-empty-state">No officer records loaded for this company.</div></td></tr>';
+
+                pscBody.innerHTML = pscs.length
+                    ? pscs.map((psc, index) => {
+                        const name = identityVerificationPersonName(psc, "Unnamed PSC");
+                        const controlType = String(psc?.kind || psc?.natureOfControl || "Control not provided").trim();
+                        const ceasedOn = String(psc?.ceasedOn || "").trim();
+                        const statusText = ceasedOn ? `Ceased ${formatDate(ceasedOn)}` : "Active";
+                        const personKey = identityVerificationPersonKey(psc, "psc", index);
+                        const personRecord = details.peopleByKey.get(personKey);
+                        const personMeta = personRecord?.verified
+                            ? `Verified${personRecord?.checkedBy ? ` by ${personRecord.checkedBy}` : ""}${personRecord?.checkedAt ? ` on ${formatDate(personRecord.checkedAt)}` : ""}`
+                            : statusText;
+                        return `<tr>
+                            <td>${escapeHTML(name)}</td>
+                            <td>${escapeHTML(controlType)}</td>
+                            <td>${escapeHTML(personMeta)}</td>
+                            <td><label class="ch-checkbox-inline"><input type="checkbox" data-identity-person-check data-identity-person-key="${escapeHTML(personKey)}" data-identity-person-type="psc" data-identity-person-name="${escapeHTML(name)}" ${personRecord?.verified ? "checked" : ""}> Verified</label></td>
+                        </tr>`;
+                    }).join("")
+                    : '<tr><td colspan="4"><div class="ch-empty-state">No PSC records loaded for this company.</div></td></tr>';
+            }
+
             function formatVaultFileSize(sizeBytes) {
                 const value = Number(sizeBytes || 0);
                 if (!Number.isFinite(value) || value <= 0) return "0 B";
@@ -78349,6 +78774,9 @@
                     }
                     const authCode = getFieldValue("filingAuthorityReference");
                     if (!authCode) pushError("authority", "filingAuthorityReference", "Authentication code is required.");
+                    if (authCode && !/^[A-Z0-9]{6}$/i.test(authCode)) {
+                        pushError("authority", "filingAuthorityReference", "Authentication code must be 6 letters or numbers.");
+                    }
                     if (getFieldValue("lawfulPurposeStatement") !== "true") {
                         pushError("authority", "lawfulPurposeStatement", "Lawful purpose statement must be confirmed.");
                     }
@@ -78756,7 +79184,8 @@
                             if (!original) return;
                             if (original.workflowAction !== "changes-required") return;
                             const nextStatus = String(card.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
-                            const nextReference = String(card.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
+                            const nextReferenceRaw = String(card.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
+                            const nextReference = nextReferenceRaw.toUpperCase().replace(/[^A-Z0-9]/g, "");
                             const nextContactEmail = String(card.querySelector('[data-ch-review-field="contactEmail"]')?.value || "").trim();
                             const nextReviewPeriodStart = String(card.querySelector('[data-ch-review-field="reviewPeriodStart"]')?.value || "").trim();
                             const nextReviewPeriodEnd = String(card.querySelector('[data-ch-review-field="reviewPeriodEnd"]')?.value || "").trim();

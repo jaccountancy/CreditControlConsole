@@ -111,6 +111,9 @@ CH_GATEWAY_MAX_ELAPSED_SECONDS = 90.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
 CH_COMPANY_SNAPSHOT_CACHE_TTL = timedelta(hours=12)
+CH_GUIDANCE_VERSION = "ch-guidance-2026-06-08"
+CH_GUIDANCE_URL = "https://www.gov.uk/government/publications/technical-interface-specifications-for-companies-house-software/important-information-for-software-developers-read-first"
+CH_SANDBOX_PACKAGE_REFERENCE = "0012"
 
 logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
@@ -133,7 +136,7 @@ def _ch_md5_auth_value(value: str) -> str:
 
 def _ch_auth_value(method: str, presenter_auth: str) -> str:
     if (method or "").lower() == "clear":
-        return (presenter_auth or "").strip()
+        return _ch_md5_auth_value(presenter_auth)
     return _ch_md5_auth_value(presenter_auth)
 
 
@@ -225,16 +228,84 @@ def configured_api_key(settings_row: dict | None = None) -> str:
     return _validated_companies_house_api_key(decrypted)
 
 
-def configured_package_reference() -> str:
-    return _compact_credential(get_settings().companies_house_package_reference)
+def _ch_guidance_payload() -> dict:
+    return {
+        "version": CH_GUIDANCE_VERSION,
+        "sourceUrl": CH_GUIDANCE_URL,
+        "effectiveDate": "2026-06-08",
+        "auth": {
+            "method": "clear",
+            "presenterAuthValueEncoding": "MD5# uppercase hex",
+            "notes": "Gateway method remains 'clear', but presenter authentication value is sent as MD5#.",
+        },
+        "packageReference": {
+            "sandbox": CH_SANDBOX_PACKAGE_REFERENCE,
+            "production": "Use the production package reference issued by Companies House.",
+        },
+    }
+
+
+def _sync_ch_guidance_row(row: dict) -> dict:
+    current = row.get("ch_guidance")
+    if isinstance(current, dict) and _xml_text(current.get("version")) == CH_GUIDANCE_VERSION:
+        return row
+    guidance = _ch_guidance_payload()
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ch_settings
+                SET ch_guidance = %s::jsonb,
+                    updated_at = %s
+                WHERE singleton_id = 1
+                RETURNING *
+                """,
+                (json.dumps(guidance), now),
+            )
+            updated = cursor.fetchone() or row
+        connection.commit()
+    return updated
+
+
+def configured_package_reference(settings_row: dict | None = None) -> str:
+    env_value = _compact_credential(get_settings().companies_house_package_reference)
+    if env_value:
+        return env_value
+    row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
+    return _compact_credential(row.get("package_reference"))
+
+
+def _validated_package_reference(*, package_reference: str, environment: str) -> str:
+    value = _compact_credential(package_reference)
+    if not value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Companies House PackageReference is not configured. Set a package reference in settings. "
+                f"Sandbox must use '{CH_SANDBOX_PACKAGE_REFERENCE}'."
+            ),
+        )
+    env_value = _xml_text(environment, "sandbox").lower()
+    if env_value == "sandbox" and value != CH_SANDBOX_PACKAGE_REFERENCE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Sandbox filings must use PackageReference '{CH_SANDBOX_PACKAGE_REFERENCE}' per Companies House guidance."
+            ),
+        )
+    if env_value == "production" and value == CH_SANDBOX_PACKAGE_REFERENCE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Production filings cannot use sandbox PackageReference '{CH_SANDBOX_PACKAGE_REFERENCE}'. "
+                "Set the production package reference issued by Companies House."
+            ),
+        )
+    return value
 
 
 def _ch_auth_method() -> str:
-    method = (get_settings().companies_house_auth_method or "").strip()
-    if method.upper() in {"MD5", "CHMD5"}:
-        return method.upper()
-    if method.lower() == "clear":
-        return "clear"
     return "clear"
 
 
@@ -250,7 +321,7 @@ def _load_settings_row() -> dict | None:
 def _ensure_settings_row() -> dict:
     row = _load_settings_row()
     if row is not None:
-        return row
+        return _sync_ch_guidance_row(row)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -266,7 +337,7 @@ def _ensure_settings_row() -> dict:
                 cursor.execute("SELECT * FROM ch_settings WHERE singleton_id = 1")
                 row = cursor.fetchone()
         connection.commit()
-    return row
+    return _sync_ch_guidance_row(row)
 
 
 def _serialise(row: dict) -> dict:
@@ -280,6 +351,8 @@ def _serialise(row: dict) -> dict:
     api_key = configured_api_key(row)
     presenter_id = configured_presenter_id(row)
     presenter_auth = configured_presenter_auth(row)
+    package_reference = configured_package_reference(row)
+    guidance = row.get("ch_guidance") if isinstance(row.get("ch_guidance"), dict) else _ch_guidance_payload()
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
@@ -290,6 +363,7 @@ def _serialise(row: dict) -> dict:
         "presenterAuth": "",
         "presenterAuthHint": _mask(presenter_auth) if presenter_auth else "Not configured",
         "presenterAuthConfigured": bool(presenter_auth),
+        "packageReference": package_reference,
         "creditAccountNumber": row.get("credit_account_number") or "",
         "xeroInvoiceAccountCode": row.get("xero_invoice_account_code") or "",
         "xeroInvoiceItemCode": row.get("xero_invoice_item_code") or "",
@@ -298,6 +372,8 @@ def _serialise(row: dict) -> dict:
         "xeroInvoiceTaxType": row.get("xero_invoice_tax_type") or "NONE",
         "notifyEmail": row.get("notify_email") or "",
         "autoSyncEnabled": bool(row.get("auto_sync_enabled")) if row.get("auto_sync_enabled") is not None else True,
+        "authMethod": _ch_auth_method(),
+        "chGuidance": guidance,
         "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
     }
 
@@ -599,6 +675,12 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
     presenter_auth_value = _compact_credential(incoming_presenter_auth)
     presenter_auth_encrypted = encrypt_secret(presenter_auth_value, CH_PRESENTER_AUTH_LABEL)
     presenter_auth_hint = _mask(presenter_auth_value)
+    existing_package_reference = configured_package_reference(existing)
+    incoming_package_reference = payload.get("packageReference", existing_package_reference)
+    package_reference = _validated_package_reference(
+        package_reference=_compact_credential(incoming_package_reference),
+        environment=environment,
+    )
     credit_account_number = _compact_credential(payload.get("creditAccountNumber"))
     xero_invoice_account_code = str(payload.get("xeroInvoiceAccountCode") or "").strip()
     xero_invoice_item_code = str(payload.get("xeroInvoiceItemCode") or "").strip()
@@ -607,6 +689,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
     xero_invoice_tax_type = str(payload.get("xeroInvoiceTaxType") or "NONE").strip() or "NONE"
     notify_email = str(payload.get("notifyEmail") or "").strip()
     auto_sync_enabled = bool(payload.get("autoSyncEnabled", existing.get("auto_sync_enabled", True)))
+    guidance_payload = _ch_guidance_payload()
 
     now = utcnow()
     user_id = user.get("id") if isinstance(user, dict) else None
@@ -622,6 +705,8 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
                     presenter_id = %s,
                     presenter_auth_encrypted = %s,
                     presenter_auth_hint = %s,
+                    package_reference = %s,
+                    ch_guidance = %s::jsonb,
                     credit_account_number = %s,
                     xero_invoice_account_code = %s,
                     xero_invoice_item_code = %s,
@@ -642,6 +727,8 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
                     presenter_id,
                     presenter_auth_encrypted,
                     presenter_auth_hint,
+                    package_reference,
+                    json.dumps(guidance_payload),
                     credit_account_number,
                     xero_invoice_account_code,
                     xero_invoice_item_code,
@@ -667,6 +754,8 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
             "apiKeyChanged": api_key_value != existing_api_key,
             "presenterIdChanged": presenter_id != existing_presenter_id,
             "presenterAuthChanged": presenter_auth_value != existing_presenter_auth,
+            "packageReferenceChanged": package_reference != existing_package_reference,
+            "guidanceVersion": guidance_payload.get("version"),
         },
     )
 
@@ -1485,7 +1574,12 @@ def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = Tr
         else {}
     )
     if identity_verification:
-        payload["identityVerification"] = identity_verification
+        payload["identityVerification"] = {
+            "required": bool(_first_bool_from_sources(identity_verification.get("required"))),
+            "directorPersonalCodeSupplied": bool(_first_bool_from_sources(identity_verification.get("directorPersonalCodeSupplied"))),
+            "verificationStatementGiven": bool(_first_bool_from_sources(identity_verification.get("verificationStatementGiven"))),
+            "relevantOfficer": _coerce_text(identity_verification.get("relevantOfficer"), 200),
+        }
     return payload
 
 
@@ -1774,16 +1868,10 @@ def _build_ch_submission_xml(
         ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
-    package_reference_value = _xml_text(package_reference)
-    if not package_reference_value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Companies House PackageReference is not configured. "
-                "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference "
-                "issued by Companies House for your software filing account before submitting."
-            ),
-        )
+    package_reference_value = _validated_package_reference(
+        package_reference=package_reference,
+        environment=environment,
+    )
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = package_reference_value
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = "ConfirmationStatement"
@@ -4629,16 +4717,10 @@ def _build_secretarial_submission_xml(
         ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
-    package_reference_value = _xml_text(package_reference)
-    if not package_reference_value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Companies House PackageReference is not configured. "
-                "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference "
-                "issued by Companies House for your software filing account before submitting."
-            ),
-        )
+    package_reference_value = _validated_package_reference(
+        package_reference=package_reference,
+        environment=environment,
+    )
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = package_reference_value
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = form_identifier
@@ -5199,21 +5281,13 @@ def submit_company_secretarial_filing(user: dict, filing_id: str, payload: dict 
                 environment = _xml_text(settings_row.get("environment"), "sandbox")
                 presenter_id = configured_presenter_id(settings_row)
                 presenter_auth = decrypt_presenter_auth()
-                package_reference = configured_package_reference()
+                package_reference = configured_package_reference(settings_row)
                 if not presenter_id or not presenter_auth:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Presenter ID/authentication are required for software filing.",
                     )
-                if not package_reference:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=(
-                            "Companies House PackageReference is not configured. "
-                            "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference issued by "
-                            "Companies House for your software filing account before submitting."
-                        ),
-                    )
+                _validated_package_reference(package_reference=package_reference, environment=environment)
                 if not row.get("company_id"):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -6089,7 +6163,7 @@ def bulk_submit_confirmation_statements(
     presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
     credit_account_number = _xml_text(settings_row.get("credit_account_number"))
-    package_reference = configured_package_reference()
+    package_reference = configured_package_reference(settings_row)
     auth_method = _ch_auth_method()
     configured_fee_amount = _coerce_settings_amount(
         settings_row.get("xero_invoice_unit_amount"),
@@ -6104,14 +6178,13 @@ def bulk_submit_confirmation_statements(
         preflight_errors.append("Set Presenter authentication code in Companies House settings.")
     if not credit_account_number:
         preflight_errors.append("Set Companies House credit account number in settings.")
-    if not package_reference:
+    try:
+        _validated_package_reference(package_reference=package_reference, environment=environment)
+    except HTTPException as exc:
+        preflight_errors.append(_xml_text(exc.detail))
+    if auth_method != "clear":
         preflight_errors.append(
-            "Set COMPANIES_HOUSE_PACKAGE_REFERENCE to the package reference issued by Companies House "
-            "for your software filing account (do not reuse the Presenter ID)."
-        )
-    if auth_method not in {"CHMD5", "MD5", "clear"}:
-        preflight_errors.append(
-            "Set COMPANIES_HOUSE_AUTH_METHOD to one of: clear (default), MD5, or CHMD5."
+            "Auth method must be 'clear' per Companies House guidance. The service now enforces this automatically."
         )
     auth_code_missing: list[str] = []
     for company_id in company_ids:
@@ -7653,12 +7726,55 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
         elif not isinstance(identity_verification, dict):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'identityVerification' must be an object.")
         else:
-            confirmation_statement_patch["identityVerification"] = {
+            normalised_identity_verification: dict[str, object] = {
                 "required": bool(_first_bool_from_sources(identity_verification.get("required"))),
                 "directorPersonalCodeSupplied": bool(_first_bool_from_sources(identity_verification.get("directorPersonalCodeSupplied"))),
                 "verificationStatementGiven": bool(_first_bool_from_sources(identity_verification.get("verificationStatementGiven"),)),
                 "relevantOfficer": _coerce_text(identity_verification.get("relevantOfficer"), 200),
             }
+            raw_people = identity_verification.get("people")
+            if raw_people not in (None, ""):
+                if not isinstance(raw_people, list):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="'identityVerification.people' must be an array when supplied.",
+                    )
+                normalised_people: list[dict[str, object]] = []
+                for index, person in enumerate(raw_people[:500]):
+                    if not isinstance(person, dict):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"'identityVerification.people[{index}]' must be an object.",
+                        )
+                    person_key = _coerce_text(person.get("personKey"), 300)
+                    if not person_key:
+                        continue
+                    normalised_people.append(
+                        {
+                            "personKey": person_key,
+                            "personType": _coerce_text(person.get("personType"), 40),
+                            "name": _coerce_text(person.get("name"), 200),
+                            "verified": bool(_first_bool_from_sources(person.get("verified"))),
+                            "checkedBy": _coerce_text(person.get("checkedBy"), 200),
+                            "checkedAt": _coerce_text(person.get("checkedAt"), 80),
+                            "evidenceRef": _coerce_text(person.get("evidenceRef"), 400),
+                        }
+                    )
+                normalised_identity_verification["people"] = normalised_people
+            raw_client = identity_verification.get("client")
+            if raw_client not in (None, ""):
+                if not isinstance(raw_client, dict):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="'identityVerification.client' must be an object when supplied.",
+                    )
+                normalised_identity_verification["client"] = {
+                    "verified": bool(_first_bool_from_sources(raw_client.get("verified"))),
+                    "checkedBy": _coerce_text(raw_client.get("checkedBy"), 200),
+                    "checkedAt": _coerce_text(raw_client.get("checkedAt"), 80),
+                    "evidenceRef": _coerce_text(raw_client.get("evidenceRef"), 400),
+                }
+            confirmation_statement_patch["identityVerification"] = normalised_identity_verification
     if confirmation_statement_patch:
         share_capital_patch["confirmationStatement"] = confirmation_statement_patch
 
@@ -8093,6 +8209,8 @@ def export_companies_house_support_report(
     environment = _xml_text(settings_row.get("environment"), "sandbox")
     presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
+    package_reference = configured_package_reference(settings_row)
+    guidance = settings_row.get("ch_guidance") if isinstance(settings_row.get("ch_guidance"), dict) else _ch_guidance_payload()
     now = utcnow()
 
     company_id_value = _xml_text(company_id)
@@ -8144,6 +8262,9 @@ def export_companies_house_support_report(
     lines.append(f"Auth Method: {_ch_auth_method()}")
     lines.append(f"Presenter ID: {presenter_id}")
     lines.append(f"Presenter Auth: {_mask(presenter_auth)}")
+    lines.append(f"Package Reference: {package_reference}")
+    lines.append(f"Guidance Version: {_xml_text(guidance.get('version'))}")
+    lines.append(f"Guidance Source: {_xml_text(guidance.get('sourceUrl'))}")
     lines.append(f"Credit Account Number: {_xml_text(settings_row.get('credit_account_number'))}")
     lines.append(f"API Key: {_mask(decrypt_api_key())}")
     lines.append(f"Rows Included: {len(rows)}")
