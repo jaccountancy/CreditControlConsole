@@ -21112,6 +21112,53 @@
                 white-space: normal;
                 word-break: break-word;
             }
+            .ch-shareholding-wrap {
+                display: grid;
+                gap: 8px;
+            }
+            .ch-shareholding-grid {
+                width: 100%;
+                border-collapse: collapse;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                overflow: hidden;
+                background: #fff;
+            }
+            .ch-shareholding-grid th,
+            .ch-shareholding-grid td {
+                border-bottom: 1px solid var(--line);
+                padding: 8px 10px;
+                text-align: left;
+                vertical-align: top;
+                font-size: 0.8rem;
+                font-weight: 740;
+            }
+            .ch-shareholding-grid th {
+                font-size: 0.72rem;
+                font-weight: 880;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--muted);
+                background: rgba(247, 250, 255, 0.92);
+            }
+            .ch-shareholding-grid td:last-child,
+            .ch-shareholding-grid th:last-child {
+                text-align: right;
+            }
+            .ch-shareholding-grid tbody tr:last-child td {
+                border-bottom: none;
+            }
+            .ch-shareholding-empty {
+                margin: 0;
+                border: 1px dashed rgba(61, 85, 130, 0.26);
+                border-radius: 9px;
+                background: rgba(247, 250, 255, 0.82);
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 740;
+                line-height: 1.45;
+                padding: 9px 10px;
+            }
             @media (max-width: 980px) {
                 .ch-detail-summary-grid {
                     grid-template-columns: 1fr;
@@ -77879,6 +77926,33 @@
                         .filter(Boolean)
                         .join(" | ") || "No active PSC records loaded";
                 };
+                const normaliseShareholdings = (value) => {
+                    const rows = Array.isArray(value) ? value : [];
+                    return rows
+                        .filter((row) => row && typeof row === "object")
+                        .map((row) => {
+                            const shareClass = String(row.shareClass || row.share_class || "").trim() || "Share class";
+                            const numberHeld = String(row.numberHeld ?? row.number_held ?? "").trim() || "—";
+                            const holders = Array.isArray(row.shareholders) ? row.shareholders : [];
+                            const holderNames = holders
+                                .map((holder) => {
+                                    if (!holder || typeof holder !== "object") return "";
+                                    const direct = String(holder.name || "").trim();
+                                    if (direct) return direct;
+                                    const forename = String(holder.forename || holder.firstName || "").trim();
+                                    const surname = String(holder.surname || holder.lastName || "").trim();
+                                    const combined = `${forename} ${surname}`.trim();
+                                    return combined || "";
+                                })
+                                .filter(Boolean);
+                            return {
+                                shareClass,
+                                numberHeld,
+                                shareholderNames: holderNames.length ? holderNames.join(", ") : "No shareholder names provided",
+                                shareholderCount: holderNames.length,
+                            };
+                        });
+                };
                 const rows = companies.map((company) => {
                     const shareCapital = (company && typeof company.shareCapital === "object" && company.shareCapital) ? company.shareCapital : {};
                     const cs01FlagsSource = (shareCapital.cs01Flags && typeof shareCapital.cs01Flags === "object")
@@ -77905,7 +77979,7 @@
                     const activePscCount = (Array.isArray(company?.pscs) ? company.pscs : [])
                         .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
                         .length;
-                    const shareholdings = Array.isArray(shareCapital.shareholdings) ? shareCapital.shareholdings : [];
+                    const shareholdings = normaliseShareholdings(shareCapital.shareholdings);
                     const shareholdingsSummary = shareholdings.length
                         ? shareholdings.slice(0, 5).map((row) => {
                             if (!row || typeof row !== "object") return "";
@@ -77940,6 +78014,7 @@
                             totalNumberOfSharesIssued: String(statementOfCapital.totalNumberOfSharesIssued || ""),
                             totalAggregateNominalValue: String(statementOfCapital.totalAggregateNominalValue || ""),
                         },
+                        shareholdingRows: shareholdings,
                         registeredEmailAddress: String(
                             confirmationStatement.registeredEmailAddress
                             || company.contactEmail
@@ -78156,8 +78231,30 @@
                                             </label>
                                         </div>
                                         <div class="ch-detail-edit" data-ch-step-panel="capital" hidden>
-                                            <label class="is-wide">
-                                                Shareholdings snapshot
+                                            <label class="is-wide ch-shareholding-wrap">
+                                                <strong>Shareholdings from Companies House</strong>
+                                                ${Array.isArray(row.shareholdingRows) && row.shareholdingRows.length ? `
+                                                    <table class="ch-shareholding-grid">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Share class</th>
+                                                                <th>Number held</th>
+                                                                <th>Shareholders</th>
+                                                                <th>Count</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            ${row.shareholdingRows.map((entry) => `
+                                                                <tr>
+                                                                    <td>${escapeHTML(entry.shareClass || "Share class")}</td>
+                                                                    <td>${escapeHTML(entry.numberHeld || "—")}</td>
+                                                                    <td>${escapeHTML(entry.shareholderNames || "No shareholder names provided")}</td>
+                                                                    <td>${escapeHTML(String(entry.shareholderCount || 0))}</td>
+                                                                </tr>
+                                                            `).join("")}
+                                                        </tbody>
+                                                    </table>
+                                                ` : `<p class="ch-shareholding-empty">No shareholding rows are currently loaded from Companies House for this client.</p>`}
                                                 <small class="operation-review-muted">${escapeHTML(row.shareholdingsSummary)}</small>
                                             </label>
                                             <label>
