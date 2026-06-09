@@ -72139,6 +72139,13 @@
                         ? snapshot.postFilingAnalysis
                         : {};
                     const aiTransactions = Array.isArray(postFiling?.transactions) ? postFiling.transactions : [];
+                    const outsidePeriodRows = Array.isArray(postFiling?.outsidePeriodCandidateRows)
+                        ? postFiling.outsidePeriodCandidateRows
+                        : [];
+                    const outsidePeriodCount = Number(postFiling?.outsidePeriodCandidateCount || outsidePeriodRows.length || 0);
+                    const outsidePeriodSummary = outsidePeriodCount > 0
+                        ? ` ${outsidePeriodCount.toLocaleString("en-GB")} journal${outsidePeriodCount === 1 ? "" : "s"} sit outside the filed period and are listed separately in guidance.`
+                        : "";
                     let candidateRows = [];
                     if (aiTransactions.length) {
                         candidateRows = aiTransactions.map((row) => {
@@ -72158,7 +72165,7 @@
                         setCodeBreakerWizardStep(
                             4,
                             "complete",
-                            `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.`
+                            `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.${outsidePeriodSummary}`
                         );
                     } else {
                         const customer = codeBreakerWorkspaceCustomer(workspace);
@@ -72191,7 +72198,7 @@
                                 setCodeBreakerWizardStep(
                                     4,
                                     "complete",
-                                    `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}`
+                                    `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}${outsidePeriodSummary}`
                                 );
                             } catch (fallbackError) {
                                 const statusCode = Number(fallbackError?.statusCode || 0);
@@ -72264,6 +72271,17 @@
                     }
                     if (String(postFiling?.reason || "").trim()) {
                         guidance.push(String(postFiling.reason).trim());
+                    }
+                    if (outsidePeriodCount > 0) {
+                        const outsideReferences = outsidePeriodRows
+                            .slice(0, 6)
+                            .map((row) => String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "").trim())
+                            .filter(Boolean)
+                            .join(", ");
+                        guidance.push(
+                            `${outsidePeriodCount.toLocaleString("en-GB")} journal${outsidePeriodCount === 1 ? "" : "s"} fall outside the filed period end (${formatDate(workspace?.yearEndDate || "") || String(workspace?.yearEndDate || "").slice(0, 10)}).`
+                            + (outsideReferences ? ` Outside-period refs: ${outsideReferences}.` : "")
+                        );
                     }
                     if (stepTwoWarningMessage) {
                         guidance.push(`Transaction pull warning: ${stepTwoWarningMessage}`);

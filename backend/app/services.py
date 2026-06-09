@@ -15216,15 +15216,16 @@ def _code_breaker_journal_candidates(
     *,
     as_at_date: date,
     submitted_at: datetime | None,
-) -> list[dict]:
-    candidates: list[dict] = []
+) -> tuple[list[dict], list[dict]]:
+    in_period_candidates: list[dict] = []
+    outside_period_candidates: list[dict] = []
     for index, row in enumerate(journals):
         created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         journal_date = _parse_optional_iso_date(row.get("JournalDate") or row.get("Date") or row.get("DateString"))
         if journal_date is None and created_at is not None:
             # Some Xero journal payloads omit JournalDate; use created date as a fallback.
             journal_date = created_at.date()
-        if journal_date is None or journal_date > as_at_date:
+        if journal_date is None:
             continue
         if submitted_at is not None:
             if created_at is not None and created_at <= submitted_at:
@@ -15259,28 +15260,34 @@ def _code_breaker_journal_candidates(
             )
         if not normalised_lines:
             continue
-        candidates.append(
-            {
-                "candidateId": f"J{index + 1}",
-                "journalId": journal_id,
-                "journalNumber": str(row.get("JournalNumber") or "").strip(),
-                "journalDate": journal_date.isoformat(),
-                "createdAt": _iso(created_at),
-                "reference": str(row.get("Reference") or row.get("SourceID") or "").strip(),
-                "sourceType": str(row.get("SourceType") or "").strip(),
-                "narration": str(row.get("Narration") or "").strip(),
-                "lines": normalised_lines,
-            }
+        candidate = {
+            "candidateId": f"J{index + 1}",
+            "journalId": journal_id,
+            "journalNumber": str(row.get("JournalNumber") or "").strip(),
+            "journalDate": journal_date.isoformat(),
+            "createdAt": _iso(created_at),
+            "reference": str(row.get("Reference") or row.get("SourceID") or "").strip(),
+            "sourceType": str(row.get("SourceType") or "").strip(),
+            "narration": str(row.get("Narration") or "").strip(),
+            "lines": normalised_lines,
+        }
+        if journal_date <= as_at_date:
+            in_period_candidates.append(candidate)
+        else:
+            outside_period_candidates.append(candidate)
+
+    def _sort_candidates(rows: list[dict]) -> list[dict]:
+        rows.sort(
+            key=lambda item: (
+                str(item.get("createdAt") or ""),
+                str(item.get("journalDate") or ""),
+                str(item.get("journalId") or ""),
+            ),
+            reverse=True,
         )
-    candidates.sort(
-        key=lambda item: (
-            str(item.get("createdAt") or ""),
-            str(item.get("journalDate") or ""),
-            str(item.get("journalId") or ""),
-        ),
-        reverse=True,
-    )
-    return candidates[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES]
+        return rows[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES]
+
+    return _sort_candidates(in_period_candidates), _sort_candidates(outside_period_candidates)
 
 
 def _code_breaker_journal_candidate_preview_rows(candidates: list[dict]) -> list[dict]:
@@ -15605,6 +15612,8 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "targetDifference": float(difference) if difference is not None else None,
         "candidateCount": 0,
         "candidateRows": [],
+        "outsidePeriodCandidateCount": 0,
+        "outsidePeriodCandidateRows": [],
         "confidence": 0,
         "warnings": [],
         "explainedDifference": None,
@@ -15641,13 +15650,22 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 else:
                     post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
             else:
-                candidates = _code_breaker_journal_candidates(
+                candidates, outside_period_candidates = _code_breaker_journal_candidates(
                     journals,
                     as_at_date=as_at_date,
                     submitted_at=submission_completed_at,
                 )
                 post_filing_analysis["candidateCount"] = len(candidates)
                 post_filing_analysis["candidateRows"] = _code_breaker_journal_candidate_preview_rows(candidates)
+                outside_preview_rows = _code_breaker_journal_candidate_preview_rows(outside_period_candidates)
+                if outside_preview_rows:
+                    for row in outside_preview_rows:
+                        row["sourceType"] = "Journal (outside filed period)"
+                        row["reason"] = (
+                            f"Journal dated after filed period end {as_at_date.isoformat()}; listed separately for review."
+                        )
+                post_filing_analysis["outsidePeriodCandidateCount"] = len(outside_period_candidates)
+                post_filing_analysis["outsidePeriodCandidateRows"] = outside_preview_rows
                 if (
                     submission_completed_at is not None
                     and any(not str(item.get("createdAt") or "").strip() for item in candidates)
@@ -15655,6 +15673,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
                     warnings.append(
                         "Some journals do not include CreatedDate in Xero; included as review candidates using journal date."
+                    )
+                    post_filing_analysis["warnings"] = warnings
+                if outside_period_candidates:
+                    warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                    warnings.append(
+                        f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
                     )
                     post_filing_analysis["warnings"] = warnings
                 if not candidates:
@@ -15666,6 +15690,11 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                             f"and created after {submission_completed_at.isoformat()}."
                         )
                     )
+                    if outside_period_candidates:
+                        post_filing_analysis["reason"] = (
+                            f"{post_filing_analysis['reason']} "
+                            f"{len(outside_period_candidates)} journal(s) were found after the filed period end and are shown separately."
+                        )
                 else:
                     try:
                         ai_variance = await _code_breaker_openai_extract_variance_transactions(
@@ -15686,13 +15715,19 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                             "explainedDifference": Decimal("0.00"),
                             "residualDifference": _money(difference),
                         }
+                    existing_warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                    ai_warnings = [str(item).strip() for item in (ai_variance.get("warnings") or []) if str(item).strip()]
+                    merged_warnings = [*existing_warnings]
+                    for warning_text in ai_warnings:
+                        if warning_text not in merged_warnings:
+                            merged_warnings.append(warning_text)
                     post_filing_analysis.update(
                         {
                             "engine": str(ai_variance.get("engine") or "none"),
                             "summary": str(ai_variance.get("summary") or ""),
                             "reason": str(ai_variance.get("reason") or ""),
                             "confidence": int(ai_variance.get("confidence") or 0),
-                            "warnings": [str(item).strip() for item in (ai_variance.get("warnings") or []) if str(item).strip()],
+                            "warnings": merged_warnings,
                             "transactions": ai_variance.get("transactions") if isinstance(ai_variance.get("transactions"), list) else [],
                         }
                     )
