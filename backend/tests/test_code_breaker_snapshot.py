@@ -145,3 +145,21 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["journalId"], "missing-created")
+
+    def test_journal_candidates_accept_manual_journal_line_amount_field(self):
+        journals = [
+            {
+                "JournalID": "manual-row",
+                "JournalDate": "2025-05-31",
+                "CreatedDateUTC": "2026-01-20T09:00:00Z",
+                "JournalLines": [{"LineAmount": "9.75", "AccountCode": "320"}],
+            }
+        ]
+        submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
+        candidates = services._code_breaker_journal_candidates(
+            journals,
+            as_at_date=date(2025, 5, 31),
+            submitted_at=submission,
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertAlmostEqual(candidates[0]["lines"][0]["netAmount"], 9.75, places=2)

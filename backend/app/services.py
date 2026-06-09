@@ -12539,6 +12539,14 @@ def _xero_connection_has_journal_scope(connection_row: dict | None) -> bool:
     return any(scope in scopes for scope in journal_scopes)
 
 
+def _xero_connection_has_manual_journal_scope(connection_row: dict | None) -> bool:
+    scopes = _xero_connection_scope_set(connection_row)
+    return any(
+        scope in scopes
+        for scope in ("accounting.manualjournals.read", "accounting.manualjournals", "accounting.transactions.read", "accounting.transactions")
+    )
+
+
 XERO_SCOPE_AUDIT_BROAD_SCOPES = {
     "accounting.transactions",
     "accounting.reports.read",
@@ -15039,7 +15047,7 @@ async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[
             return journals, "Xero journals request returned an invalid payload."
         request_error = str(payload.get("_error") or "").strip()
         if request_error:
-            return journals, request_error
+            break
         batch = payload.get("Journals") or []
         if not isinstance(batch, list) or not batch:
             break
@@ -15047,7 +15055,60 @@ async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[
         if len(batch) < 100:
             break
         offset += len(batch)
-    return journals, ""
+    if journals:
+        return journals, ""
+
+    if request_error and _xero_connection_has_manual_journal_scope(connection_row):
+        try:
+            manual_rows = await fetch_paginated_collection(
+                connection_row,
+                "https://api.xero.com/api.xro/2.0/ManualJournals",
+                "ManualJournals",
+                params={"order": "Date DESC"},
+                max_pages=CODE_BREAKER_MAX_JOURNAL_BATCHES,
+            )
+        except Exception as exc:
+            manual_error = _sync_error_message(exc)
+            return journals, f"{request_error} Manual journals fallback failed: {manual_error}"
+        normalised: list[dict] = []
+        for row in manual_rows:
+            if not isinstance(row, dict):
+                continue
+            raw_lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
+            lines: list[dict] = []
+            for line in raw_lines:
+                if not isinstance(line, dict):
+                    continue
+                line_amount = line.get("NetAmount")
+                if line_amount is None:
+                    line_amount = line.get("LineAmount")
+                lines.append(
+                    {
+                        "AccountCode": line.get("AccountCode"),
+                        "AccountName": line.get("AccountName"),
+                        "AccountType": line.get("AccountType"),
+                        "AccountClass": line.get("AccountClass"),
+                        "Description": line.get("Description"),
+                        "NetAmount": line_amount,
+                        "GrossAmount": line.get("GrossAmount", line_amount),
+                        "TaxAmount": line.get("TaxAmount"),
+                    }
+                )
+            normalised.append(
+                {
+                    "JournalID": row.get("ManualJournalID") or row.get("JournalID"),
+                    "JournalNumber": row.get("JournalNumber") or row.get("ManualJournalID"),
+                    "JournalDate": row.get("Date") or row.get("JournalDate"),
+                    "CreatedDateUTC": row.get("CreatedDateUTC") or row.get("UpdatedDateUTC"),
+                    "Reference": row.get("Reference") or row.get("Narration"),
+                    "SourceType": row.get("Status") or "MANUAL",
+                    "Narration": row.get("Narration"),
+                    "JournalLines": lines,
+                }
+            )
+        if normalised:
+            return normalised, ""
+    return journals, request_error
 
 
 async def _code_breaker_fetch_voided_contact_transactions(
@@ -15178,8 +15239,18 @@ def _code_breaker_journal_candidates(
                     "accountType": str(line.get("AccountType") or "").strip(),
                     "accountClass": str(line.get("AccountClass") or "").strip(),
                     "description": str(line.get("Description") or "").strip(),
-                    "netAmount": float(_money(line.get("NetAmount"))),
-                    "grossAmount": float(_money(line.get("GrossAmount"))),
+                    "netAmount": float(_money(line.get("NetAmount") if line.get("NetAmount") is not None else line.get("LineAmount"))),
+                    "grossAmount": float(
+                        _money(
+                            line.get("GrossAmount")
+                            if line.get("GrossAmount") is not None
+                            else (
+                                line.get("NetAmount")
+                                if line.get("NetAmount") is not None
+                                else line.get("LineAmount")
+                            )
+                        )
+                    ),
                     "taxAmount": float(_money(line.get("TaxAmount"))),
                 }
             )
