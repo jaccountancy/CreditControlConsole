@@ -15219,10 +15219,13 @@ def _code_breaker_journal_candidates(
 ) -> list[dict]:
     candidates: list[dict] = []
     for index, row in enumerate(journals):
+        created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         journal_date = _parse_optional_iso_date(row.get("JournalDate") or row.get("Date") or row.get("DateString"))
+        if journal_date is None and created_at is not None:
+            # Some Xero journal payloads omit JournalDate; use created date as a fallback.
+            journal_date = created_at.date()
         if journal_date is None or journal_date > as_at_date:
             continue
-        created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         if submitted_at is not None:
             if created_at is not None and created_at <= submitted_at:
                 continue
