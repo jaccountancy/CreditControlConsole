@@ -14152,6 +14152,34 @@ CODE_BREAKER_VARIANCE_TRANSACTIONS_SCHEMA = {
     },
 }
 
+CODE_BREAKER_VARIANCE_ACTION_PLAN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "confidence", "residualDifference", "actions", "warnings"],
+    "properties": {
+        "summary": {"type": "string"},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "residualDifference": {"type": "number"},
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rank", "actionType", "reference", "instruction", "expectedImpact", "reason"],
+                "properties": {
+                    "rank": {"type": "integer", "minimum": 1, "maximum": 99},
+                    "actionType": {"type": "string"},
+                    "reference": {"type": "string"},
+                    "instruction": {"type": "string"},
+                    "expectedImpact": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
 
 def _code_breaker_report_line_amounts(
     line: dict,
@@ -15616,6 +15644,103 @@ async def _code_breaker_openai_extract_variance_transactions(
     }
 
 
+async def _code_breaker_openai_build_action_plan(
+    *,
+    user_id: str,
+    as_at_date: date,
+    target_difference: Decimal,
+    residual_difference: Decimal,
+    tolerance_amount: Decimal,
+    transactions: list[dict],
+    non_journal_rows: list[dict],
+    outside_period_rows: list[dict],
+    voided_rows: list[dict],
+) -> dict:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return {
+            "engine": "unavailable",
+            "summary": "",
+            "confidence": 0,
+            "residualDifference": _money(residual_difference),
+            "actions": [],
+            "warnings": ["OpenAI is not configured for variance action planning."],
+        }
+
+    candidates = {
+        "journalTransactions": transactions,
+        "nonJournalTransactions": non_journal_rows,
+        "outsidePeriodJournals": outside_period_rows,
+        "voidedTransactions": voided_rows,
+    }
+    prompt = (
+        "You are generating an action plan to restore Xero to the filed Companies House net-assets position. "
+        "Return a strict, ordered list of practical actions. "
+        "Use positive expectedImpact when an action increases Xero net assets and negative when it decreases. "
+        "Prefer concrete actions users can perform in Xero: void, delete, reverse journal, or create a manual correcting journal. "
+        "Do not invent references that are not provided. "
+        f"Filed period end date: {as_at_date.isoformat()}. "
+        f"Target variance to reverse: {target_difference:.2f} GBP. "
+        f"Current residual difference after mapped rows: {residual_difference:.2f} GBP. "
+        f"Tolerance target is within ±{tolerance_amount:.2f} GBP."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {"type": "input_text", "text": json.dumps(candidates, default=_json_default)},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "code_breaker_variance_action_plan",
+                "schema": CODE_BREAKER_VARIANCE_ACTION_PLAN_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 2000,
+    }
+    payload = await _post_openai_responses(
+        request_body,
+        "Equity Montior variance action planning",
+        user_id=user_id,
+        feature="code-breaker",
+        page="code-breaker",
+        preferred_model=settings.openai_model,
+        timeout_seconds=90,
+    )
+    parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for Equity Montior variance action planning.")
+    actions = parsed.get("actions") if isinstance(parsed.get("actions"), list) else []
+    normalised_actions: list[dict] = []
+    for row in actions:
+        if not isinstance(row, dict):
+            continue
+        normalised_actions.append(
+            {
+                "rank": int(row.get("rank") or 0),
+                "actionType": str(row.get("actionType") or "").strip(),
+                "reference": str(row.get("reference") or "").strip(),
+                "instruction": str(row.get("instruction") or "").strip(),
+                "expectedImpact": float(_money(row.get("expectedImpact"))),
+                "reason": str(row.get("reason") or "").strip(),
+            }
+        )
+    normalised_actions = [row for row in normalised_actions if row.get("instruction")]
+    normalised_actions.sort(key=lambda row: int(row.get("rank") or 999))
+    return {
+        "engine": "openai",
+        "summary": str(parsed.get("summary") or "").strip(),
+        "confidence": int(parsed.get("confidence") or 0),
+        "residualDifference": _money(parsed.get("residualDifference")),
+        "actions": normalised_actions,
+        "warnings": [str(item).strip() for item in (parsed.get("warnings") or []) if str(item).strip()],
+    }
+
+
 async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     tenant_id = str(payload.get("tenantId") or "").strip()
@@ -15839,6 +15964,14 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "transactions": [],
         "voidedTransactions": [],
         "voidedCandidateCount": 0,
+        "actionPlan": {
+            "engine": "none",
+            "summary": "",
+            "confidence": 0,
+            "residualDifference": float(difference) if difference is not None else None,
+            "actions": [],
+            "warnings": [],
+        },
     }
     if difference is not None:
         if connection_row is None:
@@ -15986,6 +16119,43 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             if voided_reason:
                 warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
                 warnings.append(f"Unable to fetch voided/deleted transactions: {voided_reason}")
+                post_filing_analysis["warnings"] = warnings
+
+            try:
+                action_plan = await _code_breaker_openai_build_action_plan(
+                    user_id=str(user.get("id") or ""),
+                    as_at_date=as_at_date,
+                    target_difference=_money(difference),
+                    residual_difference=_money(post_filing_analysis.get("residualDifference")),
+                    tolerance_amount=Decimal("5.00"),
+                    transactions=post_filing_analysis.get("transactions") if isinstance(post_filing_analysis.get("transactions"), list) else [],
+                    non_journal_rows=post_filing_analysis.get("nonJournalTransactions") if isinstance(post_filing_analysis.get("nonJournalTransactions"), list) else [],
+                    outside_period_rows=post_filing_analysis.get("outsidePeriodCandidateRows") if isinstance(post_filing_analysis.get("outsidePeriodCandidateRows"), list) else [],
+                    voided_rows=voided_rows,
+                )
+            except Exception as exc:
+                action_plan = {
+                    "engine": "error",
+                    "summary": "",
+                    "confidence": 0,
+                    "residualDifference": _money(post_filing_analysis.get("residualDifference")),
+                    "actions": [],
+                    "warnings": [str(exc)],
+                }
+            post_filing_analysis["actionPlan"] = {
+                "engine": str(action_plan.get("engine") or "none"),
+                "summary": str(action_plan.get("summary") or ""),
+                "confidence": int(action_plan.get("confidence") or 0),
+                "residualDifference": float(_money(action_plan.get("residualDifference"))),
+                "actions": action_plan.get("actions") if isinstance(action_plan.get("actions"), list) else [],
+                "warnings": [str(item).strip() for item in (action_plan.get("warnings") or []) if str(item).strip()],
+            }
+            action_warnings = post_filing_analysis["actionPlan"].get("warnings") if isinstance(post_filing_analysis["actionPlan"], dict) else []
+            if isinstance(action_warnings, list) and action_warnings:
+                warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                for warning_text in action_warnings:
+                    if warning_text not in warnings:
+                        warnings.append(warning_text)
                 post_filing_analysis["warnings"] = warnings
 
     return {

@@ -29672,6 +29672,7 @@
                 rows: [],
                 events: [],
                 aiNarrative: "",
+                aiActions: [],
                 residualVariance: null,
             };
             let microAnalyzerRows = [];
@@ -71522,8 +71523,23 @@
                         <strong>${escapeHTML(String(item.value || "0"))}</strong>
                     </article>
                 `).join("");
-                narrative.textContent = String(codeBreakerVarianceState.aiNarrative || "").trim()
-                    || "Jenius AI could not provide an additional narrative for this run.";
+                const narrativeText = String(codeBreakerVarianceState.aiNarrative || "").trim();
+                const actionRows = Array.isArray(codeBreakerVarianceState.aiActions) ? codeBreakerVarianceState.aiActions : [];
+                if (actionRows.length) {
+                    const actionsHTML = actionRows
+                        .slice(0, 12)
+                        .map((row, index) => {
+                            const instruction = String(row?.instruction || "").trim() || "Review and apply corrective entry";
+                            const reference = String(row?.reference || "").trim();
+                            const reason = String(row?.reason || "").trim();
+                            const expectedImpact = Number(row?.expectedImpact || 0);
+                            return `${index + 1}. ${escapeHTML(instruction)}${reference ? ` (${escapeHTML(reference)})` : ""}${Number.isFinite(expectedImpact) && expectedImpact !== 0 ? ` · expected impact ${escapeHTML(formatCurrency(expectedImpact))}` : ""}${reason ? ` · ${escapeHTML(reason)}` : ""}`;
+                        })
+                        .join("<br>");
+                    narrative.innerHTML = `${narrativeText ? `${escapeHTML(narrativeText)}<br><br>` : ""}<strong>Suggested actions to restore filed position:</strong><br>${actionsHTML}`;
+                } else {
+                    narrative.textContent = narrativeText || "Jenius AI could not provide an additional narrative for this run.";
+                }
                 const residualValue = Number(codeBreakerVarianceState.residualVariance || 0);
                 residual.innerHTML = `Residual variance: <strong class="code-breaker-variance-delta ${Math.abs(residualValue) <= 5 ? "is-good" : "is-bad"}">${escapeHTML(formatCurrency(residualValue))}</strong>${Math.abs(residualValue) <= 5 ? " (within £5 write-off threshold)." : " (needs further review or manual journal)."}`;
 
@@ -71643,6 +71659,7 @@
                 codeBreakerVarianceState.status = "running";
                 codeBreakerVarianceState.rows = [];
                 codeBreakerVarianceState.aiNarrative = "";
+                codeBreakerVarianceState.aiActions = [];
                 codeBreakerVarianceState.residualVariance = Number(workspace?.netAssetsDifference || 0);
                 renderCodeBreakerVarianceModal();
                 try {
@@ -71747,11 +71764,22 @@
                         ...row,
                         usedForVariance: selectedKeys.has(row.key),
                     }));
-                    const explainedVariance = Number(varianceTarget || 0) - residualVariance;
+                    let explainedVariance = Number(varianceTarget || 0) - residualVariance;
+                    const actionPlan = postFiling?.actionPlan && typeof postFiling.actionPlan === "object"
+                        ? postFiling.actionPlan
+                        : {};
+                    const actionRows = Array.isArray(actionPlan?.actions) ? actionPlan.actions : [];
+                    const actionPlanResidual = Number(actionPlan?.residualDifference);
+                    if (Number.isFinite(actionPlanResidual)) {
+                        residualVariance = actionPlanResidual;
+                        explainedVariance = Number(varianceTarget || 0) - residualVariance;
+                    }
                     const aiNarrativeParts = [
+                        String(actionPlan?.summary || "").trim(),
                         String(postFiling?.summary || "").trim(),
                         String(postFiling?.reason || "").trim(),
                         Array.isArray(postFiling?.warnings) ? postFiling.warnings.map((item) => String(item || "").trim()).filter(Boolean).join(" ") : "",
+                        Array.isArray(actionPlan?.warnings) ? actionPlan.warnings.map((item) => String(item || "").trim()).filter(Boolean).join(" ") : "",
                     ].filter(Boolean);
                     const aiNarrative = aiNarrativeParts.join(" ").trim() || (
                         Math.abs(residualVariance) <= 5
@@ -71766,6 +71794,7 @@
                     };
                     codeBreakerVarianceState.rows = rows;
                     codeBreakerVarianceState.aiNarrative = aiNarrative;
+                    codeBreakerVarianceState.aiActions = actionRows;
                     codeBreakerVarianceState.residualVariance = residualVariance;
                     codeBreakerVarianceState.running = false;
                     codeBreakerVarianceState.status = "complete";
@@ -71775,6 +71804,7 @@
                     codeBreakerVarianceState.running = false;
                     codeBreakerVarianceState.status = "failed";
                     codeBreakerVarianceState.aiNarrative = error?.message || "Variance deep dive failed.";
+                    codeBreakerVarianceState.aiActions = [];
                     renderCodeBreakerVarianceModal();
                     showToast(codeBreakerVarianceState.aiNarrative, "error");
                     return false;
