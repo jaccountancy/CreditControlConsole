@@ -72143,8 +72143,20 @@
                         ? postFiling.outsidePeriodCandidateRows
                         : [];
                     const outsidePeriodCount = Number(postFiling?.outsidePeriodCandidateCount || outsidePeriodRows.length || 0);
+                    const nonJournalRows = Array.isArray(postFiling?.nonJournalTransactions)
+                        ? postFiling.nonJournalTransactions
+                        : [];
+                    const journalDiagnostics = postFiling?.journalDiagnostics && typeof postFiling.journalDiagnostics === "object"
+                        ? postFiling.journalDiagnostics
+                        : {};
+                    const nonJournalDiagnostics = postFiling?.nonJournalDiagnostics && typeof postFiling.nonJournalDiagnostics === "object"
+                        ? postFiling.nonJournalDiagnostics
+                        : {};
                     const outsidePeriodSummary = outsidePeriodCount > 0
                         ? ` ${outsidePeriodCount.toLocaleString("en-GB")} journal${outsidePeriodCount === 1 ? "" : "s"} sit outside the filed period and are listed separately in guidance.`
+                        : "";
+                    const nonJournalSummary = nonJournalRows.length > 0
+                        ? ` ${nonJournalRows.length.toLocaleString("en-GB")} non-journal contributor${nonJournalRows.length === 1 ? "" : "s"} also detected.`
                         : "";
                     let candidateRows = [];
                     if (aiTransactions.length) {
@@ -72165,61 +72177,83 @@
                         setCodeBreakerWizardStep(
                             4,
                             "complete",
-                            `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.${outsidePeriodSummary}`
+                            `${Number(postFiling?.candidateCount || candidateRows.length).toLocaleString("en-GB")} post-filing journal candidate${Number(postFiling?.candidateCount || candidateRows.length) === 1 ? "" : "s"} checked. ${candidateRows.length.toLocaleString("en-GB")} mapped by Jenius AI.${outsidePeriodSummary}${nonJournalSummary}`
                         );
                     } else {
-                        const customer = codeBreakerWorkspaceCustomer(workspace);
-                        if (!customer?.id) {
-                            const reason = String(postFiling?.reason || "").trim();
+                        candidateRows = nonJournalRows.map((row) => {
+                            const impact = Number(row?.impact || 0);
+                            return {
+                                sourceType: String(row?.sourceType || "Non-journal contributor"),
+                                reference: String(row?.reference || row?.transactionId || "Movement"),
+                                description: String(row?.reason || "").trim() || "Non-journal contributor",
+                                postedDate: String(row?.journalDate || "").slice(0, 10),
+                                status: String(row?.status || "Observed"),
+                                amount: impact,
+                                absoluteAmount: Math.abs(impact),
+                                reversalAmount: impact * -1,
+                                raw: row,
+                            };
+                        });
+                        if (candidateRows.length) {
                             setCodeBreakerWizardStep(
                                 4,
                                 "complete",
-                                reason || "No linked Xero client was found for this workspace, so transaction-level mapping was skipped."
+                                `${candidateRows.length.toLocaleString("en-GB")} post-filing non-journal contributor${candidateRows.length === 1 ? "" : "s"} found from snapshot analysis.${outsidePeriodSummary}`
                             );
                         } else {
-                            const fallbackParams = {
-                                customerId: customer.id,
-                                pageLimit: CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT,
-                                includeDiagnostics: 1,
-                            };
-                            try {
-                                const customerPayload = await requestJSON(
-                                    api.endpoints.customerTransactions,
-                                    { suppressFailurePanel: true },
-                                    fallbackParams
-                                );
-                                candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
-                                const diagnostics = customerPayload?.diagnostics || {};
-                                const bounded = Boolean(diagnostics?.bounded);
-                                const pageLimit = Number(diagnostics?.xeroPageLimit || 0);
-                                const modeCopy = bounded && pageLimit > 0
-                                    ? `bounded pull (${pageLimit} page${pageLimit === 1 ? "" : "s"} per source).`
-                                    : "full pull.";
+                            const customer = codeBreakerWorkspaceCustomer(workspace);
+                            if (!customer?.id) {
+                                const reason = String(postFiling?.reason || "").trim();
                                 setCodeBreakerWizardStep(
                                     4,
                                     "complete",
-                                    `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}${outsidePeriodSummary}`
+                                    reason || "No linked Xero client was found for this workspace, so transaction-level mapping was skipped."
                                 );
-                            } catch (fallbackError) {
-                                const statusCode = Number(fallbackError?.statusCode || 0);
-                                const detail = fallbackError?.details && typeof fallbackError.details === "object"
-                                    ? fallbackError.details
-                                    : {};
-                                const upstreamStatus = Number(detail?.status_code || detail?.statusCode || 0);
-                                const detailMessage = String(detail?.message || fallbackError?.message || "Application failed to respond.").trim();
-                                const endpoint = `/api/customers/${encodeURIComponent(String(customer.id || ""))}/xero-transactions?pageLimit=${CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT}&includeDiagnostics=1`;
-                                stepTwoWarningMessage = [
-                                    `Fallback transaction pull failed${statusCode ? ` (${statusCode})` : ""}.`,
-                                    detailMessage,
-                                    upstreamStatus && upstreamStatus !== statusCode ? `Upstream status ${upstreamStatus}.` : "",
-                                    `Endpoint: ${endpoint}.`,
-                                ].filter(Boolean).join(" ");
-                                setCodeBreakerWizardStep(
-                                    4,
-                                    "complete",
-                                    `Fallback transaction pull unavailable. Continuing with snapshot-only guidance. ${stepTwoWarningMessage}`
-                                );
-                                candidateRows = [];
+                            } else {
+                                const fallbackParams = {
+                                    customerId: customer.id,
+                                    pageLimit: CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT,
+                                    includeDiagnostics: 1,
+                                };
+                                try {
+                                    const customerPayload = await requestJSON(
+                                        api.endpoints.customerTransactions,
+                                        { suppressFailurePanel: true },
+                                        fallbackParams
+                                    );
+                                    candidateRows = codeBreakerWizardTransactionRows(workspace, customerPayload);
+                                    const diagnostics = customerPayload?.diagnostics || {};
+                                    const bounded = Boolean(diagnostics?.bounded);
+                                    const pageLimit = Number(diagnostics?.xeroPageLimit || 0);
+                                    const modeCopy = bounded && pageLimit > 0
+                                        ? `bounded pull (${pageLimit} page${pageLimit === 1 ? "" : "s"} per source).`
+                                        : "full pull.";
+                                    setCodeBreakerWizardStep(
+                                        4,
+                                        "complete",
+                                        `${candidateRows.length.toLocaleString("en-GB")} post-filing transaction${candidateRows.length === 1 ? "" : "s"} found via ${modeCopy}${outsidePeriodSummary}`
+                                    );
+                                } catch (fallbackError) {
+                                    const statusCode = Number(fallbackError?.statusCode || 0);
+                                    const detail = fallbackError?.details && typeof fallbackError.details === "object"
+                                        ? fallbackError.details
+                                        : {};
+                                    const upstreamStatus = Number(detail?.status_code || detail?.statusCode || 0);
+                                    const detailMessage = String(detail?.message || fallbackError?.message || "Application failed to respond.").trim();
+                                    const endpoint = `/api/customers/${encodeURIComponent(String(customer.id || ""))}/xero-transactions?pageLimit=${CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT}&includeDiagnostics=1`;
+                                    stepTwoWarningMessage = [
+                                        `Fallback transaction pull failed${statusCode ? ` (${statusCode})` : ""}.`,
+                                        detailMessage,
+                                        upstreamStatus && upstreamStatus !== statusCode ? `Upstream status ${upstreamStatus}.` : "",
+                                        `Endpoint: ${endpoint}.`,
+                                    ].filter(Boolean).join(" ");
+                                    setCodeBreakerWizardStep(
+                                        4,
+                                        "complete",
+                                        `Fallback transaction pull unavailable. Continuing with snapshot-only guidance. ${stepTwoWarningMessage}`
+                                    );
+                                    candidateRows = [];
+                                }
                             }
                         }
                     }
@@ -72272,6 +72306,25 @@
                     if (String(postFiling?.reason || "").trim()) {
                         guidance.push(String(postFiling.reason).trim());
                     }
+                    const fetchedJournalCount = Number(journalDiagnostics?.fetchedJournalCount || 0);
+                    const inPeriodTotal = Number(journalDiagnostics?.inPeriodTotal || postFiling?.candidateCount || 0);
+                    const inPeriodReturned = Number(journalDiagnostics?.inPeriodReturned || postFiling?.candidateCount || 0);
+                    const outsideTotal = Number(journalDiagnostics?.outsidePeriodTotal || outsidePeriodCount || 0);
+                    const outsideReturned = Number(journalDiagnostics?.outsidePeriodReturned || outsidePeriodCount || 0);
+                    const maxCandidates = Number(journalDiagnostics?.maxCandidates || 0);
+                    const inPeriodTruncated = Boolean(journalDiagnostics?.inPeriodTruncated);
+                    const outsideTruncated = Boolean(journalDiagnostics?.outsidePeriodTruncated);
+                    guidance.push(
+                        `Journal diagnostics: fetched ${fetchedJournalCount.toLocaleString("en-GB")}, in-period ${inPeriodReturned.toLocaleString("en-GB")}/${inPeriodTotal.toLocaleString("en-GB")}, outside-period ${outsideReturned.toLocaleString("en-GB")}/${outsideTotal.toLocaleString("en-GB")}${(inPeriodTruncated || outsideTruncated) && maxCandidates > 0 ? ` (truncated to max ${maxCandidates.toLocaleString("en-GB")} each bucket)` : ""}.`
+                    );
+                    const nonJournalFetched = nonJournalDiagnostics?.fetchedRows || {};
+                    const nonJournalFetchedTotal = Number(nonJournalFetched?.invoices || 0)
+                        + Number(nonJournalFetched?.creditNotes || 0)
+                        + Number(nonJournalFetched?.overpayments || 0);
+                    const nonJournalReturned = Number(nonJournalDiagnostics?.returnedRows || nonJournalRows.length || 0);
+                    guidance.push(
+                        `Non-journal diagnostics: fetched ${nonJournalFetchedTotal.toLocaleString("en-GB")} source row${nonJournalFetchedTotal === 1 ? "" : "s"} (invoices ${Number(nonJournalFetched?.invoices || 0).toLocaleString("en-GB")}, credits ${Number(nonJournalFetched?.creditNotes || 0).toLocaleString("en-GB")}, overpayments ${Number(nonJournalFetched?.overpayments || 0).toLocaleString("en-GB")}) and kept ${nonJournalReturned.toLocaleString("en-GB")} post-filing contributor${nonJournalReturned === 1 ? "" : "s"}${Boolean(nonJournalDiagnostics?.truncated) ? " (truncated)" : ""}.`
+                    );
                     if (outsidePeriodCount > 0) {
                         const outsideReferences = outsidePeriodRows
                             .slice(0, 6)
@@ -73516,7 +73569,6 @@
                     </div>
                     <div class="code-breaker-workspace-actions">
                         <button class="primary-button" type="button" data-code-breaker-calculate="${escapeHTML(workspace.id)}">Calculate</button>
-                        ${canCrack ? `<button class="ghost-button" type="button" data-code-breaker-crack="${escapeHTML(workspace.id)}">Crack the code</button>` : ""}
                         ${canCrack ? `<button class="ghost-button" type="button" data-code-breaker-variance="${escapeHTML(workspace.id)}">Work out variance</button>` : ""}
                     </div>
                     <div class="detail-panel" style="margin-top:10px;">
@@ -73539,10 +73591,6 @@
                 output.querySelector("[data-code-breaker-calculate]")?.addEventListener("click", (event) => {
                     const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCalculate || "");
                     runCodeBreakerAnalysis(workspaceId);
-                });
-                output.querySelector("[data-code-breaker-crack]")?.addEventListener("click", (event) => {
-                    const workspaceId = String(event.currentTarget?.dataset?.codeBreakerCrack || "");
-                    crackCodeBreakerVariance(workspaceId);
                 });
                 output.querySelector("[data-code-breaker-variance]")?.addEventListener("click", (event) => {
                     const workspaceId = String(event.currentTarget?.dataset?.codeBreakerVariance || "");

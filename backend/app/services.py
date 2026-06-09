@@ -15211,12 +15211,198 @@ async def _code_breaker_fetch_voided_contact_transactions(
     return rows[:120], ""
 
 
+async def _code_breaker_fetch_non_journal_contact_transactions(
+    connection_row: dict,
+    *,
+    xero_contact_id: str,
+    as_at_date: date,
+    submitted_at: datetime | None,
+) -> tuple[list[dict], dict, str]:
+    contact_id = str(xero_contact_id or "").strip()
+    diagnostics = {
+        "fetchedRows": {
+            "invoices": 0,
+            "creditNotes": 0,
+            "overpayments": 0,
+        },
+        "returnedRows": 0,
+        "truncated": False,
+        "maxRows": 120,
+    }
+    if not contact_id:
+        return [], diagnostics, ""
+
+    try:
+        raw_invoices = await _fetch_contact_invoices(connection_row, contact_id, max_pages=3)
+        raw_credit_notes = await fetch_paginated_collection(
+            connection_row,
+            CREDIT_NOTES_URL,
+            "CreditNotes",
+            params={"where": f'{_xero_contact_where(contact_id)}&&Type=="ACCRECCREDIT"', "order": "Date DESC"},
+            max_pages=3,
+        )
+        raw_overpayments = await fetch_paginated_collection(
+            connection_row,
+            OVERPAYMENTS_URL,
+            "Overpayments",
+            params={"where": _xero_contact_where(contact_id), "order": "Date DESC"},
+            max_pages=3,
+        )
+    except Exception as exc:
+        return [], diagnostics, _sync_error_message(exc)
+
+    raw_invoices = [row for row in raw_invoices if _xero_transaction_contact_id(row) == contact_id.lower()]
+    raw_credit_notes = [
+        row for row in raw_credit_notes
+        if _xero_transaction_contact_id(row) == contact_id.lower()
+        and str(row.get("Status") or "").strip().upper() not in {"VOIDED", "DELETED"}
+    ]
+    raw_overpayments = [
+        row for row in raw_overpayments
+        if _xero_transaction_contact_id(row) == contact_id.lower()
+        and str(row.get("Status") or "").strip().upper() not in {"VOIDED", "DELETED"}
+    ]
+
+    diagnostics["fetchedRows"]["invoices"] = len(raw_invoices)
+    diagnostics["fetchedRows"]["creditNotes"] = len(raw_credit_notes)
+    diagnostics["fetchedRows"]["overpayments"] = len(raw_overpayments)
+
+    rows: list[dict] = []
+
+    def _append_row(
+        *,
+        source_type: str,
+        tx_type: str,
+        tx_id: str,
+        reference: str,
+        posted_date_raw,
+        amount_raw,
+        status_value: str,
+        created_at: datetime | None,
+        reason: str,
+    ) -> None:
+        posted_date = _parse_optional_iso_date(posted_date_raw)
+        if posted_date is None or posted_date > as_at_date:
+            return
+        if submitted_at is not None and created_at is not None and created_at <= submitted_at:
+            return
+        amount = _money(amount_raw)
+        if amount == 0:
+            return
+        rows.append(
+            {
+                "sourceType": source_type,
+                "transactionType": tx_type,
+                "transactionId": str(tx_id or "").strip(),
+                "reference": str(reference or tx_id or source_type).strip(),
+                "status": str(status_value or "").strip(),
+                "journalDate": posted_date.isoformat(),
+                "createdAt": _iso(created_at),
+                "impact": float(amount),
+                "reason": reason,
+            }
+        )
+
+    for raw in raw_invoices:
+        invoice = _serialize_xero_invoice_transaction(raw, {})
+        created_at = _parse_optional_iso_datetime(raw.get("UpdatedDateUTC") or raw.get("UpdatedDate") or raw.get("CreatedDateUTC") or raw.get("Date"))
+        _append_row(
+            source_type="Invoice movement",
+            tx_type="invoice",
+            tx_id=str(invoice.get("xeroInvoiceId") or ""),
+            reference=str(invoice.get("invoiceNumber") or invoice.get("xeroInvoiceId") or ""),
+            posted_date_raw=invoice.get("invoiceDate") or invoice.get("dueDate"),
+            amount_raw=invoice.get("total") if invoice.get("total") is not None else invoice.get("amountDue"),
+            status_value=str(invoice.get("status") or ""),
+            created_at=created_at,
+            reason="Invoice movement updated after filing may contribute to variance.",
+        )
+
+    for raw in raw_credit_notes:
+        credit = _serialize_credit_note_transaction(raw)
+        created_at = _parse_optional_iso_datetime(raw.get("UpdatedDateUTC") or raw.get("UpdatedDate") or raw.get("Date"))
+        remaining_credit = _money(credit.get("remainingCredit"))
+        if remaining_credit > 0:
+            _append_row(
+                source_type="Credit note movement",
+                tx_type="credit_note",
+                tx_id=str(credit.get("id") or ""),
+                reference=str(credit.get("number") or credit.get("reference") or credit.get("id") or ""),
+                posted_date_raw=credit.get("date"),
+                amount_raw=remaining_credit * -1,
+                status_value=str(credit.get("status") or ""),
+                created_at=created_at,
+                reason="Unallocated credit note balance updated after filing may contribute to variance.",
+            )
+        allocations = credit.get("allocations") if isinstance(credit.get("allocations"), list) else []
+        for allocation in allocations:
+            allocation_amount = _money(allocation.get("amount"))
+            if allocation_amount <= 0:
+                continue
+            _append_row(
+                source_type="Credit allocation movement",
+                tx_type="credit_note_allocation",
+                tx_id=str(credit.get("id") or ""),
+                reference=str(allocation.get("invoiceNumber") or credit.get("number") or credit.get("id") or ""),
+                posted_date_raw=allocation.get("date") or credit.get("date"),
+                amount_raw=allocation_amount * -1,
+                status_value=str(credit.get("status") or ""),
+                created_at=created_at,
+                reason="Credit allocation updated after filing may contribute to variance.",
+            )
+
+    for raw in raw_overpayments:
+        overpayment = _serialize_overpayment_transaction(raw)
+        created_at = _parse_optional_iso_datetime(raw.get("UpdatedDateUTC") or raw.get("UpdatedDate") or raw.get("Date"))
+        remaining_credit = _money(overpayment.get("remainingCredit"))
+        if remaining_credit > 0:
+            _append_row(
+                source_type="Overpayment movement",
+                tx_type="overpayment",
+                tx_id=str(overpayment.get("id") or ""),
+                reference=str(overpayment.get("number") or overpayment.get("reference") or overpayment.get("id") or ""),
+                posted_date_raw=overpayment.get("date"),
+                amount_raw=remaining_credit * -1,
+                status_value=str(overpayment.get("status") or ""),
+                created_at=created_at,
+                reason="Unallocated overpayment updated after filing may contribute to variance.",
+            )
+        allocations = overpayment.get("allocations") if isinstance(overpayment.get("allocations"), list) else []
+        for allocation in allocations:
+            allocation_amount = _money(allocation.get("amount"))
+            if allocation_amount <= 0:
+                continue
+            _append_row(
+                source_type="Overpayment allocation movement",
+                tx_type="overpayment_allocation",
+                tx_id=str(overpayment.get("id") or ""),
+                reference=str(allocation.get("invoiceNumber") or overpayment.get("number") or overpayment.get("id") or ""),
+                posted_date_raw=allocation.get("date") or overpayment.get("date"),
+                amount_raw=allocation_amount * -1,
+                status_value=str(overpayment.get("status") or ""),
+                created_at=created_at,
+                reason="Overpayment allocation updated after filing may contribute to variance.",
+            )
+
+    rows.sort(
+        key=lambda item: (
+            str(item.get("createdAt") or ""),
+            str(item.get("journalDate") or ""),
+            str(item.get("transactionId") or ""),
+        ),
+        reverse=True,
+    )
+    diagnostics["returnedRows"] = min(len(rows), diagnostics["maxRows"])
+    diagnostics["truncated"] = len(rows) > diagnostics["maxRows"]
+    return rows[: diagnostics["maxRows"]], diagnostics, ""
+
+
 def _code_breaker_journal_candidates(
     journals: list[dict],
     *,
     as_at_date: date,
     submitted_at: datetime | None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], dict]:
     in_period_candidates: list[dict] = []
     outside_period_candidates: list[dict] = []
     for index, row in enumerate(journals):
@@ -15276,7 +15462,7 @@ def _code_breaker_journal_candidates(
         else:
             outside_period_candidates.append(candidate)
 
-    def _sort_candidates(rows: list[dict]) -> list[dict]:
+    def _sort_candidates(rows: list[dict]) -> tuple[list[dict], int, bool]:
         rows.sort(
             key=lambda item: (
                 str(item.get("createdAt") or ""),
@@ -15285,9 +15471,23 @@ def _code_breaker_journal_candidates(
             ),
             reverse=True,
         )
-        return rows[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES]
+        total_count = len(rows)
+        truncated = total_count > CODE_BREAKER_MAX_VARIANCE_CANDIDATES
+        return rows[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES], total_count, truncated
 
-    return _sort_candidates(in_period_candidates), _sort_candidates(outside_period_candidates)
+    in_period_rows, in_period_total, in_period_truncated = _sort_candidates(in_period_candidates)
+    outside_period_rows, outside_period_total, outside_period_truncated = _sort_candidates(outside_period_candidates)
+    diagnostics = {
+        "fetchedJournalCount": len(journals),
+        "inPeriodTotal": in_period_total,
+        "outsidePeriodTotal": outside_period_total,
+        "inPeriodReturned": len(in_period_rows),
+        "outsidePeriodReturned": len(outside_period_rows),
+        "inPeriodTruncated": in_period_truncated,
+        "outsidePeriodTruncated": outside_period_truncated,
+        "maxCandidates": CODE_BREAKER_MAX_VARIANCE_CANDIDATES,
+    }
+    return in_period_rows, outside_period_rows, diagnostics
 
 
 def _code_breaker_journal_candidate_preview_rows(candidates: list[dict]) -> list[dict]:
@@ -15614,6 +15814,24 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "candidateRows": [],
         "outsidePeriodCandidateCount": 0,
         "outsidePeriodCandidateRows": [],
+        "journalDiagnostics": {
+            "fetchedJournalCount": 0,
+            "inPeriodTotal": 0,
+            "outsidePeriodTotal": 0,
+            "inPeriodReturned": 0,
+            "outsidePeriodReturned": 0,
+            "inPeriodTruncated": False,
+            "outsidePeriodTruncated": False,
+            "maxCandidates": CODE_BREAKER_MAX_VARIANCE_CANDIDATES,
+        },
+        "nonJournalTransactions": [],
+        "nonJournalCandidateCount": 0,
+        "nonJournalDiagnostics": {
+            "fetchedRows": {"invoices": 0, "creditNotes": 0, "overpayments": 0},
+            "returnedRows": 0,
+            "truncated": False,
+            "maxRows": 120,
+        },
         "confidence": 0,
         "warnings": [],
         "explainedDifference": None,
@@ -15650,11 +15868,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 else:
                     post_filing_analysis["reason"] = f"Unable to fetch Xero journals: {journals_reason}"
             else:
-                candidates, outside_period_candidates = _code_breaker_journal_candidates(
+                candidates, outside_period_candidates, journal_diagnostics = _code_breaker_journal_candidates(
                     journals,
                     as_at_date=as_at_date,
                     submitted_at=submission_completed_at,
                 )
+                post_filing_analysis["journalDiagnostics"] = journal_diagnostics
                 post_filing_analysis["candidateCount"] = len(candidates)
                 post_filing_analysis["candidateRows"] = _code_breaker_journal_candidate_preview_rows(candidates)
                 outside_preview_rows = _code_breaker_journal_candidate_preview_rows(outside_period_candidates)
@@ -15679,6 +15898,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
                     warnings.append(
                         f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
+                    )
+                    post_filing_analysis["warnings"] = warnings
+                if bool((journal_diagnostics or {}).get("inPeriodTruncated")) or bool((journal_diagnostics or {}).get("outsidePeriodTruncated")):
+                    warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                    warnings.append(
+                        "Journal candidate results were truncated to the configured maximum; some rows were not included in this run."
                     )
                     post_filing_analysis["warnings"] = warnings
                 if not candidates:
@@ -15735,6 +15960,21 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     residual_difference = _money(ai_variance.get("residualDifference"))
                     post_filing_analysis["explainedDifference"] = float(explained_difference)
                     post_filing_analysis["residualDifference"] = float(residual_difference)
+            non_journal_rows, non_journal_diagnostics, non_journal_reason = await _code_breaker_fetch_non_journal_contact_transactions(
+                connection_row,
+                xero_contact_id=xero_contact_id,
+                as_at_date=as_at_date,
+                submitted_at=submission_completed_at,
+            )
+            post_filing_analysis["nonJournalTransactions"] = non_journal_rows
+            post_filing_analysis["nonJournalCandidateCount"] = len(non_journal_rows)
+            if isinstance(non_journal_diagnostics, dict):
+                post_filing_analysis["nonJournalDiagnostics"] = non_journal_diagnostics
+            if non_journal_reason:
+                warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                warnings.append(f"Unable to fetch non-journal contributors: {non_journal_reason}")
+                post_filing_analysis["warnings"] = warnings
+
             voided_rows, voided_reason = await _code_breaker_fetch_voided_contact_transactions(
                 connection_row,
                 xero_contact_id=xero_contact_id,
