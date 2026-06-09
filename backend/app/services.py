@@ -15163,7 +15163,7 @@ def _code_breaker_journal_candidates(
             continue
         created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         if submitted_at is not None:
-            if created_at is None or created_at <= submitted_at:
+            if created_at is not None and created_at <= submitted_at:
                 continue
         journal_id = str(row.get("JournalID") or row.get("Id") or "").strip()
         lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
@@ -15207,6 +15207,30 @@ def _code_breaker_journal_candidates(
         reverse=True,
     )
     return candidates[:CODE_BREAKER_MAX_VARIANCE_CANDIDATES]
+
+
+def _code_breaker_journal_candidate_preview_rows(candidates: list[dict]) -> list[dict]:
+    preview_rows: list[dict] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        preview_rows.append(
+            {
+                "candidateId": str(item.get("candidateId") or "").strip(),
+                "journalId": str(item.get("journalId") or "").strip(),
+                "journalNumber": str(item.get("journalNumber") or "").strip(),
+                "journalDate": str(item.get("journalDate") or "").strip(),
+                "createdAt": str(item.get("createdAt") or "").strip(),
+                "reference": str(item.get("reference") or "").strip(),
+                "sourceType": str(item.get("sourceType") or "").strip() or "Journal",
+                "narration": str(item.get("narration") or "").strip(),
+                # Candidate previews intentionally carry zero impact so they can be reviewed
+                # without polluting variance math before explicit selection or AI mapping.
+                "impact": 0.0,
+                "reason": "Journal candidate identified for manual review.",
+            }
+        )
+    return preview_rows
 
 
 async def _code_breaker_openai_extract_variance_transactions(
@@ -15506,6 +15530,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
         "submissionCompletedAt": _iso(submission_completed_at),
         "targetDifference": float(difference) if difference is not None else None,
         "candidateCount": 0,
+        "candidateRows": [],
         "confidence": 0,
         "warnings": [],
         "explainedDifference": None,
@@ -15548,6 +15573,16 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     submitted_at=submission_completed_at,
                 )
                 post_filing_analysis["candidateCount"] = len(candidates)
+                post_filing_analysis["candidateRows"] = _code_breaker_journal_candidate_preview_rows(candidates)
+                if (
+                    submission_completed_at is not None
+                    and any(not str(item.get("createdAt") or "").strip() for item in candidates)
+                ):
+                    warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
+                    warnings.append(
+                        "Some journals do not include CreatedDate in Xero; included as review candidates using journal date."
+                    )
+                    post_filing_analysis["warnings"] = warnings
                 if not candidates:
                     post_filing_analysis["reason"] = (
                         f"No journal candidates found on or before {as_at_date.isoformat()}."

@@ -71461,7 +71461,7 @@
                         { customerId: customer.id }
                     );
                     const xeroRows = codeBreakerVarianceRowsFromPayload(workspace, customerPayload);
-                    const journalRows = (Array.isArray(postFiling?.transactions) ? postFiling.transactions : [])
+                    const aiJournalRows = (Array.isArray(postFiling?.transactions) ? postFiling.transactions : [])
                         .map((row, index) => {
                             const impact = Number(row?.impact || 0);
                             return {
@@ -71479,6 +71479,34 @@
                                 key: `journal:${String(row?.journalId || row?.candidateId || "")}:${index}`,
                             };
                         });
+                    const candidateJournalRows = (Array.isArray(postFiling?.candidateRows) ? postFiling.candidateRows : [])
+                        .map((row, index) => {
+                            const impact = Number(row?.impact || 0);
+                            return {
+                                sourceType: String(row?.sourceType || "Journal"),
+                                reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
+                                description: String(row?.narration || row?.reason || "").trim() || "Journal candidate",
+                                status: String(row?.reason || "Journal candidate"),
+                                postedDate: String(row?.journalDate || "").slice(0, 10),
+                                amount: impact,
+                                absoluteAmount: Math.abs(impact),
+                                postedSinceFiling: true,
+                                transactionType: "journal_candidate",
+                                transactionId: String(row?.journalId || row?.candidateId || "").trim(),
+                                isAllocation: false,
+                                key: `journal-candidate:${String(row?.journalId || row?.candidateId || "")}:${index}`,
+                            };
+                        });
+                    const journalRowsByIdentity = new Map();
+                    candidateJournalRows.forEach((row) => {
+                        const identity = `${String(row.transactionId || "")}:${String(row.postedDate || "")}:${String(row.reference || "")}`;
+                        journalRowsByIdentity.set(identity, row);
+                    });
+                    aiJournalRows.forEach((row) => {
+                        const identity = `${String(row.transactionId || "")}:${String(row.postedDate || "")}:${String(row.reference || "")}`;
+                        journalRowsByIdentity.set(identity, row);
+                    });
+                    const journalRows = Array.from(journalRowsByIdentity.values());
                     const voidedRows = (Array.isArray(postFiling?.voidedTransactions) ? postFiling.voidedTransactions : [])
                         .map((row, index) => ({
                             sourceType: String(row?.sourceType || "Voided transaction"),

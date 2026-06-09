@@ -129,7 +129,7 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(candidates[0]["journalId"], "included")
         self.assertEqual(candidates[0]["journalDate"], "2025-05-31")
 
-    def test_journal_candidates_require_created_date_when_submission_known(self):
+    def test_journal_candidates_include_missing_created_date_for_review(self):
         journals = [
             {
                 "JournalID": "missing-created",
@@ -143,4 +143,5 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             as_at_date=date(2025, 5, 31),
             submitted_at=submission,
         )
-        self.assertEqual(candidates, [])
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["journalId"], "missing-created")

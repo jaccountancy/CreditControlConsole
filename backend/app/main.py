@@ -1492,6 +1492,7 @@ async def api_code_breaker_workspace_snapshot(
                     "submissionCompletedAt": None,
                     "targetDifference": None,
                     "candidateCount": 0,
+                    "candidateRows": [],
                     "confidence": 0,
                     "warnings": [],
                     "explainedDifference": None,
