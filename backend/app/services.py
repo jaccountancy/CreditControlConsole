@@ -15442,7 +15442,7 @@ def _code_breaker_journal_candidates(
         if journal_date is None:
             continue
         if submitted_at is not None:
-            if created_at is not None and created_at <= submitted_at:
+            if created_at is None or created_at <= submitted_at:
                 continue
         journal_id = str(row.get("JournalID") or row.get("Id") or "").strip()
         lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
