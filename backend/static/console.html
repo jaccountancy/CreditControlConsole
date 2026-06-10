@@ -7142,6 +7142,17 @@
             #insightsScreen #refreshInsightsButton.is-busy::before {
                 animation: insightsRefreshSpin 0.92s linear infinite;
             }
+            .insights-hero-greeting-line {
+                margin: 10px 4px 0;
+                padding: 11px 14px;
+                border-radius: 14px;
+                border: 1px solid rgba(79, 114, 190, 0.18);
+                background: linear-gradient(128deg, rgba(238, 244, 255, 0.95), rgba(225, 238, 255, 0.9));
+                color: #1d3163;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+                box-shadow: 0 8px 16px rgba(25, 44, 86, 0.08);
+            }
             body.is-insights-entering #insightsScreen > .detail-hero.insights-hero {
                 animation: insightsHeroEnter 0.64s cubic-bezier(0.16, 1, 0.3, 1);
             }
@@ -8241,6 +8252,11 @@
                 }
                 .insights-home-action-button {
                     min-height: 112px;
+                }
+                .insights-hero-greeting-line {
+                    margin-top: 8px;
+                    padding: 10px 12px;
+                    font-size: 0.9rem;
                 }
                 .insights-loading-stage {
                     padding: 18px 14px;
@@ -28856,6 +28872,7 @@
                                 </button>
                             </div>
                         </div>
+                        <p class="insights-hero-greeting-line" id="insightsHeroGreetingLine">Good Evening, Monday, 7th June 2026, 19:21</p>
 
                         <div class="insights-layout">
                             <section class="insights-main" id="insightsContent">
@@ -64685,9 +64702,9 @@
 
             function insightsTimeOfDayGreeting(now = new Date()) {
                 const hour = now.getHours();
-                if (hour < 12) return "Good morning";
-                if (hour < 18) return "Good afternoon";
-                return "Good evening";
+                if (hour < 12) return "Good Morning";
+                if (hour < 18) return "Good Afternoon";
+                return "Good Evening";
             }
 
             function insightsDateTimeParts(now = new Date()) {
@@ -64695,6 +64712,11 @@
                 const date = `${ordinalDay(now.getDate())} ${now.toLocaleDateString("en-GB", { month: "long" })} ${now.getFullYear()}`;
                 const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
                 return { day, date, time };
+            }
+
+            function insightsGreetingTimestamp(now = new Date()) {
+                const parts = insightsDateTimeParts(now);
+                return `${insightsTimeOfDayGreeting(now)}, ${parts.day}, ${parts.date}, ${parts.time}`;
             }
 
             function updateInsightsLiveGreeting() {
@@ -64708,8 +64730,10 @@
                 const parts = insightsDateTimeParts(now);
                 const salutationTarget = document.getElementById("insightsHeroChip");
                 if (salutationTarget) {
-                    salutationTarget.textContent = `${insightsTimeOfDayGreeting(now)}, ${parts.day} ${parts.date} ${parts.time}`;
+                    salutationTarget.textContent = insightsGreetingTimestamp(now);
                 }
+                const greetingLineTarget = document.getElementById("insightsHeroGreetingLine");
+                if (greetingLineTarget) greetingLineTarget.textContent = insightsGreetingTimestamp(now);
                 const dayTarget = document.getElementById("insightsLiveDay");
                 const dateTarget = document.getElementById("insightsLiveDate");
                 const timeTarget = document.getElementById("insightsLiveTime");
