@@ -235,7 +235,7 @@ from .services import (
     juksib_import_batch,
     juksib_list_batches,
     juksib_publish_batch,
-    juksib_source_invoice_pdf,
+    juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
     vault_analyze_files,
     vault_delete_file,
     vault_file_content,
@@ -2277,7 +2277,7 @@ async def api_juksib_audit(batch_id: str, user: dict = Depends(require_panel_use
 
 @app.get("/api/juksib/source-invoices/{invoice_id}/pdf")
 async def api_juksib_source_invoice_pdf(invoice_id: str, user: dict = Depends(require_panel_user)):
-    file_bytes, filename = await juksib_source_invoice_pdf(user, invoice_id)
+    file_bytes, filename = await juksib_source_invoice_pdf_bytes(user, invoice_id)
     safe_filename = str(filename or "juk-invoice.pdf").replace('"', "")
     return Response(
         content=file_bytes,
