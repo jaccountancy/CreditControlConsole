@@ -14,10 +14,13 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'admin',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login_at TIMESTAMPTZ
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
 
 CREATE TABLE IF NOT EXISTS xero_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

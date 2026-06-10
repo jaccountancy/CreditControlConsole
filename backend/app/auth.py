@@ -123,6 +123,28 @@ def require_panel_user(request: Request) -> dict:
     return user
 
 
+def panel_user_role(user: dict | None) -> str:
+    role = str((user or {}).get("role") or "").strip().lower()
+    return role or "admin"
+
+
+def require_panel_roles(user: dict, allowed_roles: set[str], action: str) -> dict:
+    role = panel_user_role(user)
+    if role in allowed_roles:
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            f"Role '{role}' is not allowed to {action}. "
+            f"Allowed roles: {', '.join(sorted(allowed_roles))}."
+        ),
+    )
+
+
+def require_panel_write_user(user: dict, action: str = "perform this action") -> dict:
+    return require_panel_roles(user, {"admin", "finance_admin", "client_manager"}, action)
+
+
 def require_api_user(request: Request) -> dict:
     authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):

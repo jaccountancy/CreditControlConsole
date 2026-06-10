@@ -24,6 +24,7 @@ from .auth import (
     current_user_from_request,
     require_api_user,
     require_panel_user,
+    require_panel_write_user,
     require_user,
     set_session_cookie,
     start_oauth_state,
@@ -230,6 +231,7 @@ from .services import (
     delete_me_report_unreconciled_transaction,
     juksib_apply_override,
     juksib_automation_payload,
+    juksib_batch_excel_report,
     run_juksib_automation_now,
     juksib_batch_audit,
     juksib_bulk_update_invoice_status,
@@ -2236,6 +2238,7 @@ async def api_juksib_batches(
 
 @app.post("/api/juksib/batches/import")
 async def api_juksib_import_batch(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "import JUKSIB batches")
     try:
         payload = await request.json()
     except Exception:
@@ -2250,6 +2253,7 @@ async def api_juksib_batch(batch_id: str, user: dict = Depends(require_panel_use
 
 @app.post("/api/juksib/batches/{batch_id}/invoices/status")
 async def api_juksib_bulk_status(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "update JUKSIB invoice statuses")
     try:
         payload = await request.json()
     except Exception:
@@ -2259,6 +2263,7 @@ async def api_juksib_bulk_status(batch_id: str, request: Request, user: dict = D
 
 @app.post("/api/juksib/batches/{batch_id}/invoices/override")
 async def api_juksib_override(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "apply JUKSIB match overrides")
     try:
         payload = await request.json()
     except Exception:
@@ -2268,6 +2273,7 @@ async def api_juksib_override(batch_id: str, request: Request, user: dict = Depe
 
 @app.post("/api/juksib/batches/{batch_id}/publish")
 async def api_juksib_publish(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "publish JUKSIB invoices to Xero")
     try:
         payload = await request.json()
     except Exception:
@@ -2287,6 +2293,7 @@ def api_juksib_automation(user: dict = Depends(require_panel_user)):
 
 @app.post("/api/juksib/automation/settings")
 async def api_update_juksib_automation_settings(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "change JUKSIB automation settings")
     try:
         payload = await request.json()
     except Exception:
@@ -2296,6 +2303,7 @@ async def api_update_juksib_automation_settings(request: Request, user: dict = D
 
 @app.post("/api/juksib/automation/run-now")
 async def api_run_juksib_automation_now(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "run JUKSIB automation")
     await request.body()
     return {"status": "ok", "automation": await run_juksib_automation_now(user)}
 
@@ -2308,6 +2316,17 @@ async def api_juksib_source_invoice_pdf(invoice_id: str, user: dict = Depends(re
         content=file_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{safe_filename}"'},
+    )
+
+
+@app.get("/api/juksib/batches/{batch_id}/excel")
+async def api_juksib_batch_excel(batch_id: str, user: dict = Depends(require_panel_user)):
+    workbook_bytes, filename = await juksib_batch_excel_report(user, batch_id)
+    safe_filename = str(filename or "juksib-report.xlsx").replace('"', "")
+    return Response(
+        content=workbook_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
     )
 
 

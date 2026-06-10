@@ -29319,6 +29319,7 @@
                                 <div class="juk-grid" id="jukInvoicesSummaryCards"></div>
                                 <div class="juk-toolbar">
                                     <button class="ghost-button" id="jukInvoicesExportCsvButton" type="button">Export CSV report</button>
+                                    <button class="ghost-button" id="jukInvoicesExportExcelButton" type="button">Export Excel report</button>
                                     <button class="ghost-button" id="jukInvoicesExportAuditButton" type="button">Export audit log</button>
                                 </div>
                                 <div class="juk-toolbar" role="tablist" aria-label="JUK automation tabs">
@@ -32071,6 +32072,7 @@
                         juksibOverride: config.endpoints?.juksibOverride || "/api/juksib/batches/:batchId/invoices/override",
                         juksibPublish: config.endpoints?.juksibPublish || "/api/juksib/batches/:batchId/publish",
                         juksibBatchAudit: config.endpoints?.juksibBatchAudit || "/api/juksib/batches/:batchId/audit",
+                        juksibBatchExcel: config.endpoints?.juksibBatchExcel || "/api/juksib/batches/:batchId/excel",
                         juksibSourceInvoicePdf: config.endpoints?.juksibSourceInvoicePdf || "/api/juksib/source-invoices/:invoiceId/pdf",
                         juksibAutomation: config.endpoints?.juksibAutomation || "/api/juksib/automation",
                         juksibAutomationSettings: config.endpoints?.juksibAutomationSettings || "/api/juksib/automation/settings",
@@ -36725,8 +36727,17 @@
                 }
 
                 const exportCsvButton = document.getElementById("jukInvoicesExportCsvButton");
+                const exportExcelButton = document.getElementById("jukInvoicesExportExcelButton");
                 const exportAuditButton = document.getElementById("jukInvoicesExportAuditButton");
                 if (exportCsvButton) exportCsvButton.onclick = () => jukExportCsv(batch);
+                if (exportExcelButton) {
+                    exportExcelButton.onclick = () => {
+                        const batchId = String(batch.id || "").trim();
+                        if (!batchId) return showToast("No batch selected.", "info");
+                        const url = endpointURL(api.endpoints.juksibBatchExcel, { batchId });
+                        window.open(url, "_blank", "noopener");
+                    };
+                }
                 if (exportAuditButton) exportAuditButton.onclick = () => jukExportAudit();
 
                 const automationSettings = jukAutomationState?.settings || {};

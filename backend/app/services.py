@@ -16509,6 +16509,53 @@ def juksib_automation_payload(user: dict) -> dict:
     }
 
 
+async def juksib_batch_excel_report(user: dict, batch_id: str) -> tuple[bytes, str]:
+    payload = await juksib_get_batch(user, batch_id)
+    batch = payload.get("batch") if isinstance(payload, dict) else {}
+    invoices = (batch or {}).get("invoices") if isinstance(batch, dict) else []
+    rows = [
+        [
+            "Batch Reference",
+            "Invoice Number",
+            "Invoice Date",
+            "Client Name",
+            "Suggested Tenant",
+            "Match Source",
+            "Confidence",
+            "Status",
+            "Subtotal",
+            "VAT",
+            "Total",
+            "Published Bill ID",
+            "Error",
+        ]
+    ]
+    for invoice in invoices if isinstance(invoices, list) else []:
+        if not isinstance(invoice, dict):
+            continue
+        rows.append(
+            [
+                str((batch or {}).get("batchReference") or ""),
+                str(invoice.get("jukInvoiceNumber") or ""),
+                str(invoice.get("invoiceDate") or ""),
+                str(invoice.get("jukContactName") or ""),
+                str(invoice.get("matchedTenantName") or ""),
+                str(invoice.get("matchSource") or ""),
+                float(_juksib_decimal(invoice.get("matchConfidence"))),
+                str(invoice.get("statusLabel") or invoice.get("status") or ""),
+                float(_juksib_decimal(invoice.get("subtotal"))),
+                float(_juksib_decimal(invoice.get("vatTotal"))),
+                float(_juksib_decimal(invoice.get("total"))),
+                str(invoice.get("publishedBillId") or ""),
+                str(invoice.get("errorMessage") or ""),
+            ]
+        )
+    workbook_bytes = _build_simple_xlsx_workbook(rows, "JUKSIB Report")
+    batch_reference = str((batch or {}).get("batchReference") or "juksib").strip() or "juksib"
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", batch_reference).strip("-") or "juksib"
+    return workbook_bytes, f"{safe_name}-report.xlsx"
+
+
 def update_juksib_automation_settings(user: dict, payload: dict | None = None) -> dict:
     body = payload if isinstance(payload, dict) else {}
     enabled = bool(body.get("enabled"))
