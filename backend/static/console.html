@@ -24733,6 +24733,109 @@
             .juk-step-button.is-current {
                 transform: translateY(-1px);
             }
+            .juk-command-bar {
+                position: sticky;
+                top: 8px;
+                z-index: 4;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 12px;
+                background: linear-gradient(90deg, rgba(243, 248, 255, 0.95), rgba(238, 247, 255, 0.95));
+                margin-bottom: 10px;
+                backdrop-filter: blur(2px);
+            }
+            .juk-command-metric {
+                display: grid;
+                gap: 2px;
+                min-width: 120px;
+            }
+            .juk-command-metric small {
+                font-size: 11px;
+                color: var(--ink-soft);
+            }
+            .juk-command-metric strong {
+                font-size: 16px;
+                color: #1145a5;
+            }
+            .juk-command-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-left: auto;
+            }
+            .juk-confidence-wrap {
+                display: grid;
+                gap: 5px;
+            }
+            .juk-confidence-bar {
+                width: 100%;
+                max-width: 110px;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(58, 79, 122, 0.16);
+                overflow: hidden;
+            }
+            .juk-confidence-fill {
+                height: 100%;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #d64949 0%, #f0b429 55%, #1b9a66 100%);
+            }
+            .juk-risk-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 2px 8px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+            }
+            .juk-risk-pill.is-high {
+                background: rgba(27, 154, 102, 0.16);
+                color: #14714d;
+            }
+            .juk-risk-pill.is-medium {
+                background: rgba(240, 180, 41, 0.2);
+                color: #8a5d00;
+            }
+            .juk-risk-pill.is-low {
+                background: rgba(214, 73, 73, 0.18);
+                color: #8d2424;
+            }
+            .juk-detail-panel {
+                margin-top: 8px;
+                border: 1px dashed rgba(58, 79, 122, 0.3);
+                border-radius: 10px;
+                padding: 10px;
+                background: rgba(250, 252, 255, 0.9);
+            }
+            .juk-detail-grid {
+                display: grid;
+                gap: 8px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .juk-detail-card {
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 8px;
+                background: #fff;
+            }
+            .juk-detail-card h6 {
+                margin: 0 0 4px;
+                font-size: 12px;
+                color: var(--ink-soft);
+            }
+            .juk-detail-card p {
+                margin: 0;
+                font-size: 12px;
+                color: var(--ink);
+                word-break: break-word;
+            }
             @media (max-width: 1180px) {
                 .juk-wizard-steps {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -24741,6 +24844,9 @@
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .juk-form-grid {
+                    grid-template-columns: 1fr;
+                }
+                .juk-detail-grid {
                     grid-template-columns: 1fr;
                 }
             }
@@ -29221,6 +29327,21 @@
                                     <button class="ghost-button" id="jukInvoicesSkipSelectedButton" type="button">Skip selected</button>
                                     <button class="ghost-button" id="jukInvoicesRetrySelectedButton" type="button">Retry selected</button>
                                 </div>
+                                <div class="juk-command-bar" id="jukInvoicesCommandBar">
+                                    <div class="juk-command-metric">
+                                        <small>Selected invoices</small>
+                                        <strong id="jukInvoicesSelectedCount">0</strong>
+                                    </div>
+                                    <div class="juk-command-metric">
+                                        <small>Selected total</small>
+                                        <strong id="jukInvoicesSelectedTotal">£0.00</strong>
+                                    </div>
+                                    <div class="juk-command-actions">
+                                        <button class="primary-button" id="jukInvoicesCommandApproveButton" type="button">Approve selected</button>
+                                        <button class="ghost-button" id="jukInvoicesCommandSkipButton" type="button">Skip</button>
+                                        <button class="ghost-button" id="jukInvoicesCommandExceptionButton" type="button">Send to exceptions</button>
+                                    </div>
+                                </div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="JUK invoice review table">
                                         <thead>
@@ -29307,6 +29428,20 @@
                                 <div class="juk-toolbar">
                                     <button class="primary-button" id="jukInvoicesStartPublishButton" type="button">Start publishing</button>
                                 </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="JUK publish events">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice</th>
+                                                <th>Status</th>
+                                                <th>Bill ID</th>
+                                                <th>Account</th>
+                                                <th>Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="jukInvoicesPublishEventsBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
 
                             <section class="juk-panel" id="jukInvoicesStep7Panel" hidden>
@@ -35605,7 +35740,7 @@
                 selectedInvoiceIds: [],
                 reviewFilter: "all",
                 step: 1,
-                publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "" },
+                publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [] },
             };
             let jukInvoicesState = loadJukInvoicesState();
             let jukAutomationState = {
@@ -35624,6 +35759,7 @@
             let jukAutomationTab = "settings";
             let jukLastRenderedStep = 0;
             let jukLoadingState = { active: false, message: "" };
+            let jukExpandedInvoiceId = "";
 
             function setJukLoading(active, message = "Working…") {
                 jukLoadingState = {
@@ -35775,6 +35911,13 @@
                 const matchByClient = tenants.find((tenant) => String(tenant.clientId || "").trim() === matchedClientId);
                 if (matchByClient?.clientName) return String(matchByClient.clientName);
                 return matchedClientId || "No match";
+            }
+
+            function jukConfidenceRisk(confidence) {
+                const value = Number(confidence || 0);
+                if (value >= 0.9) return { label: "High", className: "is-high" };
+                if (value >= 0.7) return { label: "Medium", className: "is-medium" };
+                return { label: "Low", className: "is-low" };
             }
 
             function jukUpsertBatch(batch) {
@@ -36114,6 +36257,7 @@
                     failed: 0,
                     skipped: 0,
                     current: "",
+                    rows: [],
                 };
                 jukSetStep(6);
                 renderJukInvoicesScreen();
@@ -36135,6 +36279,7 @@
                     jukInvoicesState.publish.failed = Number(result.failed || 0) + Number(result.partialFailed || 0);
                     jukInvoicesState.publish.skipped = Number(result.duplicates || 0);
                     jukInvoicesState.publish.current = "Publish run complete.";
+                    jukInvoicesState.publish.rows = Array.isArray(result.rows) ? result.rows : [];
                     if (updatedBatch?.id) await jukRefreshFromAPI({ silent: true, batchId: updatedBatch.id });
                     jukSetStep(7);
                     renderJukInvoicesScreen();
@@ -36142,6 +36287,7 @@
                 } catch (error) {
                     jukInvoicesState.publish.running = false;
                     jukInvoicesState.publish.current = "Publish failed.";
+                    jukInvoicesState.publish.rows = [];
                     renderJukInvoicesScreen();
                     showToast(error?.message || "Unable to publish JUKSIB batch.", "error");
                 } finally {
@@ -36399,6 +36545,13 @@
                     reviewTable.innerHTML = reviewRows.length
                         ? reviewRows.map((invoice) => {
                             const suggestedClientName = jukSuggestedClientName(invoice);
+                            const confidence = Number(invoice.matchConfidence || 0);
+                            const confidencePct = Math.max(0, Math.min(100, Math.round(confidence * 100)));
+                            const risk = jukConfidenceRisk(confidence);
+                            const isExpanded = jukExpandedInvoiceId === invoice.id;
+                            const alternativesText = Array.isArray(invoice.alternatives) && invoice.alternatives.length
+                                ? invoice.alternatives.map((item) => `${item?.tenantName || "Tenant"} (${Math.round(Number(item?.confidence || 0) * 100)}%)`).join(", ")
+                                : "None";
                             return `
                             <tr>
                                 <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(invoice.id) ? "checked" : ""}></td>
@@ -36407,7 +36560,12 @@
                                 <td>${escapeHTML(suggestedClientName || "No match")}</td>
                                 <td>${escapeHTML(invoice.matchedTenantName || "No match")}</td>
                                 <td>${escapeHTML(invoice.matchSource || "--")}</td>
-                                <td>${escapeHTML(`${Math.round(Number(invoice.matchConfidence || 0) * 100)}%`)}</td>
+                                <td>
+                                    <div class="juk-confidence-wrap">
+                                        <div class="juk-confidence-bar"><div class="juk-confidence-fill" style="width:${confidencePct}%"></div></div>
+                                        <div><span class="juk-risk-pill ${risk.className}">${risk.label}</span> ${escapeHTML(`${confidencePct}%`)}</div>
+                                    </div>
+                                </td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.vatTotal || 0))}</td>
                                 <td><span class="status-pill">${escapeHTML(JUK_STATUS_LABELS[invoice.status] || invoice.status)}</span></td>
@@ -36420,6 +36578,32 @@
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
+                            ${isExpanded ? `
+                            <tr class="juk-detail-row">
+                                <td colspan="11">
+                                    <div class="juk-detail-panel">
+                                        <div class="juk-detail-grid">
+                                            <article class="juk-detail-card">
+                                                <h6>Match Reason</h6>
+                                                <p>${escapeHTML(invoice.matchReason || "No explanation available.")}</p>
+                                            </article>
+                                            <article class="juk-detail-card">
+                                                <h6>Alternative Matches</h6>
+                                                <p>${escapeHTML(alternativesText)}</p>
+                                            </article>
+                                            <article class="juk-detail-card">
+                                                <h6>Published Bill ID</h6>
+                                                <p>${escapeHTML(invoice.publishedBillId || "Not published")}</p>
+                                            </article>
+                                            <article class="juk-detail-card">
+                                                <h6>Error</h6>
+                                                <p>${escapeHTML(invoice.errorMessage || "None")}</p>
+                                            </article>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            ` : ""}
                             `;
                         }).join("")
                         : '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
@@ -36469,7 +36653,7 @@
                                 window.open(rawUrl, "_blank", "noopener");
                                 setTimeout(() => URL.revokeObjectURL(rawUrl), 5000);
                             } else if (action === "explain") {
-                                showToast(target.matchReason || "No match explanation available.", "info");
+                                jukExpandedInvoiceId = jukExpandedInvoiceId === target.id ? "" : target.id;
                             }
                             renderJukInvoicesScreen();
                         });
@@ -36493,11 +36677,24 @@
                 const markNotConnectedSelectedButton = document.getElementById("jukInvoicesMarkNotConnectedSelectedButton");
                 const skipSelectedButton = document.getElementById("jukInvoicesSkipSelectedButton");
                 const retrySelectedButton = document.getElementById("jukInvoicesRetrySelectedButton");
+                const commandCount = document.getElementById("jukInvoicesSelectedCount");
+                const commandTotal = document.getElementById("jukInvoicesSelectedTotal");
+                const commandApprove = document.getElementById("jukInvoicesCommandApproveButton");
+                const commandSkip = document.getElementById("jukInvoicesCommandSkipButton");
+                const commandException = document.getElementById("jukInvoicesCommandExceptionButton");
                 const selectedCount = (jukInvoicesState.selectedInvoiceIds || []).length;
+                const selectedTotalValue = (batch.invoices || [])
+                    .filter((invoice) => (jukInvoicesState.selectedInvoiceIds || []).includes(invoice.id))
+                    .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+                if (commandCount) commandCount.textContent = `${selectedCount}`;
+                if (commandTotal) commandTotal.textContent = formatCurrency(selectedTotalValue);
                 if (approveSelectedButton) approveSelectedButton.disabled = selectedCount === 0;
                 if (markNotConnectedSelectedButton) markNotConnectedSelectedButton.disabled = selectedCount === 0;
                 if (skipSelectedButton) skipSelectedButton.disabled = selectedCount === 0;
                 if (retrySelectedButton) retrySelectedButton.disabled = selectedCount === 0;
+                if (commandApprove) commandApprove.disabled = selectedCount === 0;
+                if (commandSkip) commandSkip.disabled = selectedCount === 0;
+                if (commandException) commandException.disabled = selectedCount === 0;
                 if (selectReadyButton) {
                     selectReadyButton.onclick = () => {
                         jukInvoicesState.selectedInvoiceIds = (batch.invoices || [])
@@ -36573,6 +36770,18 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to retry selected invoices.", "error");
                         }
+                    };
+                }
+                if (commandApprove) commandApprove.onclick = () => approveSelectedButton?.click();
+                if (commandSkip) commandSkip.onclick = () => skipSelectedButton?.click();
+                if (commandException) {
+                    commandException.onclick = () => {
+                        const firstSelected = (jukInvoicesState.selectedInvoiceIds || [])[0] || "";
+                        if (!firstSelected) return;
+                        const invoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
+                        jukSetStep(4);
+                        if (invoiceSelect) invoiceSelect.value = firstSelected;
+                        renderJukInvoicesScreen();
                     };
                 }
 
@@ -36696,6 +36905,21 @@
                         ["Failed", progress.failed],
                         ["Skipped", progress.skipped],
                     ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+                }
+                const publishEventsBody = document.getElementById("jukInvoicesPublishEventsBody");
+                if (publishEventsBody) {
+                    const publishRows = Array.isArray(progress.rows) ? progress.rows : [];
+                    publishEventsBody.innerHTML = publishRows.length
+                        ? publishRows.slice(0, 300).map((row) => `
+                            <tr>
+                                <td>${escapeHTML(String(row.invoiceId || "--"))}</td>
+                                <td>${escapeHTML(String(row.status || "--"))}</td>
+                                <td>${escapeHTML(String(row.billId || ""))}</td>
+                                <td>${escapeHTML(`${row.purchaseAccountCode || ""} ${row.purchaseAccountName || ""}`.trim() || "--")}</td>
+                                <td>${escapeHTML(String(row.message || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No events yet</p><h4>Publish events will appear here</h4><p>Start publishing to stream outcomes per invoice.</p></div></td></tr>';
                 }
                 if (startPublishButton) {
                     const isTestMode = String(batch.mode || "test").toLowerCase() !== "live";
