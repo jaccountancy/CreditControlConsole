@@ -28916,6 +28916,10 @@
                                     <h3>Payroll Headcount</h3>
                                     <p class="detail-meta">Track payroll client headcount movement and identify unusual month-on-month changes.</p>
                                 </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="payrollHeadcountRefreshButton" type="button">Refresh page</button>
+                                    <button class="primary-button" id="payrollHeadcountAddWorkspaceButton" type="button">Add workspace</button>
+                                </div>
                             </div>
                             <p class="late-charge-summary" id="payrollHeadcountSummary">Payroll headcount workspace is ready.</p>
                             <section class="ch-companies-table-wrap">
@@ -28934,6 +28938,36 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="payrollHeadcountWorkspacePickerModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="payrollHeadcountWorkspacePickerTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Payroll Headcount</p>
+                                    <h4 id="payrollHeadcountWorkspacePickerTitle">Add connected Xero organisations</h4>
+                                    <p class="detail-meta">Select the connected organisations you want to bring into this Payroll Headcount workspace list.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="payrollHeadcountWorkspacePickerCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Connected Xero organisations for Payroll Headcount">
+                                    <thead>
+                                        <tr>
+                                            <th>Select</th>
+                                            <th>Xero organisation</th>
+                                            <th>Tenant ID</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="payrollHeadcountWorkspacePickerBody"></tbody>
+                                </table>
+                            </section>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="payrollHeadcountWorkspacePickerCancelButton" type="button">Cancel</button>
+                                <button class="primary-button" id="payrollHeadcountWorkspacePickerSaveButton" type="button">Add selected</button>
+                            </div>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="clientCallStatsScreen" hidden>
                         <section class="detail-panel">
@@ -30220,6 +30254,10 @@
             let microAnalyzerWorkspaces = loadMicroAnalyzerWorkspaces();
             const payrollHeadcountStorageKey = `${STORAGE_KEY}:payroll-headcount-workspaces:v1`;
             let payrollHeadcountWorkspaces = loadPayrollHeadcountWorkspaces();
+            const payrollHeadcountIncludedTenantIdsStorageKey = `${STORAGE_KEY}:payroll-headcount-included-tenant-ids:v1`;
+            let payrollHeadcountIncludedTenantIds = loadPayrollHeadcountIncludedTenantIds();
+            let payrollHeadcountWorkspacePickerOpen = false;
+            let payrollHeadcountWorkspacePickerTenantIds = [];
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
             const CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP = 2;
             const CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT = 3;
@@ -32435,6 +32473,16 @@
                 }
             }
 
+            function loadPayrollHeadcountIncludedTenantIds() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(payrollHeadcountIncludedTenantIdsStorageKey) || "[]");
+                    if (!Array.isArray(stored)) return [];
+                    return stored.map((value) => String(value || "").trim()).filter(Boolean);
+                } catch {
+                    return [];
+                }
+            }
+
             function loadMicroAnalyzerWorkspaces() {
                 try {
                     const stored = JSON.parse(localStorage.getItem(microAnalyzerWorkspaceStorageKey) || "[]");
@@ -32467,6 +32515,14 @@
                     localStorage.setItem(payrollHeadcountStorageKey, JSON.stringify(payrollHeadcountWorkspaces || []));
                 } catch {
                     // Payroll Headcount workspaces can operate in-memory if browser storage is unavailable.
+                }
+            }
+
+            function persistPayrollHeadcountIncludedTenantIds() {
+                try {
+                    localStorage.setItem(payrollHeadcountIncludedTenantIdsStorageKey, JSON.stringify(payrollHeadcountIncludedTenantIds || []));
+                } catch {
+                    // Payroll Headcount workspace selection can operate in-memory if browser storage is unavailable.
                 }
             }
 
@@ -34891,10 +34947,102 @@
             function renderPayrollHeadcountScreen() {
                 const summary = document.getElementById("payrollHeadcountSummary");
                 const tableBody = document.getElementById("payrollHeadcountTableBody");
-                if (!summary || !tableBody) return;
+                const refreshButton = document.getElementById("payrollHeadcountRefreshButton");
+                const addWorkspaceButton = document.getElementById("payrollHeadcountAddWorkspaceButton");
+                const pickerModal = document.getElementById("payrollHeadcountWorkspacePickerModal");
+                const pickerBody = document.getElementById("payrollHeadcountWorkspacePickerBody");
+                const pickerCloseButton = document.getElementById("payrollHeadcountWorkspacePickerCloseButton");
+                const pickerCancelButton = document.getElementById("payrollHeadcountWorkspacePickerCancelButton");
+                const pickerSaveButton = document.getElementById("payrollHeadcountWorkspacePickerSaveButton");
+                if (!summary || !tableBody || !refreshButton || !addWorkspaceButton || !pickerModal || !pickerBody || !pickerCloseButton || !pickerCancelButton || !pickerSaveButton) return;
 
                 const connections = payrollHeadcountOrganisationConnections();
-                const workspaceCount = (payrollHeadcountWorkspaces || []).length;
+                const allTenantIds = new Set(connections.map((row) => String(row?.tenantId || "").trim()).filter(Boolean));
+                const previousSelection = JSON.stringify(payrollHeadcountIncludedTenantIds || []);
+                payrollHeadcountIncludedTenantIds = (payrollHeadcountIncludedTenantIds || []).filter((tenantId) => allTenantIds.has(String(tenantId || "").trim()));
+                if (JSON.stringify(payrollHeadcountIncludedTenantIds || []) !== previousSelection) {
+                    persistPayrollHeadcountIncludedTenantIds();
+                }
+                const selectedTenantIds = new Set((payrollHeadcountIncludedTenantIds || []).map((tenantId) => String(tenantId || "").trim()).filter(Boolean));
+                const listedConnections = connections.filter((row) => selectedTenantIds.has(String(row?.tenantId || "").trim()));
+                const workspaceCount = listedConnections.filter((row) => payrollHeadcountWorkspaceByTenant(String(row?.tenantId || "").trim())).length;
+
+                if (refreshButton.dataset.payrollHeadcountWired !== "true") {
+                    refreshButton.dataset.payrollHeadcountWired = "true";
+                    refreshButton.addEventListener("click", async () => {
+                        refreshButton.disabled = true;
+                        const originalLabel = refreshButton.textContent;
+                        refreshButton.textContent = "Refreshing...";
+                        try {
+                            await loadMeReport(true);
+                            showToast("Payroll Headcount refreshed.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to refresh Payroll Headcount.", "error");
+                        } finally {
+                            refreshButton.disabled = false;
+                            refreshButton.textContent = originalLabel || "Refresh page";
+                            renderPayrollHeadcountScreen();
+                        }
+                    });
+                }
+                if (addWorkspaceButton.dataset.payrollHeadcountWired !== "true") {
+                    addWorkspaceButton.dataset.payrollHeadcountWired = "true";
+                    addWorkspaceButton.addEventListener("click", () => {
+                        payrollHeadcountWorkspacePickerTenantIds = [...(payrollHeadcountIncludedTenantIds || [])];
+                        payrollHeadcountWorkspacePickerOpen = true;
+                        renderPayrollHeadcountScreen();
+                    });
+                }
+                if (pickerCloseButton.dataset.payrollHeadcountWired !== "true") {
+                    pickerCloseButton.dataset.payrollHeadcountWired = "true";
+                    pickerCloseButton.addEventListener("click", closePayrollHeadcountWorkspacePickerModal);
+                }
+                if (pickerCancelButton.dataset.payrollHeadcountWired !== "true") {
+                    pickerCancelButton.dataset.payrollHeadcountWired = "true";
+                    pickerCancelButton.addEventListener("click", closePayrollHeadcountWorkspacePickerModal);
+                }
+                if (pickerSaveButton.dataset.payrollHeadcountWired !== "true") {
+                    pickerSaveButton.dataset.payrollHeadcountWired = "true";
+                    pickerSaveButton.addEventListener("click", () => {
+                        const ids = Array.from(new Set((payrollHeadcountWorkspacePickerTenantIds || []).map((tenantId) => String(tenantId || "").trim()).filter(Boolean)));
+                        payrollHeadcountIncludedTenantIds = ids;
+                        persistPayrollHeadcountIncludedTenantIds();
+                        payrollHeadcountWorkspacePickerOpen = false;
+                        showToast(ids.length ? `${ids.length.toLocaleString("en-GB")} organisation${ids.length === 1 ? "" : "s"} added to Payroll Headcount.` : "No organisations selected.", ids.length ? "success" : "info");
+                        renderPayrollHeadcountScreen();
+                    });
+                }
+                if (pickerModal.dataset.payrollHeadcountWired !== "true") {
+                    pickerModal.dataset.payrollHeadcountWired = "true";
+                    pickerModal.addEventListener("click", (event) => {
+                        if (event.target === pickerModal) closePayrollHeadcountWorkspacePickerModal();
+                    });
+                }
+                pickerModal.hidden = !payrollHeadcountWorkspacePickerOpen;
+                pickerBody.innerHTML = connections.length
+                    ? connections.map((connection) => {
+                        const tenantId = String(connection?.tenantId || "").trim();
+                        const checked = (payrollHeadcountWorkspacePickerTenantIds || []).includes(tenantId);
+                        return `
+                            <tr>
+                                <td><input type="checkbox" data-payroll-headcount-picker-select="${escapeHTML(tenantId)}" ${checked ? "checked" : ""}></td>
+                                <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong></td>
+                                <td><small>${escapeHTML(tenantId)}</small></td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="3"><div class="empty-state"><p class="eyebrow">No organisations</p><h4>No connected Xero organisations found</h4><p>Connect Xero first, then return to add workspaces.</p></div></td></tr>';
+                pickerBody.querySelectorAll("[data-payroll-headcount-picker-select]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", () => {
+                        const tenantId = String(checkbox.dataset.payrollHeadcountPickerSelect || "").trim();
+                        if (!tenantId) return;
+                        const set = new Set((payrollHeadcountWorkspacePickerTenantIds || []).map((item) => String(item || "").trim()).filter(Boolean));
+                        if (checkbox.checked) set.add(tenantId);
+                        else set.delete(tenantId);
+                        payrollHeadcountWorkspacePickerTenantIds = [...set];
+                    });
+                });
+                pickerSaveButton.disabled = !connections.length;
 
                 if (meReportLoading && !connections.length) {
                     summary.textContent = "Loading connected Xero organisations.";
@@ -34908,9 +35056,15 @@
                     return;
                 }
 
-                summary.textContent = `${connections.length.toLocaleString("en-GB")} connected Xero organisation${connections.length === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} Headcount workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+                if (!listedConnections.length) {
+                    summary.textContent = "No organisations have been added to this Payroll Headcount list yet.";
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No workspaces added</p><h4>Use Add workspace to select organisations</h4><p>Select connected Xero organisations to bring them into this list and configure each workspace.</p></div></td></tr>';
+                    return;
+                }
 
-                tableBody.innerHTML = connections.map((connection) => {
+                summary.textContent = `${listedConnections.length.toLocaleString("en-GB")} organisation${listedConnections.length === 1 ? "" : "s"} in this Payroll Headcount list · ${workspaceCount.toLocaleString("en-GB")} Headcount workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+
+                tableBody.innerHTML = listedConnections.map((connection) => {
                     const tenantId = String(connection?.tenantId || "").trim();
                     const workspace = payrollHeadcountWorkspaceByTenant(tenantId);
                     const tenantType = String(connection?.tenantType || "").trim();
@@ -34933,6 +35087,11 @@
                         setupPayrollHeadcountWorkspace(button.dataset.payrollHeadcountSetup || "");
                     });
                 });
+            }
+
+            function closePayrollHeadcountWorkspacePickerModal() {
+                payrollHeadcountWorkspacePickerOpen = false;
+                renderPayrollHeadcountScreen();
             }
 
             function payrollHeadcountOrganisationConnections() {
