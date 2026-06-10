@@ -7227,15 +7227,16 @@
                 gap: 12px;
             }
             .insights-home-action-strip {
-                display: grid;
-                grid-template-columns: 280px repeat(4, minmax(180px, 1fr)) 96px;
+                display: flex;
+                align-items: stretch;
                 border-radius: 18px;
                 border: 1px solid rgba(66, 107, 182, 0.36);
                 background:
                     radial-gradient(circle at 10% 12%, rgba(84, 121, 255, 0.32), rgba(84, 121, 255, 0)),
                     linear-gradient(132deg, #081332 0%, #111f4a 42%, #0f1a42 100%);
                 box-shadow: 0 18px 34px rgba(7, 18, 46, 0.38);
-                overflow: hidden;
+                overflow-x: auto;
+                overflow-y: hidden;
             }
             .insights-home-action-strip > * + * {
                 border-left: 1px solid rgba(133, 169, 240, 0.14);
@@ -7246,6 +7247,7 @@
                 align-items: center;
                 gap: 12px;
                 padding: 20px;
+                flex: 0 0 300px;
             }
             .insights-home-action-intro-mark {
                 width: 56px;
@@ -7280,38 +7282,27 @@
                 line-height: 1.35;
                 font-weight: 730;
             }
-            .insights-home-action-group-block {
-                display: grid;
-                align-content: center;
-                gap: 10px;
-                padding: 14px 12px;
-            }
-            .insights-home-action-group-title {
-                margin: 0;
-                color: rgba(197, 216, 255, 0.72);
-                font-size: 0.72rem;
-                font-weight: 820;
-                text-transform: uppercase;
-                letter-spacing: 0.12em;
-                text-align: center;
-            }
-            .insights-home-action-group-items {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 10px 8px;
+            .insights-home-action-row {
+                display: flex;
+                align-items: stretch;
+                flex: 1 1 auto;
+                min-width: 1080px;
             }
             .insights-home-action-button {
                 border: 0;
                 background: transparent;
                 color: rgba(224, 236, 255, 0.92);
-                min-height: 68px;
-                padding: 8px 6px;
-                border-radius: 10px;
+                min-height: 132px;
+                padding: 14px 10px;
+                border-radius: 0;
                 display: grid;
                 justify-items: center;
-                gap: 8px;
+                align-content: center;
+                gap: 12px;
                 text-align: center;
                 transition: background 0.18s ease, transform 0.18s ease, color 0.18s ease;
+                flex: 1 1 0;
+                min-width: 128px;
             }
             .insights-home-action-button:hover,
             .insights-home-action-button:focus-visible {
@@ -7321,9 +7312,9 @@
                 transform: translateY(-1px);
             }
             .insights-home-action-icon {
-                width: 32px;
-                height: 32px;
-                border-radius: 10px;
+                width: 46px;
+                height: 46px;
+                border-radius: 14px;
                 display: inline-grid;
                 place-items: center;
                 color: #7ea7ff;
@@ -7331,34 +7322,20 @@
                 background: rgba(42, 74, 159, 0.18);
             }
             .insights-home-action-icon svg {
-                width: 17px;
-                height: 17px;
-                stroke-width: 2.1;
+                width: 24px;
+                height: 24px;
+                stroke-width: 2.2;
                 stroke: currentColor;
                 fill: none;
                 stroke-linecap: round;
                 stroke-linejoin: round;
             }
             .insights-home-action-label {
-                font-size: 0.96rem;
-                font-weight: 790;
-                line-height: 1.18;
-                letter-spacing: -0.01em;
-            }
-            .insights-home-action-more {
-                display: grid;
-                place-items: center;
-                padding: 12px 10px;
-            }
-            .insights-home-action-more .insights-home-action-button {
-                min-height: 68px;
-                width: 100%;
-                gap: 10px;
-            }
-            .insights-home-action-more .insights-home-action-icon {
-                width: 40px;
-                height: 40px;
-                border-radius: 12px;
+                font-size: 0.9rem;
+                font-weight: 810;
+                line-height: 1.16;
+                letter-spacing: 0;
+                text-transform: uppercase;
             }
             .insights-loading-stage {
                 position: relative;
@@ -8205,19 +8182,8 @@
                 .insights-home-overview {
                     grid-template-columns: 1fr;
                 }
-                .insights-home-action-strip {
-                    grid-template-columns: minmax(0, 1fr);
-                }
-                .insights-home-action-strip > * + * {
-                    border-left: 0;
-                    border-top: 1px solid rgba(133, 169, 240, 0.14);
-                }
-                .insights-home-action-group-block,
-                .insights-home-action-more {
-                    padding: 14px 16px;
-                }
-                .insights-home-action-group-items {
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                .insights-home-action-intro {
+                    flex-basis: 250px;
                 }
                 .insights-loading-grid {
                     grid-template-columns: 1fr;
@@ -8240,12 +8206,13 @@
                 }
                 .insights-home-action-intro {
                     padding: 16px;
+                    flex-basis: 220px;
                 }
                 .insights-home-action-intro-copy h3 {
                     font-size: 1.38rem;
                 }
-                .insights-home-action-group-items {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                .insights-home-action-row {
+                    min-width: 980px;
                 }
                 .insights-loading-stage {
                     padding: 18px 14px;
@@ -65214,12 +65181,8 @@
                     { key: "analyze-vat-return", label: "Analyze Returns", detail: "Review VAT return risk and mapping issues.", group: "Practice Tools", icon: "calculator" },
                     { key: "review-xero-lock-dates", label: "Review Lock Dates", detail: "Check lock dates and posting controls.", group: "Practice Tools", icon: "table" },
                 ];
-                const groupOrder = ["Compliance", "Banking", "Credit Control", "Practice Tools"];
-                const groupedActions = groupOrder.map((groupLabel) => ({
-                    label: groupLabel,
-                    actions: quickActions.filter((action) => action.group === groupLabel),
-                }));
-                const overflowActions = [
+                const rowActions = [
+                    ...quickActions,
                     { key: "review-equity-reconciliation", label: "More Actions", detail: "Open the full action workspace.", icon: "actions" },
                 ];
                 return `<section class="insight-chart insights-home-section insights-home-quick-actions" id="insightsQuickActionsCard">
@@ -65231,21 +65194,8 @@
                                 <p>Streamline your workflow</p>
                             </div>
                         </header>
-                        ${groupedActions.map((group) => `
-                            <section class="insights-home-action-group-block" aria-label="${escapeHTML(group.label)} actions">
-                                <p class="insights-home-action-group-title">${escapeHTML(group.label)}</p>
-                                <div class="insights-home-action-group-items">
-                                    ${group.actions.map((action) => `
-                                        <button type="button" class="insights-home-action-button" data-insights-action="${escapeHTML(action.key)}" title="${escapeHTML(action.detail || action.label)}">
-                                            <span class="insights-home-action-icon" aria-hidden="true">${iconSVG(action.icon || "actions")}</span>
-                                            <span class="insights-home-action-label">${escapeHTML(action.label)}</span>
-                                        </button>
-                                    `).join("")}
-                                </div>
-                            </section>
-                        `).join("")}
-                        <div class="insights-home-action-more" aria-label="Additional actions">
-                            ${overflowActions.map((action) => `
+                        <div class="insights-home-action-row">
+                            ${rowActions.map((action) => `
                                 <button type="button" class="insights-home-action-button" data-insights-action="${escapeHTML(action.key)}" title="${escapeHTML(action.detail || action.label)}">
                                     <span class="insights-home-action-icon" aria-hidden="true">${iconSVG(action.icon || "actions")}</span>
                                     <span class="insights-home-action-label">${escapeHTML(action.label)}</span>
