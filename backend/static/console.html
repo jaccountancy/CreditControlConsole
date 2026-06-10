@@ -7031,31 +7031,16 @@
             #insightsScreen > .detail-hero.insights-hero .insights-hero-chip {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
                 width: fit-content;
                 border: 1px solid rgba(29, 103, 242, 0.28);
                 border-radius: 999px;
-                padding: 4px 10px;
+                padding: 5px 11px;
                 background: rgba(255, 255, 255, 0.84);
                 color: #1f58bd;
-                font-size: 0.63rem;
-                font-weight: 920;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
+                font-size: 0.72rem;
+                font-weight: 840;
+                letter-spacing: 0.01em;
                 transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
-            }
-            #insightsScreen > .detail-hero.insights-hero .insights-hero-chip::before {
-                content: "";
-                width: 7px;
-                height: 7px;
-                border-radius: 50%;
-                background: #1f8f6e;
-                box-shadow: 0 0 0 0 rgba(31, 143, 110, 0.32);
-                animation: insightsLiveDot 1.8s ease-in-out infinite;
-            }
-            #insightsScreen > .detail-hero.insights-hero.is-loading .insights-hero-chip::before {
-                background: #1d67f2;
-                animation-duration: 1s;
             }
             #insightsScreen > .detail-hero.insights-hero.is-loading::after {
                 opacity: 1;
@@ -64444,6 +64429,13 @@
                 return insightsTopbarTitle();
             }
 
+            function insightsTimeOfDayGreeting(now = new Date()) {
+                const hour = now.getHours();
+                if (hour < 12) return "Good morning";
+                if (hour < 18) return "Good afternoon";
+                return "Good evening";
+            }
+
             function insightsDateTimeParts(now = new Date()) {
                 const day = now.toLocaleDateString("en-GB", { weekday: "long" });
                 const date = `${ordinalDay(now.getDate())} ${now.toLocaleDateString("en-GB", { month: "long" })} ${now.getFullYear()}`;
@@ -64452,13 +64444,18 @@
             }
 
             function updateInsightsLiveGreeting() {
+                const now = new Date();
                 const target = document.getElementById("insightsLiveGreeting");
                 if (target) {
                     target.classList.remove("is-ticking");
-                    target.textContent = insightsGreetingText();
+                    target.textContent = insightsGreetingText(now);
                     window.requestAnimationFrame(() => target.classList.add("is-ticking"));
                 }
-                const parts = insightsDateTimeParts();
+                const parts = insightsDateTimeParts(now);
+                const salutationTarget = document.getElementById("insightsHeroChip");
+                if (salutationTarget) {
+                    salutationTarget.textContent = `${insightsTimeOfDayGreeting(now)}, ${parts.day} ${parts.date} ${parts.time}`;
+                }
                 const dayTarget = document.getElementById("insightsLiveDay");
                 const dateTarget = document.getElementById("insightsLiveDate");
                 const timeTarget = document.getElementById("insightsLiveTime");
