@@ -2189,6 +2189,54 @@ CREATE TABLE IF NOT EXISTS juksib_audit_logs (
 
 CREATE INDEX IF NOT EXISTS juksib_audit_logs_user_batch_idx
 ON juksib_audit_logs (user_id, batch_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS juksib_automation_settings (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    schedule_time TEXT NOT NULL DEFAULT '09:00',
+    timezone TEXT NOT NULL DEFAULT 'Europe/London',
+    recipient_emails JSONB NOT NULL DEFAULT '[]'::jsonb,
+    include_paid_invoices BOOLEAN NOT NULL DEFAULT FALSE,
+    auto_publish BOOLEAN NOT NULL DEFAULT TRUE,
+    last_run_at TIMESTAMPTZ,
+    last_run_local_date DATE,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS schedule_time TEXT NOT NULL DEFAULT '09:00';
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'Europe/London';
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS recipient_emails JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS include_paid_invoices BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS auto_publish BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMPTZ;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS last_run_local_date DATE;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE juksib_automation_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS juksib_automation_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    trigger_type TEXT NOT NULL DEFAULT 'scheduled',
+    status TEXT NOT NULL DEFAULT 'running',
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT NOT NULL DEFAULT '',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS trigger_type TEXT NOT NULL DEFAULT 'scheduled';
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'running';
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS juksib_automation_runs_user_started_idx
+ON juksib_automation_runs (user_id, started_at DESC);
 """
 
 

@@ -229,6 +229,8 @@ from .services import (
     mark_me_report_purchases_paid_personally,
     delete_me_report_unreconciled_transaction,
     juksib_apply_override,
+    juksib_automation_payload,
+    run_juksib_automation_now,
     juksib_batch_audit,
     juksib_bulk_update_invoice_status,
     juksib_get_batch,
@@ -236,6 +238,8 @@ from .services import (
     juksib_list_batches,
     juksib_publish_batch,
     juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
+    start_juksib_automation_worker,
+    update_juksib_automation_settings,
     vault_analyze_files,
     vault_delete_file,
     vault_file_content,
@@ -329,6 +333,7 @@ def startup() -> None:
     ensure_schema()
     install_sync_signal_handlers()
     start_companies_house_auto_sync_worker()
+    start_juksib_automation_worker()
 
 
 def template_context(request: Request, **extra):
@@ -2273,6 +2278,26 @@ async def api_juksib_publish(batch_id: str, request: Request, user: dict = Depen
 @app.get("/api/juksib/batches/{batch_id}/audit")
 async def api_juksib_audit(batch_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await juksib_batch_audit(user, batch_id)}
+
+
+@app.get("/api/juksib/automation")
+def api_juksib_automation(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "automation": juksib_automation_payload(user)}
+
+
+@app.post("/api/juksib/automation/settings")
+async def api_update_juksib_automation_settings(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", "automation": update_juksib_automation_settings(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/juksib/automation/run-now")
+async def api_run_juksib_automation_now(request: Request, user: dict = Depends(require_panel_user)):
+    await request.body()
+    return {"status": "ok", "automation": await run_juksib_automation_now(user)}
 
 
 @app.get("/api/juksib/source-invoices/{invoice_id}/pdf")

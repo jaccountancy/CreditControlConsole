@@ -29167,10 +29167,12 @@
                                                 <th><input id="jukInvoicesSelectAllRows" type="checkbox"></th>
                                                 <th>Invoice</th>
                                                 <th>Client Name</th>
+                                                <th>Suggested Client</th>
                                                 <th>Suggested Tenant</th>
                                                 <th>Source</th>
                                                 <th>Confidence</th>
                                                 <th>Amount</th>
+                                                <th>VAT</th>
                                                 <th>Status</th>
                                                 <th>Actions</th>
                                             </tr>
@@ -29258,6 +29260,72 @@
                                     <button class="ghost-button" id="jukInvoicesExportCsvButton" type="button">Export CSV report</button>
                                     <button class="ghost-button" id="jukInvoicesExportAuditButton" type="button">Export audit log</button>
                                 </div>
+                                <div class="juk-toolbar" role="tablist" aria-label="JUK automation tabs">
+                                    <button class="ghost-button" id="jukAutomationTabSettings" type="button" aria-selected="true">Automation settings</button>
+                                    <button class="ghost-button" id="jukAutomationTabHistory" type="button" aria-selected="false">Automation history</button>
+                                </div>
+                                <section class="detail-panel">
+                                    <div class="panel-heading">
+                                        <div>
+                                            <p class="eyebrow">Automation</p>
+                                            <h4>Daily Auto Sync Settings</h4>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="jukInvoicesAutomationRefreshButton" type="button">Refresh</button>
+                                            <button class="primary-button" id="jukInvoicesAutomationRunNowButton" type="button">Run now</button>
+                                        </div>
+                                    </div>
+                                    <div class="juk-form-grid">
+                                        <label>Enable daily auto sync
+                                            <select id="jukAutomationEnabledSelect">
+                                                <option value="no">Disabled</option>
+                                                <option value="yes">Enabled</option>
+                                            </select>
+                                        </label>
+                                        <label>Schedule time
+                                            <input id="jukAutomationTimeInput" type="time" value="09:00">
+                                        </label>
+                                        <label>Timezone
+                                            <input id="jukAutomationTimezoneInput" type="text" value="Europe/London">
+                                        </label>
+                                        <label>Include paid invoices
+                                            <select id="jukAutomationIncludePaidSelect">
+                                                <option value="no">No</option>
+                                                <option value="yes">Yes</option>
+                                            </select>
+                                        </label>
+                                        <label>Auto publish approved rows
+                                            <select id="jukAutomationAutoPublishSelect">
+                                                <option value="yes">Yes</option>
+                                                <option value="no">No</option>
+                                            </select>
+                                        </label>
+                                        <label>Report recipient emails
+                                            <textarea id="jukAutomationRecipientsInput" placeholder="one@example.com, two@example.com"></textarea>
+                                        </label>
+                                    </div>
+                                    <div class="juk-toolbar">
+                                        <button class="primary-button" id="jukAutomationSaveButton" type="button">Save automation settings</button>
+                                    </div>
+                                    <small id="jukAutomationMeta">Configure daily JUKSIB sync and reporting.</small>
+                                </section>
+                                <section class="ch-companies-table-wrap" id="jukAutomationHistorySection" hidden>
+                                    <table class="ch-table" aria-label="JUK automation history">
+                                        <thead>
+                                            <tr>
+                                                <th>Started</th>
+                                                <th>Trigger</th>
+                                                <th>Status</th>
+                                                <th>Batch</th>
+                                                <th>Imported</th>
+                                                <th>Published</th>
+                                                <th>Failed</th>
+                                                <th>Error</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="jukAutomationHistoryBody"></tbody>
+                                    </table>
+                                </section>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="JUK batch history">
                                         <thead>
@@ -31943,6 +32011,9 @@
                         juksibPublish: config.endpoints?.juksibPublish || "/api/juksib/batches/:batchId/publish",
                         juksibBatchAudit: config.endpoints?.juksibBatchAudit || "/api/juksib/batches/:batchId/audit",
                         juksibSourceInvoicePdf: config.endpoints?.juksibSourceInvoicePdf || "/api/juksib/source-invoices/:invoiceId/pdf",
+                        juksibAutomation: config.endpoints?.juksibAutomation || "/api/juksib/automation",
+                        juksibAutomationSettings: config.endpoints?.juksibAutomationSettings || "/api/juksib/automation/settings",
+                        juksibAutomationRunNow: config.endpoints?.juksibAutomationRunNow || "/api/juksib/automation/run-now",
                         meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
                         meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
@@ -35474,6 +35545,20 @@
                 publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "" },
             };
             let jukInvoicesState = loadJukInvoicesState();
+            let jukAutomationState = {
+                settings: {
+                    enabled: false,
+                    scheduleTime: "09:00",
+                    timezone: "Europe/London",
+                    recipientEmails: [],
+                    includePaidInvoices: false,
+                    autoPublish: true,
+                    lastRunAt: "",
+                    lastRunLocalDate: "",
+                },
+                history: [],
+            };
+            let jukAutomationTab = "settings";
 
             function loadJukInvoicesState() {
                 try {
@@ -35678,6 +35763,15 @@
                         : [];
                 } else {
                     jukInvoicesState.audit = [];
+                }
+                try {
+                    const automationPayload = await requestJSON(api.endpoints.juksibAutomation);
+                    jukAutomationState = {
+                        settings: automationPayload?.automation?.settings || jukAutomationState.settings,
+                        history: Array.isArray(automationPayload?.automation?.history) ? automationPayload.automation.history : [],
+                    };
+                } catch {
+                    // Keep existing automation state if refresh fails.
                 }
                 persistJukInvoicesState();
                 if (!silent) renderJukInvoicesScreen();
@@ -36192,16 +36286,19 @@
                                 <td>${escapeHTML(invoice.matchSource || "--")}</td>
                                 <td>${escapeHTML(`${Math.round(Number(invoice.matchConfidence || 0) * 100)}%`)}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
+                                <td>${escapeHTML(formatCurrency(invoice.vatTotal || 0))}</td>
                                 <td><span class="status-pill">${escapeHTML(JUK_STATUS_LABELS[invoice.status] || invoice.status)}</span></td>
                                 <td>
                                     <button class="ghost-button" type="button" data-juk-row-action="approve" data-juk-row-id="${escapeHTML(invoice.id)}">Approve</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="skip" data-juk-row-id="${escapeHTML(invoice.id)}">Skip</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="exception" data-juk-row-id="${escapeHTML(invoice.id)}">Exception</button>
+                                    <button class="ghost-button" type="button" data-juk-row-action="pdf" data-juk-row-id="${escapeHTML(invoice.id)}">PDF</button>
+                                    <button class="ghost-button" type="button" data-juk-row-action="raw" data-juk-row-id="${escapeHTML(invoice.id)}">Raw</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
                         `).join("")
-                        : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
+                        : '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
                     reviewTable.querySelectorAll("[data-juk-select-row]").forEach((checkbox) => {
                         checkbox.addEventListener("change", () => jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked));
                     });
@@ -36235,6 +36332,18 @@
                                 jukSetStep(4);
                                 const invoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
                                 if (invoiceSelect) invoiceSelect.value = target.id;
+                            } else if (action === "pdf") {
+                                const invoiceId = String(target.jukXeroInvoiceId || "").trim();
+                                if (!invoiceId) return showToast("No source PDF available for this invoice.", "info");
+                                const url = endpointURL(api.endpoints.juksibSourceInvoicePdf, { invoiceId });
+                                window.open(url, "_blank", "noopener");
+                            } else if (action === "raw") {
+                                const payload = target.rawPayload || {};
+                                const rawText = JSON.stringify(payload, null, 2);
+                                const blob = new Blob([rawText], { type: "application/json;charset=utf-8" });
+                                const rawUrl = URL.createObjectURL(blob);
+                                window.open(rawUrl, "_blank", "noopener");
+                                setTimeout(() => URL.revokeObjectURL(rawUrl), 5000);
                             } else if (action === "explain") {
                                 showToast(target.matchReason || "No match explanation available.", "info");
                             }
@@ -36478,6 +36587,139 @@
                 if (exportAuditButton && exportAuditButton.dataset.jukWired !== "true") {
                     exportAuditButton.dataset.jukWired = "true";
                     exportAuditButton.addEventListener("click", () => jukExportAudit());
+                }
+
+                const automationSettings = jukAutomationState?.settings || {};
+                const automationEnabledSelect = document.getElementById("jukAutomationEnabledSelect");
+                const automationTimeInput = document.getElementById("jukAutomationTimeInput");
+                const automationTimezoneInput = document.getElementById("jukAutomationTimezoneInput");
+                const automationRecipientsInput = document.getElementById("jukAutomationRecipientsInput");
+                const automationIncludePaidSelect = document.getElementById("jukAutomationIncludePaidSelect");
+                const automationAutoPublishSelect = document.getElementById("jukAutomationAutoPublishSelect");
+                const automationSaveButton = document.getElementById("jukAutomationSaveButton");
+                const automationRefreshButton = document.getElementById("jukInvoicesAutomationRefreshButton");
+                const automationRunNowButton = document.getElementById("jukInvoicesAutomationRunNowButton");
+                const automationMeta = document.getElementById("jukAutomationMeta");
+                const automationHistoryBody = document.getElementById("jukAutomationHistoryBody");
+                const automationSettingsPanel = document.getElementById("jukAutomationSaveButton")?.closest(".detail-panel") || null;
+                const automationHistorySection = document.getElementById("jukAutomationHistorySection");
+                const automationTabSettings = document.getElementById("jukAutomationTabSettings");
+                const automationTabHistory = document.getElementById("jukAutomationTabHistory");
+
+                const renderAutomationTabState = () => {
+                    const showSettings = jukAutomationTab !== "history";
+                    if (automationSettingsPanel) automationSettingsPanel.hidden = !showSettings;
+                    if (automationHistorySection) automationHistorySection.hidden = showSettings;
+                    if (automationTabSettings) {
+                        automationTabSettings.setAttribute("aria-selected", showSettings ? "true" : "false");
+                        automationTabSettings.classList.toggle("primary-button", showSettings);
+                    }
+                    if (automationTabHistory) {
+                        automationTabHistory.setAttribute("aria-selected", showSettings ? "false" : "true");
+                        automationTabHistory.classList.toggle("primary-button", !showSettings);
+                    }
+                };
+                renderAutomationTabState();
+
+                if (automationTabSettings && automationTabSettings.dataset.jukWired !== "true") {
+                    automationTabSettings.dataset.jukWired = "true";
+                    automationTabSettings.addEventListener("click", () => {
+                        jukAutomationTab = "settings";
+                        renderAutomationTabState();
+                    });
+                }
+                if (automationTabHistory && automationTabHistory.dataset.jukWired !== "true") {
+                    automationTabHistory.dataset.jukWired = "true";
+                    automationTabHistory.addEventListener("click", () => {
+                        jukAutomationTab = "history";
+                        renderAutomationTabState();
+                    });
+                }
+
+                if (automationEnabledSelect) automationEnabledSelect.value = automationSettings.enabled ? "yes" : "no";
+                if (automationTimeInput) automationTimeInput.value = String(automationSettings.scheduleTime || "09:00");
+                if (automationTimezoneInput) automationTimezoneInput.value = String(automationSettings.timezone || "Europe/London");
+                if (automationRecipientsInput) automationRecipientsInput.value = Array.isArray(automationSettings.recipientEmails) ? automationSettings.recipientEmails.join(", ") : "";
+                if (automationIncludePaidSelect) automationIncludePaidSelect.value = automationSettings.includePaidInvoices ? "yes" : "no";
+                if (automationAutoPublishSelect) automationAutoPublishSelect.value = automationSettings.autoPublish === false ? "no" : "yes";
+                if (automationMeta) {
+                    const lastRunText = automationSettings.lastRunAt ? ` Last run: ${formatDateTime(automationSettings.lastRunAt)}.` : "";
+                    automationMeta.textContent = `Daily auto-sync is ${automationSettings.enabled ? "enabled" : "disabled"} at ${automationSettings.scheduleTime || "09:00"} (${automationSettings.timezone || "Europe/London"}).${lastRunText}`;
+                }
+                if (automationSaveButton && automationSaveButton.dataset.jukWired !== "true") {
+                    automationSaveButton.dataset.jukWired = "true";
+                    automationSaveButton.addEventListener("click", async () => {
+                        const payload = {
+                            enabled: String(document.getElementById("jukAutomationEnabledSelect")?.value || "no") === "yes",
+                            scheduleTime: String(document.getElementById("jukAutomationTimeInput")?.value || "09:00"),
+                            timezone: String(document.getElementById("jukAutomationTimezoneInput")?.value || "Europe/London"),
+                            recipientEmails: String(document.getElementById("jukAutomationRecipientsInput")?.value || ""),
+                            includePaidInvoices: String(document.getElementById("jukAutomationIncludePaidSelect")?.value || "no") === "yes",
+                            autoPublish: String(document.getElementById("jukAutomationAutoPublishSelect")?.value || "yes") === "yes",
+                        };
+                        try {
+                            const response = await requestJSON(api.endpoints.juksibAutomationSettings, {
+                                method: "POST",
+                                body: JSON.stringify(payload),
+                            });
+                            jukAutomationState = response?.automation || jukAutomationState;
+                            renderJukInvoicesScreen();
+                            showToast("JUKSIB automation settings saved.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to save automation settings.", "error");
+                        }
+                    });
+                }
+                if (automationRefreshButton && automationRefreshButton.dataset.jukWired !== "true") {
+                    automationRefreshButton.dataset.jukWired = "true";
+                    automationRefreshButton.addEventListener("click", async () => {
+                        try {
+                            await jukRefreshFromAPI({ silent: true, batchId: batch.id });
+                            renderJukInvoicesScreen();
+                        } catch (error) {
+                            showToast(error?.message || "Unable to refresh automation status.", "error");
+                        }
+                    });
+                }
+                if (automationRunNowButton && automationRunNowButton.dataset.jukWired !== "true") {
+                    automationRunNowButton.dataset.jukWired = "true";
+                    automationRunNowButton.addEventListener("click", async () => {
+                        automationRunNowButton.disabled = true;
+                        const originalLabel = automationRunNowButton.textContent;
+                        automationRunNowButton.textContent = "Running...";
+                        try {
+                            const response = await requestJSON(api.endpoints.juksibAutomationRunNow, {
+                                method: "POST",
+                                body: JSON.stringify({}),
+                            });
+                            jukAutomationState = response?.automation || jukAutomationState;
+                            await jukRefreshFromAPI({ silent: true });
+                            renderJukInvoicesScreen();
+                            showToast("JUKSIB automation run completed.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to run JUKSIB automation.", "error");
+                        } finally {
+                            automationRunNowButton.disabled = false;
+                            automationRunNowButton.textContent = originalLabel || "Run now";
+                        }
+                    });
+                }
+                if (automationHistoryBody) {
+                    const historyRows = Array.isArray(jukAutomationState?.history) ? jukAutomationState.history : [];
+                    automationHistoryBody.innerHTML = historyRows.length
+                        ? historyRows.slice(0, 80).map((run) => `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(run.startedAt) || "--")}</td>
+                                <td>${escapeHTML(String(run.triggerType || "--"))}</td>
+                                <td>${escapeHTML(String(run.status || "--"))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).batchReference || "--"))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).imported || 0))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).published || 0))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).failed || 0))}</td>
+                                <td>${escapeHTML(String(run.errorMessage || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No auto runs</p><h4>No automation history yet</h4><p>Enable daily automation or run now to populate this list.</p></div></td></tr>';
                 }
 
                 const historyBody = document.getElementById("jukInvoicesBatchHistoryBody");
