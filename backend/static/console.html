@@ -18862,6 +18862,21 @@
             .code-breaker-variance-delta.is-bad {
                 color: #bc3a3a;
             }
+            .ghost-button.is-code-breaker-loading {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            .ghost-button.is-code-breaker-loading::before {
+                content: "";
+                width: 14px;
+                height: 14px;
+                border: 2px solid rgba(29, 103, 242, 0.18);
+                border-top-color: var(--blue);
+                border-radius: 999px;
+                animation: code-breaker-spin 0.9s linear infinite;
+            }
             @media (max-width: 1100px) {
                 .code-breaker-live-stats {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -72120,6 +72135,8 @@
                 if (refreshButton) {
                     refreshButton.disabled = codeBreakerVarianceState.running;
                     refreshButton.textContent = codeBreakerVarianceState.running ? "Refreshing..." : "Refresh analysis";
+                    refreshButton.classList.toggle("is-code-breaker-loading", codeBreakerVarianceState.running);
+                    refreshButton.setAttribute("aria-busy", codeBreakerVarianceState.running ? "true" : "false");
                 }
                 if (recalculateButton) {
                     recalculateButton.disabled = codeBreakerVarianceState.running;
