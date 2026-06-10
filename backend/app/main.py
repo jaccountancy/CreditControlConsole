@@ -194,6 +194,7 @@ from .services import (
     sync_run_has_working_data,
     send_me_report_email,
     send_ignition_renewals_email,
+    sync_payroll_headcount_with_ignition,
     sync_payroll_headcount_workspace,
     update_control_status,
     update_ignition_renewal_run,
@@ -2237,6 +2238,12 @@ async def api_upsert_payroll_headcount_workspace(request: Request, user: dict = 
 @app.post("/api/payroll-headcount/workspaces/{tenant_id}/sync")
 async def api_sync_payroll_headcount_workspace(tenant_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await sync_payroll_headcount_workspace(user, tenant_id)}
+
+
+@app.post("/api/payroll-headcount/ignition-sync")
+async def api_sync_payroll_headcount_ignition(request: Request, user: dict = Depends(require_panel_user)):
+    await request.body()
+    return {"status": "ok", **sync_payroll_headcount_with_ignition(user)}
 
 
 @app.post("/api/me-report/settings")

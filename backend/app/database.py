@@ -1967,6 +1967,10 @@ CREATE TABLE IF NOT EXISTS payroll_headcount_workspaces (
     tenant_name TEXT NOT NULL DEFAULT '',
     workspace_name TEXT NOT NULL DEFAULT '',
     wizard_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    ignition_plan_name TEXT NOT NULL DEFAULT '',
+    ignition_client_name TEXT NOT NULL DEFAULT '',
+    ignition_proposal_name TEXT NOT NULL DEFAULT '',
+    ignition_matched_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, tenant_id)
@@ -1975,6 +1979,10 @@ CREATE TABLE IF NOT EXISTS payroll_headcount_workspaces (
 ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS tenant_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS workspace_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS wizard_completed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS ignition_plan_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS ignition_client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS ignition_proposal_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS ignition_matched_at TIMESTAMPTZ;
 ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 

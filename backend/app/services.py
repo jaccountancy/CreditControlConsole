@@ -840,6 +840,10 @@ def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | 
         "tenantName": str(row.get("tenant_name") or ""),
         "workspaceName": str(row.get("workspace_name") or ""),
         "wizardCompleted": bool(row.get("wizard_completed")),
+        "ignitionPlanName": str(row.get("ignition_plan_name") or ""),
+        "ignitionClientName": str(row.get("ignition_client_name") or ""),
+        "ignitionProposalName": str(row.get("ignition_proposal_name") or ""),
+        "ignitionMatchedAt": _iso(row.get("ignition_matched_at")) or "",
         "createdAt": _iso(row.get("created_at")) or "",
         "updatedAt": _iso(row.get("updated_at")) or "",
         "latestSnapshot": latest,
@@ -857,6 +861,10 @@ def payroll_headcount_payload(user: dict) -> dict:
                        tenant_name,
                        workspace_name,
                        wizard_completed,
+                       ignition_plan_name,
+                       ignition_client_name,
+                       ignition_proposal_name,
+                       ignition_matched_at,
                        created_at,
                        updated_at
                 FROM payroll_headcount_workspaces
@@ -941,10 +949,14 @@ def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                     tenant_name,
                     workspace_name,
                     wizard_completed,
+                    ignition_plan_name,
+                    ignition_client_name,
+                    ignition_proposal_name,
+                    ignition_matched_at,
                     created_at,
                     updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, tenant_id)
                 DO UPDATE
                 SET tenant_name = EXCLUDED.tenant_name,
@@ -956,6 +968,10 @@ def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                           tenant_name,
                           workspace_name,
                           wizard_completed,
+                          ignition_plan_name,
+                          ignition_client_name,
+                          ignition_proposal_name,
+                          ignition_matched_at,
                           created_at,
                           updated_at
                 """,
@@ -965,6 +981,10 @@ def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                     tenant_name,
                     workspace_name,
                     True,
+                    "",
+                    "",
+                    "",
+                    None,
                     utcnow(),
                     utcnow(),
                 ),
@@ -1102,6 +1122,135 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         ),
         "snapshot": snapshot,
         "errors": errors,
+        "payrollHeadcount": payload,
+    }
+
+
+def sync_payroll_headcount_with_ignition(user: dict) -> dict:
+    allowed_plan_labels = {"Micro", "Starter", "Standard", "Premium", "Ultimate"}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, tenant_id, tenant_name
+                FROM payroll_headcount_workspaces
+                WHERE user_id = %s
+                ORDER BY created_at ASC
+                """,
+                (user["id"],),
+            )
+            workspace_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT payload,
+                       COALESCE(source_updated_at, source_created_at, created_at) AS ranked_at
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'proposals'
+                ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+                LIMIT 20000
+                """,
+                (user["id"],),
+            )
+            proposal_rows = cursor.fetchall() or []
+        connection.commit()
+
+    active_ignition_by_key: dict[str, dict] = {}
+    for row in proposal_rows:
+        proposal = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        if not proposal:
+            continue
+        if not _is_accepted_ignition_proposal(proposal):
+            continue
+        if not _ignition_proposal_client_is_active(proposal):
+            continue
+        service_name = _ignition_proposal_service_name(proposal)
+        plan_label = _plan_label_for_text(
+            " ".join(
+                [
+                    service_name,
+                    str(proposal.get("name") or ""),
+                    str(proposal.get("reference_number") or ""),
+                ]
+            ).strip()
+        )
+        if plan_label not in allowed_plan_labels:
+            continue
+        client_name = _ignition_proposal_client_name(proposal)
+        if not client_name:
+            continue
+        candidate = {
+            "planName": plan_label,
+            "clientName": client_name,
+            "proposalName": str(proposal.get("name") or proposal.get("reference_number") or "").strip(),
+            "rankedAt": row.get("ranked_at"),
+        }
+        for key in _ignition_name_match_keys(client_name):
+            if not key:
+                continue
+            existing = active_ignition_by_key.get(key)
+            existing_rank = existing.get("rankedAt") if isinstance(existing, dict) else None
+            incoming_rank = candidate.get("rankedAt")
+            if existing is None or (incoming_rank and (existing_rank is None or incoming_rank >= existing_rank)):
+                active_ignition_by_key[key] = candidate
+
+    updates: list[dict] = []
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for workspace in workspace_rows:
+                workspace_id = str(workspace.get("id") or "").strip()
+                tenant_name = str(workspace.get("tenant_name") or "").strip()
+                if not workspace_id:
+                    continue
+                matched = None
+                tenant_name_for_match = tenant_name.replace("Headcount Workspace", "").strip()
+                for key in _ignition_name_match_keys(tenant_name_for_match):
+                    if key and key in active_ignition_by_key:
+                        matched = active_ignition_by_key[key]
+                        break
+                ignition_plan_name = str((matched or {}).get("planName") or "").strip()
+                ignition_client_name = str((matched or {}).get("clientName") or "").strip()
+                ignition_proposal_name = str((matched or {}).get("proposalName") or "").strip()
+                ignition_matched_at = now if matched else None
+                cursor.execute(
+                    """
+                    UPDATE payroll_headcount_workspaces
+                    SET ignition_plan_name = %s,
+                        ignition_client_name = %s,
+                        ignition_proposal_name = %s,
+                        ignition_matched_at = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        ignition_plan_name,
+                        ignition_client_name,
+                        ignition_proposal_name,
+                        ignition_matched_at,
+                        now,
+                        workspace_id,
+                    ),
+                )
+                updates.append(
+                    {
+                        "workspaceId": workspace_id,
+                        "tenantId": str(workspace.get("tenant_id") or "").strip(),
+                        "tenantName": tenant_name,
+                        "planName": ignition_plan_name,
+                        "clientName": ignition_client_name,
+                        "proposalName": ignition_proposal_name,
+                        "matched": bool(matched),
+                    }
+                )
+        connection.commit()
+
+    payload = payroll_headcount_payload(user)
+    return {
+        "updatedCount": len(updates),
+        "matchedCount": sum(1 for item in updates if item.get("matched")),
+        "unmatchedCount": sum(1 for item in updates if not item.get("matched")),
+        "matches": updates,
         "payrollHeadcount": payload,
     }
 
