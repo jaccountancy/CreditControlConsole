@@ -65,6 +65,7 @@ from .xero import (
     create_credit_note,
     create_history_record,
     create_sales_invoice,
+    fetch_invoice_pdf,
     fetch_paginated_collection,
     merge_contacts,
     normalise_contact,
@@ -107,6 +108,44 @@ DATABASE_ACTIVE_ME_SYNC_WARNING_THRESHOLD = 2
 DATABASE_ACTIVE_ME_SYNC_CRITICAL_THRESHOLD = 5
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
+JUKSIB_BATCH_PREFIX = "JUKSIB"
+JUKSIB_CONFIDENCE_HIGH = Decimal("0.90")
+JUKSIB_CONFIDENCE_MEDIUM = Decimal("0.70")
+JUKSIB_MAX_IMPORT_INVOICES = 1200
+JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
+JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
+JUKSIB_MATCH_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "suggested_tenant_id",
+        "suggested_tenant_name",
+        "suggested_client_id",
+        "confidence",
+        "reason",
+        "alternatives",
+    ],
+    "properties": {
+        "suggested_tenant_id": {"type": "string"},
+        "suggested_tenant_name": {"type": "string"},
+        "suggested_client_id": {"type": "string"},
+        "confidence": {"type": "number"},
+        "reason": {"type": "string"},
+        "alternatives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["tenant_id", "tenant_name", "confidence"],
+                "properties": {
+                    "tenant_id": {"type": "string"},
+                    "tenant_name": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+            },
+        },
+    },
+}
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
 BANK_STATEMENT_MAX_OUTPUT_TOKENS = 24000
@@ -14524,6 +14563,1318 @@ async def me_report_juk_invoice_check(user: dict, client_id: str, payload: dict 
     )
     refreshed = await _me_report_juk_invoice_check_preview(user, client, connection_row)
     return {"check": refreshed, "result": result, "meReport": me_report_payload(user)}
+
+
+def _juksib_normalise_name(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
+    raw = re.sub(r"[^a-z0-9 ]+", " ", raw)
+    raw = re.sub(r"\b(ltd|limited|uk|the)\b", " ", raw)
+    return re.sub(r"\s+", " ", raw).strip()
+
+
+def _juksib_similarity(left: str | None, right: str | None) -> Decimal:
+    left_norm = _juksib_normalise_name(left)
+    right_norm = _juksib_normalise_name(right)
+    if not left_norm or not right_norm:
+        return Decimal("0")
+    if left_norm == right_norm:
+        return Decimal("1")
+    left_tokens = set(left_norm.split(" "))
+    right_tokens = set(right_norm.split(" "))
+    if not left_tokens or not right_tokens:
+        return Decimal("0")
+    intersection = len(left_tokens.intersection(right_tokens))
+    score = Decimal(intersection) / Decimal(max(len(left_tokens), len(right_tokens), 1))
+    if left_norm.startswith(right_norm) or right_norm.startswith(left_norm):
+        score = min(Decimal("1"), score + Decimal("0.15"))
+    return score
+
+
+def _juksib_decimal(value: object) -> Decimal:
+    return _money(value or 0)
+
+
+def _juksib_status_label(status_value: str) -> str:
+    mapping = {
+        "imported": "Imported",
+        "duplicate": "Duplicate / already synced",
+        "matched_saved_rule": "Matched by saved rule",
+        "matched_openai": "Matched by OpenAI",
+        "needs_review": "Needs review",
+        "unmatched": "Unmatched",
+        "approved": "Approved",
+        "publishing": "Publishing",
+        "published": "Published",
+        "failed": "Failed",
+        "skipped": "Skipped",
+        "manually_excluded": "Manually excluded",
+        "retry_pending": "Retry pending",
+    }
+    return mapping.get(str(status_value or "").strip(), str(status_value or "").strip())
+
+
+def _juksib_build_summary(rows: list[dict]) -> dict:
+    invoices = rows or []
+    status_counts = defaultdict(int)
+    matched_saved_rule = 0
+    matched_openai = 0
+    high_confidence = 0
+    total_value = Decimal("0")
+    for row in invoices:
+        status_counts[str(row.get("status") or "imported").strip()] += 1
+        source = str(row.get("match_source") or "").strip()
+        if source == "saved_rule":
+            matched_saved_rule += 1
+        if source == "openai":
+            matched_openai += 1
+        confidence = _juksib_decimal(row.get("match_confidence"))
+        if confidence >= JUKSIB_CONFIDENCE_HIGH:
+            high_confidence += 1
+        total_value += _juksib_decimal(row.get("total"))
+    ready_to_publish = status_counts["approved"] + status_counts["retry_pending"]
+    return {
+        "totalImported": len(invoices),
+        "duplicates": status_counts["duplicate"],
+        "matchedBySavedRule": matched_saved_rule,
+        "matchedByOpenAI": matched_openai,
+        "highConfidence": high_confidence,
+        "needsReview": status_counts["needs_review"],
+        "unmatched": status_counts["unmatched"],
+        "failed": status_counts["failed"],
+        "readyToPublish": ready_to_publish,
+        "published": status_counts["published"],
+        "skipped": status_counts["skipped"] + status_counts["manually_excluded"],
+        "totalValue": float(_money(total_value)),
+    }
+
+
+def _juksib_record_audit(
+    *,
+    user_id: str,
+    batch_id: str | None,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    old_value: dict | None = None,
+    new_value: dict | None = None,
+    notes: str = "",
+) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO juksib_audit_logs (user_id, batch_id, entity_type, entity_id, action, old_value, new_value, notes)
+                VALUES (%s, NULLIF(%s, '')::uuid, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                """,
+                (
+                    user_id,
+                    str(batch_id or ""),
+                    entity_type,
+                    entity_id,
+                    action,
+                    json.dumps(old_value or {}, default=_json_default),
+                    json.dumps(new_value or {}, default=_json_default),
+                    notes[:5000],
+                ),
+            )
+        connection.commit()
+
+
+def _juksib_next_batch_reference(user_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT batch_reference
+                FROM juksib_batches
+                WHERE user_id = %s
+                  AND batch_reference LIKE %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id, f"{JUKSIB_BATCH_PREFIX}%"),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    latest = str(row.get("batch_reference") or "").strip().upper()
+    if not latest.startswith(JUKSIB_BATCH_PREFIX):
+        return f"{JUKSIB_BATCH_PREFIX}001"
+    suffix = latest.replace(JUKSIB_BATCH_PREFIX, "", 1)
+    number = int(suffix or "0") if suffix.isdigit() else 0
+    return f"{JUKSIB_BATCH_PREFIX}{str(number + 1).zfill(3)}"
+
+
+def _juksib_master_and_sub_connections(user: dict) -> tuple[dict, list[dict]]:
+    master = get_master_xero_connection_for_user(user["id"])
+    rows = list_xero_connections_for_user(user["id"], include_fallback=False)
+    sub_rows = [
+        row for row in rows
+        if str(row.get("tenant_id") or "").strip() and str(row.get("tenant_id") or "").strip() != str(master.get("tenant_id") or "").strip()
+    ]
+    return master, sub_rows
+
+
+def _juksib_serialise_invoice_row(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "batchId": str(row.get("batch_id") or ""),
+        "jukXeroInvoiceId": str(row.get("juk_xero_invoice_id") or ""),
+        "jukInvoiceNumber": str(row.get("juk_invoice_number") or ""),
+        "jukContactId": str(row.get("juk_contact_id") or ""),
+        "jukContactName": str(row.get("juk_contact_name") or ""),
+        "invoiceDate": _iso(row.get("invoice_date")) or "",
+        "dueDate": _iso(row.get("due_date")) or "",
+        "subtotal": float(_juksib_decimal(row.get("subtotal"))),
+        "vatTotal": float(_juksib_decimal(row.get("vat_total"))),
+        "total": float(_juksib_decimal(row.get("total"))),
+        "amountDue": float(_juksib_decimal(row.get("amount_due"))),
+        "currency": str(row.get("currency") or "GBP"),
+        "lineItems": row.get("line_items") if isinstance(row.get("line_items"), list) else [],
+        "rawPayload": row.get("raw_xero_payload") if isinstance(row.get("raw_xero_payload"), dict) else {},
+        "pdfFileReference": str(row.get("pdf_file_reference") or ""),
+        "status": str(row.get("status") or "imported"),
+        "statusLabel": _juksib_status_label(str(row.get("status") or "imported")),
+        "duplicateFlag": bool(row.get("duplicate_flag")),
+        "matchedClientId": str(row.get("matched_client_id") or ""),
+        "matchedTenantId": str(row.get("matched_xero_tenant_id") or ""),
+        "matchedTenantName": str(row.get("matched_xero_tenant_name") or ""),
+        "matchSource": str(row.get("match_source") or ""),
+        "matchConfidence": float(_juksib_decimal(row.get("match_confidence"))),
+        "matchReason": str(row.get("match_reason") or ""),
+        "alternatives": row.get("alternatives") if isinstance(row.get("alternatives"), list) else [],
+        "publishedBillId": str(row.get("published_bill_id") or ""),
+        "publishedAt": _iso(row.get("published_at")) or "",
+        "errorMessage": str(row.get("error_message") or ""),
+        "retryCount": int(row.get("retry_count") or 0),
+    }
+
+
+def _juksib_serialise_batch_row(batch_row: dict, invoices: list[dict]) -> dict:
+    summary = _juksib_build_summary(invoices)
+    return {
+        "id": str(batch_row.get("id") or ""),
+        "batchReference": str(batch_row.get("batch_reference") or ""),
+        "createdAt": _iso(batch_row.get("created_at")) or "",
+        "updatedAt": _iso(batch_row.get("updated_at")) or "",
+        "sourceTenantId": str(batch_row.get("source_tenant_id") or ""),
+        "sourceTenantName": str(batch_row.get("source_tenant_name") or ""),
+        "invoiceDateFrom": _iso(batch_row.get("invoice_date_from")) or "",
+        "invoiceDateTo": _iso(batch_row.get("invoice_date_to")) or "",
+        "mode": str(batch_row.get("mode") or "test"),
+        "status": str(batch_row.get("status") or "imported"),
+        "summary": summary,
+        "invoices": invoices,
+    }
+
+
+async def _juksib_openai_match_contact(
+    *,
+    user: dict,
+    invoice_name: str,
+    candidates: list[dict],
+) -> dict | None:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip() or not candidates:
+        return None
+    candidate_rows = [
+        {
+            "tenant_id": str(row.get("tenant_id") or ""),
+            "tenant_name": str(row.get("tenant_name") or ""),
+            "client_id": str(row.get("client_id") or ""),
+            "aliases": row.get("aliases") if isinstance(row.get("aliases"), list) else [],
+        }
+        for row in candidates[:80]
+    ]
+    request_body = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You match invoice contact names to known Xero tenant names. "
+                    "Return strict JSON only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "invoice_contact_name": invoice_name,
+                        "candidate_tenants": candidate_rows,
+                        "instructions": {
+                            "pick_best": True,
+                            "confidence_scale": "0-1",
+                            "return_empty_when_no_match": True,
+                        },
+                    },
+                    default=_json_default,
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "juksib_match",
+                "strict": True,
+                "schema": JUKSIB_MATCH_RESPONSE_SCHEMA,
+            }
+        },
+    }
+    try:
+        response_payload = await _post_openai_responses(
+            request_body,
+            purpose="JUKSIB invoice matching",
+            feature="juksib",
+            page="juk-invoices",
+            user_id=user["id"],
+            timeout_seconds=45,
+        )
+        return _load_openai_json_response(
+            response_payload,
+            "OpenAI returned invalid JSON for JUKSIB invoice matching.",
+        )
+    except Exception:
+        logger.exception("JUKSIB: OpenAI match failed for invoice contact '%s'", invoice_name)
+        return None
+
+
+def _juksib_rule_match(contact_name: str, rules: list[dict]) -> dict | None:
+    normalized = _juksib_normalise_name(contact_name)
+    if not normalized:
+        return None
+    for rule in rules:
+        if not bool(rule.get("active")):
+            continue
+        if str(rule.get("normalised_invoice_name") or "").strip() == normalized:
+            return rule
+    return None
+
+
+async def _juksib_match_invoice(
+    *,
+    user: dict,
+    contact_name: str,
+    rules: list[dict],
+    candidates: list[dict],
+) -> dict:
+    rule = _juksib_rule_match(contact_name, rules)
+    if rule:
+        rule_type = str(rule.get("match_type") or "manual_override")
+        if rule_type == "exclude":
+            return {
+                "status": "manually_excluded",
+                "duplicate_flag": False,
+                "matched_client_id": "",
+                "matched_xero_tenant_id": "",
+                "matched_xero_tenant_name": "",
+                "match_source": "saved_rule_exclusion",
+                "match_confidence": Decimal("1"),
+                "match_reason": "Excluded by saved manual rule.",
+                "alternatives": [],
+            }
+        return {
+            "status": "approved",
+            "duplicate_flag": False,
+            "matched_client_id": str(rule.get("client_id") or ""),
+            "matched_xero_tenant_id": str(rule.get("xero_tenant_id") or ""),
+            "matched_xero_tenant_name": str(rule.get("xero_tenant_name") or ""),
+            "match_source": "saved_rule",
+            "match_confidence": Decimal("0.99"),
+            "match_reason": "Matched using saved manual rule.",
+            "alternatives": [],
+        }
+
+    scored = []
+    for candidate in candidates:
+        score = _juksib_similarity(contact_name, candidate.get("tenant_name"))
+        aliases = candidate.get("aliases") if isinstance(candidate.get("aliases"), list) else []
+        for alias in aliases:
+            score = max(score, _juksib_similarity(contact_name, str(alias)))
+        scored.append({**candidate, "score": score})
+    scored.sort(key=lambda row: row["score"], reverse=True)
+    top = scored[0] if scored else None
+
+    openai_match = await _juksib_openai_match_contact(user=user, invoice_name=contact_name, candidates=candidates)
+    if openai_match:
+        suggested_id = str(openai_match.get("suggested_tenant_id") or "").strip()
+        suggested = next((row for row in candidates if str(row.get("tenant_id") or "").strip() == suggested_id), None)
+        confidence = Decimal(str(openai_match.get("confidence") or "0"))
+        if suggested and confidence > Decimal("0"):
+            status_value = "approved" if confidence >= JUKSIB_CONFIDENCE_HIGH else ("needs_review" if confidence >= JUKSIB_CONFIDENCE_MEDIUM else "unmatched")
+            return {
+                "status": status_value,
+                "duplicate_flag": False,
+                "matched_client_id": str(suggested.get("client_id") or ""),
+                "matched_xero_tenant_id": str(suggested.get("tenant_id") or ""),
+                "matched_xero_tenant_name": str(suggested.get("tenant_name") or ""),
+                "match_source": "openai",
+                "match_confidence": confidence,
+                "match_reason": str(openai_match.get("reason") or "OpenAI matched invoice contact to connected tenant."),
+                "alternatives": openai_match.get("alternatives") if isinstance(openai_match.get("alternatives"), list) else [],
+            }
+
+    if not top or _juksib_decimal(top.get("score")) < Decimal("0.55"):
+        return {
+            "status": "unmatched",
+            "duplicate_flag": False,
+            "matched_client_id": "",
+            "matched_xero_tenant_id": "",
+            "matched_xero_tenant_name": "",
+            "match_source": "openai",
+            "match_confidence": Decimal("0"),
+            "match_reason": "No connected tenant matched this invoice contact name.",
+            "alternatives": [],
+        }
+
+    confidence = _juksib_decimal(top.get("score"))
+    status_value = "approved" if confidence >= JUKSIB_CONFIDENCE_HIGH else ("needs_review" if confidence >= JUKSIB_CONFIDENCE_MEDIUM else "unmatched")
+    return {
+        "status": status_value,
+        "duplicate_flag": False,
+        "matched_client_id": str(top.get("client_id") or ""),
+        "matched_xero_tenant_id": str(top.get("tenant_id") or ""),
+        "matched_xero_tenant_name": str(top.get("tenant_name") or ""),
+        "match_source": "openai",
+        "match_confidence": confidence,
+        "match_reason": "Heuristic name matching used against connected tenant aliases.",
+        "alternatives": [
+            {
+                "tenant_id": str(item.get("tenant_id") or ""),
+                "tenant_name": str(item.get("tenant_name") or ""),
+                "confidence": float(_juksib_decimal(item.get("score"))),
+            }
+            for item in scored[1:4]
+        ],
+    }
+
+
+def _juksib_source_invoice_rows(raw_invoices: list[dict], *, date_from: date | None = None, date_to: date | None = None) -> list[dict]:
+    rows = []
+    for raw in raw_invoices or []:
+        invoice_id = str(raw.get("InvoiceID") or raw.get("InvoiceId") or "").strip()
+        if not invoice_id:
+            continue
+        status_value = str(raw.get("Status") or "").strip().upper()
+        if status_value in {"VOIDED", "DELETED", "DRAFT", "SUBMITTED"}:
+            continue
+        invoice_date = _parse_optional_iso_date(raw.get("Date"))
+        if date_from and invoice_date and invoice_date < date_from:
+            continue
+        if date_to and invoice_date and invoice_date > date_to:
+            continue
+        contact = raw.get("Contact") if isinstance(raw.get("Contact"), dict) else {}
+        line_items = raw.get("LineItems") if isinstance(raw.get("LineItems"), list) else []
+        subtotal = _juksib_decimal(raw.get("SubTotal"))
+        total_tax = _juksib_decimal(raw.get("TotalTax"))
+        total = _juksib_decimal(raw.get("Total"))
+        amount_due = _juksib_decimal(raw.get("AmountDue"))
+        due_date = _parse_optional_iso_date(raw.get("DueDate"))
+        rows.append(
+            {
+                "juk_xero_invoice_id": invoice_id,
+                "juk_invoice_number": str(raw.get("InvoiceNumber") or "").strip(),
+                "juk_contact_id": str(contact.get("ContactID") or contact.get("ContactId") or "").strip(),
+                "juk_contact_name": str(contact.get("Name") or "").strip(),
+                "invoice_date": invoice_date,
+                "due_date": due_date,
+                "subtotal": subtotal,
+                "vat_total": total_tax,
+                "total": total,
+                "amount_due": amount_due if amount_due > Decimal("0") else total,
+                "currency": str(raw.get("CurrencyCode") or "GBP").strip() or "GBP",
+                "line_items": line_items,
+                "raw_xero_payload": raw,
+                "pdf_file_reference": f"/api/juksib/source-invoices/{invoice_id}/pdf",
+                "status": "imported",
+            }
+        )
+    return rows
+
+
+async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    mode = str(payload.get("mode") or "test").strip().lower() or "test"
+    include_paid = bool(payload.get("includePaidInvoices"))
+    include_imported = bool(payload.get("includeAlreadyImported"))
+    date_from = _parse_optional_iso_date(payload.get("invoiceDateFrom"))
+    date_to = _parse_optional_iso_date(payload.get("invoiceDateTo"))
+
+    master_connection, sub_connections = _juksib_master_and_sub_connections(user)
+    where_clauses = ['Type=="ACCREC"', 'Status!="VOIDED"', 'Status!="DELETED"']
+    if not include_paid:
+        where_clauses.append('Status!="PAID"')
+    where = "&&".join(where_clauses)
+    raw_invoices = await fetch_paginated_collection(
+        master_connection,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": where, "order": "Date DESC"},
+        max_pages=20,
+    )
+    source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=date_from, date_to=date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
+
+    rules: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_match_rules
+                WHERE user_id = %s
+                  AND active = TRUE
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (user["id"],),
+            )
+            rules = cursor.fetchall() or []
+        connection.commit()
+
+    candidates = []
+    for row in sub_connections:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
+            continue
+        tenant_name = str(row.get("tenant_name") or "").strip()
+        candidates.append(
+            {
+                "tenant_id": tenant_id,
+                "tenant_name": tenant_name,
+                "client_id": tenant_id,
+                "aliases": [tenant_name],
+                "active": True,
+            }
+        )
+
+    batch_reference = _juksib_next_batch_reference(user["id"])
+    batch_id = ""
+    inserted_invoices = []
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO juksib_batches (
+                    user_id,
+                    batch_reference,
+                    source_tenant_id,
+                    source_tenant_name,
+                    invoice_date_from,
+                    invoice_date_to,
+                    mode,
+                    status,
+                    metadata,
+                    created_by_user_id,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                RETURNING id
+                """,
+                (
+                    user["id"],
+                    batch_reference,
+                    str(master_connection.get("tenant_id") or ""),
+                    str(master_connection.get("tenant_name") or ""),
+                    date_from,
+                    date_to,
+                    mode,
+                    "imported",
+                    json.dumps(
+                        {
+                            "includePaidInvoices": include_paid,
+                            "includeAlreadyImported": include_imported,
+                            "candidateTenantCount": len(candidates),
+                        },
+                        default=_json_default,
+                    ),
+                    user["id"],
+                    utcnow(),
+                ),
+            )
+            batch_id = str((cursor.fetchone() or {}).get("id") or "")
+
+        for row in source_rows:
+            match_row = await _juksib_match_invoice(
+                user=user,
+                contact_name=row.get("juk_contact_name"),
+                rules=rules,
+                candidates=candidates,
+            )
+            duplicate_flag = False
+            if match_row.get("matched_xero_tenant_id"):
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM juksib_sync_records
+                        WHERE user_id = %s
+                          AND source_tenant_id = %s
+                          AND juk_xero_invoice_id = %s
+                          AND destination_tenant_id = %s
+                          AND sync_status = 'published'
+                        LIMIT 1
+                        """,
+                        (
+                            user["id"],
+                            str(master_connection.get("tenant_id") or ""),
+                            row["juk_xero_invoice_id"],
+                            str(match_row.get("matched_xero_tenant_id") or ""),
+                        ),
+                    )
+                    duplicate_flag = bool(cursor.fetchone())
+            status_value = str(match_row.get("status") or "imported")
+            if duplicate_flag:
+                status_value = "duplicate"
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO juksib_batch_invoices (
+                        batch_id, user_id, juk_xero_invoice_id, juk_invoice_number, juk_contact_id, juk_contact_name,
+                        invoice_date, due_date, subtotal, vat_total, total, amount_due, currency, line_items, raw_xero_payload,
+                        pdf_file_reference, status, duplicate_flag, matched_client_id, matched_xero_tenant_id, matched_xero_tenant_name,
+                        match_source, match_confidence, match_reason, alternatives, created_at, updated_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                    )
+                    RETURNING *
+                    """,
+                    (
+                        batch_id,
+                        user["id"],
+                        row["juk_xero_invoice_id"],
+                        row["juk_invoice_number"],
+                        row["juk_contact_id"],
+                        row["juk_contact_name"],
+                        row["invoice_date"],
+                        row["due_date"],
+                        row["subtotal"],
+                        row["vat_total"],
+                        row["total"],
+                        row["amount_due"],
+                        row["currency"],
+                        json.dumps(row.get("line_items") or [], default=_json_default),
+                        json.dumps(row.get("raw_xero_payload") or {}, default=_json_default),
+                        row["pdf_file_reference"],
+                        status_value,
+                        duplicate_flag,
+                        str(match_row.get("matched_client_id") or ""),
+                        str(match_row.get("matched_xero_tenant_id") or ""),
+                        str(match_row.get("matched_xero_tenant_name") or ""),
+                        str(match_row.get("match_source") or ""),
+                        _juksib_decimal(match_row.get("match_confidence")),
+                        str(match_row.get("match_reason") or ""),
+                        json.dumps(match_row.get("alternatives") or [], default=_json_default),
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+                inserted_invoices.append(cursor.fetchone() or {})
+
+        summary = _juksib_build_summary(inserted_invoices)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE juksib_batches
+                SET summary = %s::jsonb,
+                    status = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (json.dumps(summary, default=_json_default), "imported", utcnow(), batch_id),
+            )
+        connection.commit()
+
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_batch",
+        entity_id=batch_id,
+        action="batch_imported",
+        new_value={"batchReference": batch_reference, "summary": summary},
+        notes=f"Imported {summary.get('totalImported', 0)} invoices from master tenant.",
+    )
+    return await juksib_get_batch(user, batch_id)
+
+
+async def juksib_get_batch(user: dict, batch_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batches
+                WHERE id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (batch_id, user["id"]),
+            )
+            batch_row = cursor.fetchone()
+            if not batch_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batch_invoices
+                WHERE batch_id = %s
+                  AND user_id = %s
+                ORDER BY invoice_date DESC NULLS LAST, created_at DESC
+                """,
+                (batch_id, user["id"]),
+            )
+            invoice_rows = cursor.fetchall() or []
+        connection.commit()
+    serialised_invoices = [_juksib_serialise_invoice_row(row) for row in invoice_rows]
+    return {"batch": _juksib_serialise_batch_row(batch_row, serialised_invoices)}
+
+
+async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batches
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], max(1, min(int(limit or 30), 200))),
+            )
+            batch_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_match_rules
+                WHERE user_id = %s
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                LIMIT 400
+                """,
+                (user["id"],),
+            )
+            rules = cursor.fetchall() or []
+        connection.commit()
+    batches = []
+    for row in batch_rows:
+        summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+        batches.append(
+            {
+                "id": str(row.get("id") or ""),
+                "batchReference": str(row.get("batch_reference") or ""),
+                "createdAt": _iso(row.get("created_at")) or "",
+                "mode": str(row.get("mode") or "test"),
+                "status": str(row.get("status") or "imported"),
+                "summary": summary,
+            }
+        )
+    return {
+        "batches": batches,
+        "rules": [
+            {
+                "id": str(rule.get("id") or ""),
+                "normalisedInvoiceName": str(rule.get("normalised_invoice_name") or ""),
+                "originalInvoiceName": str(rule.get("original_invoice_name") or ""),
+                "clientId": str(rule.get("client_id") or ""),
+                "tenantId": str(rule.get("xero_tenant_id") or ""),
+                "tenantName": str(rule.get("xero_tenant_name") or ""),
+                "matchType": str(rule.get("match_type") or "manual_override"),
+                "confidenceOverride": float(_juksib_decimal(rule.get("confidence_override"))),
+                "usageCount": int(rule.get("usage_count") or 0),
+                "lastUsedAt": _iso(rule.get("last_used_at")) or "",
+                "active": bool(rule.get("active")),
+                "notes": str(rule.get("notes") or ""),
+            }
+            for rule in rules
+        ],
+    }
+
+
+async def juksib_bulk_update_invoice_status(user: dict, batch_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    status_value = str(payload.get("status") or "").strip()
+    if status_value not in {"approved", "skipped", "retry_pending", "needs_review", "manually_excluded"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JUKSIB status update request.")
+    invoice_ids = [str(item).strip() for item in (payload.get("invoiceIds") or []) if str(item).strip()]
+    if not invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE juksib_batch_invoices
+                SET status = %s,
+                    approved_by_user_id = CASE WHEN %s = 'approved' THEN %s ELSE approved_by_user_id END,
+                    approved_at = CASE WHEN %s = 'approved' THEN NOW() ELSE approved_at END,
+                    updated_at = NOW()
+                WHERE batch_id = %s
+                  AND user_id = %s
+                  AND id = ANY(%s::uuid[])
+                  AND status NOT IN ('published', 'duplicate')
+                """,
+                (status_value, status_value, user["id"], status_value, batch_id, user["id"], invoice_ids),
+            )
+            updated_count = cursor.rowcount or 0
+        connection.commit()
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_batch",
+        entity_id=batch_id,
+        action="bulk_status_update",
+        new_value={"status": status_value, "invoiceCount": updated_count},
+        notes=f"Updated {updated_count} invoice(s) to {status_value}.",
+    )
+    response = await juksib_get_batch(user, batch_id)
+    response["updatedCount"] = updated_count
+    return response
+
+
+async def juksib_apply_override(user: dict, batch_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    invoice_id = str(payload.get("invoiceId") or "").strip()
+    tenant_id = str(payload.get("tenantId") or "").strip()
+    save_rule = bool(payload.get("saveRule"))
+    apply_similar = bool(payload.get("applySimilar"))
+    exclude_only = bool(payload.get("excludeOnly"))
+    notes = str(payload.get("note") or "").strip()
+    if not invoice_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice selection is required.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batch_invoices
+                WHERE batch_id = %s
+                  AND user_id = %s
+                  AND id = %s::uuid
+                LIMIT 1
+                """,
+                (batch_id, user["id"], invoice_id),
+            )
+            invoice_row = cursor.fetchone()
+            if not invoice_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found in selected batch.")
+            normalized = _juksib_normalise_name(invoice_row.get("juk_contact_name"))
+            target_tenant_name = ""
+            if tenant_id:
+                target_connection = xero_connection_for_user_tenant(user, tenant_id, include_fallback=False)
+                target_tenant_name = str(target_connection.get("tenant_name") or "").strip()
+            if exclude_only:
+                cursor.execute(
+                    """
+                    UPDATE juksib_batch_invoices
+                    SET status = 'manually_excluded',
+                        match_source = 'manual_exclusion',
+                        match_reason = %s,
+                        matched_client_id = '',
+                        matched_xero_tenant_id = '',
+                        matched_xero_tenant_name = '',
+                        alternatives = '[]'::jsonb,
+                        updated_at = NOW()
+                    WHERE batch_id = %s
+                      AND user_id = %s
+                      AND id = %s::uuid
+                    """,
+                    (notes or "Marked as not connected.", batch_id, user["id"], invoice_id),
+                )
+            else:
+                if not tenant_id:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Destination tenant is required.")
+                update_filter = """
+                    batch_id = %s
+                    AND user_id = %s
+                    AND id = %s::uuid
+                """
+                params: list[object] = [batch_id, user["id"], invoice_id]
+                if apply_similar and normalized:
+                    update_filter = """
+                        batch_id = %s
+                        AND user_id = %s
+                        AND (
+                            id = %s::uuid
+                            OR REGEXP_REPLACE(LOWER(juk_contact_name), '[^a-z0-9]+', ' ', 'g') = %s
+                        )
+                        AND status IN ('needs_review', 'unmatched', 'failed', 'retry_pending', 'imported')
+                    """
+                    params.append(normalized)
+                cursor.execute(
+                    f"""
+                    UPDATE juksib_batch_invoices
+                    SET status = 'approved',
+                        matched_client_id = %s,
+                        matched_xero_tenant_id = %s,
+                        matched_xero_tenant_name = %s,
+                        match_source = 'manual_override',
+                        match_confidence = 1,
+                        match_reason = %s,
+                        approved_by_user_id = %s,
+                        approved_at = NOW(),
+                        error_message = '',
+                        updated_at = NOW()
+                    WHERE {update_filter}
+                    """,
+                    (
+                        tenant_id,
+                        tenant_id,
+                        target_tenant_name,
+                        notes or "Manual override applied.",
+                        user["id"],
+                        *params,
+                    ),
+                )
+
+            if save_rule and normalized:
+                cursor.execute(
+                    """
+                    INSERT INTO juksib_match_rules (
+                        user_id,
+                        normalised_invoice_name,
+                        original_invoice_name,
+                        client_id,
+                        xero_tenant_id,
+                        xero_tenant_name,
+                        match_type,
+                        confidence_override,
+                        usage_count,
+                        last_used_at,
+                        active,
+                        notes,
+                        created_by_user_id,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, NOW(), TRUE, %s, %s, NOW())
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        user["id"],
+                        normalized,
+                        str(invoice_row.get("juk_contact_name") or ""),
+                        "" if exclude_only else tenant_id,
+                        "" if exclude_only else tenant_id,
+                        "" if exclude_only else target_tenant_name,
+                        "exclude" if exclude_only else "manual_override",
+                        Decimal("1"),
+                        notes,
+                        user["id"],
+                    ),
+                )
+        connection.commit()
+
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_invoice",
+        entity_id=invoice_id,
+        action="manual_override" if not exclude_only else "manual_exclusion",
+        notes=notes,
+    )
+    return await juksib_get_batch(user, batch_id)
+
+
+def _juksib_invoice_exists_in_destination(rows: list[dict], invoice_number: str) -> bool:
+    target_number = str(invoice_number or "").strip().lower()
+    if not target_number:
+        return False
+    for row in rows:
+        number = str(row.get("InvoiceNumber") or row.get("InvoiceNumberFormatted") or "").strip().lower()
+        if number == target_number:
+            return True
+    return False
+
+
+def _juksib_is_purchase_account(account_row: dict) -> bool:
+    account_type = str(account_row.get("Type") or "").strip().upper()
+    if account_type in {"EXPENSE", "DIRECTCOSTS", "OVERHEADS"}:
+        return True
+    return False
+
+
+def _juksib_account_name_score(name: str) -> Decimal:
+    candidates = (
+        "audit and accountancy fees",
+        "accountancy fees",
+        "audit fees",
+        "professional fees",
+        "legal and professional fees",
+        "accounting fees",
+    )
+    return max((_juksib_similarity(name, candidate) for candidate in candidates), default=Decimal("0"))
+
+
+async def _juksib_resolve_purchase_account_code(
+    destination_connection: dict,
+    fallback_code: str,
+) -> tuple[str, str]:
+    fallback = str(fallback_code or JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE).strip() or JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE
+    try:
+        accounts = await fetch_paginated_collection(
+            destination_connection,
+            ACCOUNTS_URL,
+            "Accounts",
+            params={"where": 'Status=="ACTIVE"', "order": "Code ASC"},
+            max_pages=5,
+        )
+    except Exception:
+        logger.exception("JUKSIB: Unable to fetch destination chart of accounts for tenant %s", destination_connection.get("tenant_id"))
+        return fallback, ""
+
+    purchase_accounts = [row for row in accounts if isinstance(row, dict) and _juksib_is_purchase_account(row)]
+    if not purchase_accounts:
+        return fallback, ""
+
+    best = max(
+        purchase_accounts,
+        key=lambda row: (
+            _juksib_account_name_score(str(row.get("Name") or "")),
+            Decimal("1") if str(row.get("Code") or "").strip() == fallback else Decimal("0"),
+        ),
+    )
+    best_code = str(best.get("Code") or "").strip() or fallback
+    best_name = str(best.get("Name") or "").strip()
+    return best_code, best_name
+
+
+async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    selected_ids = [str(item).strip() for item in (payload.get("invoiceIds") or []) if str(item).strip()]
+    default_account_code = str(payload.get("purchaseAccountCode") or JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE).strip() or JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE
+    supplier_name = str(payload.get("supplierName") or JUKSIB_DEFAULT_SUPPLIER_NAME).strip() or JUKSIB_DEFAULT_SUPPLIER_NAME
+
+    master_connection, _ = _juksib_master_and_sub_connections(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batch_invoices
+                WHERE batch_id = %s
+                  AND user_id = %s
+                  AND status IN ('approved', 'retry_pending')
+                  {selected_filter}
+                ORDER BY created_at ASC
+                """.format(selected_filter="AND id = ANY(%s::uuid[])" if selected_ids else ""),
+                (batch_id, user["id"], selected_ids) if selected_ids else (batch_id, user["id"]),
+            )
+            invoice_rows = cursor.fetchall() or []
+        connection.commit()
+
+    if not invoice_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No approved JUKSIB invoices available for publish.")
+
+    publish_result = {"published": 0, "failed": 0, "duplicates": 0, "partialFailed": 0, "rows": []}
+    purchase_account_cache: dict[str, tuple[str, str]] = {}
+    for row in invoice_rows:
+        invoice_id = str(row.get("id") or "")
+        source_invoice_id = str(row.get("juk_xero_invoice_id") or "")
+        destination_tenant_id = str(row.get("matched_xero_tenant_id") or "")
+        invoice_number = str(row.get("juk_invoice_number") or source_invoice_id)
+        if not destination_tenant_id:
+            publish_result["failed"] += 1
+            publish_result["rows"].append({"invoiceId": invoice_id, "status": "failed", "message": "No destination tenant set."})
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE juksib_batch_invoices
+                        SET status = 'failed',
+                            error_message = %s,
+                            retry_count = retry_count + 1,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                        """,
+                        ("No destination tenant set.", invoice_id),
+                    )
+                connection.commit()
+            continue
+
+        destination_connection = xero_connection_for_user_tenant(user, destination_tenant_id, include_fallback=False)
+        cached_account = purchase_account_cache.get(destination_tenant_id)
+        if cached_account is None:
+            cached_account = await _juksib_resolve_purchase_account_code(destination_connection, default_account_code)
+            purchase_account_cache[destination_tenant_id] = cached_account
+        target_account_code, target_account_name = cached_account
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM juksib_sync_records
+                    WHERE user_id = %s
+                      AND source_tenant_id = %s
+                      AND juk_xero_invoice_id = %s
+                      AND destination_tenant_id = %s
+                      AND sync_status = 'published'
+                    LIMIT 1
+                    """,
+                    (
+                        user["id"],
+                        str(master_connection.get("tenant_id") or ""),
+                        source_invoice_id,
+                        destination_tenant_id,
+                    ),
+                )
+                duplicate_row = cursor.fetchone()
+            connection.commit()
+        if duplicate_row:
+            publish_result["duplicates"] += 1
+            publish_result["rows"].append({"invoiceId": invoice_id, "status": "duplicate", "message": "Already synced previously."})
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE juksib_batch_invoices
+                        SET status = 'duplicate',
+                            duplicate_flag = TRUE,
+                            error_message = %s,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                        """,
+                        ("Already synced previously.", invoice_id),
+                    )
+                connection.commit()
+            continue
+
+        try:
+            existing_bills = await fetch_paginated_collection(
+                destination_connection,
+                INVOICES_URL,
+                "Invoices",
+                params={"where": f'Type=="ACCPAY"&&InvoiceNumber=="{invoice_number}"', "order": "Date DESC"},
+                max_pages=2,
+            )
+            if _juksib_invoice_exists_in_destination(existing_bills, invoice_number):
+                publish_result["duplicates"] += 1
+                publish_result["rows"].append({"invoiceId": invoice_id, "status": "duplicate", "message": "Destination bill already exists."})
+                with get_connection() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE juksib_batch_invoices
+                            SET status = 'duplicate',
+                                duplicate_flag = TRUE,
+                                error_message = %s,
+                                updated_at = NOW()
+                            WHERE id = %s::uuid
+                            """,
+                            ("Destination bill already exists.", invoice_id),
+                        )
+                    connection.commit()
+                continue
+        except Exception:
+            logger.exception("JUKSIB: destination duplicate check failed for invoice %s", invoice_number)
+
+        line_items = row.get("line_items") if isinstance(row.get("line_items"), list) else []
+        mapped_lines = []
+        for item in line_items:
+            if not isinstance(item, dict):
+                continue
+            quantity = _juksib_decimal(item.get("Quantity") or item.get("quantity") or 1)
+            unit_amount = _juksib_decimal(item.get("UnitAmount") or item.get("unitAmount") or item.get("LineAmount") or item.get("lineAmount") or 0)
+            tax_type = str(item.get("TaxType") or item.get("taxType") or "NONE").strip() or "NONE"
+            account_code = target_account_code
+            description = str(item.get("Description") or item.get("description") or f"JUK invoice {invoice_number}").strip()[:400]
+            mapped_lines.append(
+                {
+                    "Description": description,
+                    "Quantity": float(quantity if quantity > Decimal("0") else Decimal("1")),
+                    "UnitAmount": float(unit_amount),
+                    "AccountCode": account_code,
+                    "TaxType": tax_type,
+                }
+            )
+        if not mapped_lines:
+            mapped_lines = [
+                {
+                    "Description": f"JUK invoice {invoice_number}",
+                    "Quantity": 1,
+                    "UnitAmount": float(_juksib_decimal(row.get("subtotal")) or _juksib_decimal(row.get("total"))),
+                    "AccountCode": target_account_code,
+                    "TaxType": "NONE",
+                }
+            ]
+
+        invoice_date = row.get("invoice_date") or utcnow().date()
+        due_date = row.get("due_date") or invoice_date
+        destination_payload = {
+            "Type": "ACCPAY",
+            "Contact": {"Name": supplier_name},
+            "Date": invoice_date.isoformat() if hasattr(invoice_date, "isoformat") else str(invoice_date),
+            "DueDate": due_date.isoformat() if hasattr(due_date, "isoformat") else str(due_date),
+            "InvoiceNumber": invoice_number[:120],
+            "Reference": str(row.get("batch_id") or "")[:120],
+            "Status": "AUTHORISED",
+            "LineAmountTypes": "Exclusive",
+            "CurrencyCode": str(row.get("currency") or "GBP"),
+            "LineItems": mapped_lines,
+        }
+
+        created_invoice_id = ""
+        pdf_attached = False
+        publish_error = ""
+        try:
+            created_payload = await create_sales_invoice(
+                destination_connection,
+                destination_payload,
+                idempotency_key=f"juksib-{batch_id}-{source_invoice_id}-{destination_tenant_id}",
+            )
+            created_invoice = ((created_payload.get("Invoices") or [None])[0] or {}) if isinstance(created_payload, dict) else {}
+            created_invoice_id = str(created_invoice.get("InvoiceID") or created_invoice.get("InvoiceId") or "").strip()
+            if not created_invoice_id:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Created supplier bill did not return an invoice id.")
+            try:
+                pdf_bytes = await fetch_invoice_pdf(master_connection, source_invoice_id)
+                attachment_name = f"{invoice_number[:80] or source_invoice_id}.pdf"
+                await attach_file_to_invoice(
+                    destination_connection,
+                    created_invoice_id,
+                    attachment_name,
+                    pdf_bytes,
+                    "application/pdf",
+                )
+                pdf_attached = True
+            except Exception as exc:
+                publish_error = f"Bill created but PDF attachment failed: {_sync_error_message(exc)}"
+                logger.exception("JUKSIB: PDF attachment failed for invoice %s", invoice_number)
+        except Exception as exc:
+            publish_error = _sync_error_message(exc)
+
+        if created_invoice_id and not publish_error:
+            status_value = "published"
+            publish_result["published"] += 1
+        elif created_invoice_id and publish_error:
+            status_value = "failed"
+            publish_result["partialFailed"] += 1
+        else:
+            status_value = "failed"
+            publish_result["failed"] += 1
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO juksib_sync_records (
+                        user_id, batch_id, juk_xero_invoice_id, juk_invoice_number, source_tenant_id,
+                        destination_tenant_id, destination_tenant_name, destination_bill_id, client_id, sync_status,
+                        pdf_attached, error_message, created_at, updated_at
+                    )
+                    VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (user_id, source_tenant_id, juk_xero_invoice_id, destination_tenant_id)
+                    DO UPDATE SET
+                        destination_bill_id = EXCLUDED.destination_bill_id,
+                        destination_tenant_name = EXCLUDED.destination_tenant_name,
+                        sync_status = EXCLUDED.sync_status,
+                        pdf_attached = EXCLUDED.pdf_attached,
+                        error_message = EXCLUDED.error_message,
+                        updated_at = NOW()
+                    """,
+                    (
+                        user["id"],
+                        batch_id,
+                        source_invoice_id,
+                        invoice_number,
+                        str(master_connection.get("tenant_id") or ""),
+                        destination_tenant_id,
+                        str(destination_connection.get("tenant_name") or ""),
+                        created_invoice_id,
+                        destination_tenant_id,
+                        "published" if status_value == "published" else "partial_failed" if created_invoice_id else "failed",
+                        pdf_attached,
+                        publish_error,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE juksib_batch_invoices
+                    SET status = %s,
+                        published_bill_id = %s,
+                        published_at = CASE WHEN %s = 'published' THEN NOW() ELSE published_at END,
+                        error_message = %s,
+                        retry_count = CASE WHEN %s = 'failed' THEN retry_count + 1 ELSE retry_count END,
+                        updated_at = NOW()
+                    WHERE id = %s::uuid
+                    """,
+                    (
+                        status_value,
+                        created_invoice_id,
+                        status_value,
+                        publish_error,
+                        status_value,
+                        invoice_id,
+                    ),
+                )
+            connection.commit()
+
+        publish_result["rows"].append(
+            {
+                "invoiceId": invoice_id,
+                "status": status_value,
+                "billId": created_invoice_id,
+                "purchaseAccountCode": target_account_code,
+                "purchaseAccountName": target_account_name,
+                "message": publish_error or "Published successfully.",
+            }
+        )
+
+    response = await juksib_get_batch(user, batch_id)
+    response["result"] = publish_result
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_batch",
+        entity_id=batch_id,
+        action="batch_published",
+        new_value=publish_result,
+        notes="JUKSIB publish run completed.",
+    )
+    return response
+
+
+async def juksib_batch_audit(user: dict, batch_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_audit_logs
+                WHERE user_id = %s
+                  AND (batch_id = %s::uuid OR (%s = '' AND batch_id IS NULL))
+                ORDER BY created_at DESC
+                LIMIT 1000
+                """,
+                (user["id"], batch_id, batch_id),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {
+        "audit": [
+            {
+                "id": str(row.get("id") or ""),
+                "batchId": str(row.get("batch_id") or ""),
+                "entityType": str(row.get("entity_type") or ""),
+                "entityId": str(row.get("entity_id") or ""),
+                "action": str(row.get("action") or ""),
+                "oldValue": row.get("old_value") if isinstance(row.get("old_value"), dict) else {},
+                "newValue": row.get("new_value") if isinstance(row.get("new_value"), dict) else {},
+                "notes": str(row.get("notes") or ""),
+                "createdAt": _iso(row.get("created_at")) or "",
+            }
+            for row in rows
+        ]
+    }
+
+
+async def juksib_source_invoice_pdf(user: dict, invoice_id: str) -> tuple[bytes, str]:
+    source_invoice_id = str(invoice_id or "").strip()
+    if not source_invoice_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Source invoice id is required.")
+    master_connection, _ = _juksib_master_and_sub_connections(user)
+    pdf_bytes = await fetch_invoice_pdf(master_connection, source_invoice_id)
+    safe_invoice_id = re.sub(r"[^A-Za-z0-9._-]+", "-", source_invoice_id).strip("-") or "juk-invoice"
+    return pdf_bytes, f"{safe_invoice_id}.pdf"
 
 
 def _code_breaker_net_assets_value(payload: object) -> Decimal | None:

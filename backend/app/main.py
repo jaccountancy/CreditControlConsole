@@ -228,6 +228,14 @@ from .services import (
     me_report_juk_invoice_check,
     mark_me_report_purchases_paid_personally,
     delete_me_report_unreconciled_transaction,
+    juksib_apply_override,
+    juksib_batch_audit,
+    juksib_bulk_update_invoice_status,
+    juksib_get_batch,
+    juksib_import_batch,
+    juksib_list_batches,
+    juksib_publish_batch,
+    juksib_source_invoice_pdf,
     vault_analyze_files,
     vault_delete_file,
     vault_file_content,
@@ -2210,6 +2218,71 @@ def api_ignition_renewals_pdf(run_id: str, user: dict = Depends(require_panel_us
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/juksib/batches")
+async def api_juksib_batches(
+    limit: int = Query(default=30, ge=1, le=200),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await juksib_list_batches(user, limit=limit)}
+
+
+@app.post("/api/juksib/batches/import")
+async def api_juksib_import_batch(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await juksib_import_batch(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.get("/api/juksib/batches/{batch_id}")
+async def api_juksib_batch(batch_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await juksib_get_batch(user, batch_id)}
+
+
+@app.post("/api/juksib/batches/{batch_id}/invoices/status")
+async def api_juksib_bulk_status(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await juksib_bulk_update_invoice_status(user, batch_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/juksib/batches/{batch_id}/invoices/override")
+async def api_juksib_override(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await juksib_apply_override(user, batch_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/juksib/batches/{batch_id}/publish")
+async def api_juksib_publish(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await juksib_publish_batch(user, batch_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.get("/api/juksib/batches/{batch_id}/audit")
+async def api_juksib_audit(batch_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await juksib_batch_audit(user, batch_id)}
+
+
+@app.get("/api/juksib/source-invoices/{invoice_id}/pdf")
+async def api_juksib_source_invoice_pdf(invoice_id: str, user: dict = Depends(require_panel_user)):
+    file_bytes, filename = await juksib_source_invoice_pdf(user, invoice_id)
+    safe_filename = str(filename or "juk-invoice.pdf").replace('"', "")
+    return Response(
+        content=file_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'},
     )
 
 
