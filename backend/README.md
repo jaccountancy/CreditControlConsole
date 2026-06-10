@@ -26,7 +26,7 @@ Required variables:
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
-- `XERO_SCOPES=openid profile email offline_access accounting.transactions accounting.contacts accounting.settings accounting.attachments accounting.reports.read accounting.journals.read assets`
+- `XERO_SCOPES=openid profile email offline_access accounting.transactions accounting.contacts accounting.settings accounting.attachments accounting.reports.read accounting.journals.read assets payroll.employees.read payroll.payruns.read`
 - `IGNITION_CLIENT_ID`
 - `IGNITION_CLIENT_SECRET`
 - `IGNITION_REDIRECT_URI=https://<your-api-domain>/api/ignition/callback`

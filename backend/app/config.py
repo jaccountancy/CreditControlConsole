@@ -18,7 +18,8 @@ class Settings(BaseSettings):
         "openid profile email offline_access "
         "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.journals.read "
         "accounting.contacts accounting.settings accounting.attachments "
-        "accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read"
+        "accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read "
+        "payroll.employees.read payroll.payruns.read"
     )
     xero_primary_tenant_name: str = "jaccountancy"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
