@@ -7075,6 +7075,40 @@
             }
             #insightsScreen .insights-hero .detail-actions {
                 align-self: center;
+                display: grid;
+                gap: 10px;
+                justify-items: end;
+            }
+            #insightsScreen .insights-hero .insights-hero-datetime {
+                display: grid;
+                gap: 2px;
+                justify-items: end;
+                min-width: 220px;
+                text-align: right;
+                padding: 8px 12px;
+                border-radius: 14px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                background: rgba(255, 255, 255, 0.82);
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+            }
+            #insightsScreen .insights-hero .insights-hero-day {
+                color: #1f5bc7;
+                font-size: 0.75rem;
+                font-weight: 860;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #insightsScreen .insights-hero .insights-hero-date {
+                color: #1e3455;
+                font-size: 0.95rem;
+                font-weight: 850;
+                line-height: 1.2;
+            }
+            #insightsScreen .insights-hero .insights-hero-time {
+                color: #496182;
+                font-size: 0.88rem;
+                font-weight: 780;
+                line-height: 1.2;
             }
             #insightsScreen #refreshInsightsButton {
                 position: relative;
@@ -8020,6 +8054,14 @@
                     width: 36px;
                     height: 36px;
                     border-radius: 12px;
+                }
+                #insightsScreen .insights-hero .detail-actions {
+                    justify-items: stretch;
+                }
+                #insightsScreen .insights-hero .insights-hero-datetime {
+                    min-width: 0;
+                    justify-items: start;
+                    text-align: left;
                 }
                 #insightsScreen #refreshInsightsButton {
                     width: 100%;
@@ -28547,6 +28589,11 @@
                                 </div>
                             </div>
                             <div class="detail-actions">
+                                <div class="insights-hero-datetime" aria-live="polite">
+                                    <span class="insights-hero-day" id="insightsLiveDay">--</span>
+                                    <span class="insights-hero-date" id="insightsLiveDate">--</span>
+                                    <span class="insights-hero-time" id="insightsLiveTime">--</span>
+                                </div>
                                 <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
                                     <span id="refreshInsightsButtonLabel">Refresh with Jenius AI</span>
                                 </button>
@@ -64218,12 +64265,14 @@
             }
 
             function insightsGreetingText(now = new Date()) {
-                const hour = now.getHours();
-                const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
-                const weekday = now.toLocaleDateString("en-GB", { weekday: "long" });
-                const month = now.toLocaleDateString("en-GB", { month: "long" });
-                const time = now.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: false });
-                return `${greeting}, ${weekday}, ${ordinalDay(now.getDate())} ${month} ${now.getFullYear()} ${time}`;
+                return insightsTopbarTitle();
+            }
+
+            function insightsDateTimeParts(now = new Date()) {
+                const day = now.toLocaleDateString("en-GB", { weekday: "long" });
+                const date = `${ordinalDay(now.getDate())} ${now.toLocaleDateString("en-GB", { month: "long" })} ${now.getFullYear()}`;
+                const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+                return { day, date, time };
             }
 
             function updateInsightsLiveGreeting() {
@@ -64233,6 +64282,13 @@
                     target.textContent = insightsGreetingText();
                     window.requestAnimationFrame(() => target.classList.add("is-ticking"));
                 }
+                const parts = insightsDateTimeParts();
+                const dayTarget = document.getElementById("insightsLiveDay");
+                const dateTarget = document.getElementById("insightsLiveDate");
+                const timeTarget = document.getElementById("insightsLiveTime");
+                if (dayTarget) dayTarget.textContent = parts.day;
+                if (dateTarget) dateTarget.textContent = parts.date;
+                if (timeTarget) timeTarget.textContent = parts.time;
             }
 
             function startInsightsClock() {
