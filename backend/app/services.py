@@ -15813,16 +15813,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             connections = list_xero_connections_for_user(user["id"], include_fallback=False)
             connection_row = next((row for row in connections if str(row.get("tenant_id") or "").strip() == tenant_id), None)
             if connection_row is None:
-                if connections:
-                    preferred_tenant_name = get_settings().xero_primary_tenant_name
-                    connection_row = max(connections, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
-                    fallback_tenant_name = str(connection_row.get("tenant_name") or connection_row.get("tenant_id") or "").strip()
-                    connection_lookup_error = (
-                        f"Selected Xero tenant {tenant_id} is unavailable for this user; "
-                        f"using connected tenant {fallback_tenant_name or 'default'} instead."
-                    )
-                else:
-                    connection_lookup_error = "Selected Xero connection is unavailable for this workspace tenant."
+                connection_lookup_error = "Selected Xero connection is unavailable for this workspace tenant."
         else:
             connection_row = get_xero_connection_for_user(user["id"])
     except Exception as exc:

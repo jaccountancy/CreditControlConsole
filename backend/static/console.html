@@ -71008,9 +71008,6 @@
                 if (!workspace.periodStartDate && workspace.yearEndDate) {
                     workspace.periodStartDate = codeBreakerPeriodStartDate(workspace);
                 }
-                if (!workspace.submittedAt && workspace.yearEndDate) {
-                    workspace.submittedAt = String(workspace.yearEndDate || "").slice(0, 10);
-                }
                 workspace.updatedAt = new Date().toISOString();
                 persistCodeBreakerWorkspaces();
                 return selectedPeriod;
@@ -71020,7 +71017,8 @@
                 const response = await requestJSON(api.endpoints.codeBreakerWorkspaceSnapshot, {
                     method: "POST",
                     body: JSON.stringify(payload),
-                }, { suppressFailurePanel: true });
+                    suppressFailurePanel: true,
+                });
                 const statusText = String(response?.status || "").toLowerCase();
                 const result = response?.result && typeof response.result === "object" ? response.result : {};
                 if (statusText === "ok") return result;
@@ -71691,6 +71689,7 @@
                                 description: String(row?.narration || row?.reason || "").trim() || "Journal contributor",
                                 status: String(row?.reason || "Journal contributor"),
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
+                                entryDate: String(row?.createdAt || row?.journalDate || "").slice(0, 10),
                                 amount: impact,
                                 absoluteAmount: Math.abs(impact),
                                 postedSinceFiling: true,
@@ -71709,6 +71708,7 @@
                                 description: String(row?.narration || row?.reason || "").trim() || "Journal candidate",
                                 status: String(row?.reason || "Journal candidate"),
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
+                                entryDate: String(row?.createdAt || row?.journalDate || "").slice(0, 10),
                                 amount: impact,
                                 absoluteAmount: Math.abs(impact),
                                 postedSinceFiling: true,
@@ -71735,6 +71735,7 @@
                             description: String(row?.reason || "").trim() || "Voided or deleted after filing",
                             status: String(row?.status || "VOIDED"),
                             postedDate: String(row?.journalDate || "").slice(0, 10),
+                            entryDate: String(row?.createdAt || row?.journalDate || "").slice(0, 10),
                             amount: Number(row?.impact || 0),
                             absoluteAmount: Math.abs(Number(row?.impact || 0)),
                             postedSinceFiling: true,
@@ -71760,10 +71761,12 @@
                             residualVariance = nextResidual;
                         }
                     });
-                    const rows = allRows.map((row) => ({
-                        ...row,
-                        usedForVariance: selectedKeys.has(row.key),
-                    }));
+                    const rows = allRows
+                        .map((row) => ({
+                            ...row,
+                            usedForVariance: selectedKeys.has(row.key),
+                        }))
+                        .filter((row) => Number(row.absoluteAmount || Math.abs(Number(row.amount || 0))) > 0.0001);
                     let explainedVariance = Number(varianceTarget || 0) - residualVariance;
                     const actionPlan = postFiling?.actionPlan && typeof postFiling.actionPlan === "object"
                         ? postFiling.actionPlan
@@ -71788,7 +71791,7 @@
                     );
                     codeBreakerVarianceState.summary = {
                         varianceTarget,
-                        rowsPulled: allRows.length,
+                        rowsPulled: rows.length,
                         rowsUsed: selectedKeys.size,
                         explainedVariance,
                     };
@@ -72197,6 +72200,7 @@
                                 reference: String(row?.journalNumber || row?.reference || row?.journalId || row?.candidateId || "Journal"),
                                 description: String(row?.narration || row?.reason || "").trim() || "Journal contributor",
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
+                                entryDate: String(row?.createdAt || row?.journalDate || "").slice(0, 10),
                                 status: String(row?.reason || "Variance contributor"),
                                 amount: impact,
                                 absoluteAmount: Math.abs(impact),
@@ -72217,6 +72221,7 @@
                                 reference: String(row?.reference || row?.transactionId || "Movement"),
                                 description: String(row?.reason || "").trim() || "Non-journal contributor",
                                 postedDate: String(row?.journalDate || "").slice(0, 10),
+                                entryDate: String(row?.createdAt || row?.journalDate || "").slice(0, 10),
                                 status: String(row?.status || "Observed"),
                                 amount: impact,
                                 absoluteAmount: Math.abs(impact),
@@ -72287,6 +72292,8 @@
                             }
                         }
                     }
+
+                    candidateRows = candidateRows.filter((row) => Number(row?.absoluteAmount || Math.abs(Number(row?.amount || 0))) > 0.0001);
 
                     setCodeBreakerWizardStep(5, "running", "Building suggested reversal rows to close the variance.");
                     const varianceTarget = Math.abs(variance);
@@ -72404,7 +72411,7 @@
                             invoiceNumber: row.reference,
                             description: String(row.description || row.raw?.narration || row.raw?.reason || "").trim(),
                             postedDate: row.postedDate,
-                            entryDate: row.postedDate,
+                            entryDate: row.entryDate || row.postedDate,
                             status: row.status,
                             amount: Number(row.amount || 0),
                             reversalAmount: Number(row.reversalAmount || 0),
@@ -73210,10 +73217,10 @@
                                 const yearEnd = String(input?.value || "").slice(0, 10);
                                 draft.yearEndDate = yearEnd;
                                 draft.periodStartDate = periodStartFromYearEnd(yearEnd);
-                                draft.submittedAt = yearEnd;
+                                draft.submittedAt = "";
                                 codeBreakerSetupConfirmState.yearEndDate = null;
                                 codeBreakerSetupConfirmState.periodStartDate = null;
-                                updateCodeBreakerPopulateStatus(yearEnd ? "Year end updated manually. Confirm the updated dates." : "Select a year end date to continue.");
+                                updateCodeBreakerPopulateStatus(yearEnd ? "Year end updated manually. Select the matching submitted accounts date before continuing." : "Select a year end date to continue.");
                                 renderWorkspaceDetailsStep();
                             });
                         };
