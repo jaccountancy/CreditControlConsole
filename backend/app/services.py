@@ -157,6 +157,8 @@ OPENAI_ME_REPORT_TIMEOUT_SECONDS = 300
 RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
+XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
+XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
 VAT_INCREMENTAL_REFRESH_OVERLAP = timedelta(minutes=2)
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
@@ -199,6 +201,8 @@ DATABASE_METRIC_TABLES = {
     "me_report_reports": "ME report reports",
     "me_report_submissions": "ME report submissions",
     "me_report_sync_runs": "ME report sync runs",
+    "payroll_headcount_workspaces": "Payroll headcount workspaces",
+    "payroll_headcount_monthly_snapshots": "Payroll headcount snapshots",
     "gmail_connections": "Gmail connections",
     "supplier_reconciliation_clients": "Supplier reconciliation clients",
 }
@@ -767,6 +771,339 @@ def xero_connection_for_user_tenant(user: dict, tenant_id: str | None = None, in
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
     return row
+
+
+def _month_start(value: date | datetime | None = None) -> date:
+    if isinstance(value, datetime):
+        value = value.date()
+    value = value or utcnow().date()
+    return value.replace(day=1)
+
+
+def _parse_any_date(value) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    iso_candidate = text[:10]
+    try:
+        return date.fromisoformat(iso_candidate)
+    except ValueError:
+        pass
+    match = re.search(r"/Date\((\d+)", text)
+    if match:
+        try:
+            millis = int(match.group(1))
+            return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).date()
+        except (TypeError, ValueError, OSError):
+            return None
+    return None
+
+
+def _payroll_headcount_employee_is_active(employee: dict) -> bool:
+    status_value = str(
+        employee.get("EmployeeStatus")
+        or employee.get("Status")
+        or employee.get("status")
+        or ""
+    ).strip().lower()
+    if status_value in {"terminated", "inactive", "deleted", "archived"}:
+        return False
+    termination_date = (
+        _parse_any_date(employee.get("TerminationDate"))
+        or _parse_any_date(employee.get("EndDate"))
+        or _parse_any_date(employee.get("DateOfLeaving"))
+    )
+    if termination_date and termination_date < utcnow().date():
+        return False
+    return True
+
+
+def _payroll_headcount_payrun_date(payrun: dict) -> date | None:
+    return (
+        _parse_any_date(payrun.get("PaymentDate"))
+        or _parse_any_date(payrun.get("PayRunPeriodEndDate"))
+        or _parse_any_date(payrun.get("Date"))
+    )
+
+
+def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | None = None) -> dict:
+    latest = None
+    if snapshots:
+        latest = snapshots[0]
+    return {
+        "id": str(row.get("id") or ""),
+        "tenantId": str(row.get("tenant_id") or ""),
+        "tenantName": str(row.get("tenant_name") or ""),
+        "workspaceName": str(row.get("workspace_name") or ""),
+        "wizardCompleted": bool(row.get("wizard_completed")),
+        "createdAt": _iso(row.get("created_at")) or "",
+        "updatedAt": _iso(row.get("updated_at")) or "",
+        "latestSnapshot": latest,
+        "monthlySnapshots": snapshots or [],
+    }
+
+
+def payroll_headcount_payload(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       tenant_id,
+                       tenant_name,
+                       workspace_name,
+                       wizard_completed,
+                       created_at,
+                       updated_at
+                FROM payroll_headcount_workspaces
+                WHERE user_id = %s
+                ORDER BY LOWER(COALESCE(tenant_name, tenant_id)), created_at ASC
+                """,
+                (user["id"],),
+            )
+            workspace_rows = cursor.fetchall() or []
+            workspace_ids = [str(row.get("id") or "") for row in workspace_rows if row.get("id")]
+            snapshots_by_workspace_id: dict[str, list[dict]] = {}
+            if workspace_ids:
+                cursor.execute(
+                    """
+                    SELECT workspace_id,
+                           month_start,
+                           headcount,
+                           payroll_count,
+                           source,
+                           fetched_at,
+                           created_at,
+                           updated_at
+                    FROM payroll_headcount_monthly_snapshots
+                    WHERE workspace_id = ANY(%s)
+                    ORDER BY month_start DESC, fetched_at DESC
+                    """,
+                    (workspace_ids,),
+                )
+                snapshot_rows = cursor.fetchall() or []
+                for snapshot_row in snapshot_rows:
+                    workspace_id = str(snapshot_row.get("workspace_id") or "")
+                    if not workspace_id:
+                        continue
+                    snapshots_by_workspace_id.setdefault(workspace_id, []).append(
+                        {
+                            "monthStart": (
+                                snapshot_row.get("month_start").isoformat()
+                                if snapshot_row.get("month_start")
+                                else ""
+                            ),
+                            "headcount": int(snapshot_row.get("headcount") or 0),
+                            "payrollCount": int(snapshot_row.get("payroll_count") or 0),
+                            "source": str(snapshot_row.get("source") or ""),
+                            "fetchedAt": _iso(snapshot_row.get("fetched_at")) or "",
+                            "createdAt": _iso(snapshot_row.get("created_at")) or "",
+                            "updatedAt": _iso(snapshot_row.get("updated_at")) or "",
+                        }
+                    )
+        connection.commit()
+
+    workspaces = [
+        _payroll_headcount_workspace_row_payload(
+            row,
+            snapshots=snapshots_by_workspace_id.get(str(row.get("id") or ""), []),
+        )
+        for row in workspace_rows
+    ]
+    return {
+        "workspaces": workspaces,
+        "summary": {
+            "workspaceCount": len(workspaces),
+            "configuredCount": sum(1 for row in workspaces if row.get("wizardCompleted")),
+            "snapshotCount": sum(len(row.get("monthlySnapshots") or []) for row in workspaces),
+        },
+    }
+
+
+def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant id is required.")
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
+    workspace_name = f"{tenant_name} Headcount Workspace"
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO payroll_headcount_workspaces (
+                    user_id,
+                    tenant_id,
+                    tenant_name,
+                    workspace_name,
+                    wizard_completed,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, tenant_id)
+                DO UPDATE
+                SET tenant_name = EXCLUDED.tenant_name,
+                    workspace_name = EXCLUDED.workspace_name,
+                    wizard_completed = TRUE,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id,
+                          tenant_id,
+                          tenant_name,
+                          workspace_name,
+                          wizard_completed,
+                          created_at,
+                          updated_at
+                """,
+                (
+                    user["id"],
+                    clean_tenant_id,
+                    tenant_name,
+                    workspace_name,
+                    True,
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return _payroll_headcount_workspace_row_payload(row, snapshots=[])
+
+
+async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant id is required.")
+    workspace = upsert_payroll_headcount_workspace(user, clean_tenant_id)
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+
+    errors: list[str] = []
+    employees_payload = {}
+    payruns_payload = {}
+    try:
+        employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+    except Exception as exc:
+        errors.append(f"Employees sync failed: {_sync_error_message(exc)}")
+    try:
+        payruns_payload = await xero_api_get(connection_row, XERO_PAYROLL_PAYRUNS_URL)
+    except Exception as exc:
+        errors.append(f"Pay runs sync failed: {_sync_error_message(exc)}")
+
+    employees = employees_payload.get("Employees") if isinstance(employees_payload, dict) else []
+    payruns = payruns_payload.get("PayRuns") if isinstance(payruns_payload, dict) else []
+    employees = employees if isinstance(employees, list) else []
+    payruns = payruns if isinstance(payruns, list) else []
+
+    if not employees and not payruns and errors:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Unable to read Payroll data from Xero for this tenant.",
+                "errors": errors,
+                "hint": "Reconnect with Payroll scopes and confirm this tenant has Payroll enabled.",
+            },
+        )
+
+    active_headcount = sum(1 for employee in employees if _payroll_headcount_employee_is_active(employee))
+    month_start = _month_start()
+    current_month_payrun_count = sum(
+        1
+        for payrun in payruns
+        if (_payroll_headcount_payrun_date(payrun) or month_start).replace(day=1) == month_start
+    )
+    payroll_count = current_month_payrun_count if payruns else 0
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO payroll_headcount_monthly_snapshots (
+                    workspace_id,
+                    month_start,
+                    headcount,
+                    payroll_count,
+                    source,
+                    fetched_at,
+                    raw_payload,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                ON CONFLICT (workspace_id, month_start)
+                DO UPDATE
+                SET headcount = EXCLUDED.headcount,
+                    payroll_count = EXCLUDED.payroll_count,
+                    source = EXCLUDED.source,
+                    fetched_at = EXCLUDED.fetched_at,
+                    raw_payload = EXCLUDED.raw_payload,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING month_start,
+                          headcount,
+                          payroll_count,
+                          source,
+                          fetched_at,
+                          created_at,
+                          updated_at
+                """,
+                (
+                    workspace["id"],
+                    month_start,
+                    active_headcount,
+                    payroll_count,
+                    "xero-payroll",
+                    utcnow(),
+                    json.dumps(
+                        {
+                            "employeeCount": len(employees),
+                            "payRunCount": len(payruns),
+                            "errors": errors,
+                        },
+                        default=_json_default,
+                    ),
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            snapshot_row = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                UPDATE payroll_headcount_workspaces
+                SET wizard_completed = TRUE,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), workspace["id"]),
+            )
+        connection.commit()
+
+    snapshot = {
+        "monthStart": snapshot_row.get("month_start").isoformat() if snapshot_row.get("month_start") else "",
+        "headcount": int(snapshot_row.get("headcount") or 0),
+        "payrollCount": int(snapshot_row.get("payroll_count") or 0),
+        "source": str(snapshot_row.get("source") or ""),
+        "fetchedAt": _iso(snapshot_row.get("fetched_at")) or "",
+        "createdAt": _iso(snapshot_row.get("created_at")) or "",
+        "updatedAt": _iso(snapshot_row.get("updated_at")) or "",
+    }
+
+    payload = payroll_headcount_payload(user)
+    return {
+        "workspace": next(
+            (
+                row
+                for row in payload.get("workspaces") or []
+                if str(row.get("tenantId") or "").strip() == clean_tenant_id
+            ),
+            workspace,
+        ),
+        "snapshot": snapshot,
+        "errors": errors,
+        "payrollHeadcount": payload,
+    }
 
 
 def disconnect_xero(user: dict, tenant_id: str | None = None, disconnect_all: bool = False) -> dict:

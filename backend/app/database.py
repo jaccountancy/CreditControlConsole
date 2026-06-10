@@ -1959,6 +1959,50 @@ ALTER TABLE release_ideas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NU
 
 CREATE INDEX IF NOT EXISTS release_ideas_status_created_idx
 ON release_ideas (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS payroll_headcount_workspaces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    tenant_name TEXT NOT NULL DEFAULT '',
+    workspace_name TEXT NOT NULL DEFAULT '',
+    wizard_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id)
+);
+
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS workspace_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS wizard_completed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE payroll_headcount_workspaces ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS payroll_headcount_workspaces_user_idx
+ON payroll_headcount_workspaces (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS payroll_headcount_monthly_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES payroll_headcount_workspaces(id) ON DELETE CASCADE,
+    month_start DATE NOT NULL,
+    headcount INTEGER NOT NULL DEFAULT 0,
+    payroll_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'xero-payroll',
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (workspace_id, month_start)
+);
+
+ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'xero-payroll';
+ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS payroll_headcount_monthly_snapshots_workspace_idx
+ON payroll_headcount_monthly_snapshots (workspace_id, month_start DESC);
 """
 
 

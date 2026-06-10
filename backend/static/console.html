@@ -28936,6 +28936,27 @@
                                     <tbody id="payrollHeadcountTableBody"></tbody>
                                 </table>
                             </section>
+                            <section class="detail-panel" id="payrollHeadcountWorkspaceDetailPanel" hidden>
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Workspace history</p>
+                                        <h3 id="payrollHeadcountWorkspaceDetailTitle">Headcount history</h3>
+                                    </div>
+                                </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Payroll headcount monthly history">
+                                        <thead>
+                                            <tr>
+                                                <th>Month</th>
+                                                <th>Employees on payroll</th>
+                                                <th>Payroll runs in month</th>
+                                                <th>Captured</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="payrollHeadcountWorkspaceHistoryBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
                         </section>
                     </section>
                     <div class="company-secretarial-modal" id="payrollHeadcountWorkspacePickerModal" hidden>
@@ -28965,6 +28986,28 @@
                             <div class="detail-actions">
                                 <button class="ghost-button" id="payrollHeadcountWorkspacePickerCancelButton" type="button">Cancel</button>
                                 <button class="primary-button" id="payrollHeadcountWorkspacePickerSaveButton" type="button">Add selected</button>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="payrollHeadcountWizardModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="payrollHeadcountWizardTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Payroll Headcount</p>
+                                    <h4 id="payrollHeadcountWizardTitle">Workspace setup wizard</h4>
+                                    <p class="detail-meta" id="payrollHeadcountWizardMeta">Preparing payroll sync for this Xero organisation.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="payrollHeadcountWizardCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="empty-state">
+                                <p class="eyebrow" id="payrollHeadcountWizardState">Setup</p>
+                                <h4 id="payrollHeadcountWizardMessage">Waiting to sync payroll data.</h4>
+                                <p id="payrollHeadcountWizardDetail">The system will pull employee headcount and payroll-run count from Xero Payroll, then save this month's snapshot.</p>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="payrollHeadcountWizardSyncButton" type="button">Run payroll sync</button>
                             </div>
                         </section>
                     </div>
@@ -30256,6 +30299,10 @@
             let payrollHeadcountWorkspaces = loadPayrollHeadcountWorkspaces();
             const payrollHeadcountIncludedTenantIdsStorageKey = `${STORAGE_KEY}:payroll-headcount-included-tenant-ids:v1`;
             let payrollHeadcountIncludedTenantIds = loadPayrollHeadcountIncludedTenantIds();
+            let payrollHeadcountData = { workspaces: [], summary: { workspaceCount: 0, configuredCount: 0, snapshotCount: 0 } };
+            let payrollHeadcountLoading = false;
+            let selectedPayrollHeadcountWorkspaceTenantId = "";
+            let payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
@@ -31487,6 +31534,9 @@
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
                         ignitionRenewalUnlock: config.endpoints?.ignitionRenewalUnlock || "/api/ignition/renewals/:runId/unlock",
                         meReport: config.endpoints?.meReport || "/api/me-report",
+                        payrollHeadcount: config.endpoints?.payrollHeadcount || "/api/payroll-headcount",
+                        payrollHeadcountWorkspaces: config.endpoints?.payrollHeadcountWorkspaces || "/api/payroll-headcount/workspaces",
+                        payrollHeadcountWorkspaceSync: config.endpoints?.payrollHeadcountWorkspaceSync || "/api/payroll-headcount/workspaces/:tenantId/sync",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
                         meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
                         meReportClientStatus: config.endpoints?.meReportClientStatus || "/api/me-report/clients/:clientId/status",
@@ -32523,6 +32573,32 @@
                     localStorage.setItem(payrollHeadcountIncludedTenantIdsStorageKey, JSON.stringify(payrollHeadcountIncludedTenantIds || []));
                 } catch {
                     // Payroll Headcount workspace selection can operate in-memory if browser storage is unavailable.
+                }
+            }
+
+            async function loadPayrollHeadcount(force = false) {
+                if (payrollHeadcountLoading && !force) return;
+                payrollHeadcountLoading = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.payrollHeadcount);
+                    payrollHeadcountData = {
+                        workspaces: Array.isArray(payload?.workspaces) ? payload.workspaces : [],
+                        summary: payload?.summary || { workspaceCount: 0, configuredCount: 0, snapshotCount: 0 },
+                    };
+                    payrollHeadcountWorkspaces = payrollHeadcountData.workspaces.map((workspace) => ({
+                        id: String(workspace?.id || "").trim(),
+                        tenantId: String(workspace?.tenantId || "").trim(),
+                        tenantName: String(workspace?.tenantName || "").trim(),
+                        workspaceName: String(workspace?.workspaceName || "").trim(),
+                        createdAt: String(workspace?.createdAt || "").trim(),
+                        updatedAt: String(workspace?.updatedAt || "").trim(),
+                    })).filter((row) => row.id && row.tenantId);
+                    persistPayrollHeadcountWorkspaces();
+                } catch (error) {
+                    console.error("Unable to load Payroll Headcount data", error);
+                    showToast(error?.message || "Unable to load Payroll Headcount data.", "error");
+                } finally {
+                    payrollHeadcountLoading = false;
                 }
             }
 
@@ -34926,6 +35002,7 @@
                 closeToolbarMenus();
                 renderAll();
                 loadMeReport();
+                loadPayrollHeadcount();
                 scrollConsoleToTop();
             }
 
@@ -34954,7 +35031,17 @@
                 const pickerCloseButton = document.getElementById("payrollHeadcountWorkspacePickerCloseButton");
                 const pickerCancelButton = document.getElementById("payrollHeadcountWorkspacePickerCancelButton");
                 const pickerSaveButton = document.getElementById("payrollHeadcountWorkspacePickerSaveButton");
-                if (!summary || !tableBody || !refreshButton || !addWorkspaceButton || !pickerModal || !pickerBody || !pickerCloseButton || !pickerCancelButton || !pickerSaveButton) return;
+                const detailPanel = document.getElementById("payrollHeadcountWorkspaceDetailPanel");
+                const detailTitle = document.getElementById("payrollHeadcountWorkspaceDetailTitle");
+                const historyBody = document.getElementById("payrollHeadcountWorkspaceHistoryBody");
+                const wizardModal = document.getElementById("payrollHeadcountWizardModal");
+                const wizardMeta = document.getElementById("payrollHeadcountWizardMeta");
+                const wizardState = document.getElementById("payrollHeadcountWizardState");
+                const wizardMessage = document.getElementById("payrollHeadcountWizardMessage");
+                const wizardDetail = document.getElementById("payrollHeadcountWizardDetail");
+                const wizardCloseButton = document.getElementById("payrollHeadcountWizardCloseButton");
+                const wizardSyncButton = document.getElementById("payrollHeadcountWizardSyncButton");
+                if (!summary || !tableBody || !refreshButton || !addWorkspaceButton || !pickerModal || !pickerBody || !pickerCloseButton || !pickerCancelButton || !pickerSaveButton || !detailPanel || !detailTitle || !historyBody || !wizardModal || !wizardMeta || !wizardState || !wizardMessage || !wizardDetail || !wizardCloseButton || !wizardSyncButton) return;
 
                 const connections = payrollHeadcountOrganisationConnections();
                 const allTenantIds = new Set(connections.map((row) => String(row?.tenantId || "").trim()).filter(Boolean));
@@ -34975,6 +35062,7 @@
                         refreshButton.textContent = "Refreshing...";
                         try {
                             await loadMeReport(true);
+                            await loadPayrollHeadcount(true);
                             showToast("Payroll Headcount refreshed.", "success");
                         } catch (error) {
                             showToast(error?.message || "Unable to refresh Payroll Headcount.", "error");
@@ -35003,12 +35091,18 @@
                 }
                 if (pickerSaveButton.dataset.payrollHeadcountWired !== "true") {
                     pickerSaveButton.dataset.payrollHeadcountWired = "true";
-                    pickerSaveButton.addEventListener("click", () => {
+                    pickerSaveButton.addEventListener("click", async () => {
+                        const previousIds = new Set((payrollHeadcountIncludedTenantIds || []).map((tenantId) => String(tenantId || "").trim()).filter(Boolean));
                         const ids = Array.from(new Set((payrollHeadcountWorkspacePickerTenantIds || []).map((tenantId) => String(tenantId || "").trim()).filter(Boolean)));
                         payrollHeadcountIncludedTenantIds = ids;
                         persistPayrollHeadcountIncludedTenantIds();
                         payrollHeadcountWorkspacePickerOpen = false;
                         showToast(ids.length ? `${ids.length.toLocaleString("en-GB")} organisation${ids.length === 1 ? "" : "s"} added to Payroll Headcount.` : "No organisations selected.", ids.length ? "success" : "info");
+                        const newTenantIds = ids.filter((tenantId) => !previousIds.has(tenantId));
+                        if (newTenantIds.length) {
+                            const tenantId = newTenantIds[0];
+                            await setupPayrollHeadcountWorkspace(tenantId, { openWizard: true, autoSync: true });
+                        }
                         renderPayrollHeadcountScreen();
                     });
                 }
@@ -35016,6 +35110,24 @@
                     pickerModal.dataset.payrollHeadcountWired = "true";
                     pickerModal.addEventListener("click", (event) => {
                         if (event.target === pickerModal) closePayrollHeadcountWorkspacePickerModal();
+                    });
+                }
+                if (wizardCloseButton.dataset.payrollHeadcountWired !== "true") {
+                    wizardCloseButton.dataset.payrollHeadcountWired = "true";
+                    wizardCloseButton.addEventListener("click", closePayrollHeadcountWizardModal);
+                }
+                if (wizardSyncButton.dataset.payrollHeadcountWired !== "true") {
+                    wizardSyncButton.dataset.payrollHeadcountWired = "true";
+                    wizardSyncButton.addEventListener("click", async () => {
+                        const tenantId = String(payrollHeadcountWizardState.tenantId || "").trim();
+                        if (!tenantId) return;
+                        await syncPayrollHeadcountWorkspace(tenantId, { fromWizard: true });
+                    });
+                }
+                if (wizardModal.dataset.payrollHeadcountWired !== "true") {
+                    wizardModal.dataset.payrollHeadcountWired = "true";
+                    wizardModal.addEventListener("click", (event) => {
+                        if (event.target === wizardModal) closePayrollHeadcountWizardModal();
                     });
                 }
                 pickerModal.hidden = !payrollHeadcountWorkspacePickerOpen;
@@ -35047,18 +35159,21 @@
                 if (meReportLoading && !connections.length) {
                     summary.textContent = "Loading connected Xero organisations.";
                     tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading connected organisations</h4><p>Pulling connected Xero organisations for payroll headcount setup.</p></div></td></tr>';
+                    detailPanel.hidden = true;
                     return;
                 }
 
                 if (!connections.length) {
                     summary.textContent = "No connected Xero organisations found.";
                     tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No organisations</p><h4>Connect Xero to begin</h4><p>Once connected, each organisation can have its own Payroll Headcount workspace.</p></div></td></tr>';
+                    detailPanel.hidden = true;
                     return;
                 }
 
                 if (!listedConnections.length) {
                     summary.textContent = "No organisations have been added to this Payroll Headcount list yet.";
                     tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No workspaces added</p><h4>Use Add workspace to select organisations</h4><p>Select connected Xero organisations to bring them into this list and configure each workspace.</p></div></td></tr>';
+                    detailPanel.hidden = true;
                     return;
                 }
 
@@ -35069,28 +35184,82 @@
                     const workspace = payrollHeadcountWorkspaceByTenant(tenantId);
                     const tenantType = String(connection?.tenantType || "").trim();
                     const connectionCopy = tenantType ? `${tenantType} · Connected` : "Connected";
+                    const snapshot = workspace?.latestSnapshot || null;
+                    const headcountCopy = Number.isFinite(Number(snapshot?.headcount)) ? `${Number(snapshot?.headcount).toLocaleString("en-GB")} headcount` : "Headcount not synced";
+                    const payrollCopy = Number.isFinite(Number(snapshot?.payrollCount)) ? `${Number(snapshot?.payrollCount).toLocaleString("en-GB")} payroll run${Number(snapshot?.payrollCount) === 1 ? "" : "s"}` : "Payroll runs pending";
+                    const monthCopy = snapshot?.monthStart ? `(${new Date(snapshot.monthStart).toLocaleDateString("en-GB", { month: "short", year: "numeric" })})` : "";
+                    const isSelected = selectedPayrollHeadcountWorkspaceTenantId && selectedPayrollHeadcountWorkspaceTenantId === tenantId;
                     return `
-                        <tr>
+                        <tr data-payroll-headcount-open="${escapeHTML(tenantId)}"${isSelected ? ' class="is-selected"' : ""}>
                             <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong><small>${escapeHTML(tenantId)}</small></td>
                             <td><small>${escapeHTML(connectionCopy)}</small></td>
-                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong>` : '<small>No workspace set up</small>'}</td>
+                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small>` : '<small>No workspace set up</small>'}</td>
                             <td>${escapeHTML(formatDateTime(workspace?.updatedAt || workspace?.createdAt || ""))}</td>
                             <td>
                                 <button class="ghost-button" type="button" data-payroll-headcount-setup="${escapeHTML(tenantId)}">${workspace ? "Reconfigure" : "Set up"}</button>
+                                ${workspace ? `<button class="ghost-button" type="button" data-payroll-headcount-sync="${escapeHTML(tenantId)}">Sync now</button>` : ""}
                             </td>
                         </tr>
                     `;
                 }).join("");
 
                 tableBody.querySelectorAll("[data-payroll-headcount-setup]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        setupPayrollHeadcountWorkspace(button.dataset.payrollHeadcountSetup || "");
+                    button.addEventListener("click", async () => {
+                        await setupPayrollHeadcountWorkspace(button.dataset.payrollHeadcountSetup || "", { openWizard: true, autoSync: false });
                     });
                 });
+                tableBody.querySelectorAll("[data-payroll-headcount-open]").forEach((row) => {
+                    row.addEventListener("click", (event) => {
+                        if (event.target?.closest("[data-payroll-headcount-setup]") || event.target?.closest("[data-payroll-headcount-sync]")) return;
+                        selectedPayrollHeadcountWorkspaceTenantId = String(row.dataset.payrollHeadcountOpen || "").trim();
+                        renderPayrollHeadcountScreen();
+                    });
+                });
+                tableBody.querySelectorAll("[data-payroll-headcount-sync]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        await syncPayrollHeadcountWorkspace(button.dataset.payrollHeadcountSync || "", { fromWizard: false });
+                    });
+                });
+
+                const selectedWorkspace = payrollHeadcountWorkspaceByTenant(selectedPayrollHeadcountWorkspaceTenantId) || payrollHeadcountWorkspaceByTenant(String(listedConnections[0]?.tenantId || "").trim());
+                selectedPayrollHeadcountWorkspaceTenantId = String(selectedWorkspace?.tenantId || "").trim();
+                const snapshots = Array.isArray(selectedWorkspace?.monthlySnapshots) ? selectedWorkspace.monthlySnapshots : [];
+                detailPanel.hidden = !selectedWorkspace;
+                if (selectedWorkspace) {
+                    detailTitle.textContent = `${xeroWorkspaceLabel(selectedWorkspace.tenantName || "", selectedWorkspace.tenantId || "", "Xero organisation")} · Monthly payroll headcount`;
+                    historyBody.innerHTML = snapshots.length
+                        ? snapshots.map((snapshot) => `
+                            <tr>
+                                <td><strong>${escapeHTML(snapshot?.monthStart ? new Date(snapshot.monthStart).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : "--")}</strong></td>
+                                <td>${escapeHTML(Number(snapshot?.headcount || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(snapshot?.payrollCount || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(formatDateTime(snapshot?.fetchedAt || snapshot?.updatedAt || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No snapshots</p><h4>No monthly headcount captured yet</h4><p>Run payroll sync for this workspace to save the current month snapshot.</p></div></td></tr>';
+                }
+
+                const wizardConnection = payrollHeadcountOrganisationConnections().find((row) => String(row?.tenantId || "").trim() === String(payrollHeadcountWizardState.tenantId || "").trim());
+                wizardModal.hidden = !payrollHeadcountWizardState.open;
+                wizardMeta.textContent = wizardConnection
+                    ? `${xeroWorkspaceLabel(wizardConnection.tenantName || "", wizardConnection.tenantId || "", "Xero organisation")} · Setup`
+                    : "Preparing payroll sync for this Xero organisation.";
+                wizardState.textContent = payrollHeadcountWizardState.syncing ? "Syncing" : payrollHeadcountWizardState.error ? "Error" : "Ready";
+                wizardMessage.textContent = payrollHeadcountWizardState.message || "Waiting to sync payroll data.";
+                wizardDetail.textContent = payrollHeadcountWizardState.error
+                    ? payrollHeadcountWizardState.error
+                    : "The system will pull employee headcount and payroll-run count from Xero Payroll, then save this month's snapshot.";
+                wizardSyncButton.disabled = payrollHeadcountWizardState.syncing || !payrollHeadcountWizardState.tenantId;
+                wizardSyncButton.textContent = payrollHeadcountWizardState.syncing ? "Syncing..." : "Run payroll sync";
             }
 
             function closePayrollHeadcountWorkspacePickerModal() {
                 payrollHeadcountWorkspacePickerOpen = false;
+                renderPayrollHeadcountScreen();
+            }
+
+            function closePayrollHeadcountWizardModal() {
+                payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
                 renderPayrollHeadcountScreen();
             }
 
@@ -35112,10 +35281,12 @@
             function payrollHeadcountWorkspaceByTenant(tenantId = "") {
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) return null;
+                const apiWorkspace = (payrollHeadcountData.workspaces || []).find((workspace) => String(workspace?.tenantId || "").trim() === cleanTenantId);
+                if (apiWorkspace) return apiWorkspace;
                 return (payrollHeadcountWorkspaces || []).find((workspace) => String(workspace?.tenantId || "").trim() === cleanTenantId) || null;
             }
 
-            function setupPayrollHeadcountWorkspace(tenantId = "") {
+            async function setupPayrollHeadcountWorkspace(tenantId = "", options = {}) {
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) {
                     showToast("Select a connected Xero organisation first.", "error");
@@ -35126,28 +35297,86 @@
                     showToast("This Xero organisation is no longer connected.", "error");
                     return;
                 }
-
-                const now = new Date().toISOString();
-                const workspaceName = `${xeroWorkspaceLabel(connection?.tenantName || "", cleanTenantId, "Xero organisation")} Headcount Workspace`;
-                const existing = payrollHeadcountWorkspaceByTenant(cleanTenantId);
-                if (existing) {
-                    existing.tenantName = String(connection?.tenantName || existing.tenantName || "").trim();
-                    existing.workspaceName = workspaceName;
-                    existing.updatedAt = now;
-                    showToast("Payroll Headcount workspace updated.", "success");
-                } else {
-                    payrollHeadcountWorkspaces.push({
-                        id: `payroll-headcount-${cleanTenantId}`,
-                        tenantId: cleanTenantId,
-                        tenantName: String(connection?.tenantName || "").trim(),
-                        workspaceName,
-                        createdAt: now,
-                        updatedAt: now,
+                const openWizard = options?.openWizard === true;
+                const autoSync = options?.autoSync === true;
+                try {
+                    await requestJSON(api.endpoints.payrollHeadcountWorkspaces, {
+                        method: "POST",
+                        body: JSON.stringify({ tenantId: cleanTenantId })
                     });
-                    showToast("Payroll Headcount workspace created.", "success");
+                    await loadPayrollHeadcount(true);
+                    showToast("Payroll Headcount workspace saved.", "success");
+                    if (openWizard) {
+                        payrollHeadcountWizardState = {
+                            open: true,
+                            tenantId: cleanTenantId,
+                            syncing: false,
+                            message: "Workspace configured. Ready to run payroll sync.",
+                            error: "",
+                        };
+                    }
+                    renderPayrollHeadcountScreen();
+                    if (autoSync) {
+                        await syncPayrollHeadcountWorkspace(cleanTenantId, { fromWizard: true });
+                    }
+                } catch (error) {
+                    showToast(error?.message || "Unable to save Payroll Headcount workspace.", "error");
                 }
-                persistPayrollHeadcountWorkspaces();
-                renderPayrollHeadcountScreen();
+            }
+
+            async function syncPayrollHeadcountWorkspace(tenantId = "", options = {}) {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return;
+                const fromWizard = options?.fromWizard === true;
+                if (fromWizard) {
+                    payrollHeadcountWizardState = {
+                        ...payrollHeadcountWizardState,
+                        open: true,
+                        tenantId: cleanTenantId,
+                        syncing: true,
+                        message: "Syncing payroll headcount from Xero...",
+                        error: "",
+                    };
+                    renderPayrollHeadcountScreen();
+                }
+                try {
+                    const payload = await requestJSON(api.endpoints.payrollHeadcountWorkspaceSync, {
+                        method: "POST",
+                        body: JSON.stringify({})
+                    }, { tenantId: cleanTenantId });
+                    if (payload?.payrollHeadcount) {
+                        payrollHeadcountData = {
+                            workspaces: Array.isArray(payload.payrollHeadcount.workspaces) ? payload.payrollHeadcount.workspaces : [],
+                            summary: payload.payrollHeadcount.summary || { workspaceCount: 0, configuredCount: 0, snapshotCount: 0 },
+                        };
+                    } else {
+                        await loadPayrollHeadcount(true);
+                    }
+                    const snapshot = payload?.snapshot || {};
+                    const headcount = Number(snapshot?.headcount || 0).toLocaleString("en-GB");
+                    const payrolls = Number(snapshot?.payrollCount || 0).toLocaleString("en-GB");
+                    showToast(`Payroll sync complete: ${headcount} headcount · ${payrolls} payroll run${Number(snapshot?.payrollCount || 0) === 1 ? "" : "s"}.`, "success");
+                    if (fromWizard) {
+                        payrollHeadcountWizardState = {
+                            ...payrollHeadcountWizardState,
+                            syncing: false,
+                            message: `Sync complete. ${headcount} headcount and ${payrolls} payroll run${Number(snapshot?.payrollCount || 0) === 1 ? "" : "s"} saved for this month.`,
+                            error: Array.isArray(payload?.errors) && payload.errors.length ? payload.errors.join(" | ") : "",
+                        };
+                    }
+                } catch (error) {
+                    showToast(error?.message || "Unable to sync Payroll Headcount.", "error");
+                    if (fromWizard) {
+                        payrollHeadcountWizardState = {
+                            ...payrollHeadcountWizardState,
+                            syncing: false,
+                            message: "Payroll sync failed.",
+                            error: error?.message || "Unknown payroll sync error.",
+                        };
+                    }
+                } finally {
+                    renderPayrollHeadcountScreen();
+                }
             }
 
             function renderClientCallStatsScreen() {

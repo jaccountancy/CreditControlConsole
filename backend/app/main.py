@@ -154,6 +154,7 @@ from .services import (
     retained_practice_pack_download,
     process_pending_xero_actions,
     override_bank_statement_transaction,
+    payroll_headcount_payload,
     bank_statement_upload_source_file,
     get_sync_run,
     me_report_payload,
@@ -193,6 +194,7 @@ from .services import (
     sync_run_has_working_data,
     send_me_report_email,
     send_ignition_renewals_email,
+    sync_payroll_headcount_workspace,
     update_control_status,
     update_ignition_renewal_run,
     update_bank_statement_account,
@@ -201,6 +203,7 @@ from .services import (
     update_me_report_exception,
     update_me_report_mapping,
     update_me_report_settings,
+    upsert_payroll_headcount_workspace,
     xero_lock_date_overview_payload,
     xero_lock_date_mismatch_payload,
     xero_lock_date_mismatch_pdf,
@@ -2212,6 +2215,28 @@ def api_ignition_renewals_pdf(run_id: str, user: dict = Depends(require_panel_us
 @app.get("/api/me-report")
 def api_me_report(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": me_report_payload(user)}
+
+
+@app.get("/api/payroll-headcount")
+def api_payroll_headcount(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **payroll_headcount_payload(user)}
+
+
+@app.post("/api/payroll-headcount/workspaces")
+async def api_upsert_payroll_headcount_workspace(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    tenant_id = str((payload or {}).get("tenantId") or "").strip() if isinstance(payload, dict) else ""
+    auto_sync = bool((payload or {}).get("autoSync")) if isinstance(payload, dict) else False
+    workspace = upsert_payroll_headcount_workspace(user, tenant_id)
+    if auto_sync:
+        result = await sync_payroll_headcount_workspace(user, tenant_id)
+        return {"status": "ok", **result}
+    return {"status": "ok", "workspace": workspace, "payrollHeadcount": payroll_headcount_payload(user)}
+
+
+@app.post("/api/payroll-headcount/workspaces/{tenant_id}/sync")
+async def api_sync_payroll_headcount_workspace(tenant_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await sync_payroll_headcount_workspace(user, tenant_id)}
 
 
 @app.post("/api/me-report/settings")
