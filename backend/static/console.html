@@ -65724,13 +65724,33 @@
             }
 
             function insightsConnectedXeroSystemsCount() {
-                const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
-                return (Array.isArray(connections) ? connections : []).filter((row) => {
-                    const tenantId = String(row?.tenantId || "").trim();
-                    if (!tenantId) return false;
-                    const tenantType = String(row?.tenantType || "").trim().toLowerCase();
-                    return !tenantType || tenantType === "organisation" || tenantType === "organization";
-                }).length;
+                const tenantIds = new Set();
+                const addTenantId = (rawTenantId = "") => {
+                    const tenantId = String(rawTenantId || "").trim();
+                    if (tenantId) tenantIds.add(tenantId);
+                };
+
+                const settingsRows = typeof settingsXeroConnectionRows === "function" ? settingsXeroConnectionRows() : [];
+                (Array.isArray(settingsRows) ? settingsRows : []).forEach((row) => {
+                    addTenantId(row?.tenantId || row?.xeroTenantId);
+                });
+
+                const codeBreakerRows = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
+                (Array.isArray(codeBreakerRows) ? codeBreakerRows : []).forEach((row) => {
+                    addTenantId(row?.tenantId || row?.xeroTenantId);
+                });
+
+                const meReportRows = Array.isArray(meReportData?.xero?.connections) ? meReportData.xero.connections : [];
+                (Array.isArray(meReportRows) ? meReportRows : []).forEach((row) => {
+                    addTenantId(row?.tenantId || row?.xeroTenantId);
+                });
+
+                addTenantId(meReportData?.xero?.tenantId);
+                if (state?.organisation?.xeroConnected) {
+                    addTenantId(state?.organisation?.tenantId || state?.organisation?.xeroTenantId);
+                }
+
+                return tenantIds.size;
             }
 
             function insightsLatestFullSyncDate() {
