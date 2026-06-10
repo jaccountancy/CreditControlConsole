@@ -16275,6 +16275,50 @@ def _juksib_automation_send_email_report(user: dict, recipients: list[str], subj
 
 async def _juksib_run_automation_for_user(user: dict, trigger_type: str = "scheduled") -> dict:
     settings_row = _juksib_automation_settings_row(user["id"], create=True) or {}
+    if trigger_type == "scheduled":
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM juksib_automation_settings
+                    WHERE user_id = %s::uuid
+                    FOR UPDATE
+                    """,
+                    (user["id"],),
+                )
+                locked_settings = cursor.fetchone() or settings_row
+                zone = _juksib_automation_timezone(str(locked_settings.get("timezone") or "Europe/London"))
+                local_date = utcnow().astimezone(zone).date()
+                last_local_date = locked_settings.get("last_run_local_date")
+                if isinstance(last_local_date, date) and last_local_date == local_date:
+                    connection.commit()
+                    return {
+                        "runId": "",
+                        "summary": {
+                            "batchId": "",
+                            "batchReference": "",
+                            "imported": 0,
+                            "readyToPublish": 0,
+                            "published": 0,
+                            "failed": 0,
+                            "duplicates": 0,
+                            "skipped": True,
+                            "reason": "already_ran_today",
+                        },
+                    }
+                cursor.execute(
+                    """
+                    UPDATE juksib_automation_settings
+                    SET last_run_at = NOW(),
+                        last_run_local_date = %s,
+                        updated_at = NOW()
+                    WHERE user_id = %s::uuid
+                    """,
+                    (local_date, user["id"]),
+                )
+            connection.commit()
+            settings_row = locked_settings
     run_id = ""
     with get_connection() as connection:
         with connection.cursor() as cursor:
