@@ -65453,6 +65453,66 @@
                 </section>`;
             }
 
+            function insightsConnectedXeroSystemsCount() {
+                const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
+                return (Array.isArray(connections) ? connections : []).filter((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    if (!tenantId) return false;
+                    const tenantType = String(row?.tenantType || "").trim().toLowerCase();
+                    return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                }).length;
+            }
+
+            function insightsLatestFullSyncDate() {
+                const run = latestSyncRun || null;
+                const status = String(run?.status || "").trim().toLowerCase();
+                const completed = ["completed", "finished", "finalised", "finalized", "success", "succeeded"].includes(status);
+                if (completed) {
+                    const candidates = [
+                        run?.completedAt,
+                        run?.finishedAt,
+                        run?.finalisedAt,
+                        run?.finalizedAt,
+                        run?.updatedAt,
+                        run?.heartbeatAt,
+                        run?.startedAt,
+                        run?.createdAt,
+                    ];
+                    for (const value of candidates) {
+                        const parsed = parseDateValue(value);
+                        if (parsed) return parsed;
+                    }
+                }
+                return lastSyncDate();
+            }
+
+            function insightsFullSyncRelativeDetail(date = null) {
+                if (!date) return "No completed full sync recorded yet.";
+                const minutes = Math.max(1, Math.floor((Date.now() - date.getTime()) / (60 * 1000)));
+                if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+                const days = Math.floor(hours / 24);
+                return `${days} day${days === 1 ? "" : "s"} ago`;
+            }
+
+            function insightsXeroSyncWidgetCard() {
+                const connectedCount = insightsConnectedXeroSystemsCount();
+                const lastFullSync = insightsLatestFullSyncDate();
+                const lastFullSyncValue = lastFullSync ? formatDateTime(lastFullSync.toISOString()) : "Not yet synced";
+                const connectedDetail = connectedCount
+                    ? `${connectedCount.toLocaleString("en-GB")} organisation tenant${connectedCount === 1 ? "" : "s"} linked to Jenius`
+                    : "No Xero organisation tenants linked yet";
+                const syncDetail = insightsFullSyncRelativeDetail(lastFullSync);
+                return `<section class="insight-chart insights-home-section" id="insightsXeroSyncWidgetCard">
+                    <span>Xero sync status</span>
+                    ${insightCardGrid([
+                        ["Connected Xero systems", connectedCount.toLocaleString("en-GB"), connectedDetail],
+                        ["Last full sync", lastFullSyncValue, syncDetail],
+                    ])}
+                </section>`;
+            }
+
             function aiCopilotHomeInsights(analytics, ai) {
                 const totals = insightTotals(analytics);
                 const statusCounts = analytics.statusCounts || [];
@@ -65466,6 +65526,7 @@
                 }));
                 return `<div class="insights-home">
                     ${insightsQuickActionsCard()}
+                    ${insightsXeroSyncWidgetCard()}
                     <div class="insight-two-column insights-home-section" id="insightsExposureSection">
                         ${barChart("Top customer exposure", topCustomerRows, "value", "name")}
                         ${barChart("Last 6 months collection ratio", monthlyRecent, "collectionRatio", "label")}
