@@ -35207,7 +35207,14 @@
                     return;
                 }
 
-                summary.textContent = `${listedConnections.length.toLocaleString("en-GB")} organisation${listedConnections.length === 1 ? "" : "s"} in this Payroll Headcount list · ${workspaceCount.toLocaleString("en-GB")} Headcount workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+                const planAssessments = listedConnections.map((connection) => {
+                    const workspace = payrollHeadcountWorkspaceByTenant(String(connection?.tenantId || "").trim());
+                    const snapshot = workspace?.latestSnapshot || null;
+                    return payrollPlanFit(workspace?.ignitionPlanName || "", Number(snapshot?.headcount || 0));
+                });
+                const upgradeCount = planAssessments.filter((item) => item.status === "upgrade").length;
+                const reviewCount = planAssessments.filter((item) => item.status === "review").length;
+                summary.textContent = `${listedConnections.length.toLocaleString("en-GB")} organisation${listedConnections.length === 1 ? "" : "s"} in this Payroll Headcount list · ${workspaceCount.toLocaleString("en-GB")} Headcount workspace${workspaceCount === 1 ? "" : "s"} set up · ${upgradeCount.toLocaleString("en-GB")} upgrade${upgradeCount === 1 ? "" : "s"} needed${reviewCount ? ` · ${reviewCount.toLocaleString("en-GB")} pricing review` : ""}.`;
                 ignitionSyncButton.disabled = payrollHeadcountIgnitionSyncing || !listedConnections.length;
                 ignitionSyncButton.textContent = payrollHeadcountIgnitionSyncing ? "Syncing with Ignition..." : "Sync with Ignition";
 
@@ -35223,12 +35230,14 @@
                     const monthCopy = snapshot?.monthStart ? `(${new Date(snapshot.monthStart).toLocaleDateString("en-GB", { month: "short", year: "numeric" })})` : "";
                     const planName = String(workspace?.ignitionPlanName || "").trim();
                     const planBadge = planName ? `<span class="status-pill">${escapeHTML(planName)}</span>` : "";
+                    const planFit = payrollPlanFit(planName, Number(snapshot?.headcount || 0));
+                    const fitBadge = `<span class="status-pill ${planFit.status === "upgrade" ? "court" : planFit.status === "review" ? "query" : planFit.status === "ok" ? "paid" : ""}">${escapeHTML(planFit.bubble)}</span>`;
                     const isSelected = selectedPayrollHeadcountWorkspaceTenantId && selectedPayrollHeadcountWorkspaceTenantId === tenantId;
                     return `
                         <tr data-payroll-headcount-open="${escapeHTML(tenantId)}"${isSelected ? ' class="is-selected"' : ""}>
-                            <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong>${planBadge}<small>${escapeHTML(tenantId)}</small></td>
+                            <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong>${planBadge}${fitBadge}<small>${escapeHTML(tenantId)}</small></td>
                             <td><small>${escapeHTML(connectionCopy)}</small></td>
-                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small>` : '<small>No workspace set up</small>'}</td>
+                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small><small>${escapeHTML(planFit.detail)}</small>` : '<small>No workspace set up</small>'}</td>
                             <td>${escapeHTML(formatDateTime(workspace?.updatedAt || workspace?.createdAt || ""))}</td>
                             <td>
                                 <button class="ghost-button" type="button" data-payroll-headcount-setup="${escapeHTML(tenantId)}">${workspace ? "Reconfigure" : "Set up"}</button>
@@ -35319,6 +35328,75 @@
                 const apiWorkspace = (payrollHeadcountData.workspaces || []).find((workspace) => String(workspace?.tenantId || "").trim() === cleanTenantId);
                 if (apiWorkspace) return apiWorkspace;
                 return (payrollHeadcountWorkspaces || []).find((workspace) => String(workspace?.tenantId || "").trim() === cleanTenantId) || null;
+            }
+
+            function payrollPlanTierRank(planName = "") {
+                const key = String(planName || "").trim().toLowerCase();
+                if (key === "micro") return 1;
+                if (key === "starter") return 2;
+                if (key === "standard") return 3;
+                if (key === "premium") return 4;
+                if (key === "ultimate") return 5;
+                return 0;
+            }
+
+            function payrollPlanRecommendation(headcountRaw = 0) {
+                const headcount = Math.max(0, Number(headcountRaw || 0));
+                if (!Number.isFinite(headcount) || headcount <= 0) {
+                    return { recommendedPlan: "", recommendationType: "no-payroll", label: "No payroll", note: "No staff currently on payroll." };
+                }
+                if (headcount <= 1) return { recommendedPlan: "Micro", recommendationType: "priced", label: "Micro", note: "1 person on payroll." };
+                if (headcount <= 4) return { recommendedPlan: "Starter", recommendationType: "priced", label: "Starter", note: "2-4 people on payroll." };
+                if (headcount <= 10) return { recommendedPlan: "Standard", recommendationType: "priced", label: "Standard", note: "5-10 people on payroll." };
+                if (headcount <= 20) return { recommendedPlan: "Premium", recommendationType: "priced", label: "Premium", note: "11-20 people on payroll." };
+                if (headcount <= 29) return { recommendedPlan: "Premium", recommendationType: "review", label: "Review", note: "21-29 people on payroll sits between defined tiers." };
+                if (headcount <= 50) return { recommendedPlan: "Ultimate", recommendationType: "priced", label: "Ultimate", note: "30-50 people on payroll." };
+                return { recommendedPlan: "Ultimate", recommendationType: "review", label: "Review", note: "Headcount above 50 exceeds current Ultimate band." };
+            }
+
+            function payrollPlanFit(currentPlanName = "", headcountRaw = 0) {
+                const currentPlan = String(currentPlanName || "").trim();
+                const recommendation = payrollPlanRecommendation(headcountRaw);
+                if (recommendation.recommendationType === "no-payroll") {
+                    return { status: "no-payroll", bubble: "No payroll", detail: recommendation.note, recommendedPlan: "" };
+                }
+                if (!currentPlan) {
+                    return {
+                        status: recommendation.recommendationType === "review" ? "review" : "unmapped",
+                        bubble: recommendation.recommendationType === "review" ? "Review pricing" : `Set ${recommendation.recommendedPlan}`,
+                        detail: recommendation.recommendationType === "review"
+                            ? recommendation.note
+                            : `No plan mapped yet. Suggested: ${recommendation.recommendedPlan}.`,
+                        recommendedPlan: recommendation.recommendedPlan,
+                    };
+                }
+                const currentRank = payrollPlanTierRank(currentPlan);
+                const recommendedRank = payrollPlanTierRank(recommendation.recommendedPlan);
+                if (recommendation.recommendationType === "review") {
+                    return { status: "review", bubble: "Review pricing", detail: recommendation.note, recommendedPlan: recommendation.recommendedPlan };
+                }
+                if (recommendedRank > 0 && currentRank > 0 && currentRank < recommendedRank) {
+                    return {
+                        status: "upgrade",
+                        bubble: `Upgrade to ${recommendation.recommendedPlan}`,
+                        detail: `${currentPlan} is below the recommended ${recommendation.recommendedPlan} tier for this payroll size.`,
+                        recommendedPlan: recommendation.recommendedPlan,
+                    };
+                }
+                if (recommendedRank > 0 && currentRank > 0 && currentRank > recommendedRank) {
+                    return {
+                        status: "oversized",
+                        bubble: "Plan above minimum",
+                        detail: `${currentPlan} is above the minimum tier for current payroll size.`,
+                        recommendedPlan: recommendation.recommendedPlan,
+                    };
+                }
+                return {
+                    status: "ok",
+                    bubble: "On correct plan",
+                    detail: `${currentPlan} matches current payroll size.`,
+                    recommendedPlan: recommendation.recommendedPlan,
+                };
             }
 
             async function setupPayrollHeadcountWorkspace(tenantId = "", options = {}) {
