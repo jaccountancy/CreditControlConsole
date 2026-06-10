@@ -28765,11 +28765,20 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="payrollHeadcountSummary">Payroll headcount workspace is ready.</p>
-                            <div class="empty-state">
-                                <p class="eyebrow">No records loaded</p>
-                                <h4>Headcount metrics will appear here</h4>
-                                <p>Use this page to monitor payroll trend deltas and flag workforce spikes or drops.</p>
-                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Payroll headcount workspaces">
+                                    <thead>
+                                        <tr>
+                                            <th>Xero organisation</th>
+                                            <th>Connection</th>
+                                            <th>Headcount workspace</th>
+                                            <th>Updated</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="payrollHeadcountTableBody"></tbody>
+                                </table>
+                            </section>
                         </section>
                     </section>
 
@@ -30053,6 +30062,8 @@
             let vatReturnQueueError = "";
             let vatReturnSelectedWorkspaceTenantId = "";
             let vatReturnDetailTab = "transactions";
+            const payrollHeadcountStorageKey = `${STORAGE_KEY}:payroll-headcount-workspaces:v1`;
+            let payrollHeadcountWorkspaces = loadPayrollHeadcountWorkspaces();
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
             const CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP = 2;
             const CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT = 3;
@@ -32249,11 +32260,38 @@
                 }
             }
 
+            function loadPayrollHeadcountWorkspaces() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(payrollHeadcountStorageKey) || "[]");
+                    if (!Array.isArray(stored)) return [];
+                    return stored
+                        .map((row) => ({
+                            id: String(row?.id || "").trim(),
+                            tenantId: String(row?.tenantId || "").trim(),
+                            tenantName: String(row?.tenantName || "").trim(),
+                            workspaceName: String(row?.workspaceName || "").trim(),
+                            createdAt: String(row?.createdAt || "").trim(),
+                            updatedAt: String(row?.updatedAt || "").trim(),
+                        }))
+                        .filter((row) => row.id && row.tenantId);
+                } catch {
+                    return [];
+                }
+            }
+
             function persistCodeBreakerWorkspaces() {
                 try {
                     localStorage.setItem(codeBreakerStorageKey, JSON.stringify(codeBreakerWorkspaces || []));
                 } catch {
                     // Equity Montior workspaces can operate in-memory if browser storage is unavailable.
+                }
+            }
+
+            function persistPayrollHeadcountWorkspaces() {
+                try {
+                    localStorage.setItem(payrollHeadcountStorageKey, JSON.stringify(payrollHeadcountWorkspaces || []));
+                } catch {
+                    // Payroll Headcount workspaces can operate in-memory if browser storage is unavailable.
                 }
             }
 
@@ -34648,6 +34686,7 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                loadMeReport();
                 scrollConsoleToTop();
             }
 
@@ -34668,8 +34707,105 @@
 
             function renderPayrollHeadcountScreen() {
                 const summary = document.getElementById("payrollHeadcountSummary");
-                if (!summary) return;
-                summary.textContent = "Payroll headcount workspace is ready.";
+                const tableBody = document.getElementById("payrollHeadcountTableBody");
+                if (!summary || !tableBody) return;
+
+                const connections = payrollHeadcountOrganisationConnections();
+                const workspaceCount = (payrollHeadcountWorkspaces || []).length;
+
+                if (meReportLoading && !connections.length) {
+                    summary.textContent = "Loading connected Xero organisations.";
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading connected organisations</h4><p>Pulling connected Xero organisations for payroll headcount setup.</p></div></td></tr>';
+                    return;
+                }
+
+                if (!connections.length) {
+                    summary.textContent = "No connected Xero organisations found.";
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No organisations</p><h4>Connect Xero to begin</h4><p>Once connected, each organisation can have its own Payroll Headcount workspace.</p></div></td></tr>';
+                    return;
+                }
+
+                summary.textContent = `${connections.length.toLocaleString("en-GB")} connected Xero organisation${connections.length === 1 ? "" : "s"} · ${workspaceCount.toLocaleString("en-GB")} Headcount workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+
+                tableBody.innerHTML = connections.map((connection) => {
+                    const tenantId = String(connection?.tenantId || "").trim();
+                    const workspace = payrollHeadcountWorkspaceByTenant(tenantId);
+                    const tenantType = String(connection?.tenantType || "").trim();
+                    const connectionCopy = tenantType ? `${tenantType} · Connected` : "Connected";
+                    return `
+                        <tr>
+                            <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong><small>${escapeHTML(tenantId)}</small></td>
+                            <td><small>${escapeHTML(connectionCopy)}</small></td>
+                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong>` : '<small>No workspace set up</small>'}</td>
+                            <td>${escapeHTML(formatDateTime(workspace?.updatedAt || workspace?.createdAt || ""))}</td>
+                            <td>
+                                <button class="ghost-button" type="button" data-payroll-headcount-setup="${escapeHTML(tenantId)}">${workspace ? "Reconfigure" : "Set up"}</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
+
+                tableBody.querySelectorAll("[data-payroll-headcount-setup]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        setupPayrollHeadcountWorkspace(button.dataset.payrollHeadcountSetup || "");
+                    });
+                });
+            }
+
+            function payrollHeadcountOrganisationConnections() {
+                const rows = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
+                return [...rows]
+                    .filter((row) => {
+                        const tenantId = String(row?.tenantId || "").trim();
+                        if (!tenantId) return false;
+                        const tenantType = String(row?.tenantType || "").trim().toLowerCase();
+                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                    })
+                    .sort((left, right) => (
+                        xeroWorkspaceLabel(left?.tenantName || "", left?.tenantId || "", "Xero organisation")
+                            .localeCompare(xeroWorkspaceLabel(right?.tenantName || "", right?.tenantId || "", "Xero organisation"), "en-GB")
+                    ));
+            }
+
+            function payrollHeadcountWorkspaceByTenant(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return null;
+                return (payrollHeadcountWorkspaces || []).find((workspace) => String(workspace?.tenantId || "").trim() === cleanTenantId) || null;
+            }
+
+            function setupPayrollHeadcountWorkspace(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) {
+                    showToast("Select a connected Xero organisation first.", "error");
+                    return;
+                }
+                const connection = payrollHeadcountOrganisationConnections().find((row) => String(row?.tenantId || "").trim() === cleanTenantId);
+                if (!connection) {
+                    showToast("This Xero organisation is no longer connected.", "error");
+                    return;
+                }
+
+                const now = new Date().toISOString();
+                const workspaceName = `${xeroWorkspaceLabel(connection?.tenantName || "", cleanTenantId, "Xero organisation")} Headcount Workspace`;
+                const existing = payrollHeadcountWorkspaceByTenant(cleanTenantId);
+                if (existing) {
+                    existing.tenantName = String(connection?.tenantName || existing.tenantName || "").trim();
+                    existing.workspaceName = workspaceName;
+                    existing.updatedAt = now;
+                    showToast("Payroll Headcount workspace updated.", "success");
+                } else {
+                    payrollHeadcountWorkspaces.push({
+                        id: `payroll-headcount-${cleanTenantId}`,
+                        tenantId: cleanTenantId,
+                        tenantName: String(connection?.tenantName || "").trim(),
+                        workspaceName,
+                        createdAt: now,
+                        updatedAt: now,
+                    });
+                    showToast("Payroll Headcount workspace created.", "success");
+                }
+                persistPayrollHeadcountWorkspaces();
+                renderPayrollHeadcountScreen();
             }
 
             function renderClientCallStatsScreen() {
