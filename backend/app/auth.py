@@ -28,8 +28,8 @@ DEFAULT_XERO_ACCOUNTING_SCOPES = (
     "accounting.reports.balancesheet.read",
     "accounting.reports.profitandloss.read",
     "accounting.reports.trialbalance.read",
-    "payroll.employees.read",
-    "payroll.payruns.read",
+    "payroll.employees",
+    "payroll.payruns",
 )
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
     "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read", "accounting.banktransactions.read", "accounting.manualjournals.read", "accounting.journals.read"),
