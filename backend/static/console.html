@@ -24611,9 +24611,25 @@
                 padding: 14px;
                 background: #fff;
                 margin-bottom: 12px;
+                transform-origin: top center;
+            }
+            .juk-panel.is-entering {
+                animation: jukPanelEnter 360ms cubic-bezier(0.22, 1, 0.36, 1);
             }
             .juk-panel[hidden] {
                 display: none !important;
+            }
+            @keyframes jukPanelEnter {
+                0% {
+                    opacity: 0;
+                    transform: translateY(12px) scale(0.99);
+                    filter: blur(1px);
+                }
+                100% {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    filter: blur(0);
+                }
             }
             .juk-grid {
                 display: grid;
@@ -24680,6 +24696,42 @@
                 background: linear-gradient(90deg, #1d67f2, #3aa0ff);
                 width: 0%;
                 transition: width 0.2s ease;
+            }
+            .juk-loading-indicator {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 7px 11px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                background: rgba(29, 103, 242, 0.08);
+                color: #1647a7;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            .juk-loading-indicator[hidden] {
+                display: none !important;
+            }
+            .juk-loading-indicator::before {
+                content: "";
+                width: 12px;
+                height: 12px;
+                border-radius: 999px;
+                border: 2px solid rgba(22, 71, 167, 0.24);
+                border-top-color: #1d67f2;
+                animation: jukSpin 0.85s linear infinite;
+            }
+            @keyframes jukSpin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+            .juk-step-button.is-complete {
+                border-color: rgba(18, 122, 80, 0.35);
+                background: rgba(18, 122, 80, 0.08);
+            }
+            .juk-step-button.is-current {
+                transform: translateY(-1px);
             }
             @media (max-width: 1180px) {
                 .juk-wizard-steps {
@@ -29066,6 +29118,7 @@
                                     <p class="detail-meta">Batch import Jaccountancy (UK) Ltd sales invoices, match them to connected client tenants, review exceptions, and publish supplier bills with duplicate protection.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <span class="juk-loading-indicator" id="jukInvoicesLoadingIndicator" hidden>Working…</span>
                                     <button class="ghost-button" id="jukInvoicesRefreshButton" type="button">Refresh</button>
                                     <button class="ghost-button" id="jukInvoicesOpenMeReportButton" type="button">Open Monthly Flows</button>
                                     <button class="primary-button" id="jukInvoicesNewBatchButton" type="button">Start New Batch</button>
@@ -29115,6 +29168,12 @@
                                             <option value="paid">Include paid</option>
                                         </select>
                                     </label>
+                                    <label>Include Previously Imported
+                                        <select id="jukInvoicesIncludeImportedSelect">
+                                            <option value="no">No</option>
+                                            <option value="yes">Yes</option>
+                                        </select>
+                                    </label>
                                     <label>Publish Mode
                                         <select id="jukInvoicesModeSelect">
                                             <option value="test">Draft test mode</option>
@@ -29150,6 +29209,7 @@
                                     <select id="jukInvoicesFilterSelect">
                                         <option value="all">All invoices</option>
                                         <option value="ready">Ready to publish</option>
+                                        <option value="medium">Medium confidence (70-89%)</option>
                                         <option value="review">Needs review</option>
                                         <option value="unmatched">Unmatched</option>
                                         <option value="failed">Failed</option>
@@ -29157,6 +29217,7 @@
                                     </select>
                                     <button class="ghost-button" id="jukInvoicesSelectReadyButton" type="button">Select ready</button>
                                     <button class="ghost-button" id="jukInvoicesApproveSelectedButton" type="button">Approve selected</button>
+                                    <button class="ghost-button" id="jukInvoicesMarkNotConnectedSelectedButton" type="button">Mark not connected</button>
                                     <button class="ghost-button" id="jukInvoicesSkipSelectedButton" type="button">Skip selected</button>
                                     <button class="ghost-button" id="jukInvoicesRetrySelectedButton" type="button">Retry selected</button>
                                 </div>
@@ -35559,6 +35620,20 @@
                 history: [],
             };
             let jukAutomationTab = "settings";
+            let jukLastRenderedStep = 0;
+            let jukLoadingState = { active: false, message: "" };
+
+            function setJukLoading(active, message = "Working…") {
+                jukLoadingState = {
+                    active: Boolean(active),
+                    message: String(message || "Working…"),
+                };
+                const indicator = document.getElementById("jukInvoicesLoadingIndicator");
+                if (indicator) {
+                    indicator.hidden = !jukLoadingState.active;
+                    indicator.textContent = jukLoadingState.message || "Working…";
+                }
+            }
 
             function loadJukInvoicesState() {
                 try {
@@ -35687,6 +35762,17 @@
 
             function jukCurrentBatch() {
                 return jukInvoicesState.batches.find((batch) => batch.id === jukInvoicesState.currentBatchId) || null;
+            }
+
+            function jukSuggestedClientName(invoice) {
+                const tenantId = String(invoice?.matchedTenantId || "").trim();
+                const matchedClientId = String(invoice?.matchedClientId || "").trim();
+                const tenants = jukConnectedTenants();
+                const matchByTenant = tenants.find((tenant) => String(tenant.tenantId || "").trim() === tenantId);
+                if (matchByTenant?.clientName) return String(matchByTenant.clientName);
+                const matchByClient = tenants.find((tenant) => String(tenant.clientId || "").trim() === matchedClientId);
+                if (matchByClient?.clientName) return String(matchByClient.clientName);
+                return matchedClientId || "No match";
             }
 
             function jukUpsertBatch(batch) {
@@ -35973,6 +36059,12 @@
                 const invoices = batch?.invoices || [];
                 if (jukInvoicesState.reviewFilter === "all") return invoices;
                 if (jukInvoicesState.reviewFilter === "ready") return invoices.filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending");
+                if (jukInvoicesState.reviewFilter === "medium") {
+                    return invoices.filter((invoice) => {
+                        const confidence = Number(invoice.matchConfidence || 0);
+                        return confidence >= 0.7 && confidence < 0.9;
+                    });
+                }
                 if (jukInvoicesState.reviewFilter === "review") return invoices.filter((invoice) => invoice.status === "needs_review");
                 if (jukInvoicesState.reviewFilter === "unmatched") return invoices.filter((invoice) => invoice.status === "unmatched");
                 if (jukInvoicesState.reviewFilter === "failed") return invoices.filter((invoice) => invoice.status === "failed");
@@ -36011,6 +36103,7 @@
                     showToast("No approved invoices to publish.", "info");
                     return;
                 }
+                setJukLoading(true, "Publishing approved invoices to destination tenants…");
                 jukInvoicesState.publish = {
                     running: true,
                     total: publishable.length,
@@ -36049,6 +36142,8 @@
                     jukInvoicesState.publish.current = "Publish failed.";
                     renderJukInvoicesScreen();
                     showToast(error?.message || "Unable to publish JUKSIB batch.", "error");
+                } finally {
+                    setJukLoading(false);
                 }
             }
 
@@ -36120,6 +36215,7 @@
                     7: document.getElementById("jukInvoicesStep7Panel"),
                 };
                 if (!summary || !refreshButton || !openMeReportButton || !newBatchButton) return;
+                setJukLoading(jukLoadingState.active, jukLoadingState.message);
 
                 const batch = jukCurrentBatch();
                 const nextReferenceInput = document.getElementById("jukInvoicesBatchReferenceInput");
@@ -36127,7 +36223,10 @@
 
                 stepButtons.forEach((button) => {
                     const step = Number(button.dataset.jukStep || 1);
-                    button.classList.toggle("is-active", step === Number(jukInvoicesState.step || 1));
+                    const currentStep = Number(jukInvoicesState.step || 1);
+                    button.classList.toggle("is-active", step === currentStep);
+                    button.classList.toggle("is-current", step === currentStep);
+                    button.classList.toggle("is-complete", step < currentStep);
                     if (button.dataset.jukWired !== "true") {
                         button.dataset.jukWired = "true";
                         button.addEventListener("click", () => {
@@ -36138,12 +36237,21 @@
                 });
                 Object.entries(panels).forEach(([step, panel]) => {
                     if (!panel) return;
-                    panel.hidden = Number(step) !== Number(jukInvoicesState.step || 1);
+                    const currentStep = Number(jukInvoicesState.step || 1);
+                    const isCurrent = Number(step) === currentStep;
+                    panel.hidden = !isCurrent;
+                    if (isCurrent && currentStep !== jukLastRenderedStep) {
+                        panel.classList.remove("is-entering");
+                        void panel.offsetWidth;
+                        panel.classList.add("is-entering");
+                    }
                 });
+                jukLastRenderedStep = Number(jukInvoicesState.step || 1);
 
                 if (refreshButton.dataset.jukInvoicesWired !== "true") {
                     refreshButton.dataset.jukInvoicesWired = "true";
                     refreshButton.addEventListener("click", async () => {
+                        setJukLoading(true, "Refreshing JUKSIB data…");
                         refreshButton.disabled = true;
                         const originalLabel = refreshButton.textContent;
                         refreshButton.textContent = "Refreshing...";
@@ -36155,6 +36263,7 @@
                         } finally {
                             refreshButton.disabled = false;
                             refreshButton.textContent = originalLabel || "Refresh";
+                            setJukLoading(false);
                             renderJukInvoicesScreen();
                         }
                     });
@@ -36166,9 +36275,11 @@
                 if (newBatchButton.dataset.jukInvoicesWired !== "true") {
                     newBatchButton.dataset.jukInvoicesWired = "true";
                     newBatchButton.addEventListener("click", () => {
+                        setJukLoading(true, "Preparing a new batch…");
                         jukInvoicesState.currentBatchId = "";
                         jukInvoicesState.selectedInvoiceIds = [];
                         jukSetStep(1);
+                        setJukLoading(false);
                         renderJukInvoicesScreen();
                     });
                 }
@@ -36182,9 +36293,10 @@
                             mode: String(document.getElementById("jukInvoicesModeSelect")?.value || "test"),
                             invoiceDateFrom: String(document.getElementById("jukInvoicesDateFromInput")?.value || "") || null,
                             invoiceDateTo: String(document.getElementById("jukInvoicesDateToInput")?.value || "") || null,
-                            includePaidInvoices: String(document.getElementById("jukInvoicesStatusSelect")?.value || "authorised") === "paid",
-                            includeAlreadyImported: false,
+                            includePaidInvoices: ["paid", "all"].includes(String(document.getElementById("jukInvoicesStatusSelect")?.value || "authorised")),
+                            includeAlreadyImported: String(document.getElementById("jukInvoicesIncludeImportedSelect")?.value || "no") === "yes",
                         };
+                        setJukLoading(true, "Importing invoices from JUK Xero…");
                         createFormButton.disabled = true;
                         const originalLabel = createFormButton.textContent;
                         createFormButton.textContent = "Importing...";
@@ -36204,22 +36316,28 @@
                         } finally {
                             createFormButton.disabled = false;
                             createFormButton.textContent = originalLabel || "Pull JUK invoices";
+                            setJukLoading(false);
                         }
                     });
                 }
                 if (loadLastBatchButton && loadLastBatchButton.dataset.jukWired !== "true") {
                     loadLastBatchButton.dataset.jukWired = "true";
                     loadLastBatchButton.addEventListener("click", async () => {
+                        setJukLoading(true, "Loading last batch…");
                         if (!jukInvoicesState.batches.length) {
                             try { await jukRefreshFromAPI({ silent: true }); } catch {}
                         }
                         const last = jukInvoicesState.batches[0] || null;
-                        if (!last) return showToast("No previous JUKSIB batch found.", "info");
+                        if (!last) {
+                            setJukLoading(false);
+                            return showToast("No previous JUKSIB batch found.", "info");
+                        }
                         jukInvoicesState.currentBatchId = last.id;
                         try {
                             await jukRefreshFromAPI({ silent: true, batchId: last.id });
                         } catch {}
                         jukSetStep(2);
+                        setJukLoading(false);
                         renderJukInvoicesScreen();
                     });
                 }
@@ -36277,11 +36395,14 @@
                 const reviewTable = document.getElementById("jukInvoicesReviewTableBody");
                 if (reviewTable) {
                     reviewTable.innerHTML = reviewRows.length
-                        ? reviewRows.map((invoice) => `
+                        ? reviewRows.map((invoice) => {
+                            const suggestedClientName = jukSuggestedClientName(invoice);
+                            return `
                             <tr>
                                 <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(invoice.id) ? "checked" : ""}></td>
                                 <td><strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong><small>${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</small></td>
                                 <td>${escapeHTML(invoice.jukContactName || "--")}</td>
+                                <td>${escapeHTML(suggestedClientName || "No match")}</td>
                                 <td>${escapeHTML(invoice.matchedTenantName || "No match")}</td>
                                 <td>${escapeHTML(invoice.matchSource || "--")}</td>
                                 <td>${escapeHTML(`${Math.round(Number(invoice.matchConfidence || 0) * 100)}%`)}</td>
@@ -36297,7 +36418,8 @@
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
-                        `).join("")
+                            `;
+                        }).join("")
                         : '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
                     reviewTable.querySelectorAll("[data-juk-select-row]").forEach((checkbox) => {
                         checkbox.addEventListener("change", () => jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked));
@@ -36353,31 +36475,41 @@
                 }
 
                 const selectAllRows = document.getElementById("jukInvoicesSelectAllRows");
-                if (selectAllRows && selectAllRows.dataset.jukWired !== "true") {
-                    selectAllRows.dataset.jukWired = "true";
-                    selectAllRows.addEventListener("change", () => {
+                if (selectAllRows) {
+                    const selectedSet = new Set(jukInvoicesState.selectedInvoiceIds || []);
+                    const selectableIds = reviewRows.map((invoice) => invoice.id);
+                    selectAllRows.checked = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
+                    selectAllRows.onchange = () => {
                         if (selectAllRows.checked) jukInvoicesState.selectedInvoiceIds = reviewRows.map((invoice) => invoice.id);
                         else jukInvoicesState.selectedInvoiceIds = [];
                         renderJukInvoicesScreen();
-                    });
+                    };
                 }
 
                 const selectReadyButton = document.getElementById("jukInvoicesSelectReadyButton");
                 const approveSelectedButton = document.getElementById("jukInvoicesApproveSelectedButton");
+                const markNotConnectedSelectedButton = document.getElementById("jukInvoicesMarkNotConnectedSelectedButton");
                 const skipSelectedButton = document.getElementById("jukInvoicesSkipSelectedButton");
                 const retrySelectedButton = document.getElementById("jukInvoicesRetrySelectedButton");
-                if (selectReadyButton && selectReadyButton.dataset.jukWired !== "true") {
-                    selectReadyButton.dataset.jukWired = "true";
-                    selectReadyButton.addEventListener("click", () => {
+                const selectedCount = (jukInvoicesState.selectedInvoiceIds || []).length;
+                if (approveSelectedButton) approveSelectedButton.disabled = selectedCount === 0;
+                if (markNotConnectedSelectedButton) markNotConnectedSelectedButton.disabled = selectedCount === 0;
+                if (skipSelectedButton) skipSelectedButton.disabled = selectedCount === 0;
+                if (retrySelectedButton) retrySelectedButton.disabled = selectedCount === 0;
+                if (selectReadyButton) {
+                    selectReadyButton.onclick = () => {
                         jukInvoicesState.selectedInvoiceIds = (batch.invoices || [])
-                            .filter((invoice) => invoice.status === "approved" || invoice.status === "needs_review")
+                            .filter((invoice) => {
+                                if (invoice.status === "approved" || invoice.status === "retry_pending") return true;
+                                const confidence = Number(invoice.matchConfidence || 0);
+                                return (invoice.status === "matched_saved_rule" || invoice.status === "matched_openai") && confidence >= 0.9;
+                            })
                             .map((invoice) => invoice.id);
                         renderJukInvoicesScreen();
-                    });
+                    };
                 }
-                if (approveSelectedButton && approveSelectedButton.dataset.jukWired !== "true") {
-                    approveSelectedButton.dataset.jukWired = "true";
-                    approveSelectedButton.addEventListener("click", async () => {
+                if (approveSelectedButton) {
+                    approveSelectedButton.onclick = async () => {
                         const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
@@ -36390,11 +36522,27 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to approve selected invoices.", "error");
                         }
-                    });
+                    };
                 }
-                if (skipSelectedButton && skipSelectedButton.dataset.jukWired !== "true") {
-                    skipSelectedButton.dataset.jukWired = "true";
-                    skipSelectedButton.addEventListener("click", async () => {
+                if (markNotConnectedSelectedButton) {
+                    markNotConnectedSelectedButton.onclick = async () => {
+                        const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
+                        if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
+                        try {
+                            const response = await requestJSON(api.endpoints.juksibBulkStatus, {
+                                method: "POST",
+                                body: JSON.stringify({ status: "manually_excluded", invoiceIds }),
+                            }, { batchId: batch.id });
+                            jukApplyServerBatchPayload(response || {});
+                            renderJukInvoicesScreen();
+                            showToast("Selected invoices marked as not connected.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to mark selected invoices as not connected.", "error");
+                        }
+                    };
+                }
+                if (skipSelectedButton) {
+                    skipSelectedButton.onclick = async () => {
                         const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
@@ -36407,11 +36555,10 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to skip selected invoices.", "error");
                         }
-                    });
+                    };
                 }
-                if (retrySelectedButton && retrySelectedButton.dataset.jukWired !== "true") {
-                    retrySelectedButton.dataset.jukWired = "true";
-                    retrySelectedButton.addEventListener("click", async () => {
+                if (retrySelectedButton) {
+                    retrySelectedButton.onclick = async () => {
                         const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
@@ -36424,7 +36571,7 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to retry selected invoices.", "error");
                         }
-                    });
+                    };
                 }
 
                 const exceptionInvoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
@@ -36442,9 +36589,8 @@
                         ? tenants.map((tenant) => `<option value="${escapeHTML(tenant.tenantId)}">${escapeHTML(tenant.tenantName)}</option>`).join("")
                         : '<option value="">No connected tenants</option>';
                 }
-                if (applyExceptionButton && applyExceptionButton.dataset.jukWired !== "true") {
-                    applyExceptionButton.dataset.jukWired = "true";
-                    applyExceptionButton.addEventListener("click", async () => {
+                if (applyExceptionButton) {
+                    applyExceptionButton.onclick = async () => {
                         const invoiceId = String(exceptionInvoiceSelect?.value || "");
                         const tenantId = String(exceptionTenantSelect?.value || "");
                         const saveRule = String(document.getElementById("jukInvoicesExceptionSaveRuleSelect")?.value || "yes") === "yes";
@@ -36470,11 +36616,10 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to apply override.", "error");
                         }
-                    });
+                    };
                 }
-                if (markNotConnectedButton && markNotConnectedButton.dataset.jukWired !== "true") {
-                    markNotConnectedButton.dataset.jukWired = "true";
-                    markNotConnectedButton.addEventListener("click", async () => {
+                if (markNotConnectedButton) {
+                    markNotConnectedButton.onclick = async () => {
                         const invoiceId = String(exceptionInvoiceSelect?.value || "");
                         const note = String(document.getElementById("jukInvoicesExceptionNoteInput")?.value || "").trim();
                         const saveRule = String(document.getElementById("jukInvoicesExceptionSaveRuleSelect")?.value || "yes") === "yes";
@@ -36498,7 +36643,7 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to mark invoice as not connected.", "error");
                         }
-                    });
+                    };
                 }
                 if (exceptionMeta) {
                     exceptionMeta.textContent = `${(batch.invoices || []).filter((invoice) => ["needs_review", "unmatched", "failed"].includes(invoice.status)).length.toLocaleString("en-GB")} invoice(s) need manual review.`;
@@ -36523,12 +36668,11 @@
                     if (warningMeta) warningMeta.textContent = warnings.length ? warnings.join(" ") : "All mandatory checks passed.";
                 }
                 const confirmPublishButton = document.getElementById("jukInvoicesConfirmPublishButton");
-                if (confirmPublishButton && confirmPublishButton.dataset.jukWired !== "true") {
-                    confirmPublishButton.dataset.jukWired = "true";
-                    confirmPublishButton.addEventListener("click", () => {
+                if (confirmPublishButton) {
+                    confirmPublishButton.onclick = () => {
                         jukSetStep(6);
                         renderJukInvoicesScreen();
-                    });
+                    };
                 }
 
                 const progressFill = document.getElementById("jukInvoicesProgressFill");
@@ -36552,16 +36696,18 @@
                     ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
                 }
                 if (startPublishButton) {
-                    startPublishButton.disabled = Boolean(progress.running);
-                    startPublishButton.textContent = progress.running ? "Publishing..." : "Start publishing";
-                    if (startPublishButton.dataset.jukWired !== "true") {
-                        startPublishButton.dataset.jukWired = "true";
-                        startPublishButton.addEventListener("click", async () => {
-                            await jukPublishApproved(batch);
-                            persistJukInvoicesState();
-                            renderJukInvoicesScreen();
-                        });
-                    }
+                    const isTestMode = String(batch.mode || "test").toLowerCase() !== "live";
+                    startPublishButton.disabled = Boolean(progress.running) || isTestMode;
+                    startPublishButton.textContent = progress.running ? "Publishing..." : (isTestMode ? "Live mode required" : "Start publishing");
+                    startPublishButton.onclick = async () => {
+                        if (isTestMode) {
+                            showToast("This batch is in test mode. Create a live batch to publish to Xero.", "info");
+                            return;
+                        }
+                        await jukPublishApproved(batch);
+                        persistJukInvoicesState();
+                        renderJukInvoicesScreen();
+                    };
                 }
 
                 const summaryCards = document.getElementById("jukInvoicesSummaryCards");
@@ -36580,14 +36726,8 @@
 
                 const exportCsvButton = document.getElementById("jukInvoicesExportCsvButton");
                 const exportAuditButton = document.getElementById("jukInvoicesExportAuditButton");
-                if (exportCsvButton && exportCsvButton.dataset.jukWired !== "true") {
-                    exportCsvButton.dataset.jukWired = "true";
-                    exportCsvButton.addEventListener("click", () => jukExportCsv(batch));
-                }
-                if (exportAuditButton && exportAuditButton.dataset.jukWired !== "true") {
-                    exportAuditButton.dataset.jukWired = "true";
-                    exportAuditButton.addEventListener("click", () => jukExportAudit());
-                }
+                if (exportCsvButton) exportCsvButton.onclick = () => jukExportCsv(batch);
+                if (exportAuditButton) exportAuditButton.onclick = () => jukExportAudit();
 
                 const automationSettings = jukAutomationState?.settings || {};
                 const automationEnabledSelect = document.getElementById("jukAutomationEnabledSelect");
@@ -36621,19 +36761,17 @@
                 };
                 renderAutomationTabState();
 
-                if (automationTabSettings && automationTabSettings.dataset.jukWired !== "true") {
-                    automationTabSettings.dataset.jukWired = "true";
-                    automationTabSettings.addEventListener("click", () => {
+                if (automationTabSettings) {
+                    automationTabSettings.onclick = () => {
                         jukAutomationTab = "settings";
                         renderAutomationTabState();
-                    });
+                    };
                 }
-                if (automationTabHistory && automationTabHistory.dataset.jukWired !== "true") {
-                    automationTabHistory.dataset.jukWired = "true";
-                    automationTabHistory.addEventListener("click", () => {
+                if (automationTabHistory) {
+                    automationTabHistory.onclick = () => {
                         jukAutomationTab = "history";
                         renderAutomationTabState();
-                    });
+                    };
                 }
 
                 if (automationEnabledSelect) automationEnabledSelect.value = automationSettings.enabled ? "yes" : "no";
@@ -36646,9 +36784,8 @@
                     const lastRunText = automationSettings.lastRunAt ? ` Last run: ${formatDateTime(automationSettings.lastRunAt)}.` : "";
                     automationMeta.textContent = `Daily auto-sync is ${automationSettings.enabled ? "enabled" : "disabled"} at ${automationSettings.scheduleTime || "09:00"} (${automationSettings.timezone || "Europe/London"}).${lastRunText}`;
                 }
-                if (automationSaveButton && automationSaveButton.dataset.jukWired !== "true") {
-                    automationSaveButton.dataset.jukWired = "true";
-                    automationSaveButton.addEventListener("click", async () => {
+                if (automationSaveButton) {
+                    automationSaveButton.onclick = async () => {
                         const payload = {
                             enabled: String(document.getElementById("jukAutomationEnabledSelect")?.value || "no") === "yes",
                             scheduleTime: String(document.getElementById("jukAutomationTimeInput")?.value || "09:00"),
@@ -36657,6 +36794,7 @@
                             includePaidInvoices: String(document.getElementById("jukAutomationIncludePaidSelect")?.value || "no") === "yes",
                             autoPublish: String(document.getElementById("jukAutomationAutoPublishSelect")?.value || "yes") === "yes",
                         };
+                        setJukLoading(true, "Saving automation settings…");
                         try {
                             const response = await requestJSON(api.endpoints.juksibAutomationSettings, {
                                 method: "POST",
@@ -36667,26 +36805,30 @@
                             showToast("JUKSIB automation settings saved.", "success");
                         } catch (error) {
                             showToast(error?.message || "Unable to save automation settings.", "error");
+                        } finally {
+                            setJukLoading(false);
                         }
-                    });
+                    };
                 }
-                if (automationRefreshButton && automationRefreshButton.dataset.jukWired !== "true") {
-                    automationRefreshButton.dataset.jukWired = "true";
-                    automationRefreshButton.addEventListener("click", async () => {
+                if (automationRefreshButton) {
+                    automationRefreshButton.onclick = async () => {
+                        setJukLoading(true, "Refreshing automation status…");
                         try {
                             await jukRefreshFromAPI({ silent: true, batchId: batch.id });
                             renderJukInvoicesScreen();
                         } catch (error) {
                             showToast(error?.message || "Unable to refresh automation status.", "error");
+                        } finally {
+                            setJukLoading(false);
                         }
-                    });
+                    };
                 }
-                if (automationRunNowButton && automationRunNowButton.dataset.jukWired !== "true") {
-                    automationRunNowButton.dataset.jukWired = "true";
-                    automationRunNowButton.addEventListener("click", async () => {
+                if (automationRunNowButton) {
+                    automationRunNowButton.onclick = async () => {
                         automationRunNowButton.disabled = true;
                         const originalLabel = automationRunNowButton.textContent;
                         automationRunNowButton.textContent = "Running...";
+                        setJukLoading(true, "Running automation now…");
                         try {
                             const response = await requestJSON(api.endpoints.juksibAutomationRunNow, {
                                 method: "POST",
@@ -36701,8 +36843,9 @@
                         } finally {
                             automationRunNowButton.disabled = false;
                             automationRunNowButton.textContent = originalLabel || "Run now";
+                            setJukLoading(false);
                         }
-                    });
+                    };
                 }
                 if (automationHistoryBody) {
                     const historyRows = Array.isArray(jukAutomationState?.history) ? jukAutomationState.history : [];

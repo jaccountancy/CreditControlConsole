@@ -15026,6 +15026,41 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
         max_pages=20,
     )
     source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=date_from, date_to=date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
+    if source_rows and not include_imported:
+        source_invoice_ids = [str(row.get("juk_xero_invoice_id") or "").strip() for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip()]
+        seen_source_ids: set[str] = set()
+        if source_invoice_ids:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT juk_xero_invoice_id
+                        FROM juksib_batch_invoices
+                        WHERE user_id = %s
+                          AND juk_xero_invoice_id = ANY(%s::text[])
+                        """,
+                        (user["id"], source_invoice_ids),
+                    )
+                    for row in (cursor.fetchall() or []):
+                        value = str(row.get("juk_xero_invoice_id") or "").strip()
+                        if value:
+                            seen_source_ids.add(value)
+                    cursor.execute(
+                        """
+                        SELECT juk_xero_invoice_id
+                        FROM juksib_sync_records
+                        WHERE user_id = %s
+                          AND juk_xero_invoice_id = ANY(%s::text[])
+                        """,
+                        (user["id"], source_invoice_ids),
+                    )
+                    for row in (cursor.fetchall() or []):
+                        value = str(row.get("juk_xero_invoice_id") or "").strip()
+                        if value:
+                            seen_source_ids.add(value)
+                connection.commit()
+        if seen_source_ids:
+            source_rows = [row for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip() not in seen_source_ids]
 
     rules: list[dict] = []
     with get_connection() as connection:
@@ -15670,6 +15705,28 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
     supplier_name = str(payload.get("supplierName") or JUKSIB_DEFAULT_SUPPLIER_NAME).strip() or JUKSIB_DEFAULT_SUPPLIER_NAME
 
     master_connection, _ = _juksib_master_and_sub_connections(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT mode
+                FROM juksib_batches
+                WHERE id = %s::uuid
+                  AND user_id = %s::uuid
+                LIMIT 1
+                """,
+                (batch_id, user["id"]),
+            )
+            batch_row = cursor.fetchone()
+        connection.commit()
+    if not batch_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+    if str(batch_row.get("mode") or "test").strip().lower() != "live":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This batch is in test mode. Create/import a live batch before publishing to Xero.",
+        )
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
