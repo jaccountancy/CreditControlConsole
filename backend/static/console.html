@@ -29002,6 +29002,7 @@
                                 </div>
                                 <div class="ch-settings-actions">
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterPopulateButton">Populate missing company auth codes</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterOverrideButton" disabled>Override selected</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
                                     <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Use Upload files to import BM Client and BM Task CSVs.</span>
                                 </div>
@@ -91051,6 +91052,7 @@
                     rowId: "",
                     saving: false,
                 },
+                authRegisterSelectedRowId: "",
             };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
@@ -91109,6 +91111,24 @@
                 if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
                     document.body.classList.remove("is-modal-open");
                 }
+            }
+
+            function syncAuthRegisterOverrideButton() {
+                const button = document.getElementById("chAuthCodeRegisterOverrideButton");
+                if (!button) return;
+                const selectedRowId = String(companiesHouseSettings.authRegisterSelectedRowId || "").trim();
+                const hasSelection = !!selectedRowId && (companiesHouseSettings.authRegisterRows || []).some((row) => String(row?.id || "") === selectedRowId);
+                button.disabled = !hasSelection;
+            }
+
+            function selectAuthRegisterRow(rowId) {
+                const safeRowId = String(rowId || "").trim();
+                const hasRow = !!safeRowId && (companiesHouseSettings.authRegisterRows || []).some((row) => String(row?.id || "") === safeRowId);
+                companiesHouseSettings.authRegisterSelectedRowId = hasRow ? safeRowId : "";
+                renderAuthCodeRegisterDirectory(
+                    companiesHouseSettings.authRegisterRows || [],
+                    companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0
+                );
             }
 
             function openClientRegisterEditModal(rowId) {
@@ -91791,11 +91811,19 @@
                 }
                 const startIndex = (currentPage - 1) * AUTH_REGISTER_PAGE_SIZE;
                 const pageRows = filteredRows.slice(startIndex, startIndex + AUTH_REGISTER_PAGE_SIZE);
+                const selectedRowId = String(companiesHouseSettings.authRegisterSelectedRowId || "").trim();
+                if (selectedRowId && !list.some((row) => String(row?.id || "") === selectedRowId)) {
+                    companiesHouseSettings.authRegisterSelectedRowId = "";
+                }
                 if (!filteredRows.length) {
                     body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
                     if (!list.length) setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 } else {
-                    body.innerHTML = pageRows.map((row) => `<tr data-auth-register-id="${escapeHTML(String(row?.id || ""))}" style="cursor: pointer;">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
+                    body.innerHTML = pageRows.map((row) => {
+                        const rowId = String(row?.id || "");
+                        const isSelected = rowId && rowId === String(companiesHouseSettings.authRegisterSelectedRowId || "");
+                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
+                    }).join("");
                 }
                 if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
                 if (prevPageButton) prevPageButton.disabled = currentPage <= 1;
@@ -91818,6 +91846,7 @@
                         "muted"
                     );
                 }
+                syncAuthRegisterOverrideButton();
                 setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
             }
 
@@ -92695,6 +92724,14 @@
                 document.getElementById("chAuthCodeRegisterUploadButton")?.addEventListener("click", uploadAuthCodeRegisterFileHandler);
                 document.getElementById("chBmTasksUploadButton")?.addEventListener("click", uploadBmTasksFileHandler);
                 document.getElementById("chAuthCodeRegisterPopulateButton")?.addEventListener("click", populateAuthCodesFromDirectoryHandler);
+                document.getElementById("chAuthCodeRegisterOverrideButton")?.addEventListener("click", () => {
+                    const rowId = String(companiesHouseSettings.authRegisterSelectedRowId || "").trim();
+                    if (!rowId) {
+                        showToast("Select a client register row first.", "info");
+                        return;
+                    }
+                    openClientRegisterEditModal(rowId);
+                });
                 document.getElementById("chAuthCodeRegisterReloadButton")?.addEventListener("click", () => loadAuthCodeRegisterDirectory(true));
                 document.getElementById("chRegisterOpenUploadModalButton")?.addEventListener("click", openClientRegisterUploadModal);
                 document.getElementById("chRegisterUploadModalCloseButton")?.addEventListener("click", closeClientRegisterUploadModal);
@@ -92715,7 +92752,7 @@
                     if (!row) return;
                     const rowId = String(row.getAttribute("data-auth-register-id") || "").trim();
                     if (!rowId) return;
-                    openClientRegisterEditModal(rowId);
+                    selectAuthRegisterRow(rowId);
                 });
                 document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
                     const input = event?.target;
