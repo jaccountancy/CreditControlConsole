@@ -185,6 +185,8 @@ from .services import (
     delete_supplier_reconciliation_client,
     send_supplier_reconciliation_email,
     supplier_reconciliation_contact_options_payload,
+    contact_archive_review_payload,
+    contact_archive_bulk_archive_payload,
     supplier_reconciliation_extract,
     supplier_reconciliation_payload,
     sync_customer_note_to_xero,
@@ -1317,6 +1319,20 @@ def api_xero_scope_audit(
     user: dict = Depends(require_panel_user),
 ):
     return {"status": "ok", **xero_scope_audit_payload(user, tenant_id=tenant_id)}
+
+
+@app.get("/api/contact-archive/review")
+async def api_contact_archive_review(
+    force: bool = Query(False, alias="force"),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "contactArchive": await contact_archive_review_payload(user, force_refresh=force)}
+
+
+@app.post("/api/contact-archive/archive")
+async def api_contact_archive_archive(request: Request, user: dict = Depends(require_panel_write_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", "contactArchive": await contact_archive_bulk_archive_payload(user, payload)}
 
 
 @app.post("/api/xero/posting-settings")

@@ -25228,6 +25228,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"></rect><path d="M3 10h18"></path><path d="M7 15h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Debtors</strong><span>Original ledger</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-contact-archive" data-app-nav="contact-archive">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Contact Archive</strong><span>Review and archive</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path><path d="M7 4 4 7"></path><path d="m17 4 3 3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>LPCs</strong><span>Late charges</span></span>
@@ -27739,6 +27743,66 @@
                         </section>
                     </section>
 
+                    <section class="late-charges-screen detail-card" id="contactArchiveScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Credit Control review</p>
+                                    <h3>Contact Archive</h3>
+                                    <p class="detail-meta">Review customer contacts in the master Jaccountancy Xero organisation and flag those missing from the Jenius Client Register.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" type="button" id="contactArchiveReviewButton">Review clients</button>
+                                    <button class="primary-button" type="button" id="contactArchiveBulkArchiveButton">Archive selected</button>
+                                </div>
+                            </div>
+                            <section class="ch-settings-card">
+                                <div class="ch-settings-head">
+                                    <div>
+                                        <p class="eyebrow">Master Xero connection</p>
+                                        <h3 id="contactArchiveTenantLabel">MASTER XERO CONNECTION - JACCOUNTANCY</h3>
+                                        <p class="detail-meta" id="contactArchiveReviewMeta">Run review to scan contacts and compare against the Client Register.</p>
+                                    </div>
+                                </div>
+                                <div class="ch-settings-actions">
+                                    <span class="ch-settings-status is-muted" id="contactArchiveStatus">Ready to review clients.</span>
+                                </div>
+                                <div class="ch-register-toolbar">
+                                    <input id="contactArchiveSearchInput" type="search" placeholder="Search contact name or email...">
+                                    <select id="contactArchiveFilterSelect" aria-label="Filter contacts">
+                                        <option value="flagged">Flagged only</option>
+                                        <option value="all">All customer contacts</option>
+                                        <option value="matched">Matched to register</option>
+                                    </select>
+                                    <button class="ghost-button" type="button" id="contactArchiveSelectAllVisibleButton">Select visible</button>
+                                    <button class="ghost-button" type="button" id="contactArchiveClearSelectionButton">Clear selection</button>
+                                    <span class="ch-register-toolbar-meta" id="contactArchiveTableMeta">0 rows</span>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Contact archive review table">
+                                        <thead>
+                                            <tr>
+                                                <th>Select</th>
+                                                <th>Contact</th>
+                                                <th>Email</th>
+                                                <th>Xero status</th>
+                                                <th>Client register</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="contactArchiveTableBody"></tbody>
+                                    </table>
+                                </div>
+                                <div style="margin-top: 12px;" id="contactArchiveProgressWrap" hidden>
+                                    <div class="settings-help is-muted" id="contactArchiveProgressText">Archiving contacts…</div>
+                                    <div style="height: 8px; background: rgba(61, 85, 130, 0.14); border-radius: 999px; overflow: hidden;">
+                                        <div id="contactArchiveProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #1d67f2, #27b05f); transition: width 0.2s ease;"></div>
+                                    </div>
+                                </div>
+                            </section>
+                        </section>
+                    </section>
+
                     <div class="company-secretarial-modal" id="hmrc648CreateModal" hidden>
                         <div class="company-secretarial-modal-panel hmrc648-modal-panel" role="dialog" aria-modal="true" aria-labelledby="hmrc648CreateTitle">
                             <div class="company-secretarial-modal-head">
@@ -29827,6 +29891,9 @@
                                         <p class="eyebrow">Step 2</p>
                                         <h4>Batch Dashboard</h4>
                                     </div>
+                                    <div class="detail-actions">
+                                        <button class="primary-button" id="jukInvoicesStep2NextButton" type="button">Next</button>
+                                    </div>
                                 </div>
                                 <div class="juk-grid" id="jukInvoicesDashboardCards"></div>
                             </section>
@@ -31604,6 +31671,19 @@
             let hmrc648OverdueOnly = false;
             let hmrc648SentOnly = false;
             let hmrc648CreateClientSearchTerm = "";
+            const contactArchiveState = {
+                loading: false,
+                archiving: false,
+                reviewedAt: "",
+                tenantName: "",
+                tenantId: "",
+                rows: [],
+                summary: { xeroCustomerContactCount: 0, clientRegisterCount: 0, flaggedCount: 0, reviewedCount: 0 },
+                searchTerm: "",
+                filter: "flagged",
+                selectedIds: new Set(),
+                progress: { active: false, completed: 0, total: 0, message: "" },
+            };
             const topbarViewTitles = {
                 ledger: "Credit Control",
                 client: "Client",
@@ -31611,6 +31691,7 @@
                 notifications: "Notifications",
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
+                "contact-archive": "Contact Archive",
                 "risk-assessments": "Risk Assessments",
                 "confirmation-statements": "Confirmation Statements",
                 "client-auth-register": "Client Register",
@@ -31646,6 +31727,7 @@
                 notifications: "View system alerts, assistant updates, and recent operational notifications in one place.",
                 "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
+                "contact-archive": "Review Jaccountancy Xero customer contacts, flag those missing from the Jenius Client Register, and archive in bulk.",
                 "risk-assessments": "Review client credit exposure and maintain a consistent risk assessment process.",
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
                 "client-auth-register": "Access the shared client register and auth-code directory from one standalone screen.",
@@ -32623,6 +32705,8 @@
                         supplierReconciliationClient: config.endpoints?.supplierReconciliationClient || "/api/supplier-reconciliation/clients/:clientId",
                         supplierReconciliationExtract: config.endpoints?.supplierReconciliationExtract || "/api/supplier-reconciliation/extract",
                         supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
+                        contactArchiveReview: config.endpoints?.contactArchiveReview || "/api/contact-archive/review",
+                        contactArchiveArchive: config.endpoints?.contactArchiveArchive || "/api/contact-archive/archive",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
@@ -35687,6 +35771,7 @@
                 if (activeView === "notifications") return "notifications";
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
+                if (activeView === "contact-archive") return "contact-archive";
                 if (activeView === "risk-assessments") return "risk-assessments";
                 if (activeView === "client-auth-register") return "client-auth-register";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
@@ -35910,6 +35995,7 @@
             function topbarToneForActiveView() {
                 if (activeView === "late-charges") return "lpc";
                 if (activeView === "bad-debt") return "danger";
+                if (activeView === "contact-archive") return "credit";
                 if (activeView === "risk-assessments") return "danger";
                 if (activeView === "confirmation-statements") return "credit";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "credit";
@@ -36043,6 +36129,7 @@
                 setElementVisible(document.getElementById("notificationsScreen"), activeView === "notifications");
                 setElementVisible(document.getElementById("lateChargesScreen"), activeView === "late-charges");
                 setElementVisible(document.getElementById("badDebtScreen"), activeView === "bad-debt");
+                setElementVisible(document.getElementById("contactArchiveScreen"), activeView === "contact-archive");
                 setElementVisible(document.getElementById("riskAssessmentsScreen"), activeView === "risk-assessments");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
                 setElementVisible(document.getElementById("clientAuthRegisterScreen"), activeView === "client-auth-register");
@@ -36072,7 +36159,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "payroll-headcount", "client-call-stats", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "payroll-headcount", "client-call-stats", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -37269,6 +37356,7 @@
                 const wizardModal = document.getElementById("jukInvoicesWizardModal");
                 const wizardCloseButton = document.getElementById("jukInvoicesWizardCloseButton");
                 const step1CloseButton = document.getElementById("jukInvoicesStep1CloseButton");
+                const step2NextButton = document.getElementById("jukInvoicesStep2NextButton");
                 const batchSearchInput = document.getElementById("jukInvoicesBatchSearchInput");
                 const batchStatusFilter = document.getElementById("jukInvoicesBatchStatusFilter");
                 const batchSortSelect = document.getElementById("jukInvoicesBatchSortSelect");
@@ -37388,6 +37476,13 @@
                         jukStopWizardActivityTicker();
                         jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
                         jukInvoicesState.batchModalOpen = false;
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (step2NextButton && step2NextButton.dataset.jukWired !== "true") {
+                    step2NextButton.dataset.jukWired = "true";
+                    step2NextButton.addEventListener("click", () => {
+                        jukSetStep(3);
                         renderJukInvoicesScreen();
                     });
                 }
@@ -38665,6 +38760,7 @@
                 if (section === "home") return openInsightsScreen();
                 if (section === "notifications") return openNotificationsScreen();
                 if (section === "clients") return openLedgerSection("clients");
+                if (section === "contact-archive") return openContactArchiveScreen();
                 if (section === "lpcs") return openLateChargesScreen();
                 if (section === "bad-debt") return openBadDebtScreen();
                 if (section === "risk-assessments") return openRiskAssessmentsScreen();
@@ -38827,7 +38923,7 @@
             let criticalNavigationWired = false;
             let sidebarHashNavigationWired = false;
             let lastSidebarNavigation = { section: "", at: 0 };
-            const creditControlNavSections = new Set(["clients", "lpcs", "bad-debt", "juk-invoices"]);
+            const creditControlNavSections = new Set(["clients", "contact-archive", "lpcs", "bad-debt", "juk-invoices"]);
             const practiceToolsNavSections = new Set([
                 "bank-statements",
                 "supplier-reconciliation",
@@ -38940,6 +39036,7 @@
                 home: "credit-control-home",
                 notifications: "credit-control-notifications",
                 clients: "credit-control-clients",
+                "contact-archive": "credit-control-contact-archive",
                 lpcs: "credit-control-lpcs",
                 "bad-debt": "credit-control-bad-debt",
                 "risk-assessments": "credit-control-risk-assessments",
@@ -42073,6 +42170,16 @@
                 loadAuthCodeRegisterDirectory();
                 setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
                 renderBmTasksTable();
+                scrollConsoleToTop();
+            }
+
+            function openContactArchiveScreen() {
+                activeView = "contact-archive";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadContactArchiveReview();
                 scrollConsoleToTop();
             }
 
@@ -47501,6 +47608,279 @@
                 if (key === "processed") return "is-green";
                 if (key === "failed") return "is-red";
                 return "is-yellow";
+            }
+
+            function setContactArchiveStatus(message, tone = "muted") {
+                const node = document.getElementById("contactArchiveStatus");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-muted", "is-success", "is-error");
+                node.classList.add(tone === "error" ? "is-error" : tone === "success" ? "is-success" : "is-muted");
+            }
+
+            function contactArchiveFilteredRows() {
+                const search = String(contactArchiveState.searchTerm || "").trim().toLowerCase();
+                const filter = String(contactArchiveState.filter || "flagged");
+                return (contactArchiveState.rows || []).filter((row) => {
+                    if (filter === "flagged" && !row.flagged) return false;
+                    if (filter === "matched" && row.flagged) return false;
+                    if (!search) return true;
+                    const blob = `${row.contactName || ""} ${row.email || ""}`.toLowerCase();
+                    return blob.includes(search);
+                });
+            }
+
+            function renderContactArchiveProgress() {
+                const wrap = document.getElementById("contactArchiveProgressWrap");
+                const text = document.getElementById("contactArchiveProgressText");
+                const bar = document.getElementById("contactArchiveProgressBar");
+                const progress = contactArchiveState.progress || { active: false, completed: 0, total: 0, message: "" };
+                if (wrap) wrap.hidden = !progress.active;
+                if (text) text.textContent = progress.message || "Archiving contacts…";
+                if (bar) {
+                    const ratio = progress.total > 0 ? Math.min(1, Math.max(0, progress.completed / progress.total)) : 0;
+                    bar.style.width = `${Math.round(ratio * 100)}%`;
+                }
+            }
+
+            function renderContactArchiveScreen() {
+                const screen = document.getElementById("contactArchiveScreen");
+                if (!screen) return;
+                const tableBody = document.getElementById("contactArchiveTableBody");
+                if (!tableBody) return;
+                const rows = contactArchiveFilteredRows();
+                const selected = contactArchiveState.selectedIds || new Set();
+                const summary = contactArchiveState.summary || {};
+                const tenantLabel = document.getElementById("contactArchiveTenantLabel");
+                const reviewMeta = document.getElementById("contactArchiveReviewMeta");
+                const tableMeta = document.getElementById("contactArchiveTableMeta");
+                const reviewButton = document.getElementById("contactArchiveReviewButton");
+                const bulkButton = document.getElementById("contactArchiveBulkArchiveButton");
+                const selectVisibleButton = document.getElementById("contactArchiveSelectAllVisibleButton");
+                const clearSelectionButton = document.getElementById("contactArchiveClearSelectionButton");
+                const searchInput = document.getElementById("contactArchiveSearchInput");
+                const filterSelect = document.getElementById("contactArchiveFilterSelect");
+
+                if (searchInput && searchInput.value !== String(contactArchiveState.searchTerm || "")) {
+                    searchInput.value = String(contactArchiveState.searchTerm || "");
+                }
+                if (filterSelect && filterSelect.value !== String(contactArchiveState.filter || "flagged")) {
+                    filterSelect.value = String(contactArchiveState.filter || "flagged");
+                }
+
+                if (tenantLabel) {
+                    const tenantName = String(contactArchiveState.tenantName || "").trim();
+                    tenantLabel.textContent = tenantName
+                        ? `MASTER XERO CONNECTION - ${tenantName.toUpperCase()}`
+                        : "MASTER XERO CONNECTION - JACCOUNTANCY";
+                }
+                if (reviewMeta) {
+                    const reviewedAt = contactArchiveState.reviewedAt
+                        ? chFormatDateTime(contactArchiveState.reviewedAt)
+                        : "Not reviewed yet";
+                    reviewMeta.textContent = `${Number(summary.flaggedCount || 0).toLocaleString("en-GB")} flagged of ${Number(summary.reviewedCount || 0).toLocaleString("en-GB")} customer contacts · Reviewed ${reviewedAt}.`;
+                }
+
+                if (!rows.length) {
+                    tableBody.innerHTML = `<tr><td colspan="6" class="ch-empty-state">${contactArchiveState.rows.length ? "No contacts match your filter." : "Run Review clients to load Xero contacts."}</td></tr>`;
+                } else {
+                    tableBody.innerHTML = rows.map((row) => {
+                        const contactId = String(row.contactId || "");
+                        const statusTone = row.flagged ? "is-bad" : "is-good";
+                        const registerTone = row.flagged ? "is-warn" : "is-good";
+                        const archiveButtonLabel = row.archived ? "Archived" : "Archive";
+                        const archiveDisabled = contactArchiveState.archiving || row.archived ? "disabled" : "";
+                        const selectDisabled = contactArchiveState.archiving || row.archived ? "disabled" : "";
+                        const checked = selected.has(contactId) ? "checked" : "";
+                        return `
+                            <tr>
+                                <td><input type="checkbox" data-contact-archive-select="${escapeHTML(contactId)}" ${checked} ${selectDisabled}></td>
+                                <td><strong>${escapeHTML(row.contactName || "Unnamed contact")}</strong></td>
+                                <td>${escapeHTML(row.email || "—")}</td>
+                                <td><span class="ch-pill ${statusTone}">${escapeHTML(row.contactStatus || "ACTIVE")}</span></td>
+                                <td><span class="ch-pill ${registerTone}">${row.flagged ? "Missing from register" : "In register"}</span></td>
+                                <td><button class="ghost-button" type="button" data-contact-archive-archive="${escapeHTML(contactId)}" ${archiveDisabled}>${archiveButtonLabel}</button></td>
+                            </tr>
+                        `;
+                    }).join("");
+                }
+
+                if (tableMeta) {
+                    tableMeta.textContent = `${rows.length.toLocaleString("en-GB")} shown · ${selected.size.toLocaleString("en-GB")} selected`;
+                }
+                if (reviewButton) reviewButton.disabled = contactArchiveState.loading || contactArchiveState.archiving;
+                if (bulkButton) {
+                    bulkButton.disabled = contactArchiveState.loading || contactArchiveState.archiving || selected.size === 0;
+                    bulkButton.textContent = contactArchiveState.archiving
+                        ? `Archiving ${Math.max(1, Number(contactArchiveState.progress.total || selected.size || 0))}…`
+                        : `Archive selected (${selected.size.toLocaleString("en-GB")})`;
+                }
+                if (selectVisibleButton) selectVisibleButton.disabled = contactArchiveState.archiving || !rows.length;
+                if (clearSelectionButton) clearSelectionButton.disabled = contactArchiveState.archiving || selected.size === 0;
+
+                tableBody.querySelectorAll("[data-contact-archive-select]").forEach((input) => {
+                    input.addEventListener("change", (event) => {
+                        const contactId = String(event.target?.getAttribute("data-contact-archive-select") || "").trim();
+                        if (!contactId) return;
+                        if (event.target.checked) contactArchiveState.selectedIds.add(contactId);
+                        else contactArchiveState.selectedIds.delete(contactId);
+                        renderContactArchiveScreen();
+                    });
+                });
+                tableBody.querySelectorAll("[data-contact-archive-archive]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const contactId = String(button.getAttribute("data-contact-archive-archive") || "").trim();
+                        if (!contactId) return;
+                        await archiveContactArchiveContacts([contactId]);
+                    });
+                });
+                renderContactArchiveProgress();
+            }
+
+            async function loadContactArchiveReview(force = false) {
+                if (contactArchiveState.loading) return;
+                contactArchiveState.loading = true;
+                setContactArchiveStatus("Reviewing master Xero customer contacts…", "muted");
+                renderContactArchiveScreen();
+                try {
+                    const endpoint = `${api.endpoints.contactArchiveReview}${force ? "?force=1" : ""}`;
+                    const payload = await requestJSON(endpoint);
+                    const data = payload?.contactArchive || payload || {};
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    const nextSelected = new Set(
+                        Array.from(contactArchiveState.selectedIds || []).filter((id) => rows.some((row) => String(row.contactId || "") === id))
+                    );
+                    contactArchiveState.tenantId = String(data.tenantId || "");
+                    contactArchiveState.tenantName = String(data.tenantName || "");
+                    contactArchiveState.reviewedAt = String(data.reviewedAt || "");
+                    contactArchiveState.summary = data.summary && typeof data.summary === "object"
+                        ? data.summary
+                        : { xeroCustomerContactCount: rows.length, clientRegisterCount: 0, flaggedCount: rows.filter((row) => row.flagged).length, reviewedCount: rows.length };
+                    contactArchiveState.rows = rows.map((row) => ({
+                        contactId: String(row.contactId || ""),
+                        contactName: String(row.contactName || ""),
+                        email: String(row.email || ""),
+                        contactStatus: String(row.contactStatus || "ACTIVE"),
+                        flagged: Boolean(row.flagged),
+                        archived: String(row.contactStatus || "").toUpperCase() === "ARCHIVED",
+                    }));
+                    contactArchiveState.selectedIds = nextSelected;
+                    setContactArchiveStatus(
+                        `Review complete: ${Number(contactArchiveState.summary.flaggedCount || 0).toLocaleString("en-GB")} flagged contact${Number(contactArchiveState.summary.flaggedCount || 0) === 1 ? "" : "s"}.`,
+                        "success"
+                    );
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        return;
+                    }
+                    console.error("Unable to review contact archive candidates", error);
+                    setContactArchiveStatus(error?.message || "Unable to review contact archive candidates.", "error");
+                    showToast(error?.message || "Unable to review contact archive candidates.", "error");
+                } finally {
+                    contactArchiveState.loading = false;
+                    renderContactArchiveScreen();
+                }
+            }
+
+            async function archiveContactArchiveContacts(contactIds = []) {
+                if (contactArchiveState.archiving) return;
+                const uniqueIds = [...new Set((Array.isArray(contactIds) ? contactIds : []).map((value) => String(value || "").trim()).filter(Boolean))];
+                const targetIds = uniqueIds.length ? uniqueIds : Array.from(contactArchiveState.selectedIds || []);
+                if (!targetIds.length) {
+                    showToast("Select at least one flagged contact to archive.", "info");
+                    return;
+                }
+                const confirmed = window.confirm(`Archive ${targetIds.length.toLocaleString("en-GB")} contact${targetIds.length === 1 ? "" : "s"} in Xero?`);
+                if (!confirmed) return;
+
+                contactArchiveState.archiving = true;
+                contactArchiveState.progress = {
+                    active: true,
+                    total: targetIds.length,
+                    completed: 0,
+                    message: `Preparing to archive ${targetIds.length.toLocaleString("en-GB")} contact${targetIds.length === 1 ? "" : "s"}…`,
+                };
+                renderContactArchiveScreen();
+                setContactArchiveStatus("Archiving selected contacts in Xero…", "muted");
+
+                try {
+                    const payload = await requestJSON(api.endpoints.contactArchiveArchive, {
+                        method: "POST",
+                        body: JSON.stringify({ contactIds: targetIds }),
+                    });
+                    const data = payload?.contactArchive || payload || {};
+                    const results = Array.isArray(data.results) ? data.results : [];
+                    for (let index = 0; index < results.length; index += 1) {
+                        const item = results[index] || {};
+                        const contactId = String(item.contactId || "").trim();
+                        const archived = Boolean(item.archived);
+                        const row = (contactArchiveState.rows || []).find((entry) => String(entry.contactId || "") === contactId);
+                        if (row) {
+                            if (archived) {
+                                row.contactStatus = "ARCHIVED";
+                                row.archived = true;
+                                row.flagged = false;
+                                contactArchiveState.selectedIds.delete(contactId);
+                            }
+                            if (!archived) {
+                                row.archiveError = String(item.message || "Archive failed.");
+                            }
+                        }
+                        contactArchiveState.progress = {
+                            active: true,
+                            total: targetIds.length,
+                            completed: Math.min(index + 1, targetIds.length),
+                            message: archived
+                                ? `Archived ${row?.contactName || "contact"} (${index + 1}/${targetIds.length})`
+                                : `Skipped ${row?.contactName || "contact"} (${index + 1}/${targetIds.length})`,
+                        };
+                        renderContactArchiveScreen();
+                        await new Promise((resolve) => window.setTimeout(resolve, 160));
+                    }
+                    const archivedCount = Number(data.archivedCount || results.filter((item) => item?.archived).length || 0);
+                    const failedCount = Number(data.failedCount || results.filter((item) => !item?.archived).length || 0);
+                    await loadContactArchiveReview(true);
+                    showToast(
+                        `Archive complete: ${archivedCount.toLocaleString("en-GB")} archived${failedCount ? `, ${failedCount.toLocaleString("en-GB")} failed` : ""}.`,
+                        failedCount ? "info" : "success"
+                    );
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        return;
+                    }
+                    console.error("Unable to archive selected contacts", error);
+                    setContactArchiveStatus(error?.message || "Unable to archive selected contacts.", "error");
+                    showToast(error?.message || "Unable to archive selected contacts.", "error");
+                } finally {
+                    contactArchiveState.archiving = false;
+                    contactArchiveState.progress = { active: false, total: 0, completed: 0, message: "" };
+                    renderContactArchiveScreen();
+                }
+            }
+
+            function wireContactArchiveUI() {
+                document.getElementById("contactArchiveReviewButton")?.addEventListener("click", () => loadContactArchiveReview(true));
+                document.getElementById("contactArchiveBulkArchiveButton")?.addEventListener("click", () => archiveContactArchiveContacts());
+                document.getElementById("contactArchiveSearchInput")?.addEventListener("input", (event) => {
+                    contactArchiveState.searchTerm = String(event?.target?.value || "");
+                    renderContactArchiveScreen();
+                });
+                document.getElementById("contactArchiveFilterSelect")?.addEventListener("change", (event) => {
+                    contactArchiveState.filter = String(event?.target?.value || "flagged");
+                    renderContactArchiveScreen();
+                });
+                document.getElementById("contactArchiveSelectAllVisibleButton")?.addEventListener("click", () => {
+                    contactArchiveFilteredRows()
+                        .filter((row) => !row.archived)
+                        .forEach((row) => contactArchiveState.selectedIds.add(String(row.contactId || "")));
+                    renderContactArchiveScreen();
+                });
+                document.getElementById("contactArchiveClearSelectionButton")?.addEventListener("click", () => {
+                    contactArchiveState.selectedIds.clear();
+                    renderContactArchiveScreen();
+                });
             }
 
             function openSupplierReconciliationScreen() {
@@ -67431,6 +67811,7 @@
                     insights: "Home insights",
                     "late-charges": "Late Payment Charges",
                     "bad-debt": "Bad Debt",
+                    "contact-archive": "Contact Archive",
                     "risk-assessments": "Risk Assessments",
                     "confirmation-statements": "Confirmation Statements",
                     "company-secretarial": "Company Secretarial",
@@ -68138,6 +68519,7 @@
                 else if (activeView === "notifications") activeNavSection = "notifications";
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
+                else if (activeView === "contact-archive") activeNavSection = "contact-archive";
                 else if (activeView === "risk-assessments") activeNavSection = "risk-assessments";
                 else if (activeView === "client-auth-register") activeNavSection = "client-auth-register";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
@@ -80761,6 +81143,7 @@
                     ["renderNotificationsScreen", () => renderNotificationsScreen()],
                     ["renderLateChargesScreen", () => renderLateChargesScreen()],
                     ["renderBadDebtScreen", () => renderBadDebtScreen()],
+                    ["renderContactArchiveScreen", () => renderContactArchiveScreen()],
                     ["renderRiskAssessmentsScreen", () => renderRiskAssessmentsScreen()],
                     ["renderConfirmationStatementsScreen", () => renderConfirmationStatementsScreen()],
                     ["renderCompanySecretarialScreen", () => renderCompanySecretarialScreen()],
@@ -91214,6 +91597,7 @@
                     wireCompanySecretarialUI,
                     wireHmrc648UI,
                     wireCompaniesHouseUI,
+                    wireContactArchiveUI,
                     wireSupplierReconciliationUI,
                 ].forEach((wire) => {
                     try {
@@ -91251,6 +91635,9 @@
                     loadAuthCodeRegisterDirectory();
                     setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
                     renderBmTasksTable();
+                }
+                if (activeView === "contact-archive") {
+                    loadContactArchiveReview();
                 }
                 if (activeView === "hmrc-64-8s") {
                     loadHmrc648Requests();

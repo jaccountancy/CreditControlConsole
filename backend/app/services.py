@@ -61,6 +61,7 @@ from .xero import (
     XERO_RATE_LIMIT_RETRIES,
     allocate_credit_note,
     allocate_overpayment,
+    archive_contact,
     attach_file_to_contact,
     attach_file_to_invoice,
     create_credit_note,
@@ -26831,6 +26832,178 @@ def _supplier_reconciliation_connected_rows(tenant_id: str) -> list[dict]:
 def _supplier_reconciliation_connected_contact_ids(tenant_id: str) -> set[str]:
     rows = _supplier_reconciliation_connected_rows(tenant_id)
     return {str(row.get("xero_contact_id") or "").strip() for row in rows if str(row.get("xero_contact_id") or "").strip()}
+
+
+def _contact_archive_register_name_set() -> set[str]:
+    names: set[str] = set()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT company_name, client_name, client_id, normalised_name
+                FROM ch_auth_code_register
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    for row in rows:
+        for raw in (
+            row.get("company_name"),
+            row.get("client_name"),
+            row.get("client_id"),
+            row.get("normalised_name"),
+        ):
+            compact = _normalise_contact_match_name(str(raw or ""))
+            if compact:
+                names.add(compact)
+    return names
+
+
+def _contact_archive_contact_rows(contacts: list[dict], register_names: set[str]) -> list[dict]:
+    rows: list[dict] = []
+    for contact in contacts:
+        contact_id = _xero_contact_id(contact)
+        contact_name = _xero_contact_name(contact)
+        if not contact_id or not contact_name:
+            continue
+        status_value = str(contact.get("ContactStatus") or "").strip().upper()
+        if status_value == "ARCHIVED":
+            continue
+        is_customer = bool(contact.get("IsCustomer")) or bool(contact.get("Customer"))
+        if not is_customer:
+            # Contacts with no customer role are out of scope for Credit Control archive review.
+            continue
+        match_key = _normalise_contact_match_name(contact_name)
+        in_register = bool(match_key and match_key in register_names)
+        rows.append(
+            {
+                "contactId": contact_id,
+                "contactName": contact_name,
+                "email": str(contact.get("EmailAddress") or "").strip(),
+                "contactStatus": status_value or "ACTIVE",
+                "isCustomer": is_customer,
+                "inJeniusClientRegister": in_register,
+                "flagged": not in_register,
+            }
+        )
+    rows.sort(key=lambda item: (not item.get("flagged"), str(item.get("contactName") or "").lower()))
+    return rows
+
+
+async def contact_archive_review_payload(user: dict, force_refresh: bool = False) -> dict:
+    _ = force_refresh
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    contacts = await fetch_paginated_collection(
+        connection_row,
+        CONTACTS_URL,
+        "Contacts",
+        max_pages=30,
+        params={"order": "Name ASC"},
+    )
+    register_names = _contact_archive_register_name_set()
+    rows = _contact_archive_contact_rows(contacts, register_names)
+    flagged_rows = [row for row in rows if row.get("flagged")]
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "reviewedAt": _iso(utcnow()) or "",
+        "summary": {
+            "xeroCustomerContactCount": len(rows),
+            "clientRegisterCount": len(register_names),
+            "flaggedCount": len(flagged_rows),
+            "reviewedCount": len(rows),
+        },
+        "rows": rows,
+    }
+
+
+async def contact_archive_bulk_archive_payload(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    review = await contact_archive_review_payload(user, force_refresh=True)
+    rows = review.get("rows") or []
+    row_lookup = {
+        str(row.get("contactId") or "").strip(): row
+        for row in rows
+        if row.get("flagged")
+    }
+    requested_ids_raw = body.get("contactIds") or []
+    requested_ids = [
+        str(value or "").strip()
+        for value in (requested_ids_raw if isinstance(requested_ids_raw, list) else [])
+        if str(value or "").strip()
+    ]
+    target_ids = requested_ids or list(row_lookup.keys())
+    target_ids = [contact_id for contact_id in target_ids if contact_id in row_lookup]
+    if not target_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No flagged contacts were selected for archive.")
+
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    results: list[dict] = []
+    archived_count = 0
+    failed_count = 0
+
+    for contact_id in target_ids:
+        row = row_lookup.get(contact_id) or {}
+        name = str(row.get("contactName") or "").strip()
+        try:
+            await archive_contact(connection_row, contact_id)
+            archived_count += 1
+            results.append(
+                {
+                    "contactId": contact_id,
+                    "contactName": name,
+                    "archived": True,
+                    "message": "Archived in Xero.",
+                }
+            )
+            record_audit_event(
+                "xero_contact",
+                contact_id,
+                "contact_archive.archived",
+                {
+                    "contact_name": name,
+                    "tenant_id": str(connection_row.get("tenant_id") or ""),
+                    "tenant_name": str(connection_row.get("tenant_name") or ""),
+                },
+                user["id"],
+            )
+        except HTTPException as exc:
+            failed_count += 1
+            detail = exc.detail
+            if isinstance(detail, dict):
+                message = str(detail.get("message") or detail.get("detail") or "Unable to archive contact.")
+            else:
+                message = str(detail or "Unable to archive contact.")
+            results.append(
+                {
+                    "contactId": contact_id,
+                    "contactName": name,
+                    "archived": False,
+                    "message": message,
+                }
+            )
+        except Exception:
+            logger.exception("Unable to archive Xero contact %s", contact_id)
+            failed_count += 1
+            results.append(
+                {
+                    "contactId": contact_id,
+                    "contactName": name,
+                    "archived": False,
+                    "message": "Unexpected error while archiving this contact.",
+                }
+            )
+
+    refreshed_review = await contact_archive_review_payload(user, force_refresh=True)
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "requestedCount": len(target_ids),
+        "archivedCount": archived_count,
+        "failedCount": failed_count,
+        "results": results,
+        "review": refreshed_review,
+    }
 
 
 async def supplier_reconciliation_payload(user: dict) -> dict:

@@ -885,6 +885,55 @@ async def merge_contacts(connection_row: dict, keep_contact_id: str, merge_conta
         return response.json()
 
 
+async def archive_contact(connection_row: dict, contact_id: str) -> dict:
+    clean_contact_id = str(contact_id or "").strip()
+    if not clean_contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact id is required.")
+    connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {"Contacts": [{"ContactID": clean_contact_id, "ContactStatus": "ARCHIVED"}]}
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.post(
+                CONTACTS_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json=request_payload,
+            )
+        except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                CONTACTS_URL,
+                "POST contact archive",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
+            _raise_xero_request_error(exc, "contact archive")
+        _record_xero_usage(
+            connection_row,
+            CONTACTS_URL,
+            "POST contact archive",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
+        if response.is_error:
+            _raise_xero_http_error(response, "contact archive")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     started = time.monotonic()
