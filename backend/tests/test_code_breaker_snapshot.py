@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import unittest
 from datetime import date
+from types import SimpleNamespace
+from unittest import mock
 
 os.environ.setdefault("PORT", "8000")
 os.environ.setdefault("BASE_URL", "https://example.com")
@@ -235,3 +238,88 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(candidates[0]["journalDate"], "2025-12-31")
         self.assertEqual(len(outside_period), 0)
         self.assertEqual(diagnostics["inPeriodTotal"], 1)
+
+
+@unittest.skipIf(services is None, f"Equity Montior tests skipped: {_IMPORT_ERROR}")
+class CodeBreakerOpenAIPromptTests(unittest.TestCase):
+    def test_variance_prompt_defines_post_filing_using_created_at(self):
+        async def _run() -> str:
+            fake_settings = SimpleNamespace(openai_api_key="test-key", openai_model="gpt-5")
+            with (
+                mock.patch.object(services, "get_settings", return_value=fake_settings),
+                mock.patch.object(services, "_post_openai_responses", new=mock.AsyncMock(return_value={"ok": True})) as post_mock,
+                mock.patch.object(
+                    services,
+                    "_load_openai_json_response",
+                    return_value={
+                        "summary": "",
+                        "confidence": 0,
+                        "explainedDifference": 0,
+                        "residualDifference": 0,
+                        "transactions": [],
+                        "warnings": [],
+                    },
+                ),
+            ):
+                await services._code_breaker_openai_extract_variance_transactions(
+                    user_id="u1",
+                    period_start_date=date(2025, 1, 1),
+                    as_at_date=date(2025, 12, 31),
+                    submission_completed_at=services._parse_optional_iso_datetime("2026-02-05T00:00:00Z"),
+                    target_difference=services.Decimal("100.00"),
+                    candidates=[
+                        {
+                            "candidateId": "J1",
+                            "journalId": "abc",
+                            "journalDate": "2025-04-25",
+                            "createdAt": "2026-06-08T22:52:31Z",
+                            "lines": [{"netAmount": 100.0}],
+                        }
+                    ],
+                )
+                request_body = post_mock.await_args.args[0]
+                return request_body["input"][0]["content"][0]["text"]
+
+        prompt = asyncio.run(_run())
+        self.assertIn("Definition: a post-filing journal is determined by createdAt/CreatedDateUTC", prompt)
+        self.assertIn("Do not reject a candidate just because its journalDate is before the filed period end.", prompt)
+        self.assertIn("Filed period start date: 2025-01-01.", prompt)
+
+    def test_action_plan_prompt_keeps_backdated_post_filing_journals_in_scope(self):
+        async def _run() -> str:
+            fake_settings = SimpleNamespace(openai_api_key="test-key", openai_model="gpt-5")
+            with (
+                mock.patch.object(services, "get_settings", return_value=fake_settings),
+                mock.patch.object(services, "_post_openai_responses", new=mock.AsyncMock(return_value={"ok": True})) as post_mock,
+                mock.patch.object(
+                    services,
+                    "_load_openai_json_response",
+                    return_value={
+                        "summary": "",
+                        "confidence": 0,
+                        "residualDifference": 0,
+                        "actions": [],
+                        "warnings": [],
+                    },
+                ),
+            ):
+                await services._code_breaker_openai_build_action_plan(
+                    user_id="u1",
+                    period_start_date=date(2025, 1, 1),
+                    as_at_date=date(2025, 12, 31),
+                    submission_completed_at=services._parse_optional_iso_datetime("2026-02-05T00:00:00Z"),
+                    target_difference=services.Decimal("100.00"),
+                    residual_difference=services.Decimal("50.00"),
+                    tolerance_amount=services.Decimal("5.00"),
+                    transactions=[],
+                    non_journal_rows=[],
+                    outside_period_rows=[],
+                    voided_rows=[],
+                )
+                request_body = post_mock.await_args.args[0]
+                return request_body["input"][0]["content"][0]["text"]
+
+        prompt = asyncio.run(_run())
+        self.assertIn("Treat journals as post-filing based on createdAt being after submission completion", prompt)
+        self.assertIn("Filed period start date: 2025-01-01.", prompt)
+        self.assertIn("Submission completion timestamp: 2026-02-05T00:00:00+00:00.", prompt)

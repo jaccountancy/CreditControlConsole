@@ -19476,6 +19476,7 @@ def _code_breaker_journal_candidate_preview_rows(candidates: list[dict]) -> list
 async def _code_breaker_openai_extract_variance_transactions(
     *,
     user_id: str,
+    period_start_date: date | None,
     as_at_date: date,
     submission_completed_at: datetime | None,
     target_difference: Decimal,
@@ -19510,7 +19511,11 @@ async def _code_breaker_openai_extract_variance_transactions(
         "Identify only post-filing journals that explain the difference and return only those items. "
         "Use positive impact when the journal increases Xero net assets versus filed accounts and negative when it decreases. "
         "Keep impact values in GBP to 2 decimal places. "
+        "Definition: a post-filing journal is determined by createdAt/CreatedDateUTC being after submission completion, not by journalDate. "
+        "JournalDate is used only for period classification, and valid in-period candidates can be backdated inside the filed period. "
+        "Do not reject a candidate just because its journalDate is before the filed period end. "
         f"Target variance to explain: {target_difference:.2f} GBP. "
+        f"Filed period start date: {(period_start_date.isoformat() if period_start_date else 'unknown')}. "
         f"Filed period end date: {as_at_date.isoformat()}. "
         f"Submission completion timestamp: {(_iso(submission_completed_at) if submission_completed_at else 'unknown')}."
     )
@@ -19578,7 +19583,9 @@ async def _code_breaker_openai_extract_variance_transactions(
 async def _code_breaker_openai_build_action_plan(
     *,
     user_id: str,
+    period_start_date: date | None,
     as_at_date: date,
+    submission_completed_at: datetime | None,
     target_difference: Decimal,
     residual_difference: Decimal,
     tolerance_amount: Decimal,
@@ -19610,7 +19617,10 @@ async def _code_breaker_openai_build_action_plan(
         "Use positive expectedImpact when an action increases Xero net assets and negative when it decreases. "
         "Prefer concrete actions users can perform in Xero: void, delete, reverse journal, or create a manual correcting journal. "
         "Do not invent references that are not provided. "
+        "Treat journals as post-filing based on createdAt being after submission completion; journalDate can still be within the filed period. "
         f"Filed period end date: {as_at_date.isoformat()}. "
+        f"Filed period start date: {(period_start_date.isoformat() if period_start_date else 'unknown')}. "
+        f"Submission completion timestamp: {(_iso(submission_completed_at) if submission_completed_at else 'unknown')}. "
         f"Target variance to reverse: {target_difference:.2f} GBP. "
         f"Current residual difference after mapped rows: {residual_difference:.2f} GBP. "
         f"Tolerance target is within ±{tolerance_amount:.2f} GBP."
@@ -20006,6 +20016,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     try:
                         ai_variance = await _code_breaker_openai_extract_variance_transactions(
                             user_id=str(user.get("id") or ""),
+                            period_start_date=period_start_date,
                             as_at_date=as_at_date,
                             submission_completed_at=submission_completed_at,
                             target_difference=difference,
@@ -20075,7 +20086,9 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             try:
                 action_plan = await _code_breaker_openai_build_action_plan(
                     user_id=str(user.get("id") or ""),
+                    period_start_date=period_start_date,
                     as_at_date=as_at_date,
+                    submission_completed_at=submission_completed_at,
                     target_difference=_money(difference),
                     residual_difference=_money(post_filing_analysis.get("residualDifference")),
                     tolerance_amount=Decimal("5.00"),
