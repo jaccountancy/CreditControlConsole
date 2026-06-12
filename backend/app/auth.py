@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import timedelta
 from urllib.parse import urlencode
 
@@ -33,6 +34,57 @@ XERO_PAYROLL_SCOPES = (
     "payroll.employees",
     "payroll.payruns",
 )
+KNOWN_XERO_SCOPES = {
+    "openid",
+    "profile",
+    "email",
+    "offline_access",
+    "accounting.transactions",
+    "accounting.transactions.read",
+    "accounting.invoices",
+    "accounting.invoices.read",
+    "accounting.payments",
+    "accounting.payments.read",
+    "accounting.banktransactions",
+    "accounting.banktransactions.read",
+    "accounting.manualjournals",
+    "accounting.manualjournals.read",
+    "accounting.journals",
+    "accounting.journals.read",
+    "accounting.contacts",
+    "accounting.contacts.read",
+    "accounting.settings",
+    "accounting.settings.read",
+    "accounting.attachments",
+    "accounting.attachments.read",
+    "accounting.reports.read",
+    "accounting.reports.aged.read",
+    "accounting.reports.balancesheet.read",
+    "accounting.reports.banksummary.read",
+    "accounting.reports.budgetsummary.read",
+    "accounting.reports.executivesummary.read",
+    "accounting.reports.profitandloss.read",
+    "accounting.reports.taxreports.read",
+    "accounting.reports.trialbalance.read",
+    "accounting.reports.tenninetynine.read",
+    "accounting.budgets.read",
+    "payroll.employees",
+    "payroll.employees.read",
+    "payroll.payruns",
+    "payroll.payruns.read",
+    "payroll.payslip",
+    "payroll.payslip.read",
+    "payroll.timesheets",
+    "payroll.timesheets.read",
+    "payroll.settings",
+    "payroll.settings.read",
+    "files",
+    "files.read",
+    "assets",
+    "assets.read",
+    "projects",
+    "projects.read",
+}
 LEGACY_XERO_SCOPE_REPLACEMENTS = {
     "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read", "accounting.banktransactions.read", "accounting.manualjournals.read", "accounting.journals.read"),
     "accounting.transactions": ("accounting.invoices", "accounting.payments", "accounting.banktransactions", "accounting.manualjournals", "accounting.journals.read"),
@@ -47,12 +99,37 @@ LEGACY_XERO_SCOPE_REPLACEMENTS = {
         "accounting.reports.taxreports.read",
     ),
 }
+XERO_SCOPE_NORMALISATIONS = {
+    "accounting.transaction": "accounting.transactions",
+    "accounting.transaction.read": "accounting.transactions.read",
+    "accounting.report.read": "accounting.reports.read",
+    "payroll.employee": "payroll.employees",
+    "payroll.employee.read": "payroll.employees.read",
+    "payroll.payrun": "payroll.payruns",
+    "payroll.payrun.read": "payroll.payruns.read",
+}
+
+
+def _configured_xero_scopes(configured_scopes: str) -> list[str]:
+    scope_tokens: list[str] = []
+    for raw_token in re.split(r"[\s,]+", str(configured_scopes or "").strip()):
+        token = raw_token.strip().strip('"').strip("'").lower()
+        if not token:
+            continue
+        if token.startswith("scope="):
+            token = token.removeprefix("scope=").strip()
+        token = XERO_SCOPE_NORMALISATIONS.get(token, token)
+        if token and token not in scope_tokens:
+            scope_tokens.append(token)
+    return scope_tokens
 
 
 def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = False) -> str:
     scopes = []
-    for configured_scope in configured_scopes.split():
+    for configured_scope in _configured_xero_scopes(configured_scopes):
         for scope in LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,)):
+            if scope not in KNOWN_XERO_SCOPES:
+                continue
             if scope and scope not in scopes:
                 scopes.append(scope)
 
