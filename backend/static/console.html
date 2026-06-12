@@ -39267,6 +39267,125 @@
                 jukRebuildBatchSummary(batch);
             }
 
+            function jukPublishFailedRows(batch, publishRows = []) {
+                const rows = Array.isArray(publishRows) ? publishRows : [];
+                const failedRows = rows
+                    .filter((row) => String(row?.status || "").toLowerCase().includes("fail"))
+                    .map((row) => {
+                        const invoice = (batch?.invoices || []).find((item) => jukInvoiceIdKey(item.id) === jukInvoiceIdKey(row?.invoiceId));
+                        const invoiceNumber = String(invoice?.jukInvoiceNumber || row?.invoiceId || "Invoice");
+                        const invoiceId = String(invoice?.id || row?.invoiceId || "").trim();
+                        return {
+                            invoiceId,
+                            invoiceNumber,
+                            clientName: String(invoice?.jukContactName || "").trim(),
+                            tenantName: String(invoice?.matchedTenantName || invoice?.matchedTenantId || "").trim(),
+                            status: String(row?.status || invoice?.status || "failed"),
+                            reason: String(row?.message || invoice?.errorMessage || "Publish failed.").trim(),
+                        };
+                    })
+                    .filter((row) => row.invoiceId);
+                const deduped = [];
+                const seen = new Set();
+                failedRows.forEach((row) => {
+                    const key = jukInvoiceIdKey(row.invoiceId);
+                    if (!key || seen.has(key)) return;
+                    seen.add(key);
+                    deduped.push(row);
+                });
+                return deduped;
+            }
+
+            async function jukOpenPublishFailureAssistant(batch, publishRows = []) {
+                const failedRows = jukPublishFailedRows(batch, publishRows);
+                if (!failedRows.length) return;
+                const failedIds = failedRows.map((row) => row.invoiceId).filter(Boolean);
+                const assistantState = { queueRetry: true, openBulkReview: true };
+                const result = await showOperationReviewDialog({
+                    eyebrow: "Jenius AI assist",
+                    title: "JUK publish needs corrective action",
+                    subtitle: "Review failed rows, queue retry, and jump to bulk review for fixes.",
+                    confirmLabel: "Apply recovery",
+                    cancelLabel: "Close",
+                    summaryChips: [],
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ summary, body, confirmButton }) => {
+                        const render = () => {
+                            summary.innerHTML = [
+                                `${failedRows.length.toLocaleString("en-GB")} failed row${failedRows.length === 1 ? "" : "s"}`,
+                                "Recommended: queue retry + review in Step 3",
+                            ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                            body.innerHTML = `
+                                <div class="operation-review-tools">
+                                    <label><input type="checkbox" data-juk-failure-queue-retry ${assistantState.queueRetry ? "checked" : ""}> Queue failed rows for retry now</label>
+                                    <label><input type="checkbox" data-juk-failure-open-review ${assistantState.openBulkReview ? "checked" : ""}> Open Step 3 bulk review after this</label>
+                                </div>
+                                <div class="operation-review-table-wrap">
+                                    <table class="operation-review-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice</th>
+                                                <th>Client</th>
+                                                <th>Destination</th>
+                                                <th>Status</th>
+                                                <th>What failed</th>
+                                                <th>Guidance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${failedRows.map((row) => `
+                                                <tr>
+                                                    <td><strong>${escapeHTML(row.invoiceNumber)}</strong><small>${escapeHTML(row.invoiceId)}</small></td>
+                                                    <td>${escapeHTML(row.clientName || "Unknown client")}</td>
+                                                    <td>${escapeHTML(row.tenantName || "Unmapped destination")}</td>
+                                                    <td><span class="ch-pill is-bad">${escapeHTML(row.status || "failed")}</span></td>
+                                                    <td>${escapeHTML(row.reason || "Publish failed.")}</td>
+                                                    <td>${escapeHTML(String(row.reason || "").toLowerCase().includes("tenant") ? "Use override in Step 3 to select the correct tenant, then republish." : "Review row details in Step 3, amend mapping or status, then republish.")}</td>
+                                                </tr>
+                                            `).join("")}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+                            body.querySelector("[data-juk-failure-queue-retry]")?.addEventListener("change", (event) => {
+                                assistantState.queueRetry = Boolean(event?.target?.checked);
+                            });
+                            body.querySelector("[data-juk-failure-open-review]")?.addEventListener("change", (event) => {
+                                assistantState.openBulkReview = Boolean(event?.target?.checked);
+                            });
+                            if (confirmButton) confirmButton.disabled = !failedRows.length;
+                        };
+                        render();
+                    },
+                    resultProvider: () => ({
+                        failedInvoiceIds: failedIds,
+                        queueRetry: assistantState.queueRetry,
+                        openBulkReview: assistantState.openBulkReview,
+                    }),
+                });
+                if (!result || typeof result !== "object") return;
+                const selectedFailedIds = Array.isArray(result.failedInvoiceIds) ? result.failedInvoiceIds.map((id) => jukInvoiceIdKey(id)).filter(Boolean) : [];
+                if (result.queueRetry && selectedFailedIds.length) {
+                    try {
+                        const response = await requestJSON(api.endpoints.juksibBulkStatus, {
+                            method: "POST",
+                            body: JSON.stringify({ status: "retry_pending", invoiceIds: selectedFailedIds }),
+                        }, { batchId: batch.id });
+                        jukApplyServerBatchPayload(response || {});
+                        await jukRefreshFromAPI({ silent: true, batchId: batch.id });
+                        showToast(`Queued ${selectedFailedIds.length.toLocaleString("en-GB")} failed invoice${selectedFailedIds.length === 1 ? "" : "s"} for retry.`, "success");
+                    } catch (error) {
+                        showToast(error?.message || "Unable to queue failed invoices for retry.", "error");
+                    }
+                }
+                if (result.openBulkReview && selectedFailedIds.length) {
+                    jukInvoicesState.selectedInvoiceIds = selectedFailedIds;
+                    jukSetStep(3);
+                    renderJukInvoicesScreen();
+                }
+            }
+
             async function jukPublishApproved(batch) {
                 if (jukInvoicesState.publish.running) return;
                 if (String(batch?.mode || "test").toLowerCase() !== "live") {
@@ -39350,7 +39469,19 @@
                     if (updatedBatch?.id) await jukRefreshFromAPI({ silent: true, batchId: updatedBatch.id });
                     jukSetStep(6);
                     renderJukInvoicesScreen();
-                    showToast("JUKSIB publish run completed.", "success");
+                    const failedCount = Number(jukInvoicesState.publish.failed || 0);
+                    if (failedCount > 0) {
+                        showToast(
+                            `JUK publish finished with ${failedCount.toLocaleString("en-GB")} failed row${failedCount === 1 ? "" : "s"}.`,
+                            "error",
+                            { label: "Jenius AI assist", onClick: () => void jukOpenPublishFailureAssistant(updatedBatch || batch, jukInvoicesState.publish.rows || []) },
+                            null,
+                            { title: "Corrective action required" }
+                        );
+                        await jukOpenPublishFailureAssistant(updatedBatch || batch, jukInvoicesState.publish.rows || []);
+                    } else {
+                        showToast("JUKSIB publish run completed.", "success");
+                    }
                 } catch (error) {
                     jukInvoicesState.publish.running = false;
                     jukInvoicesState.publish.current = "Publish failed.";
@@ -40714,7 +40845,7 @@
                                 <td>${escapeHTML(String(row.invoiceId || "--"))}</td>
                                 <td>${escapeHTML(String(row.status || "--"))}</td>
                                 <td>${row.billId ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(xeroBillURL(row.billId))}">Open in Xero</a>` : "--"}</td>
-                                <td>${escapeHTML(`${row.purchaseAccountCode || ""} ${row.purchaseAccountName || ""}`.trim() || "--")}</td>
+                                <td>${escapeHTML(`${row.purchaseAccountCode || ""} ${row.purchaseAccountName || ""}`.trim() || "--")}<small>${escapeHTML(row.taxType ? `Tax: ${row.taxType}` : "")}</small></td>
                                 <td>${escapeHTML(String(row.message || ""))}</td>
                             </tr>
                         `).join("")

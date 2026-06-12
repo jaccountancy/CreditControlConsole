@@ -120,6 +120,8 @@ JUKSIB_OPENAI_MATCH_BUDGET_SECONDS = 22
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
 JUKSIB_IMPORT_HISTORY_NOTE = "This Invoice was imported the Xero Ledger using Jenius AI."
+JUKSIB_EXPENSES_VAT_TAX_TYPE = "INPUT2"
+JUKSIB_NO_VAT_TAX_TYPE = "NONE"
 JUKSIB_MATCH_RESPONSE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -146,6 +148,36 @@ JUKSIB_MATCH_RESPONSE_SCHEMA = {
                 "properties": {
                     "tenant_id": {"type": "string"},
                     "tenant_name": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+            },
+        },
+    },
+}
+JUKSIB_VAT_LOOKUP_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "suggested_register_id",
+        "suggested_register_name",
+        "confidence",
+        "reason",
+        "alternatives",
+    ],
+    "properties": {
+        "suggested_register_id": {"type": "string"},
+        "suggested_register_name": {"type": "string"},
+        "confidence": {"type": "number"},
+        "reason": {"type": "string"},
+        "alternatives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["register_id", "register_name", "confidence"],
+                "properties": {
+                    "register_id": {"type": "string"},
+                    "register_name": {"type": "string"},
                     "confidence": {"type": "number"},
                 },
             },
@@ -16968,12 +17000,337 @@ async def _juksib_resolve_supplier_contact_id(
     return ""
 
 
-async def _juksib_add_destination_invoice_note(destination_connection: dict, destination_invoice_id: str) -> tuple[bool, str]:
+def _juksib_register_display_name(row: dict) -> str:
+    return str(row.get("company_name") or row.get("client_name") or "").strip()
+
+
+def _juksib_clean_vat_number(value: object) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "", str(value or "").strip().upper())
+
+
+def _juksib_default_vat_profile(client_name: str, lookup_source: str, lookup_reason: str) -> dict:
+    return {
+        "clientName": str(client_name or "").strip(),
+        "vatRegistered": False,
+        "vatNumber": "",
+        "taxType": JUKSIB_NO_VAT_TAX_TYPE,
+        "lookupSource": lookup_source,
+        "lookupReason": lookup_reason,
+        "lookupConfidence": 0.0,
+        "registerId": "",
+        "registerName": "",
+    }
+
+
+def _juksib_fetch_client_register_rows_for_vat() -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, company_name, client_name, client_id, company_number, vat_number
+                FROM ch_auth_code_register
+                ORDER BY uploaded_at DESC
+                LIMIT 5000
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return rows
+
+
+def _juksib_build_vat_register_index(register_rows: list[dict]) -> dict:
+    by_client_id: dict[str, dict] = {}
+    by_name: dict[str, dict] = {}
+    by_id: dict[str, dict] = {}
+    for row in register_rows:
+        row_id = str(row.get("id") or "").strip()
+        if row_id:
+            by_id[row_id] = row
+        client_id_key = str(row.get("client_id") or "").strip().lower()
+        if client_id_key and client_id_key not in by_client_id:
+            by_client_id[client_id_key] = row
+        name_key = _bm_tasks_normalise_name_key(_juksib_register_display_name(row))
+        if name_key and name_key not in by_name:
+            by_name[name_key] = row
+    return {"rows": register_rows, "byClientId": by_client_id, "byName": by_name, "byId": by_id}
+
+
+def _juksib_cached_vat_profile(user_id: str, normalised_client_name: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT source_client_name,
+                       register_id,
+                       register_name,
+                       vat_number,
+                       vat_registered,
+                       lookup_source,
+                       lookup_confidence,
+                       lookup_reason
+                FROM juksib_vat_lookup_cache
+                WHERE user_id = %s::uuid
+                  AND normalised_client_name = %s
+                LIMIT 1
+                """,
+                (user_id, normalised_client_name),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        return None
+    vat_registered = bool(row.get("vat_registered"))
+    return {
+        "clientName": str(row.get("source_client_name") or "").strip(),
+        "vatRegistered": vat_registered,
+        "vatNumber": str(row.get("vat_number") or "").strip(),
+        "taxType": JUKSIB_EXPENSES_VAT_TAX_TYPE if vat_registered else JUKSIB_NO_VAT_TAX_TYPE,
+        "lookupSource": str(row.get("lookup_source") or "cache").strip() or "cache",
+        "lookupReason": str(row.get("lookup_reason") or "").strip(),
+        "lookupConfidence": float(_juksib_decimal(row.get("lookup_confidence"))),
+        "registerId": str(row.get("register_id") or "").strip(),
+        "registerName": str(row.get("register_name") or "").strip(),
+    }
+
+
+def _juksib_upsert_vat_profile_cache(user_id: str, normalised_client_name: str, profile: dict) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO juksib_vat_lookup_cache (
+                    user_id,
+                    normalised_client_name,
+                    source_client_name,
+                    register_id,
+                    register_name,
+                    vat_number,
+                    vat_registered,
+                    lookup_source,
+                    lookup_confidence,
+                    lookup_reason,
+                    checked_at,
+                    updated_at
+                )
+                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                ON CONFLICT (user_id, normalised_client_name)
+                DO UPDATE SET
+                    source_client_name = EXCLUDED.source_client_name,
+                    register_id = EXCLUDED.register_id,
+                    register_name = EXCLUDED.register_name,
+                    vat_number = EXCLUDED.vat_number,
+                    vat_registered = EXCLUDED.vat_registered,
+                    lookup_source = EXCLUDED.lookup_source,
+                    lookup_confidence = EXCLUDED.lookup_confidence,
+                    lookup_reason = EXCLUDED.lookup_reason,
+                    checked_at = NOW(),
+                    updated_at = NOW()
+                """,
+                (
+                    user_id,
+                    normalised_client_name,
+                    str(profile.get("clientName") or "").strip(),
+                    str(profile.get("registerId") or "").strip() or None,
+                    str(profile.get("registerName") or "").strip(),
+                    str(profile.get("vatNumber") or "").strip(),
+                    bool(profile.get("vatRegistered")),
+                    str(profile.get("lookupSource") or "").strip() or "register_exact",
+                    float(_juksib_decimal(profile.get("lookupConfidence") or 0)),
+                    str(profile.get("lookupReason") or "").strip(),
+                ),
+            )
+        connection.commit()
+
+
+async def _juksib_openai_match_register_for_vat(
+    *,
+    user: dict,
+    client_name: str,
+    register_rows: list[dict],
+) -> dict | None:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip() or not register_rows:
+        return None
+    candidates = [
+        {
+            "register_id": str(row.get("id") or "").strip(),
+            "register_name": _juksib_register_display_name(row),
+            "client_id": str(row.get("client_id") or "").strip(),
+            "company_number": str(row.get("company_number") or "").strip(),
+            "vat_number": _juksib_clean_vat_number(row.get("vat_number")),
+        }
+        for row in register_rows[:80]
+        if str(row.get("id") or "").strip()
+    ]
+    if not candidates:
+        return None
+    request_body = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You match a client name to rows in a UK client register. "
+                    "Return strict JSON only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "invoice_client_name": client_name,
+                        "register_candidates": candidates,
+                        "instructions": {
+                            "pick_best": True,
+                            "confidence_scale": "0-1",
+                            "return_empty_when_no_match": True,
+                        },
+                    },
+                    default=_json_default,
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "juksib_vat_lookup",
+                "strict": True,
+                "schema": JUKSIB_VAT_LOOKUP_RESPONSE_SCHEMA,
+            }
+        },
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            purpose="JUKSIB VAT client register matching",
+            feature="juksib",
+            page="juk-invoices",
+            user_id=user["id"],
+            timeout_seconds=8,
+        )
+        return _load_openai_json_response(payload, "OpenAI returned invalid JSON for JUKSIB VAT lookup.")
+    except Exception:
+        logger.exception("JUKSIB: OpenAI VAT lookup failed for client '%s'", client_name)
+        return None
+
+
+async def _juksib_resolve_vat_profile(
+    *,
+    user: dict,
+    client_name: str,
+    matched_client_id: str,
+    register_index: dict,
+    run_cache: dict[str, dict],
+) -> dict:
+    contact_name = str(client_name or "").strip()
+    normalised_client_name = _bm_tasks_normalise_name_key(contact_name) or _juksib_normalise_name(contact_name)
+    if not normalised_client_name:
+        return _juksib_default_vat_profile(contact_name, "empty_name", "Client name was empty; defaulted to no VAT.")
+    if normalised_client_name in run_cache:
+        return run_cache[normalised_client_name]
+
+    cached_profile = _juksib_cached_vat_profile(user["id"], normalised_client_name)
+    if cached_profile:
+        run_cache[normalised_client_name] = cached_profile
+        return cached_profile
+
+    register_rows = register_index.get("rows") if isinstance(register_index.get("rows"), list) else []
+    by_client_id = register_index.get("byClientId") if isinstance(register_index.get("byClientId"), dict) else {}
+    by_name = register_index.get("byName") if isinstance(register_index.get("byName"), dict) else {}
+    by_id = register_index.get("byId") if isinstance(register_index.get("byId"), dict) else {}
+
+    matched_row = None
+    lookup_source = "register_none"
+    lookup_reason = "No client register row matched; defaulted to no VAT."
+    lookup_confidence = Decimal("0")
+
+    matched_client_id_key = str(matched_client_id or "").strip().lower()
+    if matched_client_id_key and matched_client_id_key in by_client_id:
+        matched_row = by_client_id.get(matched_client_id_key)
+        lookup_source = "register_client_id"
+        lookup_reason = "Matched using client id from the publish candidate."
+        lookup_confidence = Decimal("1")
+    if not matched_row:
+        exact_name_row = by_name.get(normalised_client_name)
+        if exact_name_row:
+            matched_row = exact_name_row
+            lookup_source = "register_exact"
+            lookup_reason = "Exact client register name match."
+            lookup_confidence = Decimal("0.99")
+    if not matched_row and contact_name and register_rows:
+        scored_rows = sorted(
+            (
+                {
+                    "row": row,
+                    "score": _juksib_similarity(contact_name, _juksib_register_display_name(row)),
+                }
+                for row in register_rows
+                if _juksib_register_display_name(row)
+            ),
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+        if scored_rows:
+            top = scored_rows[0]
+            second = scored_rows[1] if len(scored_rows) > 1 else {"score": Decimal("0")}
+            if top["score"] >= Decimal("0.82") and (top["score"] - second["score"]) >= Decimal("0.12"):
+                matched_row = top["row"]
+                lookup_source = "register_fuzzy"
+                lookup_reason = "High-confidence fuzzy match against client register name."
+                lookup_confidence = top["score"]
+
+    if not matched_row and contact_name and register_rows:
+        openai_match = await _juksib_openai_match_register_for_vat(
+            user=user,
+            client_name=contact_name,
+            register_rows=register_rows,
+        )
+        if openai_match:
+            suggested_id = str(openai_match.get("suggested_register_id") or "").strip()
+            confidence = _juksib_decimal(openai_match.get("confidence"))
+            suggested_row = by_id.get(suggested_id)
+            if suggested_row and confidence >= Decimal("0.55"):
+                matched_row = suggested_row
+                lookup_source = "openai_register_lookup"
+                lookup_reason = str(openai_match.get("reason") or "Matched by OpenAI against client register candidates.").strip()
+                lookup_confidence = confidence
+
+    if matched_row:
+        vat_number = _juksib_clean_vat_number(matched_row.get("vat_number"))
+        vat_registered = bool(vat_number)
+        profile = {
+            "clientName": contact_name,
+            "vatRegistered": vat_registered,
+            "vatNumber": vat_number,
+            "taxType": JUKSIB_EXPENSES_VAT_TAX_TYPE if vat_registered else JUKSIB_NO_VAT_TAX_TYPE,
+            "lookupSource": lookup_source,
+            "lookupReason": lookup_reason,
+            "lookupConfidence": float(lookup_confidence),
+            "registerId": str(matched_row.get("id") or "").strip(),
+            "registerName": _juksib_register_display_name(matched_row),
+        }
+    else:
+        profile = _juksib_default_vat_profile(contact_name, lookup_source, lookup_reason)
+
+    _juksib_upsert_vat_profile_cache(user["id"], normalised_client_name, profile)
+    run_cache[normalised_client_name] = profile
+    return profile
+
+
+async def _juksib_add_destination_invoice_note(
+    destination_connection: dict,
+    destination_invoice_id: str,
+    extra_notes: list[str] | None = None,
+) -> tuple[bool, str]:
     invoice_id = str(destination_invoice_id or "").strip()
     if not invoice_id:
         return False, "Missing destination invoice id."
     try:
         await create_history_record(destination_connection, "Invoices", invoice_id, JUKSIB_IMPORT_HISTORY_NOTE)
+        for note in extra_notes or []:
+            note_text = str(note or "").strip()
+            if note_text:
+                await create_history_record(destination_connection, "Invoices", invoice_id, note_text)
         return True, ""
     except Exception as exc:
         logger.exception("JUKSIB: Failed to add history note for destination invoice %s", invoice_id)
@@ -17032,6 +17389,8 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
     publish_result = {"published": 0, "failed": 0, "duplicates": 0, "partialFailed": 0, "rows": []}
     purchase_account_cache: dict[str, tuple[str, str]] = {}
     supplier_contact_cache: dict[str, str] = {}
+    register_index = _juksib_build_vat_register_index(_juksib_fetch_client_register_rows_for_vat())
+    vat_profile_cache: dict[str, dict] = {}
     for row in invoice_rows:
         invoice_id = str(row.get("id") or "")
         source_invoice_id = str(row.get("juk_xero_invoice_id") or "")
@@ -17108,6 +17467,26 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             cached_account = await _juksib_resolve_purchase_account_code(destination_connection, default_account_code)
             purchase_account_cache[destination_tenant_id] = cached_account
         target_account_code, target_account_name = cached_account
+        vat_profile = await _juksib_resolve_vat_profile(
+            user=user,
+            client_name=str(row.get("juk_contact_name") or ""),
+            matched_client_id=matched_client_id,
+            register_index=register_index,
+            run_cache=vat_profile_cache,
+        )
+        target_tax_type = str(vat_profile.get("taxType") or JUKSIB_NO_VAT_TAX_TYPE).strip() or JUKSIB_NO_VAT_TAX_TYPE
+        vat_status_message = (
+            f"VAT number found in client register; tax type {target_tax_type} applied."
+            if bool(vat_profile.get("vatRegistered"))
+            else f"No VAT number found in client register; tax type {target_tax_type} applied."
+        )
+        no_vat_history_note = (
+            f"Jenius AI could not find a VAT number in the client register for "
+            f"'{str(vat_profile.get('registerName') or vat_profile.get('clientName') or row.get('juk_contact_name') or 'this client').strip()}'. "
+            f"The bill was created with no VAT tax type ({target_tax_type})."
+            if not bool(vat_profile.get("vatRegistered"))
+            else ""
+        )
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -17154,7 +17533,11 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             note_added = False
             note_error = ""
             if duplicate_bill_id:
-                note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, duplicate_bill_id)
+                note_added, note_error = await _juksib_add_destination_invoice_note(
+                    destination_connection,
+                    duplicate_bill_id,
+                    extra_notes=[no_vat_history_note] if no_vat_history_note else [],
+                )
             publish_result["duplicates"] += 1
             publish_result["rows"].append(
                 {
@@ -17257,16 +17640,19 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                         "invoiceId": invoice_id,
                         "status": "published",
                         "billId": latest_bill_id,
-                        "purchaseAccountCode": target_account_code,
-                        "purchaseAccountName": target_account_name,
-                        "xeroConfirmed": True,
-                        "noteAdded": note_added,
-                        "noteError": note_error,
-                        "message": "PDF attachment retry succeeded and bill is now fully published."
-                        if note_added or not note_error
-                        else f"Published, but note failed: {note_error}",
-                    }
-                )
+                    "purchaseAccountCode": target_account_code,
+                    "purchaseAccountName": target_account_name,
+                    "taxType": target_tax_type,
+                    "vatRegistered": bool(vat_profile.get("vatRegistered")),
+                    "vatLookupSource": str(vat_profile.get("lookupSource") or ""),
+                    "xeroConfirmed": True,
+                    "noteAdded": note_added,
+                    "noteError": note_error,
+                    "message": f"{vat_status_message} PDF attachment retry succeeded and bill is now fully published."
+                    if note_added or not note_error
+                    else f"{vat_status_message} Published, but note failed: {note_error}",
+                }
+            )
             else:
                 publish_result["failed"] += 1
                 publish_result["rows"].append(
@@ -17276,7 +17662,10 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                         "billId": latest_bill_id,
                         "purchaseAccountCode": target_account_code,
                         "purchaseAccountName": target_account_name,
-                        "message": retry_error or "Retry attachment failed.",
+                        "taxType": target_tax_type,
+                        "vatRegistered": bool(vat_profile.get("vatRegistered")),
+                        "vatLookupSource": str(vat_profile.get("lookupSource") or ""),
+                        "message": f"{vat_status_message} {retry_error or 'Retry attachment failed.'}".strip(),
                     }
                 )
             continue
@@ -17364,7 +17753,6 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 continue
             quantity = _juksib_decimal(item.get("Quantity") or item.get("quantity") or 1)
             unit_amount = _juksib_decimal(item.get("UnitAmount") or item.get("unitAmount") or item.get("LineAmount") or item.get("lineAmount") or 0)
-            tax_type = str(item.get("TaxType") or item.get("taxType") or "NONE").strip() or "NONE"
             account_code = target_account_code
             description = str(item.get("Description") or item.get("description") or f"JUK invoice {invoice_number}").strip()[:400]
             mapped_lines.append(
@@ -17373,7 +17761,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                     "Quantity": float(quantity if quantity > Decimal("0") else Decimal("1")),
                     "UnitAmount": float(unit_amount),
                     "AccountCode": account_code,
-                    "TaxType": tax_type,
+                    "TaxType": target_tax_type,
                 }
             )
         if not mapped_lines:
@@ -17383,7 +17771,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                     "Quantity": 1,
                     "UnitAmount": float(_juksib_decimal(row.get("subtotal")) or _juksib_decimal(row.get("total"))),
                     "AccountCode": target_account_code,
-                    "TaxType": "NONE",
+                    "TaxType": target_tax_type,
                 }
             ]
 
@@ -17434,7 +17822,11 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             publish_error = _sync_error_message(exc)
 
         if created_invoice_id:
-            note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, created_invoice_id)
+            note_added, note_error = await _juksib_add_destination_invoice_note(
+                destination_connection,
+                created_invoice_id,
+                extra_notes=[no_vat_history_note] if no_vat_history_note else [],
+            )
 
         if created_invoice_id and not publish_error:
             status_value = "published"
@@ -17512,12 +17904,15 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 "billId": created_invoice_id,
                 "purchaseAccountCode": target_account_code,
                 "purchaseAccountName": target_account_name,
+                "taxType": target_tax_type,
+                "vatRegistered": bool(vat_profile.get("vatRegistered")),
+                "vatLookupSource": str(vat_profile.get("lookupSource") or ""),
                 "xeroConfirmed": bool(created_invoice_id),
                 "noteAdded": note_added,
                 "noteError": note_error,
                 "message": publish_error
-                or (note_error and f"Published, but note failed: {note_error}")
-                or "Published successfully.",
+                or (note_error and f"{vat_status_message} Published, but note failed: {note_error}")
+                or f"{vat_status_message} Published successfully.",
             }
         )
 

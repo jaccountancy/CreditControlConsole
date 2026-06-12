@@ -2337,6 +2337,36 @@ ALTER TABLE juksib_sync_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ 
 CREATE INDEX IF NOT EXISTS juksib_sync_records_user_created_idx
 ON juksib_sync_records (user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS juksib_vat_lookup_cache (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    normalised_client_name TEXT NOT NULL,
+    source_client_name TEXT NOT NULL DEFAULT '',
+    register_id UUID,
+    register_name TEXT NOT NULL DEFAULT '',
+    vat_number TEXT NOT NULL DEFAULT '',
+    vat_registered BOOLEAN NOT NULL DEFAULT FALSE,
+    lookup_source TEXT NOT NULL DEFAULT 'register_exact',
+    lookup_confidence NUMERIC(6, 5) NOT NULL DEFAULT 0,
+    lookup_reason TEXT NOT NULL DEFAULT '',
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, normalised_client_name)
+);
+
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS source_client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS register_id UUID;
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS register_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS vat_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS lookup_source TEXT NOT NULL DEFAULT 'register_exact';
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS lookup_confidence NUMERIC(6, 5) NOT NULL DEFAULT 0;
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS lookup_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE juksib_vat_lookup_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS juksib_vat_lookup_cache_user_checked_idx
+ON juksib_vat_lookup_cache (user_id, checked_at DESC);
+
 CREATE TABLE IF NOT EXISTS juksib_audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
