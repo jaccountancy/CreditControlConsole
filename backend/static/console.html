@@ -37542,6 +37542,7 @@
 
             const JUK_INVOICE_STORE_KEY = "jenius-juksib-state-v1";
             const JUK_MASTER_TENANT_NAME = "Jaccountancy (UK) Ltd";
+            const JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401";
             const JUK_MIN_IMPORT_DATE = "2026-06-01";
             const JUK_STATUS_LABELS = {
                 imported: "Imported",
@@ -38101,11 +38102,17 @@
             }
 
             function jukConnectedTenants() {
+                const isMainTenantRow = (row) => {
+                    if (!row) return false;
+                    if (row.isMainTenant === true) return true;
+                    const raw = String(row.isMainTenant ?? "").trim().toLowerCase();
+                    return raw === "true" || raw === "1" || raw === "yes";
+                };
                 const rows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
                 let tenants = rows
-                    .filter((row) => !row?.isMainTenant)
+                    .filter((row) => !isMainTenantRow(row))
                     .map((row) => {
-                        const tenantId = String(row?.tenantId || "").trim();
+                        const tenantId = String(row?.tenantId || row?.xeroTenantId || row?.tenant || "").trim();
                         const tenantName = xeroWorkspaceLabel(row?.tenantName || "", tenantId, "Xero tenant");
                         return {
                             tenantId,
@@ -38120,9 +38127,9 @@
                 if (!tenants.length) {
                     const settingsRows = typeof settingsXeroConnectionRows === "function" ? settingsXeroConnectionRows() : [];
                     tenants = (Array.isArray(settingsRows) ? settingsRows : [])
-                        .filter((row) => !row?.isMainTenant)
+                        .filter((row) => !isMainTenantRow(row))
                         .map((row) => {
-                            const tenantId = String(row?.tenantId || "").trim();
+                            const tenantId = String(row?.tenantId || row?.xeroTenantId || row?.tenant || "").trim();
                             const tenantName = xeroWorkspaceLabel(row?.tenantName || "", tenantId, "Xero tenant");
                             return {
                                 tenantId,
