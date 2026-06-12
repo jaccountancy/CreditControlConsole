@@ -98,6 +98,36 @@ class JukSibHelperTests(unittest.TestCase):
         self.assertEqual(rows[0]["juk_xero_invoice_id"], "inv-ok")
         self.assertEqual(rows[0]["juk_invoice_number"], "INV-001")
 
+    def test_extract_created_bill_id_accepts_valid_invoice_id(self):
+        bill_id, error = services._juksib_extract_created_bill_id(
+            {
+                "Invoices": [
+                    {
+                        "InvoiceID": "63a2aefa-df47-459c-a582-8f3914dda148",
+                        "HasErrors": False,
+                    }
+                ]
+            }
+        )
+        self.assertEqual(bill_id, "63a2aefa-df47-459c-a582-8f3914dda148")
+        self.assertEqual(error, "")
+
+    def test_extract_created_bill_id_rejects_xero_validation_error_payload(self):
+        bill_id, error = services._juksib_extract_created_bill_id(
+            {
+                "HasErrors": True,
+                "Invoices": [
+                    {
+                        "InvoiceID": "should-not-be-trusted",
+                        "HasErrors": True,
+                        "ValidationErrors": [{"Message": "Account code is invalid."}],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(bill_id, "")
+        self.assertIn("Xero rejected bill creation", error)
+
 
 if __name__ == "__main__":
     unittest.main()

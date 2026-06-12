@@ -115,6 +115,8 @@ JUKSIB_CONFIDENCE_HIGH = Decimal("0.90")
 JUKSIB_CONFIDENCE_MEDIUM = Decimal("0.70")
 JUKSIB_MAX_IMPORT_INVOICES = 300
 JUKSIB_OPENAI_MATCH_LIMIT = 24
+JUKSIB_OPENAI_MATCH_TIMEOUT_SECONDS = 8
+JUKSIB_OPENAI_MATCH_BUDGET_SECONDS = 22
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
 JUKSIB_IMPORT_HISTORY_NOTE = "This Invoice was imported the Xero Ledger using Jenius AI."
@@ -15928,7 +15930,7 @@ async def _juksib_openai_match_contact(
             feature="juksib",
             page="juk-invoices",
             user_id=user["id"],
-            timeout_seconds=45,
+            timeout_seconds=JUKSIB_OPENAI_MATCH_TIMEOUT_SECONDS,
         )
         return _load_openai_json_response(
             response_payload,
@@ -16283,6 +16285,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
     batch_id = ""
     inserted_invoices = []
     openai_match_remaining = min(JUKSIB_OPENAI_MATCH_LIMIT, len(source_rows))
+    openai_deadline_monotonic = time.monotonic() + JUKSIB_OPENAI_MATCH_BUDGET_SECONDS
     match_cache: dict[str, dict] = {}
 
     with get_connection() as connection:
@@ -16343,7 +16346,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                     contact_name=contact_name,
                     rules=rules,
                     candidates=candidates,
-                    allow_openai=openai_match_remaining > 0,
+                    allow_openai=(openai_match_remaining > 0 and time.monotonic() < openai_deadline_monotonic),
                 )
                 if cache_key:
                     match_cache[cache_key] = dict(match_row)
@@ -16847,6 +16850,44 @@ def _juksib_destination_invoice_id(rows: list[dict], invoice_number: str) -> str
         if number == target_number:
             return str(row.get("InvoiceID") or row.get("InvoiceId") or "").strip()
     return ""
+
+
+def _juksib_extract_created_bill_id(created_payload: dict | None) -> tuple[str, str]:
+    payload = created_payload if isinstance(created_payload, dict) else {}
+    invoice_row = {}
+    invoices = payload.get("Invoices")
+    if isinstance(invoices, list) and invoices:
+        first_invoice = invoices[0]
+        if isinstance(first_invoice, dict):
+            invoice_row = first_invoice
+    invoice_id = str(invoice_row.get("InvoiceID") or invoice_row.get("InvoiceId") or "").strip()
+    has_errors = bool(payload.get("HasErrors")) or bool(invoice_row.get("HasErrors"))
+    validation_messages: list[str] = []
+    for key in ("ValidationErrors", "Warnings"):
+        values = invoice_row.get(key)
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            message = str(item.get("Message") or item.get("message") or "").strip()
+            if message:
+                validation_messages.append(message)
+    for key in ("Message", "message"):
+        value = str(invoice_row.get(key) or payload.get(key) or "").strip()
+        if value:
+            validation_messages.append(value)
+    deduped_messages: list[str] = []
+    for message in validation_messages:
+        if message not in deduped_messages:
+            deduped_messages.append(message)
+    if has_errors:
+        detail = ". ".join(deduped_messages[:3]).strip()
+        return "", f"Xero rejected bill creation{': ' + detail if detail else '.'}"
+    if not invoice_id:
+        detail = ". ".join(deduped_messages[:3]).strip()
+        return "", f"Xero did not return a created bill id{': ' + detail if detail else '.'}"
+    return invoice_id, ""
 
 
 def _juksib_is_purchase_account(account_row: dict) -> bool:
@@ -17372,10 +17413,9 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 destination_payload,
                 idempotency_key=f"juksib-{batch_id}-{source_invoice_id}-{destination_tenant_id}",
             )
-            created_invoice = ((created_payload.get("Invoices") or [None])[0] or {}) if isinstance(created_payload, dict) else {}
-            created_invoice_id = str(created_invoice.get("InvoiceID") or created_invoice.get("InvoiceId") or "").strip()
-            if not created_invoice_id:
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Created supplier bill did not return an invoice id.")
+            created_invoice_id, creation_error = _juksib_extract_created_bill_id(created_payload)
+            if creation_error:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=creation_error)
             try:
                 pdf_bytes = await fetch_invoice_pdf(master_connection, source_invoice_id)
                 attachment_name = f"{invoice_number[:80] or source_invoice_id}.pdf"
