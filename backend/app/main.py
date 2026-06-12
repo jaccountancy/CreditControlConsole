@@ -1660,8 +1660,11 @@ async def api_contact_archive_review(
 
 @app.post("/api/contact-archive/archive")
 async def api_contact_archive_archive(request: Request, user: dict = Depends(require_panel_write_user)):
-    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
-    return {"status": "ok", "contactArchive": await contact_archive_bulk_archive_payload(user, payload)}
+    try:
+        payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        payload = {}
+    return {"status": "ok", "contactArchive": await contact_archive_bulk_archive_payload(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/contact-archive/client-register-sync")
