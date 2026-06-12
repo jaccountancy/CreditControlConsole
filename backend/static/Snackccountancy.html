@@ -44,51 +44,89 @@
         .hero {
             border-top: 4px solid var(--orange);
         }
-        h1 {
+        #snackApp h1 {
             margin: 0;
-            font-size: clamp(0.95rem, 6.8vw, 1.55rem);
+            font-size: clamp(0.72rem, 4.9vw, 1.2rem);
             line-height: 1.1;
             white-space: nowrap;
             max-width: 100%;
+            letter-spacing: -0.02em;
         }
-        .sub { margin-top: 4px; color: var(--muted); font-size: 0.92rem; }
-        .products {
+        #snackApp .sub { margin-top: 4px; color: var(--muted); font-size: 0.92rem; }
+        #snackApp .products {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: 1fr;
             gap: 10px;
         }
-        .product-button {
+        #snackApp .product-button {
+            all: unset;
+            box-sizing: border-box;
             border: 1px solid var(--line);
-            border-radius: 14px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 100%;
             padding: 12px;
             display: grid;
-            gap: 7px;
-            align-content: start;
+            grid-template-columns: 44px minmax(0, 1fr) auto;
+            gap: 8px 10px;
+            align-items: center;
             text-align: left;
             cursor: pointer;
             background: #fff;
-            min-height: 190px;
             position: relative;
+            box-shadow: 0 8px 20px rgba(13, 51, 88, 0.06);
+            overflow: hidden;
+            touch-action: manipulation;
         }
-        .product-button:active {
+        #snackApp .product-button:active {
             transform: translateY(1px);
         }
-        .picon { font-size: 2rem; line-height: 1; }
-        .pname { font-weight: 800; }
-        .pprice { color: var(--blue); font-size: 1.08rem; font-weight: 800; }
-        .tap-hint { color: var(--muted); font-size: 0.82rem; }
-        .qty-badge {
+        #snackApp .picon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            line-height: 1;
+            font-size: 1.45rem;
+            background: #eff6ff;
+        }
+        #snackApp .p-main {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+        #snackApp .pname {
+            font-weight: 900;
+            font-size: 1rem;
+            color: var(--blue);
+        }
+        #snackApp .pdesc {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+        #snackApp .pprice {
+            color: var(--blue);
+            font-size: 1.34rem;
+            font-weight: 900;
+            line-height: 1;
+            align-self: center;
+            padding-right: 2px;
+        }
+        #snackApp .tap-hint { color: var(--muted); font-size: 0.8rem; }
+        #snackApp .qty-badge {
             position: absolute;
-            right: 10px;
-            top: 10px;
+            right: 8px;
+            top: 8px;
             border-radius: 999px;
-            min-width: 30px;
-            height: 30px;
-            padding: 0 10px;
+            min-width: 26px;
+            height: 26px;
+            padding: 0 7px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-weight: 800;
+            font-weight: 900;
+            font-size: 0.8rem;
             color: #fff;
             background: var(--blue);
             border: 2px solid #fff;
@@ -160,8 +198,14 @@
             gap: 10px;
         }
         .basket-total { font-size: 1.36rem; font-weight: 900; color: var(--blue); }
-        .wallet-row { display: grid; gap: 8px; }
-        #expressCheckout { min-height: 46px; }
+        .wallet-row { display: grid; gap: 10px; }
+        #expressCheckout {
+            min-height: 54px;
+            border: 1px dashed #c2d6ea;
+            border-radius: 12px;
+            padding: 8px;
+            background: #fbfdff;
+        }
         #paymentElement { margin-top: 8px; }
         [hidden] { display: none !important; }
         @media (max-width: 420px) {
@@ -169,11 +213,22 @@
             .wrap { padding: 10px 10px 24px; }
             .card { padding: 12px; }
             .sub { font-size: 0.88rem; }
-            .products {
-                grid-template-columns: 1fr;
+            #snackApp h1 {
+                font-size: clamp(0.64rem, 4.5vw, 0.98rem);
             }
-            .product-button {
-                min-height: 160px;
+            #snackApp .product-button {
+                grid-template-columns: 40px minmax(0, 1fr);
+                padding: 11px;
+            }
+            #snackApp .picon {
+                width: 40px;
+                height: 40px;
+                font-size: 1.25rem;
+            }
+            #snackApp .pprice {
+                grid-column: 1 / -1;
+                justify-self: end;
+                font-size: 1.25rem;
             }
             .basket-row {
                 align-items: center;
@@ -188,7 +243,7 @@
     </style>
 </head>
 <body>
-    <main class="wrap">
+    <main class="wrap" id="snackApp">
         <section class="card hero">
             <h1><span style="color:var(--orange)">SNACK</span><span style="color:var(--blue)">CCOUNTANCY</span></h1>
             <div class="sub">Quick drinks checkout at Unit 6, The Kiln.</div>
@@ -241,7 +296,9 @@
             </div>
 
             <div class="wallet-row">
+                <div class="muted" style="font-weight:800;color:var(--ink);">Express checkout</div>
                 <div id="expressCheckout"></div>
+                <div class="muted">Apple Pay, Google Pay and Link appear here first.</div>
                 <button class="btn btn-wallet" id="cardCheckoutBtn" type="button">Pay by card</button>
                 <div id="paymentElement" hidden></div>
                 <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Confirm card payment</button>
@@ -371,10 +428,12 @@
                 button.innerHTML = `
                     <span class="qty-badge" id="qty-${product.sku}">${qty}</span>
                     <div class="picon">${icon}</div>
-                    <div class="pname">${product.name}</div>
-                    <div class="muted">${product.description || ""}</div>
+                    <div class="p-main">
+                        <div class="pname">${product.name}</div>
+                        <div class="pdesc">${product.description || ""}</div>
+                        <div class="tap-hint">Tap to add</div>
+                    </div>
                     <div class="pprice">£${money(product.price_pence)}</div>
-                    <div class="tap-hint">Tap to add to basket</div>
                 `;
                 ui.productList.appendChild(button);
             });
@@ -469,7 +528,7 @@
             state.basket = localBasketFromItems(items);
             applyBasketUi(state.basket);
             ui.checkoutStatus.className = "status";
-            ui.checkoutStatus.textContent = "Ready to pay with Apple Pay / Google Pay / Link or card.";
+            ui.checkoutStatus.textContent = "Ready to pay. Use Express Checkout first, or card below.";
 
             try {
                 const response = await fetch(snackApiUrl("/api/snackccountancy/calculate-basket"), {
@@ -637,7 +696,7 @@
                 }
 
                 ui.checkoutStatus.className = "status";
-                ui.checkoutStatus.textContent = "Choose wallet or card to complete payment.";
+                ui.checkoutStatus.textContent = "Express checkout is ready. You can also pay by card.";
             } catch (_) {
                 ui.checkoutStatus.className = "status warn";
                 ui.checkoutStatus.textContent = "Checkout could not load. Please try again.";

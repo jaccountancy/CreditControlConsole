@@ -913,7 +913,12 @@ def _email_from_payment_intent_object(payment_intent: dict[str, Any]) -> str:
     return ""
 
 
-def _ensure_customer_for_paid_order(order: dict[str, Any], payment_intent: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def _ensure_customer_for_paid_order(
+    order: dict[str, Any],
+    payment_intent: dict[str, Any] | None = None,
+    fallback_email: str | None = None,
+    fallback_name: str | None = None,
+) -> dict[str, Any] | None:
     if order.get("customer_id"):
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -926,8 +931,11 @@ def _ensure_customer_for_paid_order(order: dict[str, Any], payment_intent: dict[
     if not email and payment_intent:
         email = _email_from_payment_intent_object(payment_intent)
     if not email:
+        email = _normalise_email(fallback_email)
+    if not email:
         return None
 
+    preferred_name = str(fallback_name or "").strip() or email.split("@")[0]
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -945,7 +953,7 @@ def _ensure_customer_for_paid_order(order: dict[str, Any], payment_intent: dict[
                     updated_at = NOW()
                 RETURNING *
                 """,
-                (email, email.split("@")[0]),
+                (email, preferred_name),
             )
             customer = cursor.fetchone()
             cursor.execute(
@@ -1176,7 +1184,12 @@ def snack_handle_stripe_webhook(body: bytes, signature: str | None) -> dict[str,
     return {"status": "ignored", "event": event_type}
 
 
-def snack_claim_paid_order_session(order_number: str, payment_intent_id: str) -> dict[str, Any]:
+def snack_claim_paid_order_session(
+    order_number: str,
+    payment_intent_id: str,
+    email: str | None = None,
+    name: str | None = None,
+) -> dict[str, Any]:
     if not order_number or not payment_intent_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="order_number and payment_intent_id are required.")
 
@@ -1206,7 +1219,12 @@ def snack_claim_paid_order_session(order_number: str, payment_intent_id: str) ->
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found for this payment.")
 
-    customer = _ensure_customer_for_paid_order(order, payment_intent=payment_intent)
+    customer = _ensure_customer_for_paid_order(
+        order,
+        payment_intent=payment_intent,
+        fallback_email=email,
+        fallback_name=name,
+    )
     if not customer:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No customer email was available to create an account.")
 
