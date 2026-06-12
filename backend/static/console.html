@@ -6428,6 +6428,111 @@
                 background: rgba(133, 147, 173, 0.12);
                 border-color: rgba(133, 147, 173, 0.22);
             }
+            .domain-troubleshooter-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 430;
+                display: grid;
+                place-items: center;
+                background: rgba(17, 28, 51, 0.52);
+                padding: 24px;
+            }
+            .domain-troubleshooter-panel {
+                width: min(940px, 100%);
+                max-height: min(82vh, 880px);
+                overflow-y: auto;
+                border-radius: 18px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: rgba(248, 252, 255, 0.98);
+                box-shadow: 0 22px 56px rgba(20, 36, 66, 0.34);
+                padding: 18px;
+                display: grid;
+                gap: 12px;
+            }
+            .domain-troubleshooter-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .domain-troubleshooter-head h4 {
+                margin: 0;
+                font-size: 1.04rem;
+                line-height: 1.2;
+            }
+            .domain-troubleshooter-head p {
+                margin: 4px 0 0;
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 700;
+                line-height: 1.35;
+            }
+            .domain-troubleshooter-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 8px;
+            }
+            .domain-troubleshooter-item {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 11px;
+                background: rgba(255, 255, 255, 0.86);
+                display: grid;
+                gap: 4px;
+            }
+            .domain-troubleshooter-item strong {
+                font-size: 0.88rem;
+                line-height: 1.2;
+            }
+            .domain-troubleshooter-item span {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 700;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+            }
+            .domain-troubleshooter-item.is-error {
+                border-color: rgba(255, 83, 83, 0.3);
+                background: rgba(255, 231, 231, 0.72);
+            }
+            .domain-troubleshooter-item.is-warn {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: rgba(255, 243, 223, 0.76);
+            }
+            .domain-troubleshooter-item.is-ok {
+                border-color: rgba(39, 176, 95, 0.3);
+                background: rgba(232, 248, 238, 0.72);
+            }
+            .domain-troubleshooter-section {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.8);
+                padding: 11px 12px;
+            }
+            .domain-troubleshooter-section h5 {
+                margin: 0 0 8px;
+                font-size: 0.84rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .domain-troubleshooter-list {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 6px;
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: var(--ink);
+            }
+            .domain-troubleshooter-list li {
+                line-height: 1.4;
+            }
+            .domain-troubleshooter-actions {
+                display: flex;
+                gap: 8px;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+            }
             .system-health-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -25663,6 +25768,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 20h14"></path><path d="M7 16h3"></path><path d="M11 12h3"></path><path d="M15 8h2"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Client Call Stats</strong><span>Call activity and outcomes</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-pi-clearing-account" data-app-nav="pi-clearing-account">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 15h4"></path><path d="M13 11h4"></path><path d="M9 7h6"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>PI Clearing Account</strong><span>Dedicated workspace</span></span>
+                                </a>
                             </div>
                         </div>
                         <div class="app-nav-group" data-app-nav-group="companies-house">
@@ -26570,6 +26679,7 @@
                                     </div>
                                     <div class="detail-actions">
                                         <button class="primary-button" id="domainSettingsRunChecksButton" type="button">Run checks now</button>
+                                        <button class="ghost-button" id="domainSettingsTroubleshootButton" type="button">Troubleshoot</button>
                                         <button class="ghost-button" id="domainSettingsRefreshStatusButton" type="button">Refresh status</button>
                                         <button class="ghost-button" id="domainSettingsSaveConfigButton" type="button">Save profile</button>
                                     </div>
@@ -26596,6 +26706,30 @@
                                 <div class="domain-health-check-grid" id="domainSettingsCheckGrid"></div>
                                 <div class="database-metrics-list settings-usage-list" id="domainSettingsTimeline"></div>
                             </section>
+                            <div class="domain-troubleshooter-modal" id="domainTroubleshooterModal" hidden>
+                                <section class="domain-troubleshooter-panel" role="dialog" aria-modal="true" aria-labelledby="domainTroubleshooterTitle">
+                                    <div class="domain-troubleshooter-head">
+                                        <div>
+                                            <h4 id="domainTroubleshooterTitle">Domain Troubleshooter</h4>
+                                            <p id="domainTroubleshooterSubtitle">Run checks to generate DNS and HTTPS diagnostics.</p>
+                                        </div>
+                                        <button class="ghost-button" id="closeDomainTroubleshooterButton" type="button">Close</button>
+                                    </div>
+                                    <div class="domain-troubleshooter-grid" id="domainTroubleshooterStatusGrid"></div>
+                                    <section class="domain-troubleshooter-section">
+                                        <h5>Findings</h5>
+                                        <ol class="domain-troubleshooter-list" id="domainTroubleshooterFindings"></ol>
+                                    </section>
+                                    <section class="domain-troubleshooter-section">
+                                        <h5>Recommended Fix Steps</h5>
+                                        <ol class="domain-troubleshooter-list" id="domainTroubleshooterActions"></ol>
+                                    </section>
+                                    <div class="domain-troubleshooter-actions">
+                                        <button class="ghost-button" id="domainTroubleshooterRunChecksButton" type="button">Run checks now</button>
+                                        <button class="primary-button" id="domainTroubleshooterCloseActionButton" type="button">Done</button>
+                                    </div>
+                                </section>
+                            </div>
 
                             <section class="detail-panel settings-panel" data-settings-section="xero-connection">
                                 <div class="panel-heading">
@@ -30641,6 +30775,23 @@
                             </div>
                         </section>
                     </section>
+                    <section class="late-charges-screen detail-card" id="piClearingAccountScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>PI Clearing Account</h3>
+                                    <p class="detail-meta">Dedicated workspace for PI Clearing Account tasks.</p>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="piClearingAccountSummary">PI Clearing Account workspace is ready.</p>
+                            <div class="empty-state">
+                                <p class="eyebrow">Blank workspace</p>
+                                <h4>PI Clearing Account page created</h4>
+                                <p>This page is currently blank and ready for your next build step.</p>
+                            </div>
+                        </section>
+                    </section>
 
                     <section class="insights-screen detail-card" id="insightsScreen" hidden>
                         <div class="detail-hero insights-hero" id="insightsHeroCard">
@@ -32163,6 +32314,7 @@
                 "micro-analyzer": "VAT on Unregistered",
                 "payroll-headcount": "Payroll Headcount",
                 "client-call-stats": "Client Call Stats",
+                "pi-clearing-account": "PI Clearing Account",
                 vault: "Vault",
                 settings: "Settings"
             };
@@ -32199,6 +32351,7 @@
                 "micro-analyzer": "Identify Ignition Micro/Starter clients and clear VAT coding from matched Xero transactions.",
                 "payroll-headcount": "Track payroll headcount changes and highlight movement trends.",
                 "client-call-stats": "Review client call volumes, outcomes, and follow-up coverage.",
+                "pi-clearing-account": "Open the PI Clearing Account dedicated workspace.",
                 vault: "Upload, preview, and search files with AI-driven naming, folders, dedupe, and activity tracking.",
                 settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
             };
@@ -32312,6 +32465,7 @@
             let settingsUsageDetail = null;
             let settingsUsageSelection = null;
             let settingsUsageInspectorModalOpen = false;
+            let domainHealthTroubleshooterModalOpen = false;
             let productReleasesLoading = false;
             let productReleasesData = loadProductReleasesHistory();
             let productReleasesAutoRefreshTimer = null;
@@ -36245,6 +36399,7 @@
                 if (activeView === "xero-subs-review") return "xero-subs-review";
                 if (activeView === "payroll-headcount") return "payroll-headcount";
                 if (activeView === "client-call-stats") return "client-call-stats";
+                if (activeView === "pi-clearing-account") return "pi-clearing-account";
                 if (activeView === "settings") return "settings";
                 if (activeView === "client") return "clients";
                 return "clients";
@@ -36466,6 +36621,7 @@
                 if (activeView === "micro-analyzer") return "practice";
                 if (activeView === "payroll-headcount") return "practice";
                 if (activeView === "client-call-stats") return "practice";
+                if (activeView === "pi-clearing-account") return "practice";
                 if (activeView === "vault") return "practice";
                 if (activeView === "settings") return "settings";
                 if (activeView === "insights") return "insights";
@@ -36603,12 +36759,13 @@
                 setElementVisible(document.getElementById("microAnalyzerScreen"), activeView === "micro-analyzer");
                 setElementVisible(document.getElementById("payrollHeadcountScreen"), activeView === "payroll-headcount");
                 setElementVisible(document.getElementById("clientCallStatsScreen"), activeView === "client-call-stats");
+                setElementVisible(document.getElementById("piClearingAccountScreen"), activeView === "pi-clearing-account");
                 setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("vaultScreen"), activeView === "vault");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "payroll-headcount", "client-call-stats", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -36701,6 +36858,15 @@
 
             function openClientCallStatsScreen() {
                 activeView = "client-call-stats";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openPiClearingAccountScreen() {
+                activeView = "pi-clearing-account";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
@@ -39570,6 +39736,12 @@
                 summary.textContent = "Client call statistics workspace is ready.";
             }
 
+            function renderPiClearingAccountScreen() {
+                const summary = document.getElementById("piClearingAccountSummary");
+                if (!summary) return;
+                summary.textContent = "PI Clearing Account workspace is ready.";
+            }
+
             function openTaskTrackerScreen() {
                 activeView = "tasks";
                 syncActiveViewShell();
@@ -39683,6 +39855,7 @@
                 if (section === "xero-subs-review") return openXeroSubsReviewScreen();
                 if (section === "payroll-headcount") return openPayrollHeadcountScreen();
                 if (section === "client-call-stats") return openClientCallStatsScreen();
+                if (section === "pi-clearing-account") return openPiClearingAccountScreen();
                 if (section === "settings") return openSettingsScreen();
             }
 
@@ -39829,6 +40002,7 @@
                 "micro-analyzer",
                 "payroll-headcount",
                 "client-call-stats",
+                "pi-clearing-account",
             ]);
             const companiesHouseNavSections = new Set([
                 "confirmation-statements",
@@ -39958,6 +40132,7 @@
                 "micro-analyzer": "credit-control-micro-analyzer",
                 "payroll-headcount": "credit-control-payroll-headcount",
                 "client-call-stats": "credit-control-client-call-stats",
+                "pi-clearing-account": "credit-control-pi-clearing-account",
                 vault: "credit-control-vault",
                 settings: "credit-control-settings",
             };
@@ -68726,6 +68901,7 @@
                     "xero-subs-review": "Xero Subs Review",
                     "payroll-headcount": "Payroll Headcount",
                     "client-call-stats": "Client Call Stats",
+                    "pi-clearing-account": "PI Clearing Account",
                     vault: "Vault"
                 }[view] || "Console";
             }
@@ -69437,6 +69613,7 @@
                 else if (activeView === "micro-analyzer") activeNavSection = "micro-analyzer";
                 else if (activeView === "payroll-headcount") activeNavSection = "payroll-headcount";
                 else if (activeView === "client-call-stats") activeNavSection = "client-call-stats";
+                else if (activeView === "pi-clearing-account") activeNavSection = "pi-clearing-account";
                 else if (activeView === "vault") activeNavSection = "vault";
                 else if (activeView === "practice-packs") activeNavSection = "practice-packs";
                 else if (activeView === "settings") activeNavSection = "settings";
@@ -82186,6 +82363,7 @@
                     ["renderMicroAnalyzerScreen", () => renderMicroAnalyzerScreen()],
                     ["renderPayrollHeadcountScreen", () => renderPayrollHeadcountScreen()],
                     ["renderClientCallStatsScreen", () => renderClientCallStatsScreen()],
+                    ["renderPiClearingAccountScreen", () => renderPiClearingAccountScreen()],
                     ["renderIdentityVerificationScreen", () => renderIdentityVerificationScreen()],
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderClientScreen", () => renderClientScreen()],
@@ -83732,16 +83910,86 @@
                 return String(value || "").trim().replace(/^"+|"+$/g, "").replace(/\\"/g, "\"");
             }
 
-            async function resolveDnsRecords(name, type) {
+            function formatDnsStatus(statusCode) {
+                const code = Number(statusCode);
+                if (!Number.isFinite(code)) return "unknown";
+                if (code === 0) return "ok";
+                if (code === 2) return "servfail";
+                if (code === 3) return "nxdomain";
+                if (code === 5) return "refused";
+                return `status-${code}`;
+            }
+
+            async function resolveDnsDiagnostic(name, type) {
                 const safeName = normaliseDomainHost(name);
                 const safeType = String(type || "").trim().toUpperCase();
-                if (!safeName || !safeType) return [];
+                if (!safeName || !safeType) {
+                    return {
+                        name: safeName,
+                        type: safeType,
+                        endpoint: "",
+                        status: "invalid",
+                        statusCode: null,
+                        answers: [],
+                        authority: "",
+                        comment: "",
+                    };
+                }
                 const endpoint = `https://dns.google/resolve?name=${encodeURIComponent(safeName)}&type=${encodeURIComponent(safeType)}`;
-                const response = await fetch(endpoint, { method: "GET", cache: "no-store" });
-                if (!response.ok) throw new Error(`DNS lookup failed (${response.status})`);
+                let response;
+                try {
+                    response = await fetch(endpoint, { method: "GET", cache: "no-store" });
+                } catch (error) {
+                    return {
+                        name: safeName,
+                        type: safeType,
+                        endpoint,
+                        status: "network-error",
+                        statusCode: null,
+                        answers: [],
+                        authority: "",
+                        comment: error?.message || "DNS endpoint request failed.",
+                    };
+                }
+                if (!response.ok) {
+                    return {
+                        name: safeName,
+                        type: safeType,
+                        endpoint,
+                        status: "http-error",
+                        statusCode: response.status,
+                        answers: [],
+                        authority: "",
+                        comment: `HTTP ${response.status}`,
+                    };
+                }
                 const payload = await response.json().catch(() => ({}));
-                const answers = Array.isArray(payload?.Answer) ? payload.Answer : [];
-                return answers.map((answer) => String(answer?.data || "").trim()).filter(Boolean);
+                const answers = (Array.isArray(payload?.Answer) ? payload.Answer : [])
+                    .map((answer) => String(answer?.data || "").trim())
+                    .filter(Boolean);
+                const authorityRecord = (Array.isArray(payload?.Authority) ? payload.Authority : []).find((record) => Number(record?.type) === 6);
+                return {
+                    name: safeName,
+                    type: safeType,
+                    endpoint,
+                    status: formatDnsStatus(payload?.Status),
+                    statusCode: Number.isFinite(Number(payload?.Status)) ? Number(payload.Status) : null,
+                    answers,
+                    authority: String(authorityRecord?.data || "").trim(),
+                    comment: String(payload?.Comment || "").trim(),
+                };
+            }
+
+            async function resolveDnsRecords(name, type) {
+                const diagnostic = await resolveDnsDiagnostic(name, type);
+                return Array.isArray(diagnostic?.answers) ? diagnostic.answers : [];
+            }
+
+            function txtRecordMatchesExpected(expectedTxt, liveTxtRecords) {
+                const expected = normaliseTxtAnswer(expectedTxt);
+                if (!expected) return Array.isArray(liveTxtRecords) && liveTxtRecords.length > 0;
+                const values = (Array.isArray(liveTxtRecords) ? liveTxtRecords : []).map(normaliseTxtAnswer).filter(Boolean);
+                return values.some((value) => value === expected || value.includes(expected) || expected.includes(value));
             }
 
             function domainHealthCheckMarkup(check) {
@@ -83799,6 +84047,7 @@
                 const txtHostInput = document.getElementById("domainSettingsTxtHostInput");
                 const txtValueInput = document.getElementById("domainSettingsExpectedTxtInput");
                 const runButton = document.getElementById("domainSettingsRunChecksButton");
+                const troubleshootButton = document.getElementById("domainSettingsTroubleshootButton");
                 const settingsRefreshButton = document.getElementById("domainSettingsRefreshStatusButton");
                 const saveButton = document.getElementById("domainSettingsSaveConfigButton");
                 const refreshButton = document.getElementById("systemStatusDomainHealthRefreshButton");
@@ -83853,6 +84102,8 @@
                             [`Expected TXT`, result.expectedTxt || "--"],
                             [`Live CNAME`, (result.liveCname || []).join(" | ") || "None returned"],
                             [`Live TXT`, (result.liveTxt || []).join(" | ") || "None returned"],
+                            [`CNAME DNS status`, result?.dnsDiagnostics?.cname?.status || "--"],
+                            [`TXT DNS status`, result?.dnsDiagnostics?.txt?.status || "--"],
                             [`HTTPS`, result.httpsStatus || "Not checked"],
                         ];
                         settingsTimeline.innerHTML = `
@@ -83876,8 +84127,10 @@
                     settingsRefreshButton.disabled = domainHealthLoading;
                     settingsRefreshButton.textContent = domainHealthLoading ? "Refreshing..." : "Refresh status";
                 }
+                if (troubleshootButton) troubleshootButton.disabled = domainHealthLoading;
                 if (saveButton) saveButton.disabled = domainHealthLoading;
                 if (refreshButton) refreshButton.disabled = domainHealthLoading;
+                renderDomainTroubleshooterModal();
             }
 
             async function runDomainHealthChecks({ silent = false } = {}) {
@@ -83892,17 +84145,23 @@
                 let liveCname = [];
                 let liveTxt = [];
                 let httpsStatus = "Unknown";
+                const dnsDiagnostics = {};
                 try {
                     if (!domainHost) throw new Error("Set a public domain before running checks.");
                     if (expectedCname) {
-                        liveCname = await resolveDnsRecords(domainHost, "CNAME");
+                        const cnameDiagnostic = await resolveDnsDiagnostic(domainHost, "CNAME");
+                        dnsDiagnostics.cname = cnameDiagnostic;
+                        liveCname = Array.isArray(cnameDiagnostic?.answers) ? cnameDiagnostic.answers : [];
                         const normalisedLiveCname = liveCname.map(normaliseDomainHost);
                         const cnameOk = normalisedLiveCname.includes(expectedCname);
+                        const cnameDetail = cnameOk
+                            ? `${domainHost} points to ${expectedCname}`
+                            : `Live: ${(liveCname || []).join(", ") || "none"}${cnameDiagnostic?.status && cnameDiagnostic.status !== "ok" ? ` · DNS status: ${cnameDiagnostic.status}` : ""}`;
                         checks.push({
                             label: "CNAME",
                             state: cnameOk ? "ok" : "error",
                             headline: cnameOk ? "CNAME target matched" : "CNAME target mismatch",
-                            detail: cnameOk ? `${domainHost} points to ${expectedCname}` : `Live: ${(liveCname || []).join(", ") || "none"}`
+                            detail: cnameDetail,
                         });
                     } else {
                         checks.push({
@@ -83913,14 +84172,18 @@
                         });
                     }
                     if (txtHost) {
-                        liveTxt = await resolveDnsRecords(txtHost, "TXT");
-                        const normalisedLiveTxt = liveTxt.map(normaliseTxtAnswer);
-                        const txtOk = expectedTxt ? normalisedLiveTxt.includes(expectedTxt) : normalisedLiveTxt.length > 0;
+                        const txtDiagnostic = await resolveDnsDiagnostic(txtHost, "TXT");
+                        dnsDiagnostics.txt = txtDiagnostic;
+                        liveTxt = Array.isArray(txtDiagnostic?.answers) ? txtDiagnostic.answers : [];
+                        const txtOk = txtRecordMatchesExpected(expectedTxt, liveTxt);
+                        const txtDetail = txtOk
+                            ? `${txtHost} verification record found`
+                            : `Live: ${(liveTxt || []).join(", ") || "none"}${txtDiagnostic?.status && txtDiagnostic.status !== "ok" ? ` · DNS status: ${txtDiagnostic.status}` : ""}`;
                         checks.push({
                             label: "TXT verify",
                             state: txtOk ? "ok" : "error",
                             headline: txtOk ? "TXT verification present" : "TXT verification missing",
-                            detail: txtOk ? `${txtHost} verification record found` : `Live: ${(liveTxt || []).join(", ") || "none"}`
+                            detail: txtDetail,
                         });
                     } else {
                         checks.push({
@@ -83958,6 +84221,7 @@
                         liveCname,
                         liveTxt,
                         httpsStatus,
+                        dnsDiagnostics,
                         checks,
                     };
                     if (!silent) showToast("Domain checks completed.", "success");
@@ -83971,6 +84235,7 @@
                         liveCname,
                         liveTxt,
                         httpsStatus,
+                        dnsDiagnostics,
                         checks: [
                             {
                                 label: "Domain",
@@ -83985,6 +84250,125 @@
                     domainHealthLoading = false;
                     renderDomainHealthPanels();
                 }
+            }
+
+            function inferDomainLabel(hostname) {
+                const host = normaliseDomainHost(hostname);
+                if (!host) return "";
+                const parts = host.split(".");
+                if (parts.length <= 2) return parts[0] || host;
+                return parts.slice(0, Math.max(parts.length - 2, 1)).join(".");
+            }
+
+            function domainTroubleshooterFindings(result) {
+                const findings = [];
+                if (!result) {
+                    findings.push("No domain check has run yet. Use Run checks now to collect live DNS evidence.");
+                    return findings;
+                }
+                const cnameDns = String(result?.dnsDiagnostics?.cname?.status || "");
+                const txtDns = String(result?.dnsDiagnostics?.txt?.status || "");
+                if (cnameDns === "nxdomain") findings.push(`Authoritative DNS returned NXDOMAIN for ${result.domainHost || "the public host"}.`);
+                if (txtDns === "nxdomain") findings.push(`Authoritative DNS returned NXDOMAIN for ${result.txtHost || "the TXT host"}.`);
+                if (!Array.isArray(result.liveCname) || !result.liveCname.length) findings.push("No live CNAME answer was returned for the public domain.");
+                if (!Array.isArray(result.liveTxt) || !result.liveTxt.length) findings.push("No live TXT verification answer was returned.");
+                if (String(result.expectedTxt || "").trim().length > 0 && String(result.expectedTxt || "").trim().length < 20) {
+                    findings.push("Expected TXT value appears truncated. Railway verification tokens are usually longer.");
+                }
+                if (String(result.httpsStatus || "").toLowerCase().startsWith("probe failed")) {
+                    findings.push("HTTPS probe failed, which is expected until DNS resolves and Railway issues SSL.");
+                }
+                if (!findings.length) findings.push("No critical mismatch detected. DNS and HTTPS checks are currently passing.");
+                return findings;
+            }
+
+            function domainTroubleshooterActions(result) {
+                const domainHost = normaliseDomainHost(result?.domainHost || domainHealthSettings?.domainHost || "");
+                const cnameValue = normaliseDomainHost(result?.expectedCname || domainHealthSettings?.expectedCname || "");
+                const txtHost = normaliseDomainHost(result?.txtHost || domainHealthSettings?.txtHost || "");
+                const txtValue = normaliseTxtAnswer(result?.expectedTxt || domainHealthSettings?.expectedTxt || "");
+                const domainLabel = inferDomainLabel(domainHost);
+                const txtLabel = inferDomainLabel(txtHost);
+                const actions = [];
+                if (domainLabel && cnameValue) {
+                    actions.push(`In your DNS zone, confirm CNAME Name is "${domainLabel}" and target/value is "${cnameValue}" (no protocol, no extra spaces).`);
+                }
+                if (txtLabel) {
+                    actions.push(`Confirm TXT Name is "${txtLabel}" and value is the full Railway token${txtValue ? ` (currently set to "${txtValue}")` : ""}.`);
+                }
+                actions.push("If your DNS provider auto-appends the zone, enter only the host label (for example jeniusai, not the full domain).");
+                actions.push("After saving DNS records, wait for propagation and run checks again. Use 5-15 minutes for TTL and up to 24 hours for some resolvers.");
+                actions.push("When CNAME and TXT pass, wait for Railway to finish SSL issuance, then rerun HTTPS check.");
+                return actions;
+            }
+
+            function setDomainTroubleshooterModalOpen(open) {
+                domainHealthTroubleshooterModalOpen = Boolean(open);
+                const modal = document.getElementById("domainTroubleshooterModal");
+                if (modal) modal.hidden = !domainHealthTroubleshooterModalOpen;
+            }
+
+            function renderDomainTroubleshooterModal() {
+                const modal = document.getElementById("domainTroubleshooterModal");
+                if (!modal) return;
+                const subtitle = document.getElementById("domainTroubleshooterSubtitle");
+                const statusGrid = document.getElementById("domainTroubleshooterStatusGrid");
+                const findingsTarget = document.getElementById("domainTroubleshooterFindings");
+                const actionsTarget = document.getElementById("domainTroubleshooterActions");
+                const result = domainHealthLastResult;
+                const checkedAt = result?.checkedAt ? formatDate(result.checkedAt) : "Not checked yet";
+                if (subtitle) {
+                    subtitle.textContent = result
+                        ? `${result.domainHost || "Domain not set"} · last checked ${checkedAt}`
+                        : "Run checks to generate DNS and HTTPS diagnostics.";
+                }
+                if (statusGrid) {
+                    const cards = [
+                        {
+                            label: "CNAME DNS",
+                            value: result?.dnsDiagnostics?.cname?.status || "not checked",
+                            hint: result?.dnsDiagnostics?.cname?.authority || "No authority response captured.",
+                            tone: result?.dnsDiagnostics?.cname?.status === "ok" ? "ok" : result?.dnsDiagnostics?.cname?.status === "nxdomain" ? "error" : "warn",
+                        },
+                        {
+                            label: "TXT DNS",
+                            value: result?.dnsDiagnostics?.txt?.status || "not checked",
+                            hint: result?.dnsDiagnostics?.txt?.authority || "No authority response captured.",
+                            tone: result?.dnsDiagnostics?.txt?.status === "ok" ? "ok" : result?.dnsDiagnostics?.txt?.status === "nxdomain" ? "error" : "warn",
+                        },
+                        {
+                            label: "Live CNAME",
+                            value: (result?.liveCname || []).join(" | ") || "none",
+                            hint: `Expected: ${result?.expectedCname || domainHealthSettings?.expectedCname || "--"}`,
+                            tone: (result?.liveCname || []).length ? "ok" : "error",
+                        },
+                        {
+                            label: "Live TXT",
+                            value: (result?.liveTxt || []).join(" | ") || "none",
+                            hint: `Expected: ${result?.expectedTxt || domainHealthSettings?.expectedTxt || "--"}`,
+                            tone: txtRecordMatchesExpected(result?.expectedTxt || domainHealthSettings?.expectedTxt || "", result?.liveTxt || []) ? "ok" : "error",
+                        },
+                        {
+                            label: "HTTPS",
+                            value: result?.httpsStatus || "not checked",
+                            hint: result?.domainHost ? `https://${result.domainHost}` : "Configure a public domain first.",
+                            tone: String(result?.httpsStatus || "").toLowerCase().includes("reachable") ? "ok" : String(result?.httpsStatus || "").toLowerCase().startsWith("probe failed") ? "warn" : "warn",
+                        },
+                    ];
+                    statusGrid.innerHTML = cards.map((card) => `
+                        <article class="domain-troubleshooter-item is-${escapeHTML(card.tone)}">
+                            <strong>${escapeHTML(card.label)}: ${escapeHTML(String(card.value || "--"))}</strong>
+                            <span>${escapeHTML(String(card.hint || ""))}</span>
+                        </article>
+                    `).join("");
+                }
+                if (findingsTarget) {
+                    findingsTarget.innerHTML = domainTroubleshooterFindings(result).map((item) => `<li>${escapeHTML(item)}</li>`).join("");
+                }
+                if (actionsTarget) {
+                    actionsTarget.innerHTML = domainTroubleshooterActions(result).map((item) => `<li>${escapeHTML(item)}</li>`).join("");
+                }
+                modal.hidden = !domainHealthTroubleshooterModalOpen;
             }
 
             function renderDatabaseMetrics() {
@@ -86126,6 +86510,11 @@
                     renderDomainHealthPanels();
                     showToast("Domain profile saved.", "success");
                 });
+                document.getElementById("domainSettingsTroubleshootButton")?.addEventListener("click", () => {
+                    captureDomainHealthSettingsFromInputs();
+                    setDomainTroubleshooterModalOpen(true);
+                    renderDomainTroubleshooterModal();
+                });
                 document.getElementById("domainSettingsRunChecksButton")?.addEventListener("click", async () => {
                     captureDomainHealthSettingsFromInputs();
                     await runDomainHealthChecks({ silent: false });
@@ -86135,6 +86524,21 @@
                     await runDomainHealthChecks({ silent: false });
                 });
                 document.getElementById("systemStatusDomainHealthRefreshButton")?.addEventListener("click", () => runDomainHealthChecks({ silent: false }));
+                document.getElementById("domainTroubleshooterRunChecksButton")?.addEventListener("click", async () => {
+                    captureDomainHealthSettingsFromInputs();
+                    await runDomainHealthChecks({ silent: false });
+                    renderDomainTroubleshooterModal();
+                });
+                document.getElementById("closeDomainTroubleshooterButton")?.addEventListener("click", () => setDomainTroubleshooterModalOpen(false));
+                document.getElementById("domainTroubleshooterCloseActionButton")?.addEventListener("click", () => setDomainTroubleshooterModalOpen(false));
+                const domainTroubleshooterModal = document.getElementById("domainTroubleshooterModal");
+                if (domainTroubleshooterModal && domainTroubleshooterModal.dataset.domainWired !== "true") {
+                    domainTroubleshooterModal.dataset.domainWired = "true";
+                    domainTroubleshooterModal.addEventListener("click", (event) => {
+                        if (event.target?.id !== "domainTroubleshooterModal") return;
+                        setDomainTroubleshooterModalOpen(false);
+                    });
+                }
                 document.getElementById("settingsUsageDaysSelect")?.addEventListener("change", (event) => {
                     settingsUsageDays = Number(event.target?.value || 30);
                     loadSettingsUsage(true);
@@ -86187,8 +86591,9 @@
                 if (document.body.dataset.settingsUsageInspectorEscWired !== "true") {
                     document.body.dataset.settingsUsageInspectorEscWired = "true";
                     document.addEventListener("keydown", (event) => {
-                        if (event.key !== "Escape" || !settingsUsageInspectorModalOpen) return;
-                        setSettingsUsageInspectorModalOpen(false);
+                        if (event.key !== "Escape") return;
+                        if (settingsUsageInspectorModalOpen) setSettingsUsageInspectorModalOpen(false);
+                        if (domainHealthTroubleshooterModalOpen) setDomainTroubleshooterModalOpen(false);
                     });
                 }
                 document.getElementById("productReleasesRefreshButton")?.addEventListener("click", async () => {
