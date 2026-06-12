@@ -202,6 +202,19 @@ XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
+PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
+PI_CLEARING_MAX_MONTH_WINDOW = 24
+PI_CLEARING_AI_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "findings", "actions", "confidence"],
+    "properties": {
+        "summary": {"type": "string"},
+        "findings": {"type": "array", "items": {"type": "string"}},
+        "actions": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"},
+    },
+}
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
 VAT_INCREMENTAL_REFRESH_OVERLAP = timedelta(minutes=2)
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
@@ -1299,6 +1312,1083 @@ def sync_payroll_headcount_with_ignition(user: dict) -> dict:
         "matches": updates,
         "payrollHeadcount": payload,
     }
+
+
+def _pi_month_bounds(month_value: str | None = None) -> tuple[date, date]:
+    text = str(month_value or "").strip()
+    if not text:
+        month_start = _month_start()
+    else:
+        if re.fullmatch(r"\d{4}-\d{2}", text):
+            month_start = date.fromisoformat(f"{text}-01")
+        else:
+            parsed = _parse_any_date(text)
+            if not parsed:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month must be in YYYY-MM format.")
+            month_start = parsed.replace(day=1)
+    month_end = month_start.replace(day=monthrange(month_start.year, month_start.month)[1])
+    return month_start, month_end
+
+
+def _pi_client_key(value: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+    for suffix in ("limited", "ltd", "llp", "uk", "the"):
+        if text.endswith(suffix) and len(text) > len(suffix) + 3:
+            text = text[: -len(suffix)]
+    return text
+
+
+def _pi_first_non_empty(payload: dict, *paths: tuple[str, ...]) -> str:
+    for path in paths:
+        current = payload
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if current is not None and str(current).strip():
+            return str(current).strip()
+    return ""
+
+
+def _pi_amount_value(payload: dict) -> Decimal:
+    candidates = [
+        payload.get("amount"),
+        payload.get("value"),
+        payload.get("gross_amount"),
+        payload.get("grossAmount"),
+        payload.get("net_amount"),
+        payload.get("netAmount"),
+        payload.get("total"),
+        payload.get("total_amount"),
+        payload.get("totalAmount"),
+        payload.get("amount_paid"),
+        payload.get("amountPaid"),
+    ]
+    for candidate in candidates:
+        if candidate in (None, ""):
+            continue
+        try:
+            return _money(candidate)
+        except Exception:
+            continue
+    pence_candidates = [
+        payload.get("amount_pence"),
+        payload.get("amountPence"),
+        payload.get("amount_in_pence"),
+        payload.get("amountInPence"),
+    ]
+    for candidate in pence_candidates:
+        if candidate in (None, ""):
+            continue
+        try:
+            return _money(Decimal(str(candidate)) / Decimal("100"))
+        except Exception:
+            continue
+    return Decimal("0.00")
+
+
+def _pi_date_value(payload: dict) -> date | None:
+    for key in (
+        "payment_date",
+        "paymentDate",
+        "arrival_date",
+        "arrivalDate",
+        "payout_date",
+        "payoutDate",
+        "processed_at",
+        "processedAt",
+        "created_at",
+        "createdAt",
+        "date",
+        "paid_at",
+        "paidAt",
+    ):
+        parsed = _parse_any_date(payload.get(key))
+        if parsed:
+            return parsed
+    return None
+
+
+def _pi_is_reversal_entry(payload: dict, dataset: str = "") -> bool:
+    markers = [
+        payload.get("direction"),
+        payload.get("type"),
+        payload.get("kind"),
+        payload.get("status"),
+        payload.get("event"),
+        payload.get("event_type"),
+        payload.get("category"),
+        payload.get("payment_type"),
+        payload.get("paymentType"),
+        payload.get("description"),
+        payload.get("reason"),
+        payload.get("notes"),
+    ]
+    marker_text = " ".join(str(item or "").strip().lower() for item in markers if str(item or "").strip())
+    if any(
+        token in marker_text
+        for token in ("reversal", "reversed", "refund", "refunded", "chargeback", "dispute", "returned")
+    ):
+        return True
+    if bool(payload.get("is_reversal")) or bool(payload.get("isReversal")):
+        return True
+    if bool(payload.get("is_refund")) or bool(payload.get("isRefund")):
+        return True
+    return str(dataset or "").strip().lower() == "collections" and "reversal" in marker_text
+
+
+def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT dataset, payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset IN ('payments', 'collections')
+                ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+                LIMIT 50000
+                """,
+                (user["id"],),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    items: list[dict] = []
+    for row in rows:
+        dataset = str(row.get("dataset") or "").strip().lower()
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        if not payload:
+            continue
+        paid_on = _pi_date_value(payload)
+        if not paid_on or paid_on < month_start or paid_on > month_end:
+            continue
+        amount = _pi_amount_value(payload)
+        if amount == 0:
+            continue
+        is_reversal = _pi_is_reversal_entry(payload, dataset=dataset) or amount < 0
+        signed_amount = -amount.copy_abs() if is_reversal else amount
+        client_name = _pi_first_non_empty(
+            payload,
+            ("client_name",),
+            ("clientName",),
+            ("client",),
+            ("client", "name"),
+            ("proposal", "client_name"),
+            ("proposal", "clientName"),
+            ("payer_name",),
+            ("payerName",),
+            ("contact", "name"),
+        )
+        if not client_name:
+            client_name = "Unknown client"
+        payment_id = _pi_first_non_empty(payload, ("id",), ("payment_id",), ("paymentId",), ("external_id",))
+        payout_id = _pi_first_non_empty(payload, ("payout_id",), ("payoutId",), ("arrival_id",), ("arrivalId",))
+        items.append(
+            {
+                "paymentId": payment_id,
+                "payoutId": payout_id,
+                "paidOn": paid_on.isoformat(),
+                "amount": float(_money(signed_amount)),
+                "currencyCode": str(payload.get("currency") or payload.get("currency_code") or "GBP"),
+                "clientName": client_name,
+                "clientKey": _pi_client_key(client_name),
+                "isReversal": is_reversal,
+                "dataset": dataset,
+                "raw": payload,
+            }
+        )
+    return items
+
+
+def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, account_code: str) -> tuple[list[dict], str]:
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT p.xero_payment_id,
+                       p.payment_date,
+                       p.amount,
+                       p.currency_code,
+                       p.reference,
+                       p.account_name,
+                       p.raw,
+                       c.name AS customer_name,
+                       c.xero_contact_id
+                FROM payments p
+                LEFT JOIN customers c ON c.id = p.customer_id
+                WHERE p.tenant_id = %s
+                  AND p.payment_date >= %s
+                  AND p.payment_date <= %s
+                ORDER BY p.payment_date ASC, p.created_at ASC
+                """,
+                (tenant_id, month_start, month_end),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    wanted = str(account_code or "").strip().lower()
+    items: list[dict] = []
+    for row in rows:
+        raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+        raw_account = raw.get("Account") if isinstance(raw.get("Account"), dict) else {}
+        code = str(raw_account.get("Code") or "").strip()
+        name = str(raw_account.get("Name") or row.get("account_name") or "").strip()
+        if wanted:
+            if code.lower() != wanted and wanted not in name.lower():
+                continue
+        amount = _money(row.get("amount"))
+        if amount <= 0:
+            continue
+        client_name = str(row.get("customer_name") or "Unknown client").strip()
+        items.append(
+            {
+                "paymentId": str(row.get("xero_payment_id") or ""),
+                "paidOn": row.get("payment_date").isoformat() if row.get("payment_date") else "",
+                "amount": float(amount),
+                "currencyCode": str(row.get("currency_code") or "GBP"),
+                "clientName": client_name,
+                "clientKey": _pi_client_key(client_name),
+                "xeroContactId": str(row.get("xero_contact_id") or ""),
+                "reference": str(row.get("reference") or ""),
+                "accountCode": code,
+                "accountName": name,
+                "raw": raw,
+            }
+        )
+    return items, tenant_id
+
+
+def _pi_existing_credit_note_totals(
+    user: dict,
+    month_start: date,
+    month_end: date,
+    account_code: str,
+) -> dict[str, Decimal]:
+    account_code_value = str(account_code or "").strip().lower()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT xero_contact_id, SUM(amount) AS total_amount
+                FROM pi_clearing_credit_notes
+                WHERE user_id = %s
+                  AND credit_note_date >= %s
+                  AND credit_note_date <= %s
+                  AND status = 'created'
+                  AND (
+                        %s = ''
+                        OR LOWER(account_code) = %s
+                      )
+                GROUP BY xero_contact_id
+                """,
+                (user["id"], month_start, month_end, account_code_value, account_code_value),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    totals: dict[str, Decimal] = {}
+    for row in rows:
+        contact_id = str(row.get("xero_contact_id") or "").strip()
+        if not contact_id:
+            continue
+        totals[contact_id] = _money(row.get("total_amount"))
+    return totals
+
+
+def _pi_group_payout_date(ignition_rows: list[dict], fallback: date) -> date:
+    parsed_dates = [
+        _parse_optional_iso_date(str(item.get("paidOn") or "").strip())
+        for item in (ignition_rows or [])
+        if isinstance(item, dict)
+    ]
+    valid_dates = [item for item in parsed_dates if item is not None]
+    return max(valid_dates) if valid_dates else fallback
+
+
+def _pi_row_risk_and_explainer(
+    *,
+    difference: Decimal,
+    raw_difference: Decimal,
+    existing_credit_note_total: Decimal,
+    ignition_reversal_total: Decimal,
+    has_contact: bool,
+) -> tuple[str, int, str]:
+    diff_abs = difference.copy_abs()
+    risk_score = 12
+    reasons: list[str] = []
+
+    if not has_contact and difference > 0:
+        risk_score += 45
+        reasons.append("No Xero contact mapping.")
+    if ignition_reversal_total > Decimal("0.00"):
+        risk_score += 24
+        reasons.append(f"Ignition reversals total {ignition_reversal_total:.2f}.")
+    if diff_abs >= Decimal("500.00"):
+        risk_score += 26
+    elif diff_abs >= Decimal("200.00"):
+        risk_score += 16
+    elif diff_abs >= Decimal("80.00"):
+        risk_score += 8
+
+    if existing_credit_note_total > Decimal("0.00"):
+        risk_score += 6
+        reasons.append(f"Existing PI credit notes total {existing_credit_note_total:.2f}.")
+
+    risk_score = max(0, min(100, int(risk_score)))
+    if risk_score >= 70:
+        risk_level = "high"
+    elif risk_score >= 40:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    if difference == Decimal("0.00"):
+        explainer = "No mismatch after netting Ignition and existing PI credit notes."
+    elif existing_credit_note_total > Decimal("0.00") and difference <= Decimal("0.00"):
+        explainer = (
+            f"Raw mismatch {raw_difference:.2f} is already covered by existing PI credit notes "
+            f"({existing_credit_note_total:.2f})."
+        )
+    elif difference > Decimal("0.00") and ignition_reversal_total > Decimal("0.00"):
+        explainer = (
+            f"Ignition reversals ({ignition_reversal_total:.2f}) reduced net payout, "
+            f"leaving {difference:.2f} unmatched in Xero."
+        )
+    elif difference > Decimal("0.00"):
+        explainer = f"Xero exceeds Ignition net payout by {difference:.2f}."
+    else:
+        explainer = f"Ignition net payout exceeds Xero by {diff_abs:.2f}."
+
+    if reasons:
+        explainer = f"{explainer} {' '.join(reasons)}".strip()
+    return risk_level, risk_score, explainer
+
+
+async def _pi_ai_analysis(month_label: str, row_summaries: list[dict]) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key or not row_summaries:
+        return {
+            "summary": "AI analysis is unavailable. Review differences and create corrective credit notes where needed.",
+            "findings": [],
+            "actions": [],
+            "confidence": 0.0,
+            "engine": "local",
+        }
+    top_rows = sorted(row_summaries, key=lambda row: abs(float(row.get("difference") or 0)), reverse=True)[:30]
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a UK accounting reconciliation analyst. Explain month-end PI clearing mismatches between "
+                    "Xero and Ignition in concise operational language."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Month: {month_label}\n"
+                    f"Rows: {json.dumps(top_rows, default=_json_default)}\n"
+                    "Return only JSON matching the schema."
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "pi_clearing_analysis",
+                "schema": PI_CLEARING_AI_SCHEMA,
+                "strict": True,
+            }
+        },
+    }
+    try:
+        payload = await _post_openai_responses(request_body, "PI Clearing analysis")
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid PI Clearing analysis JSON.")
+        return {
+            "summary": str(parsed.get("summary") or "").strip(),
+            "findings": [str(item).strip() for item in (parsed.get("findings") or []) if str(item).strip()][:8],
+            "actions": [str(item).strip() for item in (parsed.get("actions") or []) if str(item).strip()][:8],
+            "confidence": float(parsed.get("confidence") or 0),
+            "engine": "openai",
+        }
+    except Exception as exc:
+        logger.exception("PI clearing AI analysis failed: %s", exc)
+        return {
+            "summary": "AI analysis failed. Use the difference table to resolve missing/extra payments manually.",
+            "findings": [str(exc)],
+            "actions": ["Review each difference row and create credit notes for positive variances."],
+            "confidence": 0.0,
+            "engine": "local_error",
+        }
+
+
+def _pi_run_payload(run_row: dict, rows: list[dict], credit_notes: list[dict]) -> dict:
+    return {
+        "id": str(run_row.get("id") or ""),
+        "tenantId": str(run_row.get("tenant_id") or ""),
+        "monthStart": run_row.get("month_start").isoformat() if run_row.get("month_start") else "",
+        "monthEnd": run_row.get("month_end").isoformat() if run_row.get("month_end") else "",
+        "accountCode": str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE),
+        "status": str(run_row.get("status") or "draft"),
+        "summary": run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {},
+        "analysis": run_row.get("ai_analysis") if isinstance(run_row.get("ai_analysis"), dict) else {},
+        "rows": rows,
+        "creditNotes": credit_notes,
+        "createdAt": _iso(run_row.get("created_at")) or "",
+        "updatedAt": _iso(run_row.get("updated_at")) or "",
+    }
+
+
+def pi_clearing_payload(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_runs
+                WHERE user_id = %s
+                ORDER BY month_start DESC, updated_at DESC
+                LIMIT 24
+                """,
+                (user["id"],),
+            )
+            run_rows = cursor.fetchall() or []
+            run_ids = [str(row.get("id") or "") for row in run_rows if row.get("id")]
+            rows_by_run: dict[str, list[dict]] = {}
+            notes_by_run: dict[str, list[dict]] = {}
+            if run_ids:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_run_rows
+                    WHERE run_id = ANY(%s)
+                    ORDER BY ABS(difference_total) DESC, client_name ASC
+                    """,
+                    (run_ids,),
+                )
+                for row in cursor.fetchall() or []:
+                    run_id = str(row.get("run_id") or "")
+                    raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+                    rows_by_run.setdefault(run_id, []).append(
+                        {
+                            "id": str(row.get("id") or ""),
+                            "rowType": str(row.get("row_type") or "difference"),
+                            "clientName": str(row.get("client_name") or ""),
+                            "xeroContactId": str(row.get("xero_contact_id") or ""),
+                            "xeroPaymentIds": row.get("xero_payment_ids") if isinstance(row.get("xero_payment_ids"), list) else [],
+                            "ignitionPaymentIds": row.get("ignition_payment_ids") if isinstance(row.get("ignition_payment_ids"), list) else [],
+                            "currencyCode": str(row.get("currency_code") or "GBP"),
+                            "xeroTotal": float(_money(row.get("xero_total"))),
+                            "ignitionTotal": float(_money(row.get("ignition_total"))),
+                            "ignitionGrossTotal": float(_money(raw_payload.get("ignitionGrossTotal"))),
+                            "ignitionReversalTotal": float(_money(raw_payload.get("ignitionReversalTotal"))),
+                            "rawDifference": float(_money(raw_payload.get("rawDifference"))),
+                            "existingCreditNoteTotal": float(_money(raw_payload.get("existingCreditNoteTotal"))),
+                            "riskLevel": str(raw_payload.get("riskLevel") or "low"),
+                            "riskScore": int(raw_payload.get("riskScore") or 0),
+                            "explainer": str(raw_payload.get("explainer") or ""),
+                            "payoutDate": str(raw_payload.get("payoutDate") or ""),
+                            "differenceTotal": float(_money(row.get("difference_total"))),
+                            "recommendation": str(row.get("recommendation") or ""),
+                            "resolutionStatus": str(row.get("resolution_status") or "pending"),
+                            "raw": raw_payload,
+                        }
+                    )
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_credit_notes
+                    WHERE run_id = ANY(%s)
+                    ORDER BY created_at DESC
+                    """,
+                    (run_ids,),
+                )
+                for note in cursor.fetchall() or []:
+                    run_id = str(note.get("run_id") or "")
+                    notes_by_run.setdefault(run_id, []).append(
+                        {
+                            "id": str(note.get("id") or ""),
+                            "runRowId": str(note.get("run_row_id") or ""),
+                            "xeroContactId": str(note.get("xero_contact_id") or ""),
+                            "xeroCreditNoteId": str(note.get("xero_credit_note_id") or ""),
+                            "xeroCreditNoteNumber": str(note.get("xero_credit_note_number") or ""),
+                            "creditNoteDate": note.get("credit_note_date").isoformat() if note.get("credit_note_date") else "",
+                            "amount": float(_money(note.get("amount"))),
+                            "currencyCode": str(note.get("currency_code") or "GBP"),
+                            "accountCode": str(note.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE),
+                            "status": str(note.get("status") or "created"),
+                            "createdAt": _iso(note.get("created_at")) or "",
+                        }
+                    )
+        connection.commit()
+    runs = [_pi_run_payload(row, rows_by_run.get(str(row.get("id") or ""), []), notes_by_run.get(str(row.get("id") or ""), [])) for row in run_rows]
+    return {"runs": runs}
+
+
+async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    month_start, month_end = _pi_month_bounds(str(safe_payload.get("month") or safe_payload.get("monthStart") or ""))
+    month_label = month_start.strftime("%Y-%m")
+    account_code = str(safe_payload.get("accountCode") or PI_CLEARING_DEFAULT_ACCOUNT_CODE).strip() or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+    xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
+    existing_credit_note_totals = _pi_existing_credit_note_totals(user, month_start, month_end, account_code)
+
+    grouped: dict[str, dict] = {}
+    for row in xero_rows:
+        key = str(row.get("clientKey") or "").strip() or f"xero:{row.get('paymentId')}"
+        group = grouped.setdefault(
+            key,
+            {
+                "clientName": row.get("clientName") or "Unknown client",
+                "xeroContactId": row.get("xeroContactId") or "",
+                "currencyCode": row.get("currencyCode") or "GBP",
+                "xeroTotal": Decimal("0.00"),
+                "ignitionTotal": Decimal("0.00"),
+                "ignitionGrossTotal": Decimal("0.00"),
+                "ignitionReversalTotal": Decimal("0.00"),
+                "xeroPaymentIds": [],
+                "ignitionPaymentIds": [],
+                "xeroRows": [],
+                "ignitionRows": [],
+            },
+        )
+        group["xeroTotal"] += _money(row.get("amount"))
+        group["xeroPaymentIds"].append(str(row.get("paymentId") or ""))
+        group["xeroRows"].append(row)
+        if not group.get("xeroContactId") and row.get("xeroContactId"):
+            group["xeroContactId"] = str(row.get("xeroContactId") or "")
+    for row in ignition_rows:
+        key = str(row.get("clientKey") or "").strip() or f"ignition:{row.get('paymentId')}"
+        group = grouped.setdefault(
+            key,
+            {
+                "clientName": row.get("clientName") or "Unknown client",
+                "xeroContactId": "",
+                "currencyCode": row.get("currencyCode") or "GBP",
+                "xeroTotal": Decimal("0.00"),
+                "ignitionTotal": Decimal("0.00"),
+                "ignitionGrossTotal": Decimal("0.00"),
+                "ignitionReversalTotal": Decimal("0.00"),
+                "xeroPaymentIds": [],
+                "ignitionPaymentIds": [],
+                "xeroRows": [],
+                "ignitionRows": [],
+            },
+        )
+        signed_amount = _money(row.get("amount"))
+        group["ignitionTotal"] += signed_amount
+        if bool(row.get("isReversal")) or signed_amount < 0:
+            group["ignitionReversalTotal"] += signed_amount.copy_abs()
+        else:
+            group["ignitionGrossTotal"] += signed_amount
+        group["ignitionPaymentIds"].append(str(row.get("paymentId") or ""))
+        group["ignitionRows"].append(row)
+
+    rows_to_store: list[dict] = []
+    for key, group in grouped.items():
+        existing_credit_note_total = Decimal("0.00")
+        contact_id = str(group.get("xeroContactId") or "").strip()
+        if contact_id:
+            existing_credit_note_total = _money(existing_credit_note_totals.get(contact_id))
+        raw_difference = (group["xeroTotal"] - group["ignitionTotal"]).quantize(Decimal("0.01"))
+        difference = (raw_difference - existing_credit_note_total).quantize(Decimal("0.01"))
+        payout_date = _pi_group_payout_date(group.get("ignitionRows") or [], month_end)
+        risk_level, risk_score, explainer = _pi_row_risk_and_explainer(
+            difference=difference,
+            raw_difference=raw_difference,
+            existing_credit_note_total=existing_credit_note_total,
+            ignition_reversal_total=_money(group.get("ignitionReversalTotal")),
+            has_contact=bool(contact_id),
+        )
+        recommendation = "No action required."
+        resolution_status = "pending"
+        if existing_credit_note_total > 0 and difference <= 0:
+            recommendation = "Difference appears already covered by prior PI Clearing credit note(s)."
+            resolution_status = "balanced_by_existing_credit_note"
+        if difference > 0:
+            if _money(group.get("ignitionReversalTotal")) > 0:
+                recommendation = "Ignition reversal/refund detected. Create PI Clearing credit note in Xero for the residual variance."
+            else:
+                recommendation = "Create PI Clearing credit note in Xero for the variance."
+            resolution_status = "pending"
+        elif difference < 0:
+            recommendation = "Investigate Ignition payout with no matching Xero payment."
+            resolution_status = "investigate"
+        rows_to_store.append(
+            {
+                "matchKey": key,
+                "clientName": str(group.get("clientName") or "Unknown client"),
+                "xeroContactId": str(group.get("xeroContactId") or ""),
+                "currencyCode": str(group.get("currencyCode") or "GBP"),
+                "xeroTotal": group["xeroTotal"],
+                "ignitionTotal": group["ignitionTotal"],
+                "ignitionGrossTotal": group["ignitionGrossTotal"],
+                "ignitionReversalTotal": group["ignitionReversalTotal"],
+                "rawDifference": raw_difference,
+                "existingCreditNoteTotal": existing_credit_note_total,
+                "difference": difference,
+                "recommendation": recommendation,
+                "resolutionStatus": resolution_status,
+                "riskLevel": risk_level,
+                "riskScore": risk_score,
+                "explainer": explainer,
+                "payoutDate": payout_date,
+                "xeroPaymentIds": [item for item in group.get("xeroPaymentIds") or [] if item],
+                "ignitionPaymentIds": [item for item in group.get("ignitionPaymentIds") or [] if item],
+                "raw": {
+                    "xeroRows": group.get("xeroRows") or [],
+                    "ignitionRows": group.get("ignitionRows") or [],
+                    "ignitionGrossTotal": float(_money(group.get("ignitionGrossTotal"))),
+                    "ignitionReversalTotal": float(_money(group.get("ignitionReversalTotal"))),
+                    "rawDifference": float(_money(raw_difference)),
+                    "existingCreditNoteTotal": float(_money(existing_credit_note_total)),
+                    "riskLevel": risk_level,
+                    "riskScore": risk_score,
+                    "explainer": explainer,
+                    "payoutDate": payout_date.isoformat(),
+                },
+            }
+        )
+    rows_to_store.sort(key=lambda row: abs(float(row.get("difference") or 0)), reverse=True)
+
+    ai_analysis = await _pi_ai_analysis(
+        month_label,
+        [
+            {
+                "clientName": row.get("clientName"),
+                "xeroTotal": float(row.get("xeroTotal") or 0),
+                "ignitionTotal": float(row.get("ignitionTotal") or 0),
+                "ignitionGrossTotal": float(row.get("ignitionGrossTotal") or 0),
+                "ignitionReversalTotal": float(row.get("ignitionReversalTotal") or 0),
+                "existingCreditNoteTotal": float(row.get("existingCreditNoteTotal") or 0),
+                "rawDifference": float(row.get("rawDifference") or 0),
+                "difference": float(row.get("difference") or 0),
+                "riskLevel": str(row.get("riskLevel") or "low"),
+                "riskScore": int(row.get("riskScore") or 0),
+                "explainer": str(row.get("explainer") or ""),
+                "hasContact": bool(row.get("xeroContactId")),
+            }
+            for row in rows_to_store
+        ],
+    )
+    summary = {
+        "xeroCount": len(xero_rows),
+        "ignitionCount": len(ignition_rows),
+        "differenceCount": sum(1 for row in rows_to_store if _money(row.get("difference")) != 0),
+        "creditNoteCandidateCount": sum(1 for row in rows_to_store if _money(row.get("difference")) > 0 and str(row.get("xeroContactId") or "").strip()),
+        "xeroTotal": float(sum((_money(row.get("amount")) for row in xero_rows), start=Decimal("0.00"))),
+        "ignitionTotal": float(sum((_money(row.get("amount")) for row in ignition_rows), start=Decimal("0.00"))),
+        "ignitionGrossTotal": float(sum((_money(row.get("amount")) for row in ignition_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))),
+        "ignitionReversalTotal": float(sum((_money(row.get("amount")).copy_abs() for row in ignition_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))),
+        "existingCreditNoteTotal": float(sum((_money(row.get("existingCreditNoteTotal")) for row in rows_to_store), start=Decimal("0.00"))),
+        "differenceTotal": float(sum((_money(row.get("difference")) for row in rows_to_store), start=Decimal("0.00"))),
+    }
+    status_value = "ready" if rows_to_store else "empty"
+    now = utcnow()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_runs (
+                    user_id, tenant_id, month_start, month_end, account_code, status, summary, ai_analysis, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                ON CONFLICT (user_id, tenant_id, month_start)
+                DO UPDATE
+                SET month_end = EXCLUDED.month_end,
+                    account_code = EXCLUDED.account_code,
+                    status = EXCLUDED.status,
+                    summary = EXCLUDED.summary,
+                    ai_analysis = EXCLUDED.ai_analysis,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    user["id"],
+                    tenant_id,
+                    month_start,
+                    month_end,
+                    account_code,
+                    status_value,
+                    json.dumps(summary, default=_json_default),
+                    json.dumps(ai_analysis, default=_json_default),
+                    now,
+                    now,
+                ),
+            )
+            run_row = cursor.fetchone() or {}
+            run_id = str(run_row.get("id") or "")
+            cursor.execute("DELETE FROM pi_clearing_run_rows WHERE run_id = %s", (run_id,))
+            for row in rows_to_store:
+                cursor.execute(
+                    """
+                    INSERT INTO pi_clearing_run_rows (
+                        run_id, user_id, month_start, month_end, row_type, match_key, client_name, xero_contact_id,
+                        xero_payment_ids, ignition_payment_ids, currency_code, xero_total, ignition_total, difference_total,
+                        recommendation, resolution_status, raw_payload, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    """,
+                    (
+                        run_id,
+                        user["id"],
+                        month_start,
+                        month_end,
+                        "difference",
+                        row.get("matchKey"),
+                        row.get("clientName"),
+                        row.get("xeroContactId"),
+                        json.dumps(row.get("xeroPaymentIds") or [], default=_json_default),
+                        json.dumps(row.get("ignitionPaymentIds") or [], default=_json_default),
+                        row.get("currencyCode") or "GBP",
+                        row.get("xeroTotal"),
+                        row.get("ignitionTotal"),
+                        row.get("difference"),
+                        row.get("recommendation") or "",
+                        row.get("resolutionStatus") or "pending",
+                        json.dumps(row.get("raw") or {}, default=_json_default),
+                        now,
+                        now,
+                    ),
+                )
+        connection.commit()
+    payload = pi_clearing_payload(user)
+    current_run = next((item for item in payload.get("runs") or [] if str(item.get("id") or "") == run_id), None)
+    return {"run": current_run or {}}
+
+
+def pi_clearing_dry_run_pdf(
+    user: dict,
+    run_id: str,
+    row_ids: list[str] | None = None,
+) -> tuple[bytes, str]:
+    selected = [str(item).strip() for item in (row_ids or []) if str(item).strip()]
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_runs
+                WHERE id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (run_id, user["id"]),
+            )
+            run_row = cursor.fetchone() or {}
+            if not run_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            query = """
+                SELECT *
+                FROM pi_clearing_run_rows
+                WHERE run_id = %s
+                  AND user_id = %s
+                  AND difference_total > 0
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+            """
+            params: list = [run_id, user["id"]]
+            if selected:
+                query += " AND id = ANY(%s)"
+                params.append(selected)
+            query += " ORDER BY ABS(difference_total) DESC, client_name ASC"
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall() or []
+        connection.commit()
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No eligible rows available for PI dry-run report.")
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ReportLab is required to export PI Clearing dry-run PDFs.",
+        ) from exc
+
+    period_start = run_row.get("month_start")
+    period_end = run_row.get("month_end")
+    title_month = period_start.strftime("%B %Y") if isinstance(period_start, date) else "Selected month"
+    account_code = str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE)
+
+    buffer = io.BytesIO()
+    styles = getSampleStyleSheet()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=28,
+        bottomMargin=24,
+    )
+    story: list = []
+    story.append(Paragraph("PI Clearing Dry-Run Credit Note Preview", styles["Title"]))
+    story.append(Paragraph(f"Month: {title_month}", styles["Normal"]))
+    story.append(Paragraph(f"Account code: {account_code}", styles["Normal"]))
+    if isinstance(period_start, date) and isinstance(period_end, date):
+        story.append(Paragraph(f"Period: {period_start.isoformat()} to {period_end.isoformat()}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+
+    table_rows = [["Client", "Payout date", "Difference", "Risk", "Why mismatch"]]
+    total_amount = Decimal("0.00")
+    for row in rows:
+        diff = _money(row.get("difference_total"))
+        if diff <= 0:
+            continue
+        total_amount += diff
+        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        risk_label = str(raw_payload.get("riskLevel") or "low").strip().title()
+        explainer = str(raw_payload.get("explainer") or row.get("recommendation") or "").strip()
+        payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate")) or period_end or period_start or utcnow().date()
+        table_rows.append(
+            [
+                str(row.get("client_name") or "Unknown client"),
+                payout_date.isoformat(),
+                f"£{diff:.2f}",
+                risk_label,
+                explainer[:160],
+            ]
+        )
+    table_rows.append(["Total", "", f"£{_money(total_amount):.2f}", "", ""])
+
+    table = Table(
+        table_rows,
+        repeatRows=1,
+        colWidths=[122, 74, 64, 46, 216],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef3ff")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f3f77")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#c8d6f0")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f9fbff")]),
+                ("ALIGN", (2, 1), (3, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(table)
+    doc.build(story)
+    filename = f"pi-clearing-dry-run-{(period_start or utcnow().date()).strftime('%Y-%m')}.pdf"
+    return buffer.getvalue(), filename
+
+
+async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    selected_row_ids = [str(item).strip() for item in (safe_payload.get("rowIds") or []) if str(item).strip()]
+    requested_account_code = str(safe_payload.get("accountCode") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM pi_clearing_runs WHERE id = %s AND user_id = %s",
+                (run_id, user["id"]),
+            )
+            run_row = cursor.fetchone() or {}
+            if not run_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            account_code = requested_account_code or str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE)
+            query = """
+                SELECT *
+                FROM pi_clearing_run_rows
+                WHERE run_id = %s
+                  AND user_id = %s
+                  AND difference_total > 0
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+            """
+            params: list = [run_id, user["id"]]
+            if selected_row_ids:
+                query += " AND id = ANY(%s)"
+                params.append(selected_row_ids)
+            query += " ORDER BY ABS(difference_total) DESC, client_name ASC"
+            cursor.execute(query, tuple(params))
+            target_rows = cursor.fetchall() or []
+        connection.commit()
+    if not target_rows:
+        return {"created": [], "skipped": [], "message": "No positive-difference rows were selected."}
+
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    created: list[dict] = []
+    skipped: list[dict] = []
+    for row in target_rows:
+        row_id = str(row.get("id") or "")
+        contact_id = str(row.get("xero_contact_id") or "").strip()
+        amount = _money(row.get("difference_total"))
+        currency_code = str(row.get("currency_code") or "GBP").strip() or "GBP"
+        client_name = str(row.get("client_name") or "Unknown client")
+        if amount <= 0:
+            skipped.append({"runRowId": row_id, "reason": "Row has no positive difference."})
+            continue
+        if not contact_id:
+            skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
+            continue
+        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
+        note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
+        credit_note_payload = {
+            "Type": "ACCRECCREDIT",
+            "Contact": {"ContactID": contact_id, "Name": client_name},
+            "Date": note_date.isoformat(),
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "Reference": "Client Payment",
+            "LineItems": [
+                {
+                    "Description": "Payment made by the client",
+                    "Quantity": 1,
+                    "UnitAmount": float(amount),
+                    "AccountCode": account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+            "CurrencyCode": currency_code,
+        }
+        xero_response = await create_credit_note(connection_row, credit_note_payload)
+        created_row = ((xero_response or {}).get("CreditNotes") or [{}])[0]
+        credit_note_id = str(created_row.get("CreditNoteID") or created_row.get("ID") or "").strip()
+        credit_note_number = str(created_row.get("CreditNoteNumber") or "").strip()
+        if not credit_note_id:
+            skipped.append({"runRowId": row_id, "reason": "Xero did not return a credit note id."})
+            continue
+        now = utcnow()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO pi_clearing_credit_notes (
+                        run_id, run_row_id, user_id, xero_contact_id, xero_credit_note_id, xero_credit_note_number,
+                        credit_note_date, amount, currency_code, account_code, status, raw_payload, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    """,
+                    (
+                        run_id,
+                        row_id,
+                        user["id"],
+                        contact_id,
+                        credit_note_id,
+                        credit_note_number,
+                        note_date,
+                        amount,
+                        currency_code,
+                        account_code,
+                        "created",
+                        json.dumps(xero_response or {}, default=_json_default),
+                        now,
+                        now,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE pi_clearing_run_rows
+                    SET resolution_status = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    ("credit_note_created", now, row_id),
+                )
+                cursor.execute(
+                    """
+                    UPDATE pi_clearing_runs
+                    SET status = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    ("credit_notes_created", now, run_id),
+                )
+            connection.commit()
+        created.append(
+            {
+                "runRowId": row_id,
+                "xeroCreditNoteId": credit_note_id,
+                "xeroCreditNoteNumber": credit_note_number,
+                "amount": float(amount),
+                "currencyCode": currency_code,
+                "accountCode": account_code,
+            }
+        )
+
+    updated = pi_clearing_payload(user)
+    return {"created": created, "skipped": skipped, "runs": updated.get("runs") or []}
+
+
+async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_record_id: str) -> dict:
+    record_id = str(credit_note_record_id or "").strip()
+    if not record_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credit note record id is required.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_credit_notes
+                WHERE id = %s
+                  AND run_id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (record_id, run_id, user["id"]),
+            )
+            note_row = cursor.fetchone() or {}
+            if not note_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing credit note record not found.")
+            status_value = str(note_row.get("status") or "").strip().lower()
+            if status_value in {"voided", "deleted"}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This PI Clearing credit note is already voided.")
+            run_row_id = str(note_row.get("run_row_id") or "").strip()
+            xero_credit_note_id = str(note_row.get("xero_credit_note_id") or "").strip()
+            if not xero_credit_note_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero credit note id is missing for this record.")
+        connection.commit()
+
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    xero_response = await update_credit_note_status(connection_row, xero_credit_note_id, "VOIDED")
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE pi_clearing_credit_notes
+                SET status = %s,
+                    raw_payload = %s::jsonb,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                ("voided", json.dumps(xero_response or {}, default=_json_default), now, record_id),
+            )
+            if run_row_id:
+                cursor.execute(
+                    """
+                    UPDATE pi_clearing_run_rows
+                    SET resolution_status = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    ("pending", now, run_row_id),
+                )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_runs
+                SET status = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                ("ready", now, run_id),
+            )
+        connection.commit()
+    updated = pi_clearing_payload(user)
+    return {"voided": {"id": record_id, "xeroCreditNoteId": xero_credit_note_id}, "runs": updated.get("runs") or []}
 
 
 def disconnect_xero(user: dict, tenant_id: str | None = None, disconnect_all: bool = False) -> dict:

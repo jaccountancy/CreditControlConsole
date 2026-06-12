@@ -2015,6 +2015,111 @@ ALTER TABLE payroll_headcount_monthly_snapshots ADD COLUMN IF NOT EXISTS updated
 CREATE INDEX IF NOT EXISTS payroll_headcount_monthly_snapshots_workspace_idx
 ON payroll_headcount_monthly_snapshots (workspace_id, month_start DESC);
 
+CREATE TABLE IF NOT EXISTS pi_clearing_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    month_start DATE NOT NULL,
+    month_end DATE NOT NULL,
+    account_code TEXT NOT NULL DEFAULT 'PI Clearing Account',
+    status TEXT NOT NULL DEFAULT 'draft',
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ai_analysis JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, month_start)
+);
+
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS month_end DATE;
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS account_code TEXT NOT NULL DEFAULT 'PI Clearing Account';
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS ai_analysis JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_runs_user_month_idx
+ON pi_clearing_runs (user_id, month_start DESC);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_run_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES pi_clearing_runs(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    month_start DATE NOT NULL,
+    month_end DATE NOT NULL,
+    row_type TEXT NOT NULL DEFAULT 'difference',
+    match_key TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    xero_contact_id TEXT NOT NULL DEFAULT '',
+    xero_payment_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ignition_payment_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    currency_code TEXT NOT NULL DEFAULT 'GBP',
+    xero_total NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    ignition_total NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    difference_total NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    recommendation TEXT NOT NULL DEFAULT '',
+    resolution_status TEXT NOT NULL DEFAULT 'pending',
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS month_start DATE;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS month_end DATE;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS row_type TEXT NOT NULL DEFAULT 'difference';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS match_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS xero_contact_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS xero_payment_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS ignition_payment_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS xero_total NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS ignition_total NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS difference_total NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS recommendation TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS resolution_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_run_rows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_run_rows_run_idx
+ON pi_clearing_run_rows (run_id, difference_total DESC, client_name);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_credit_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES pi_clearing_runs(id) ON DELETE CASCADE,
+    run_row_id UUID REFERENCES pi_clearing_run_rows(id) ON DELETE SET NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    xero_contact_id TEXT NOT NULL DEFAULT '',
+    xero_credit_note_id TEXT NOT NULL DEFAULT '',
+    xero_credit_note_number TEXT NOT NULL DEFAULT '',
+    credit_note_date DATE,
+    amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    currency_code TEXT NOT NULL DEFAULT 'GBP',
+    account_code TEXT NOT NULL DEFAULT 'PI Clearing Account',
+    status TEXT NOT NULL DEFAULT 'created',
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS run_row_id UUID REFERENCES pi_clearing_run_rows(id) ON DELETE SET NULL;
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS xero_contact_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS xero_credit_note_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS xero_credit_note_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS credit_note_date DATE;
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS account_code TEXT NOT NULL DEFAULT 'PI Clearing Account';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'created';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_credit_notes_run_idx
+ON pi_clearing_credit_notes (run_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS juksib_batches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

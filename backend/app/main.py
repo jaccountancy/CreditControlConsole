@@ -150,10 +150,13 @@ from .services import (
     normalise_sync_options,
     panel_payload,
     pending_xero_actions_payload,
+    pi_clearing_payload,
+    pi_clearing_dry_run_pdf,
     practice_pack_payload,
     list_retained_practice_pack_runs,
     retained_practice_pack_download,
     process_pending_xero_actions,
+    run_pi_clearing_workflow,
     override_bank_statement_transaction,
     payroll_headcount_payload,
     bank_statement_upload_source_file,
@@ -208,6 +211,8 @@ from .services import (
     update_me_report_mapping,
     update_me_report_settings,
     upsert_payroll_headcount_workspace,
+    apply_pi_clearing_credit_notes,
+    void_pi_clearing_credit_note,
     xero_lock_date_overview_payload,
     xero_lock_date_mismatch_payload,
     xero_lock_date_mismatch_pdf,
@@ -2349,6 +2354,57 @@ async def api_juksib_batch_excel(batch_id: str, user: dict = Depends(require_pan
 @app.get("/api/me-report")
 def api_me_report(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": me_report_payload(user)}
+
+
+@app.get("/api/pi-clearing-account")
+def api_pi_clearing_account(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **pi_clearing_payload(user)}
+
+
+@app.post("/api/pi-clearing-account/run")
+async def api_run_pi_clearing_account_workflow(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **await run_pi_clearing_workflow(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes")
+async def api_apply_pi_clearing_account_credit_notes(
+    run_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {
+        "status": "ok",
+        **await apply_pi_clearing_credit_notes(user, run_id, payload if isinstance(payload, dict) else {}),
+    }
+
+
+@app.get("/api/pi-clearing-account/runs/{run_id}/dry-run.pdf")
+def api_pi_clearing_account_dry_run_pdf(
+    run_id: str,
+    row_ids: str = Query("", alias="rowIds"),
+    user: dict = Depends(require_panel_user),
+):
+    selected_row_ids = [item.strip() for item in str(row_ids or "").split(",") if item.strip()]
+    pdf_bytes, filename = pi_clearing_dry_run_pdf(user, run_id, selected_row_ids)
+    safe_filename = str(filename or "pi-clearing-dry-run.pdf").replace('"', "")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'},
+    )
+
+
+@app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes/{credit_note_record_id}/void")
+async def api_void_pi_clearing_account_credit_note(
+    run_id: str,
+    credit_note_record_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    await request.body()
+    return {"status": "ok", **await void_pi_clearing_credit_note(user, run_id, credit_note_record_id)}
 
 
 @app.get("/api/payroll-headcount")
