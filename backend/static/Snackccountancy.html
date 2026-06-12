@@ -46,54 +46,60 @@
         }
         h1 {
             margin: 0;
-            font-size: clamp(1.3rem, 6.2vw, 1.55rem);
+            font-size: clamp(0.95rem, 6.8vw, 1.55rem);
             line-height: 1.1;
-            word-break: break-word;
-            overflow-wrap: anywhere;
+            white-space: nowrap;
             max-width: 100%;
         }
         .sub { margin-top: 4px; color: var(--muted); font-size: 0.92rem; }
-        .products { display: grid; gap: 10px; }
-        .product {
+        .products {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .product-button {
             border: 1px solid var(--line);
             border-radius: 14px;
-            padding: 10px;
+            padding: 12px;
             display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 8px;
-            align-items: center;
+            gap: 7px;
+            align-content: start;
+            text-align: left;
+            cursor: pointer;
+            background: #fff;
+            min-height: 190px;
+            position: relative;
         }
+        .product-button:active {
+            transform: translateY(1px);
+        }
+        .picon { font-size: 2rem; line-height: 1; }
         .pname { font-weight: 800; }
         .pprice { color: var(--blue); font-size: 1.08rem; font-weight: 800; }
-        .controls {
+        .tap-hint { color: var(--muted); font-size: 0.82rem; }
+        .qty-badge {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            border-radius: 999px;
+            min-width: 30px;
+            height: 30px;
+            padding: 0 10px;
             display: inline-flex;
             align-items: center;
-            border: 1px solid var(--line);
-            border-radius: 999px;
-            overflow: hidden;
-            background: #fff;
-        }
-        .controls button {
-            border: 0;
-            background: #fff;
-            color: var(--ink);
-            width: 42px;
-            height: 38px;
-            font-size: 1.15rem;
+            justify-content: center;
             font-weight: 800;
-            cursor: pointer;
-        }
-        .qty {
-            min-width: 42px;
-            text-align: center;
-            font-weight: 800;
-            font-size: 1rem;
+            color: #fff;
+            background: var(--blue);
+            border: 2px solid #fff;
+            box-shadow: 0 3px 10px rgba(10, 59, 141, 0.25);
         }
         .reward { font-size: 0.92rem; color: var(--ink); display: grid; gap: 6px; }
         .reward .item { display: flex; gap: 8px; }
         .reward .item span:last-child {
             overflow-wrap: anywhere;
             word-break: break-word;
+            min-width: 0;
         }
         .dot { color: var(--ok); font-weight: 800; }
         .signin-grid { display: grid; gap: 8px; }
@@ -163,25 +169,11 @@
             .wrap { padding: 10px 10px 24px; }
             .card { padding: 12px; }
             .sub { font-size: 0.88rem; }
-            .product {
+            .products {
                 grid-template-columns: 1fr;
-                align-items: start;
-                gap: 10px;
             }
-            .product > div:last-child {
-                width: 100%;
-                justify-items: start !important;
-                text-align: left !important;
-            }
-            .controls {
-                width: 100%;
-                justify-content: space-between;
-            }
-            .controls button {
-                width: 46px;
-            }
-            .qty {
-                min-width: 56px;
+            .product-button {
+                min-height: 160px;
             }
             .basket-row {
                 align-items: center;
@@ -207,7 +199,7 @@
             <div class="products" id="productList"></div>
         </section>
 
-        <section class="card reward">
+        <section class="card reward" id="rewardsCard" hidden>
             <h2 style="margin:0;font-size:1.02rem;">Snackccountancy Rewards</h2>
             <div class="item"><span class="dot">✔</span><span>Buy more than 4 cans in a week and get 10% off extra cans.</span></div>
             <div class="item"><span class="dot">✔</span><span>Every 10th paid order is half price.</span></div>
@@ -305,6 +297,7 @@
 
         const ui = {
             productList: document.getElementById("productList"),
+            rewardsCard: document.getElementById("rewardsCard"),
             rewardLiveStatus: document.getElementById("rewardLiveStatus"),
             itemCount: document.getElementById("itemCount"),
             basketTotal: document.getElementById("basketTotal"),
@@ -332,27 +325,58 @@
                 .filter((item) => item.quantity > 0);
         }
 
+        function localBasketFromItems(items) {
+            const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+            const subtotalPence = items.reduce((sum, item) => {
+                const product = state.products.find((p) => p.sku === item.sku);
+                return sum + ((product?.price_pence || 0) * (Number(item.quantity) || 0));
+            }, 0);
+            return {
+                item_count: itemCount,
+                subtotal_pence: subtotalPence,
+                total_paid_pence: subtotalPence,
+                weekly_discount_pence: 0,
+                milestone_discount_pence: 0,
+                double_reward_active: false,
+            };
+        }
+
+        function applyBasketUi(basket) {
+            ui.itemCount.textContent = String(basket?.item_count || 0);
+            ui.basketTotal.textContent = money(basket?.total_paid_pence || 0);
+
+            const weekly = Number(basket?.weekly_discount_pence || 0);
+            const milestone = Number(basket?.milestone_discount_pence || 0);
+            if (basket?.double_reward_active) {
+                ui.discountLine.textContent = `Double reward active: -£${money(weekly)} weekly and -£${money(milestone)} milestone.`;
+            } else if (milestone > 0) {
+                ui.discountLine.textContent = `10th order discount active: -£${money(milestone)}.`;
+            } else if (weekly > 0) {
+                ui.discountLine.textContent = `Weekly discount active: -£${money(weekly)}.`;
+            } else {
+                ui.discountLine.textContent = "No rewards applied yet";
+            }
+        }
+
         function renderProducts() {
             ui.productList.innerHTML = "";
             state.products.forEach((product) => {
                 const qty = state.quantities[product.sku] || 0;
-                const card = document.createElement("article");
-                card.className = "product";
-                card.innerHTML = `
-                    <div>
-                        <div class="pname">${product.name}</div>
-                        <div class="muted">${product.description || ""}</div>
-                    </div>
-                    <div style="text-align:right;display:grid;gap:7px;justify-items:end;">
-                        <div class="pprice">£${money(product.price_pence)}</div>
-                        <div class="controls">
-                            <button type="button" data-action="minus" data-sku="${product.sku}">-</button>
-                            <div class="qty" id="qty-${product.sku}">${qty}</div>
-                            <button type="button" data-action="plus" data-sku="${product.sku}">+</button>
-                        </div>
-                    </div>
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "product-button";
+                button.setAttribute("data-add-sku", product.sku);
+
+                const icon = product.sku === "premium_can_of_pop" ? "⚡" : "🥤";
+                button.innerHTML = `
+                    <span class="qty-badge" id="qty-${product.sku}">${qty}</span>
+                    <div class="picon">${icon}</div>
+                    <div class="pname">${product.name}</div>
+                    <div class="muted">${product.description || ""}</div>
+                    <div class="pprice">£${money(product.price_pence)}</div>
+                    <div class="tap-hint">Tap to add to basket</div>
                 `;
-                ui.productList.appendChild(card);
+                ui.productList.appendChild(button);
             });
         }
 
@@ -437,48 +461,38 @@
             const items = activeBasketItems();
             if (!items.length) {
                 state.basket = null;
-                ui.itemCount.textContent = "0";
-                ui.basketTotal.textContent = "0.00";
-                ui.discountLine.textContent = "No rewards applied yet";
+                applyBasketUi(null);
                 ui.checkoutStatus.textContent = "Add items to begin checkout.";
                 return;
             }
 
-            const response = await fetch(snackApiUrl("/api/snackccountancy/calculate-basket"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ items }),
-            });
-
-            if (!response.ok) {
-                ui.checkoutStatus.className = "status warn";
-                ui.checkoutStatus.textContent = "Unable to calculate basket right now.";
-                return;
-            }
-
-            const data = await response.json();
-            state.basket = data.basket;
-            state.customer = data.customer;
-            applyCustomerSummary();
-
-            ui.itemCount.textContent = String(state.basket.item_count || 0);
-            ui.basketTotal.textContent = money(state.basket.total_paid_pence || 0);
-
-            const weekly = Number(state.basket.weekly_discount_pence || 0);
-            const milestone = Number(state.basket.milestone_discount_pence || 0);
-            if (state.basket.double_reward_active) {
-                ui.discountLine.textContent = `Double reward active: -£${money(weekly)} weekly and -£${money(milestone)} milestone.`;
-            } else if (milestone > 0) {
-                ui.discountLine.textContent = `10th order discount active: -£${money(milestone)}.`;
-            } else if (weekly > 0) {
-                ui.discountLine.textContent = `Weekly discount active: -£${money(weekly)}.`;
-            } else {
-                ui.discountLine.textContent = "No rewards applied yet";
-            }
-
+            state.basket = localBasketFromItems(items);
+            applyBasketUi(state.basket);
             ui.checkoutStatus.className = "status";
             ui.checkoutStatus.textContent = "Ready to pay with Apple Pay / Google Pay / Link or card.";
+
+            try {
+                const response = await fetch(snackApiUrl("/api/snackccountancy/calculate-basket"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ items }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    state.basket = data.basket || state.basket;
+                    state.customer = data.customer || state.customer;
+                    applyCustomerSummary();
+                    applyBasketUi(state.basket);
+                } else {
+                    ui.checkoutStatus.className = "status warn";
+                    ui.checkoutStatus.textContent = "Using local totals. Rewards will apply at payment.";
+                }
+            } catch (_) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Using local totals. Rewards will apply at payment.";
+            }
         }
 
         async function signInEmail() {
@@ -526,12 +540,19 @@
             }
 
             const guestEmail = (ui.emailInput.value || "").trim();
-            const response = await fetch(snackApiUrl("/api/snackccountancy/create-payment"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ items, guest_email: guestEmail || null }),
-            });
+            let response;
+            try {
+                response = await fetch(snackApiUrl("/api/snackccountancy/create-payment"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ items, guest_email: guestEmail || null }),
+                });
+            } catch (_) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Unable to reach checkout server. Please try again.";
+                return null;
+            }
 
             if (!response.ok) {
                 let detail = "Unable to create payment.";
@@ -567,46 +588,62 @@
             if (state.customer?.authenticated) {
                 await loadOrders();
             }
+            ui.rewardsCard.hidden = false;
         }
 
         async function mountWallets(createCardElement) {
+            ui.cardCheckoutBtn.disabled = true;
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = "Preparing secure checkout...";
+
             const payment = await createPayment();
-            if (!payment) return;
+            if (!payment) {
+                ui.cardCheckoutBtn.disabled = false;
+                return;
+            }
 
             if (!payment.publishable_key) {
                 ui.checkoutStatus.className = "status warn";
                 ui.checkoutStatus.textContent = "Stripe publishable key is not configured yet.";
+                ui.cardCheckoutBtn.disabled = false;
                 return;
             }
 
-            state.stripe = Stripe(payment.publishable_key);
-            state.elements = state.stripe.elements({ clientSecret: payment.client_secret });
+            try {
+                state.stripe = Stripe(payment.publishable_key);
+                state.elements = state.stripe.elements({ clientSecret: payment.client_secret });
 
-            ui.expressCheckout.innerHTML = "";
-            const express = state.elements.create("expressCheckout", {
-                buttonTheme: { applePay: "black", googlePay: "black", link: "dark" },
-                layout: { maxColumns: 1, maxRows: 3, overflow: "auto" },
-            });
-            express.mount("#expressCheckout");
-            state.expressMounted = true;
+                ui.expressCheckout.innerHTML = "";
+                const express = state.elements.create("expressCheckout", {
+                    buttonTheme: { applePay: "black", googlePay: "black", link: "dark" },
+                    layout: { maxColumns: 1, maxRows: 3, overflow: "auto" },
+                });
+                express.mount("#expressCheckout");
+                state.expressMounted = true;
 
-            express.on("confirm", async (event) => {
-                event?.resolve?.();
-                await confirmPayment();
-            });
+                express.on("confirm", async (event) => {
+                    event?.resolve?.();
+                    await confirmPayment();
+                });
 
-            if (createCardElement) {
-                ui.paymentElement.hidden = false;
-                ui.confirmCardBtn.hidden = false;
-                if (!state.cardMounted) {
-                    const paymentElement = state.elements.create("payment");
-                    paymentElement.mount("#paymentElement");
-                    state.cardMounted = true;
+                if (createCardElement) {
+                    ui.paymentElement.hidden = false;
+                    ui.confirmCardBtn.hidden = false;
+                    if (!state.cardMounted) {
+                        const paymentElement = state.elements.create("payment");
+                        paymentElement.mount("#paymentElement");
+                        state.cardMounted = true;
+                    }
                 }
-            }
 
-            ui.checkoutStatus.className = "status";
-            ui.checkoutStatus.textContent = "Choose wallet or card to complete payment.";
+                ui.checkoutStatus.className = "status";
+                ui.checkoutStatus.textContent = "Choose wallet or card to complete payment.";
+            } catch (_) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Checkout could not load. Please try again.";
+            } finally {
+                ui.cardCheckoutBtn.disabled = false;
+            }
         }
 
         async function confirmPayment() {
@@ -636,13 +673,11 @@
         }
 
         ui.productList.addEventListener("click", async (event) => {
-            const button = event.target.closest("button[data-action][data-sku]");
+            const button = event.target.closest("button[data-add-sku]");
             if (!button) return;
-            const sku = button.getAttribute("data-sku");
-            const action = button.getAttribute("data-action");
+            const sku = button.getAttribute("data-add-sku");
             const current = Number(state.quantities[sku] || 0);
-            if (action === "plus") state.quantities[sku] = current + 1;
-            if (action === "minus") state.quantities[sku] = Math.max(current - 1, 0);
+            state.quantities[sku] = current + 1;
             updateQtyDom(sku);
             await recalculateBasket();
         });
@@ -655,22 +690,19 @@
         ui.confirmCardBtn.addEventListener("click", confirmPayment);
 
         (async function bootstrap() {
-            try {
-                const params = new URLSearchParams(window.location.search);
-                const redirectedPaymentIntent = params.get("payment_intent") || "";
-                const redirectedOrderNumber = params.get("order_number") || "";
-                if (redirectedPaymentIntent && redirectedOrderNumber) {
-                    await claimPaidSessionAndRefresh(redirectedOrderNumber, redirectedPaymentIntent);
-                    ui.checkoutStatus.className = "status";
-                    ui.checkoutStatus.textContent = `Payment received. Order ${redirectedOrderNumber} confirmed.`;
-                }
-                await loadProducts();
-                await loadCustomer();
-                await recalculateBasket();
-            } catch (error) {
-                ui.checkoutStatus.className = "status warn";
-                ui.checkoutStatus.textContent = "Working in limited mode. Products are available below.";
+            const params = new URLSearchParams(window.location.search);
+            const redirectedPaymentIntent = params.get("payment_intent") || "";
+            const redirectedOrderNumber = params.get("order_number") || "";
+
+            if (redirectedPaymentIntent && redirectedOrderNumber) {
+                await claimPaidSessionAndRefresh(redirectedOrderNumber, redirectedPaymentIntent);
+                ui.checkoutStatus.className = "status";
+                ui.checkoutStatus.textContent = `Payment received. Order ${redirectedOrderNumber} confirmed.`;
             }
+
+            await loadProducts();
+            try { await loadCustomer(); } catch (_) {}
+            await recalculateBasket();
         })();
     </script>
 </body>
