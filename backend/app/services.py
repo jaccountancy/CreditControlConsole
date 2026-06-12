@@ -17791,6 +17791,7 @@ async def _code_breaker_fetch_voided_contact_transactions(
     connection_row: dict,
     *,
     xero_contact_id: str,
+    period_start_date: date | None,
     as_at_date: date,
     submitted_at: datetime | None,
 ) -> tuple[list[dict], str]:
@@ -17851,6 +17852,8 @@ async def _code_breaker_fetch_voided_contact_transactions(
         tx_date = _parse_optional_iso_date(raw_row.get("Date") or raw_row.get("DateString"))
         if tx_date is None or tx_date > as_at_date:
             return
+        if period_start_date is not None and tx_date < period_start_date:
+            return
         changed_at = _created_or_updated_at(raw_row)
         if submitted_at is not None and (changed_at is None or changed_at <= submitted_at):
             return
@@ -17891,6 +17894,7 @@ async def _code_breaker_fetch_non_journal_contact_transactions(
     connection_row: dict,
     *,
     xero_contact_id: str,
+    period_start_date: date | None,
     as_at_date: date,
     submitted_at: datetime | None,
 ) -> tuple[list[dict], dict, str]:
@@ -17959,6 +17963,8 @@ async def _code_breaker_fetch_non_journal_contact_transactions(
     ) -> None:
         posted_date = _parse_optional_iso_date(posted_date_raw)
         if posted_date is None or posted_date > as_at_date:
+            return
+        if period_start_date is not None and posted_date < period_start_date:
             return
         if submitted_at is not None and created_at is not None and created_at <= submitted_at:
             return
@@ -18076,6 +18082,7 @@ async def _code_breaker_fetch_non_journal_contact_transactions(
 def _code_breaker_journal_candidates(
     journals: list[dict],
     *,
+    period_start_date: date | None,
     as_at_date: date,
     submitted_at: datetime | None,
 ) -> tuple[list[dict], list[dict], dict]:
@@ -18133,7 +18140,9 @@ def _code_breaker_journal_candidates(
             "narration": str(row.get("Narration") or "").strip(),
             "lines": normalised_lines,
         }
-        if journal_date <= as_at_date:
+        if period_start_date is not None and journal_date < period_start_date:
+            outside_period_candidates.append(candidate)
+        elif journal_date <= as_at_date:
             in_period_candidates.append(candidate)
         else:
             outside_period_candidates.append(candidate)
@@ -18395,8 +18404,21 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     xero_contact_id = str(payload.get("xeroContactId") or "").strip()
     company_number = _normalise_companies_house_number(str(payload.get("companyNumber") or ""))
     as_at_raw = str(payload.get("asAtDate") or payload.get("yearEndDate") or "").strip()
+    period_start_raw = str(payload.get("periodStartDate") or "").strip()
+    submitted_at_raw = str(payload.get("submittedAt") or "").strip()
     as_at_date = _parse_optional_iso_date(as_at_raw)
+    period_start_date = _parse_optional_iso_date(period_start_raw)
+    submitted_at_from_payload = _parse_optional_iso_datetime(submitted_at_raw)
     as_at_explicit = as_at_date is not None
+
+    def _code_breaker_period_start_from_year_end(year_end: date | None) -> date | None:
+        if not isinstance(year_end, date):
+            return None
+        try:
+            return year_end.replace(year=year_end.year - 1) + timedelta(days=1)
+        except ValueError:
+            # Handle leap day year ends.
+            return date(year_end.year - 1, 2, 28) + timedelta(days=1)
 
     def _latest_accounts_made_up_to_from_cache(company_row: dict | None) -> date | None:
         if not isinstance(company_row, dict):
@@ -18453,6 +18475,10 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     if not as_at_explicit:
         latest_filed_period = _latest_accounts_made_up_to_from_cache(ch_company)
         as_at_date = latest_filed_period or utcnow().date()
+    if period_start_date is None:
+        period_start_date = _code_breaker_period_start_from_year_end(as_at_date)
+    if period_start_date is not None and as_at_date is not None and period_start_date > as_at_date:
+        period_start_date = None
 
     connection_row = None
     connection_lookup_error = ""
@@ -18562,7 +18588,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
     if ch_net_assets is not None and xero_net_assets is not None:
         difference = _money(xero_net_assets - ch_net_assets)
 
-    submission_completed_at = _parse_optional_iso_datetime((ch_company or {}).get("latest_submission_completed_at"))
+    submission_completed_at = submitted_at_from_payload or _parse_optional_iso_datetime((ch_company or {}).get("latest_submission_completed_at"))
     if submission_completed_at is None:
         latest_filed_date = _parse_optional_iso_date((ch_company or {}).get("last_filed_date"))
         if latest_filed_date is not None:
@@ -18642,6 +18668,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             else:
                 candidates, outside_period_candidates, journal_diagnostics = _code_breaker_journal_candidates(
                     journals,
+                    period_start_date=period_start_date,
                     as_at_date=as_at_date,
                     submitted_at=submission_completed_at,
                 )
@@ -18653,7 +18680,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     for row in outside_preview_rows:
                         row["sourceType"] = "Journal (outside filed period)"
                         row["reason"] = (
-                            f"Journal dated after filed period end {as_at_date.isoformat()}; listed separately for review."
+                            (
+                                f"Journal dated outside filed period {period_start_date.isoformat()} to {as_at_date.isoformat()}; "
+                                "listed separately for review."
+                            )
+                            if period_start_date is not None
+                            else f"Journal dated after filed period end {as_at_date.isoformat()}; listed separately for review."
                         )
                 post_filing_analysis["outsidePeriodCandidateCount"] = len(outside_period_candidates)
                 post_filing_analysis["outsidePeriodCandidateRows"] = outside_preview_rows
@@ -18669,7 +18701,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if outside_period_candidates:
                     warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
                     warnings.append(
-                        f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
+                        (
+                            f"{len(outside_period_candidates)} journal(s) were outside the filed period "
+                            f"{period_start_date.isoformat()} to {as_at_date.isoformat()} and listed separately."
+                        )
+                        if period_start_date is not None
+                        else f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
                     )
                     post_filing_analysis["warnings"] = warnings
                 if bool((journal_diagnostics or {}).get("inPeriodTruncated")) or bool((journal_diagnostics or {}).get("outsidePeriodTruncated")):
@@ -18680,11 +18717,22 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                     post_filing_analysis["warnings"] = warnings
                 if not candidates:
                     post_filing_analysis["reason"] = (
-                        f"No journal candidates found on or before {as_at_date.isoformat()}."
+                        (
+                            f"No journal candidates found within filed period {period_start_date.isoformat()} to {as_at_date.isoformat()}."
+                        )
+                        if period_start_date is not None
+                        else f"No journal candidates found on or before {as_at_date.isoformat()}."
                         if submission_completed_at is None
                         else (
-                            f"No post-filing journals found with journal dates on or before {as_at_date.isoformat()} "
-                            f"and created after {submission_completed_at.isoformat()}."
+                            (
+                                f"No post-filing journals found with journal dates between {period_start_date.isoformat()} "
+                                f"and {as_at_date.isoformat()} and created after {submission_completed_at.isoformat()}."
+                            )
+                            if period_start_date is not None
+                            else (
+                                f"No post-filing journals found with journal dates on or before {as_at_date.isoformat()} "
+                                f"and created after {submission_completed_at.isoformat()}."
+                            )
                         )
                     )
                     if outside_period_candidates:
@@ -18735,6 +18783,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             non_journal_rows, non_journal_diagnostics, non_journal_reason = await _code_breaker_fetch_non_journal_contact_transactions(
                 connection_row,
                 xero_contact_id=xero_contact_id,
+                period_start_date=period_start_date,
                 as_at_date=as_at_date,
                 submitted_at=submission_completed_at,
             )
@@ -18750,6 +18799,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
             voided_rows, voided_reason = await _code_breaker_fetch_voided_contact_transactions(
                 connection_row,
                 xero_contact_id=xero_contact_id,
+                period_start_date=period_start_date,
                 as_at_date=as_at_date,
                 submitted_at=submission_completed_at,
             )

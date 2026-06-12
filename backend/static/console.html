@@ -75951,6 +75951,8 @@
                         tenantId: workspace.xeroTenantId,
                         xeroContactId: workspace.xeroContactId,
                         companyNumber: workspace.companyNumber,
+                        periodStartDate: codeBreakerPeriodStartDate(workspace),
+                        submittedAt: String(workspace.submittedAt || "").slice(0, 10),
                         asAtDate: workspace.yearEndDate,
                     });
                     const postFiling = snapshot?.postFilingAnalysis && typeof snapshot.postFilingAnalysis === "object"
@@ -76330,6 +76332,8 @@
                             tenantId: workspace.xeroTenantId,
                             xeroContactId: workspace.xeroContactId,
                             companyNumber: workspace.companyNumber,
+                            periodStartDate: codeBreakerPeriodStartDate(workspace),
+                            submittedAt: String(workspace.submittedAt || "").slice(0, 10),
                             asAtDate: workspace.yearEndDate,
                         });
                     } finally {
@@ -76651,7 +76655,7 @@
                             .filter(Boolean)
                             .join(", ");
                         guidance.push(
-                            `${outsidePeriodCount.toLocaleString("en-GB")} journal${outsidePeriodCount === 1 ? "" : "s"} fall outside the filed period end (${formatDate(workspace?.yearEndDate || "") || String(workspace?.yearEndDate || "").slice(0, 10)}).`
+                            `${outsidePeriodCount.toLocaleString("en-GB")} journal${outsidePeriodCount === 1 ? "" : "s"} fall outside the filed period (${formatDate(codeBreakerPeriodStartDate(workspace) || "") || String(codeBreakerPeriodStartDate(workspace) || "").slice(0, 10)} to ${formatDate(workspace?.yearEndDate || "") || String(workspace?.yearEndDate || "").slice(0, 10)}).`
                             + (outsideReferences ? ` Outside-period refs: ${outsideReferences}.` : "")
                         );
                     }
@@ -77542,6 +77546,8 @@
                         tenantId: decision.tenantId,
                         xeroContactId: decision.xeroContactId,
                         companyNumber: decision.companyNumber,
+                        periodStartDate: String(decision.periodStartDate || codeBreakerPeriodStartDate({ yearEndDate: decision.yearEndDate }) || "").slice(0, 10),
+                        submittedAt: String(decision.submittedAt || "").slice(0, 10),
                         asAtDate: decision.yearEndDate,
                     });
                 } catch (error) {

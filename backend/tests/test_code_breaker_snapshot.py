@@ -120,14 +120,18 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             },
         ]
         submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
-        candidates = services._code_breaker_journal_candidates(
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
             journals,
+            period_start_date=date(2025, 1, 1),
             as_at_date=date(2025, 5, 31),
             submitted_at=submission,
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["journalId"], "included")
         self.assertEqual(candidates[0]["journalDate"], "2025-05-31")
+        self.assertEqual(len(outside_period), 1)
+        self.assertEqual(outside_period[0]["journalId"], "wrong-period")
+        self.assertEqual(diagnostics["inPeriodTotal"], 1)
 
     def test_journal_candidates_include_missing_created_date_for_review(self):
         journals = [
@@ -138,13 +142,16 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             }
         ]
         submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
-        candidates = services._code_breaker_journal_candidates(
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
             journals,
+            period_start_date=date(2025, 1, 1),
             as_at_date=date(2025, 5, 31),
             submitted_at=submission,
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["journalId"], "missing-created")
+        self.assertEqual(len(outside_period), 0)
+        self.assertEqual(diagnostics["inPeriodTotal"], 1)
 
     def test_journal_candidates_accept_manual_journal_line_amount_field(self):
         journals = [
@@ -156,10 +163,34 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             }
         ]
         submission = services._parse_optional_iso_datetime("2026-01-16T00:00:00Z")
-        candidates = services._code_breaker_journal_candidates(
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
             journals,
+            period_start_date=date(2025, 1, 1),
             as_at_date=date(2025, 5, 31),
             submitted_at=submission,
         )
         self.assertEqual(len(candidates), 1)
         self.assertAlmostEqual(candidates[0]["lines"][0]["netAmount"], 9.75, places=2)
+        self.assertEqual(len(outside_period), 0)
+        self.assertEqual(diagnostics["inPeriodTotal"], 1)
+
+    def test_journal_candidates_exclude_rows_before_period_start(self):
+        journals = [
+            {
+                "JournalID": "before-period",
+                "JournalDate": "2024-12-31",
+                "CreatedDateUTC": "2026-02-20T09:00:00Z",
+                "JournalLines": [{"NetAmount": "1.00", "AccountCode": "400"}],
+            }
+        ]
+        submission = services._parse_optional_iso_datetime("2026-02-05T00:00:00Z")
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
+            journals,
+            period_start_date=date(2025, 1, 1),
+            as_at_date=date(2025, 12, 31),
+            submitted_at=submission,
+        )
+        self.assertEqual(len(candidates), 0)
+        self.assertEqual(len(outside_period), 1)
+        self.assertEqual(outside_period[0]["journalId"], "before-period")
+        self.assertEqual(diagnostics["inPeriodTotal"], 0)
