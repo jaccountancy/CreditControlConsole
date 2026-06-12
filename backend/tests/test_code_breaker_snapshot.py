@@ -194,3 +194,25 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(len(outside_period), 1)
         self.assertEqual(outside_period[0]["journalId"], "before-period")
         self.assertEqual(diagnostics["inPeriodTotal"], 0)
+
+    def test_journal_candidates_use_xero_datestring_epoch_for_period_classification(self):
+        journals = [
+            {
+                "JournalID": "late-posted-backdated",
+                "DateString": "/Date(1767139200000+0000)/",
+                "CreatedDateUTC": "2026-06-08T09:00:00Z",
+                "JournalLines": [{"NetAmount": "9599.78", "AccountCode": "320"}],
+            }
+        ]
+        submission = services._parse_optional_iso_datetime("2026-02-05T00:00:00Z")
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
+            journals,
+            period_start_date=date(2025, 1, 1),
+            as_at_date=date(2025, 12, 31),
+            submitted_at=submission,
+        )
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["journalId"], "late-posted-backdated")
+        self.assertEqual(candidates[0]["journalDate"], "2025-12-31")
+        self.assertEqual(len(outside_period), 0)
+        self.assertEqual(diagnostics["inPeriodTotal"], 1)

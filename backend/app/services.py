@@ -17896,7 +17896,7 @@ async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[
                 {
                     "JournalID": row.get("ManualJournalID") or row.get("JournalID"),
                     "JournalNumber": row.get("JournalNumber") or row.get("ManualJournalID"),
-                    "JournalDate": row.get("Date") or row.get("JournalDate"),
+                    "JournalDate": row.get("Date") or row.get("JournalDate") or row.get("DateString"),
                     "CreatedDateUTC": row.get("CreatedDateUTC") or row.get("UpdatedDateUTC"),
                     "Reference": row.get("Reference") or row.get("Narration"),
                     "SourceType": row.get("Status") or "MANUAL",
@@ -30632,12 +30632,24 @@ async def sync_payment_plan_to_xero(customer_id: str, user: dict, payment_plan: 
 
 
 def _parse_optional_iso_date(value) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     if not value:
         return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.startswith("/Date("):
+        match = re.search(r"/Date\((-?\d+)", text)
+        if match:
+            try:
+                return datetime.fromtimestamp(int(match.group(1)) / 1000, tz=timezone.utc).date()
+            except (TypeError, ValueError, OSError):
+                return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
     except ValueError:
         return None
 
