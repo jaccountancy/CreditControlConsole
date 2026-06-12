@@ -25104,6 +25104,7 @@
                 width: min(1120px, calc(100vw - 32px));
                 height: calc(100vh - 32px);
                 max-height: calc(100dvh - 32px);
+                box-sizing: border-box;
                 overflow: hidden;
                 z-index: 75;
                 box-shadow: 0 28px 56px rgba(15, 23, 42, 0.28);
@@ -25127,9 +25128,10 @@
                 overflow: auto;
             }
             .juk-wizard-modal.is-step3 .juk-wizard-modal-panel {
-                width: min(1880px, calc(100vw - 20px));
-                height: calc(100vh - 20px);
-                max-height: calc(100dvh - 20px);
+                width: min(1880px, calc(100vw - 24px));
+                max-width: calc(100vw - 24px);
+                height: calc(100vh - 24px);
+                max-height: calc(100dvh - 24px);
             }
             .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel {
                 display: grid;
@@ -25137,15 +25139,18 @@
                 min-height: 0;
                 height: 100%;
                 margin-bottom: 0;
+                overflow: hidden;
             }
             .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel .ch-companies-table-wrap {
                 min-height: 0;
                 max-height: none;
                 height: 100%;
-                overflow: auto;
+                overflow-y: auto;
+                overflow-x: auto;
             }
             .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel .ch-table {
                 width: 100%;
+                min-width: 1180px;
             }
             .juk-batch-table-toolbar {
                 display: flex;
@@ -38596,6 +38601,20 @@
                 return merged;
             }
 
+            function jukEligibleInvoiceIdsForStatus(batch, statusValue, invoiceIds = []) {
+                const requested = new Set((invoiceIds || []).map((id) => jukInvoiceIdKey(id)).filter(Boolean));
+                if (!requested.size) return [];
+                return (batch?.invoices || [])
+                    .filter((invoice) => {
+                        const idKey = jukInvoiceIdKey(invoice.id);
+                        if (!requested.has(idKey)) return false;
+                        if (invoice.status === "published" || invoice.status === "duplicate") return false;
+                        return invoice.status !== statusValue;
+                    })
+                    .map((invoice) => jukInvoiceIdKey(invoice.id))
+                    .filter(Boolean);
+            }
+
             function jukBulkUpdateStatus(batch, status) {
                 const selected = new Set(jukInvoicesState.selectedInvoiceIds || []);
                 batch.invoices = (batch.invoices || []).map((invoice) => {
@@ -39635,13 +39654,17 @@
                     approveSelectedButton.onclick = async () => {
                         const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
+                        const eligibleInvoiceIds = jukEligibleInvoiceIdsForStatus(batch, "approved", invoiceIds);
+                        if (!eligibleInvoiceIds.length) return showToast("No selected invoices can be approved. Published, duplicate, or already approved rows are skipped.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
                                 method: "POST",
-                                body: JSON.stringify({ status: "approved", invoiceIds }),
+                                body: JSON.stringify({ status: "approved", invoiceIds: eligibleInvoiceIds }),
                             }, { batchId: batch.id });
                             jukApplyServerBatchPayload(response || {});
                             renderJukInvoicesScreen();
+                            const updatedCount = Number(response?.updatedCount || 0);
+                            showToast(updatedCount > 0 ? `Approved ${updatedCount} invoice${updatedCount === 1 ? "" : "s"}.` : "No invoices were updated.", updatedCount > 0 ? "success" : "info");
                         } catch (error) {
                             showToast(error?.message || "Unable to approve selected invoices.", "error");
                         }
@@ -39651,14 +39674,17 @@
                     markNotConnectedSelectedButton.onclick = async () => {
                         const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
+                        const eligibleInvoiceIds = jukEligibleInvoiceIdsForStatus(batch, "manually_excluded", invoiceIds);
+                        if (!eligibleInvoiceIds.length) return showToast("No selected invoices can be marked not connected.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
                                 method: "POST",
-                                body: JSON.stringify({ status: "manually_excluded", invoiceIds }),
+                                body: JSON.stringify({ status: "manually_excluded", invoiceIds: eligibleInvoiceIds }),
                             }, { batchId: batch.id });
                             jukApplyServerBatchPayload(response || {});
                             renderJukInvoicesScreen();
-                            showToast("Selected invoices marked as not connected.", "success");
+                            const updatedCount = Number(response?.updatedCount || 0);
+                            showToast(updatedCount > 0 ? `Marked ${updatedCount} invoice${updatedCount === 1 ? "" : "s"} as not connected.` : "No invoices were updated.", updatedCount > 0 ? "success" : "info");
                         } catch (error) {
                             showToast(error?.message || "Unable to mark selected invoices as not connected.", "error");
                         }
@@ -39668,13 +39694,17 @@
                     skipSelectedButton.onclick = async () => {
                         const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
+                        const eligibleInvoiceIds = jukEligibleInvoiceIdsForStatus(batch, "skipped", invoiceIds);
+                        if (!eligibleInvoiceIds.length) return showToast("No selected invoices can be skipped.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
                                 method: "POST",
-                                body: JSON.stringify({ status: "skipped", invoiceIds }),
+                                body: JSON.stringify({ status: "skipped", invoiceIds: eligibleInvoiceIds }),
                             }, { batchId: batch.id });
                             jukApplyServerBatchPayload(response || {});
                             renderJukInvoicesScreen();
+                            const updatedCount = Number(response?.updatedCount || 0);
+                            showToast(updatedCount > 0 ? `Skipped ${updatedCount} invoice${updatedCount === 1 ? "" : "s"}.` : "No invoices were updated.", updatedCount > 0 ? "success" : "info");
                         } catch (error) {
                             showToast(error?.message || "Unable to skip selected invoices.", "error");
                         }
@@ -39684,13 +39714,17 @@
                     retrySelectedButton.onclick = async () => {
                         const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
+                        const eligibleInvoiceIds = jukEligibleInvoiceIdsForStatus(batch, "retry_pending", invoiceIds);
+                        if (!eligibleInvoiceIds.length) return showToast("No selected invoices can be queued for retry.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
                                 method: "POST",
-                                body: JSON.stringify({ status: "retry_pending", invoiceIds }),
+                                body: JSON.stringify({ status: "retry_pending", invoiceIds: eligibleInvoiceIds }),
                             }, { batchId: batch.id });
                             jukApplyServerBatchPayload(response || {});
                             renderJukInvoicesScreen();
+                            const updatedCount = Number(response?.updatedCount || 0);
+                            showToast(updatedCount > 0 ? `Queued ${updatedCount} invoice${updatedCount === 1 ? "" : "s"} for retry.` : "No invoices were updated.", updatedCount > 0 ? "success" : "info");
                         } catch (error) {
                             showToast(error?.message || "Unable to retry selected invoices.", "error");
                         }
