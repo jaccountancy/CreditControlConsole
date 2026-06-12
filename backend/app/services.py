@@ -24,6 +24,7 @@ from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import formataddr
 from pathlib import Path
+from typing import Callable
 from urllib.parse import quote, urlencode, urljoin
 from uuid import UUID, uuid4
 from xml.sax.saxutils import escape as xml_escape
@@ -110,6 +111,7 @@ DATABASE_ACTIVE_ME_SYNC_CRITICAL_THRESHOLD = 5
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 JUKSIB_BATCH_PREFIX = "JUKSIB"
+JUKSIB_IMPORT_START_FLOOR = date(2026, 6, 1)
 JUKSIB_CONFIDENCE_HIGH = Decimal("0.90")
 JUKSIB_CONFIDENCE_MEDIUM = Decimal("0.70")
 JUKSIB_MAX_IMPORT_INVOICES = 1200
@@ -15012,12 +15014,68 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
     include_imported = bool(payload.get("includeAlreadyImported"))
     date_from = _parse_optional_iso_date(payload.get("invoiceDateFrom"))
     date_to = _parse_optional_iso_date(payload.get("invoiceDateTo"))
+    progress_hook: Callable[[dict], None] | None = payload.get("_progressHook") if callable(payload.get("_progressHook")) else None
+
+    def _emit_progress(stage: str, message: str, *, processed: int = 0, total: int = 0, error: str = "") -> None:
+        if not progress_hook:
+            return
+        try:
+            progress_hook(
+                {
+                    "stage": str(stage or "").strip() or "running",
+                    "message": str(message or "").strip() or "Working…",
+                    "processed": max(0, int(processed or 0)),
+                    "total": max(0, int(total or 0)),
+                    "error": str(error or "").strip(),
+                    "at": _iso(utcnow()) or "",
+                }
+            )
+        except Exception:
+            logger.exception("JUKSIB import progress hook failed")
+
+    floor_date = JUKSIB_IMPORT_START_FLOOR
+    london_today = datetime.now(ZoneInfo("Europe/London")).date()
+    if date_from is None:
+        latest_end = None
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT invoice_date_to, invoice_date_from, created_at
+                    FROM juksib_batches
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                )
+                latest_row = cursor.fetchone() or {}
+            connection.commit()
+        latest_end = (
+            latest_row.get("invoice_date_to")
+            or latest_row.get("invoice_date_from")
+            or (latest_row.get("created_at").date() if latest_row.get("created_at") else None)
+        )
+        if isinstance(latest_end, date):
+            date_from = max(latest_end, floor_date)
+        else:
+            date_from = floor_date
+    if date_to is None:
+        date_to = london_today
+    date_from = max(date_from, floor_date)
+    date_to = min(date_to, london_today)
+    if date_to < date_from:
+        date_to = date_from
+
+    _emit_progress("starting", f"Preparing import window {date_from.isoformat()} to {date_to.isoformat()}.")
 
     master_connection, sub_connections = _juksib_master_and_sub_connections(user)
+    _emit_progress("connecting", "Connected to JUK source and tenant mappings.")
     where_clauses = ['Type=="ACCREC"', 'Status!="VOIDED"', 'Status!="DELETED"']
     if not include_paid:
         where_clauses.append('Status!="PAID"')
     where = "&&".join(where_clauses)
+    _emit_progress("fetching", "Fetching source invoices from JUK Xero.")
     raw_invoices = await fetch_paginated_collection(
         master_connection,
         INVOICES_URL,
@@ -15025,7 +15083,9 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
         params={"where": where, "order": "Date DESC"},
         max_pages=20,
     )
+    _emit_progress("filtering", f"Fetched {len(raw_invoices or [])} invoices. Applying date and status filters.")
     source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=date_from, date_to=date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
+    _emit_progress("filtering", f"{len(source_rows)} invoices remain after filtering.", total=len(source_rows))
     if source_rows and not include_imported:
         source_invoice_ids = [str(row.get("juk_xero_invoice_id") or "").strip() for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip()]
         seen_source_ids: set[str] = set()
@@ -15061,6 +15121,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                 connection.commit()
         if seen_source_ids:
             source_rows = [row for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip() not in seen_source_ids]
+            _emit_progress("filtering", f"Excluded {len(seen_source_ids)} previously imported/synced invoices.", total=len(source_rows))
 
     rules: list[dict] = []
     with get_connection() as connection:
@@ -15077,6 +15138,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
             )
             rules = cursor.fetchall() or []
         connection.commit()
+    _emit_progress("matching", f"Loaded {len(rules)} saved matching rules.")
 
     mappings_by_tenant: dict[str, dict] = {}
     with get_connection() as connection:
@@ -15112,6 +15174,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                 "active": active_state,
             }
         )
+    _emit_progress("matching", f"Prepared {len(candidates)} candidate tenant mappings.", total=len(source_rows))
 
     batch_reference = _juksib_next_batch_reference(user["id"])
     batch_id = ""
@@ -15161,6 +15224,14 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
             batch_id = str((cursor.fetchone() or {}).get("id") or "")
 
         for row in source_rows:
+            processed_count = len(inserted_invoices)
+            if processed_count == 0 or processed_count % 10 == 0:
+                _emit_progress(
+                    "matching",
+                    f"Matching invoices {processed_count + 1}-{min(processed_count + 10, len(source_rows))} of {len(source_rows)}.",
+                    processed=processed_count,
+                    total=len(source_rows),
+                )
             match_row = await _juksib_match_invoice(
                 user=user,
                 contact_name=row.get("juk_contact_name"),
@@ -15255,6 +15326,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                 inserted_invoices.append(cursor.fetchone() or {})
 
         summary = _juksib_build_summary(inserted_invoices)
+        _emit_progress("saving", "Saving batch summary and final metadata.", processed=len(inserted_invoices), total=len(source_rows))
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -15276,6 +15348,12 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
         action="batch_imported",
         new_value={"batchReference": batch_reference, "summary": summary},
         notes=f"Imported {summary.get('totalImported', 0)} invoices from master tenant.",
+    )
+    _emit_progress(
+        "completed",
+        f"Import complete. {summary.get('totalImported', 0)} invoices prepared, {summary.get('readyToPublish', 0)} ready to publish.",
+        processed=len(inserted_invoices),
+        total=len(source_rows),
     )
     return await juksib_get_batch(user, batch_id)
 
