@@ -117,6 +117,7 @@ JUKSIB_MAX_IMPORT_INVOICES = 300
 JUKSIB_OPENAI_MATCH_LIMIT = 24
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
+JUKSIB_IMPORT_HISTORY_NOTE = "This Invoice was imported the Xero Ledger using Jenius AI."
 JUKSIB_MATCH_RESPONSE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -15789,6 +15790,18 @@ async def _juksib_resolve_supplier_contact_id(
     return ""
 
 
+async def _juksib_add_destination_invoice_note(destination_connection: dict, destination_invoice_id: str) -> tuple[bool, str]:
+    invoice_id = str(destination_invoice_id or "").strip()
+    if not invoice_id:
+        return False, "Missing destination invoice id."
+    try:
+        await create_history_record(destination_connection, "Invoices", invoice_id, JUKSIB_IMPORT_HISTORY_NOTE)
+        return True, ""
+    except Exception as exc:
+        logger.exception("JUKSIB: Failed to add history note for destination invoice %s", invoice_id)
+        return False, _sync_error_message(exc)
+
+
 async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     selected_ids = [str(item).strip() for item in (payload.get("invoiceIds") or []) if str(item).strip()]
@@ -15917,8 +15930,23 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 latest_sync_row = cursor.fetchone() or {}
             connection.commit()
         if duplicate_row:
+            duplicate_bill_id = str(duplicate_row.get("destination_bill_id") or "").strip()
+            note_added = False
+            note_error = ""
+            if duplicate_bill_id:
+                note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, duplicate_bill_id)
             publish_result["duplicates"] += 1
-            publish_result["rows"].append({"invoiceId": invoice_id, "status": "duplicate", "message": "Already synced previously."})
+            publish_result["rows"].append(
+                {
+                    "invoiceId": invoice_id,
+                    "status": "duplicate",
+                    "billId": duplicate_bill_id,
+                    "xeroConfirmed": bool(duplicate_bill_id),
+                    "noteAdded": note_added,
+                    "noteError": note_error,
+                    "message": "Already synced previously." if note_added or not note_error else f"Already synced previously. Note failed: {note_error}",
+                }
+            )
             with get_connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -16002,6 +16030,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 connection.commit()
 
             if attached_ok:
+                note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, latest_bill_id)
                 publish_result["published"] += 1
                 publish_result["rows"].append(
                     {
@@ -16010,7 +16039,12 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                         "billId": latest_bill_id,
                         "purchaseAccountCode": target_account_code,
                         "purchaseAccountName": target_account_name,
-                        "message": "PDF attachment retry succeeded and bill is now fully published.",
+                        "xeroConfirmed": True,
+                        "noteAdded": note_added,
+                        "noteError": note_error,
+                        "message": "PDF attachment retry succeeded and bill is now fully published."
+                        if note_added or not note_error
+                        else f"Published, but note failed: {note_error}",
                     }
                 )
             else:
@@ -16037,8 +16071,22 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             )
             if _juksib_invoice_exists_in_destination(existing_bills, invoice_number):
                 existing_bill_id = _juksib_destination_invoice_id(existing_bills, invoice_number)
+                note_added = False
+                note_error = ""
+                if existing_bill_id:
+                    note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, existing_bill_id)
                 publish_result["duplicates"] += 1
-                publish_result["rows"].append({"invoiceId": invoice_id, "status": "duplicate", "message": "Destination bill already exists."})
+                publish_result["rows"].append(
+                    {
+                        "invoiceId": invoice_id,
+                        "status": "duplicate",
+                        "billId": existing_bill_id,
+                        "xeroConfirmed": bool(existing_bill_id),
+                        "noteAdded": note_added,
+                        "noteError": note_error,
+                        "message": "Destination bill already exists." if note_added or not note_error else f"Destination bill already exists. Note failed: {note_error}",
+                    }
+                )
                 with get_connection() as connection:
                     with connection.cursor() as cursor:
                         cursor.execute(
@@ -16137,6 +16185,8 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
         created_invoice_id = ""
         pdf_attached = False
         publish_error = ""
+        note_added = False
+        note_error = ""
         try:
             created_payload = await create_sales_invoice(
                 destination_connection,
@@ -16164,6 +16214,9 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
         except Exception as exc:
             publish_error = _sync_error_message(exc)
 
+        if created_invoice_id:
+            note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, created_invoice_id)
+
         if created_invoice_id and not publish_error:
             status_value = "published"
             publish_result["published"] += 1
@@ -16173,6 +16226,9 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
         else:
             status_value = "failed"
             publish_result["failed"] += 1
+        combined_error = publish_error
+        if note_error:
+            combined_error = f"{combined_error} | Note failed: {note_error}" if combined_error else f"Note failed: {note_error}"
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -16205,7 +16261,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                         destination_tenant_id,
                         "published" if status_value == "published" else "partial_failed" if created_invoice_id else "failed",
                         pdf_attached,
-                        publish_error,
+                        combined_error,
                     ),
                 )
                 cursor.execute(
@@ -16223,7 +16279,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                         status_value,
                         created_invoice_id,
                         status_value,
-                        publish_error,
+                        combined_error,
                         status_value,
                         invoice_id,
                     ),
@@ -16237,7 +16293,12 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 "billId": created_invoice_id,
                 "purchaseAccountCode": target_account_code,
                 "purchaseAccountName": target_account_name,
-                "message": publish_error or "Published successfully.",
+                "xeroConfirmed": bool(created_invoice_id),
+                "noteAdded": note_added,
+                "noteError": note_error,
+                "message": publish_error
+                or (note_error and f"Published, but note failed: {note_error}")
+                or "Published successfully.",
             }
         )
 

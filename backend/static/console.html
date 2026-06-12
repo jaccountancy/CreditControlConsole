@@ -25036,6 +25036,43 @@
                 gap: 8px;
                 margin: 10px 0 8px;
             }
+            #jukInvoicesStep3Panel .juk-toolbar select {
+                min-width: 160px;
+            }
+            #jukInvoicesStep3Panel .ch-table {
+                table-layout: fixed;
+                font-size: 13px;
+            }
+            #jukInvoicesStep3Panel .ch-table th,
+            #jukInvoicesStep3Panel .ch-table td {
+                padding: 6px 8px;
+                vertical-align: top;
+            }
+            #jukInvoicesStep3Panel .ch-table td small {
+                margin-top: 2px;
+                font-size: 11px;
+                line-height: 1.2;
+            }
+            #jukInvoicesStep3Panel .ch-table .ghost-button {
+                padding: 5px 9px;
+                font-size: 12px;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(1) {
+                width: 34px;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(2) {
+                width: 110px;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(5) {
+                width: 120px;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(6),
+            #jukInvoicesStep3Panel .ch-table td:nth-child(7) {
+                width: 90px;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(8) {
+                width: 120px;
+            }
             .juk-progress-track {
                 width: 100%;
                 height: 10px;
@@ -25048,6 +25085,86 @@
                 background: linear-gradient(90deg, #1d67f2, #3aa0ff);
                 width: 0%;
                 transition: width 0.2s ease;
+            }
+            .juk-progress-fill.is-running {
+                background-size: 220% 100%;
+                animation: jukProgressSheen 1.4s linear infinite;
+            }
+            @keyframes jukProgressSheen {
+                0% { background-position: 0% 50%; }
+                100% { background-position: 100% 50%; }
+            }
+            .juk-live-publish-panel {
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: linear-gradient(180deg, rgba(243, 248, 255, 0.88) 0%, rgba(255, 255, 255, 0.96) 100%);
+                margin: 8px 0;
+            }
+            .juk-live-publish-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+                font-size: 12px;
+                color: var(--ink-soft);
+            }
+            .juk-live-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #1d67f2;
+                box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.35);
+                animation: jukPulse 1.3s ease-out infinite;
+            }
+            @keyframes jukPulse {
+                0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.35); }
+                100% { box-shadow: 0 0 0 12px rgba(29, 103, 242, 0); }
+            }
+            .juk-live-publish-stages {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .juk-live-stage {
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 7px 8px;
+                font-size: 11px;
+                color: var(--ink-soft);
+                background: #fff;
+            }
+            .juk-live-stage.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: rgba(29, 103, 242, 0.08);
+                color: #1647a7;
+                font-weight: 700;
+            }
+            .juk-live-stage.is-complete {
+                border-color: rgba(18, 122, 80, 0.35);
+                background: rgba(18, 122, 80, 0.12);
+                color: #0f6a46;
+                font-weight: 700;
+            }
+            .juk-confirm-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-weight: 700;
+                color: #14714d;
+            }
+            .juk-confirm-pill i {
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                background: #1caa6b;
+                color: #fff;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-style: normal;
+                font-size: 12px;
+                line-height: 1;
             }
             .juk-loading-indicator {
                 display: inline-flex;
@@ -25121,12 +25238,12 @@
             }
             .juk-confidence-wrap {
                 display: grid;
-                gap: 5px;
+                gap: 3px;
             }
             .juk-confidence-bar {
                 width: 100%;
-                max-width: 110px;
-                height: 8px;
+                max-width: 96px;
+                height: 6px;
                 border-radius: 999px;
                 background: rgba(58, 79, 122, 0.16);
                 overflow: hidden;
@@ -25187,6 +25304,16 @@
                 font-size: 12px;
                 color: var(--ink);
                 word-break: break-word;
+            }
+            .juk-override-row {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                margin-top: 8px;
+            }
+            .juk-override-row select {
+                min-width: 220px;
             }
             @media (max-width: 1180px) {
                 .juk-wizard-steps {
@@ -29934,6 +30061,13 @@
                                         <option value="failed">Failed</option>
                                         <option value="duplicate">Duplicates</option>
                                     </select>
+                                    <select id="jukInvoicesSortSelect">
+                                        <option value="confidence-desc">Confidence: High to low</option>
+                                        <option value="confidence-asc">Confidence: Low to high</option>
+                                        <option value="amount-desc">Amount: High to low</option>
+                                        <option value="amount-asc">Amount: Low to high</option>
+                                        <option value="status">Status</option>
+                                    </select>
                                     <button class="ghost-button" id="jukInvoicesSelectReadyButton" type="button">Select ready</button>
                                     <button class="ghost-button" id="jukInvoicesApproveSelectedButton" type="button">Approve selected</button>
                                     <button class="ghost-button" id="jukInvoicesMarkNotConnectedSelectedButton" type="button">Mark not connected</button>
@@ -29997,6 +30131,13 @@
                                 </div>
                                 <div class="juk-progress-track"><div class="juk-progress-fill" id="jukInvoicesProgressFill"></div></div>
                                 <p class="late-charge-summary" id="jukInvoicesProgressSummary">Waiting to publish approved invoices.</p>
+                                <section class="juk-live-publish-panel" id="jukInvoicesLivePublishPanel">
+                                    <div class="juk-live-publish-header">
+                                        <span class="juk-live-dot" id="jukInvoicesLiveDot" hidden></span>
+                                        <strong id="jukInvoicesLiveMessage">Ready to publish.</strong>
+                                    </div>
+                                    <div class="juk-live-publish-stages" id="jukInvoicesLiveStages"></div>
+                                </section>
                                 <div class="juk-grid" id="jukInvoicesProgressCards"></div>
                                 <div class="juk-toolbar">
                                     <button class="primary-button" id="jukInvoicesStartPublishButton" type="button">Start publishing</button>
@@ -30038,6 +30179,21 @@
                                     <button class="ghost-button" id="jukInvoicesExportExcelButton" type="button">Export Excel report</button>
                                     <button class="ghost-button" id="jukInvoicesExportAuditButton" type="button">Export audit log</button>
                                 </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="JUK published invoice confirmation">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice</th>
+                                                <th>Contact</th>
+                                                <th>Tenant</th>
+                                                <th>Xero Bill ID</th>
+                                                <th>Confirmed</th>
+                                                <th>History Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="jukInvoicesSummaryPublishedBody"></tbody>
+                                    </table>
+                                </section>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="JUK batch history">
                                         <thead>
@@ -36279,6 +36435,7 @@
                 currentBatchId: "",
                 selectedInvoiceIds: [],
                 reviewFilter: "all",
+                reviewSort: "confidence-desc",
                 step: 7,
                 batchModalOpen: false,
                 batchSearch: "",
@@ -36639,6 +36796,7 @@
                         selectedInvoiceIds: Array.isArray(parsed.selectedInvoiceIds)
                             ? parsed.selectedInvoiceIds.map((invoiceId) => String(invoiceId ?? "").trim()).filter(Boolean)
                             : [],
+                        reviewSort: String(parsed.reviewSort || JUK_DEFAULT_STATE.reviewSort || "confidence-desc"),
                     };
                 } catch {
                     return { ...JUK_DEFAULT_STATE };
@@ -37071,6 +37229,48 @@
                 if (jukInvoicesState.reviewFilter === "failed") return invoices.filter((invoice) => invoice.status === "failed");
                 if (jukInvoicesState.reviewFilter === "duplicate") return invoices.filter((invoice) => invoice.status === "duplicate");
                 return invoices;
+            }
+
+            function jukSortRows(rows = []) {
+                const sortKey = String(jukInvoicesState.reviewSort || "confidence-desc");
+                const order = [...rows];
+                if (sortKey === "confidence-desc") {
+                    order.sort((left, right) => Number(right.matchConfidence || 0) - Number(left.matchConfidence || 0));
+                } else if (sortKey === "confidence-asc") {
+                    order.sort((left, right) => Number(left.matchConfidence || 0) - Number(right.matchConfidence || 0));
+                } else if (sortKey === "amount-desc") {
+                    order.sort((left, right) => Number(right.total || 0) - Number(left.total || 0));
+                } else if (sortKey === "amount-asc") {
+                    order.sort((left, right) => Number(left.total || 0) - Number(right.total || 0));
+                } else if (sortKey === "status") {
+                    order.sort((left, right) => String(left.status || "").localeCompare(String(right.status || ""), "en"));
+                }
+                return order;
+            }
+
+            function jukAddLocalOverrideRule(invoice = {}, tenant = {}) {
+                const ruleName = String(invoice.jukContactName || "").trim();
+                const normalized = normalizeJukName(ruleName);
+                if (!normalized) return;
+                const existingIndex = jukInvoicesState.rules.findIndex((rule) => rule.active && rule.normalizedInvoiceName === normalized && rule.ruleType !== "exclude");
+                const nextRule = {
+                    id: `local-rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    ruleName,
+                    normalizedInvoiceName: normalized,
+                    tenantId: String(tenant.tenantId || ""),
+                    tenantName: String(tenant.tenantName || ""),
+                    clientId: String(tenant.clientId || tenant.tenantId || ""),
+                    ruleType: "manual_override",
+                    confidenceOverride: 1,
+                    createdBy: "Current user",
+                    createdAt: new Date().toISOString(),
+                    lastUsedAt: new Date().toISOString(),
+                    usageCount: 1,
+                    active: true,
+                    notes: "Saved from Step 3 manual override",
+                };
+                if (existingIndex >= 0) jukInvoicesState.rules.splice(existingIndex, 1, nextRule);
+                else jukInvoicesState.rules.unshift(nextRule);
             }
 
             function jukSelectInvoice(invoiceId, checked) {
@@ -37729,6 +37929,7 @@
                 }
 
                 const filterSelect = document.getElementById("jukInvoicesFilterSelect");
+                const sortSelect = document.getElementById("jukInvoicesSortSelect");
                 if (filterSelect) {
                     filterSelect.value = jukInvoicesState.reviewFilter || "all";
                     if (filterSelect.dataset.jukWired !== "true") {
@@ -37739,8 +37940,19 @@
                         });
                     }
                 }
+                if (sortSelect) {
+                    sortSelect.value = jukInvoicesState.reviewSort || "confidence-desc";
+                    if (sortSelect.dataset.jukWired !== "true") {
+                        sortSelect.dataset.jukWired = "true";
+                        sortSelect.addEventListener("change", () => {
+                            jukInvoicesState.reviewSort = sortSelect.value || "confidence-desc";
+                            renderJukInvoicesScreen();
+                        });
+                    }
+                }
 
-                const reviewRows = jukActiveRows(batch);
+                const connectedTenants = jukConnectedTenants();
+                const reviewRows = jukSortRows(jukActiveRows(batch));
                 const reviewTable = document.getElementById("jukInvoicesReviewTableBody");
                 if (reviewTable) {
                     reviewTable.innerHTML = reviewRows.length
@@ -37750,6 +37962,14 @@
                             const confidencePct = Math.max(0, Math.min(100, Math.round(confidence * 100)));
                             const risk = jukConfidenceRisk(confidence);
                             const isExpanded = jukExpandedInvoiceId === invoice.id;
+                            const matchedTenantId = String(invoice.matchedTenantId || "");
+                            const overrideTenantOptions = connectedTenants.length
+                                ? connectedTenants.map((tenant) => {
+                                    const tenantId = String(tenant.tenantId || "");
+                                    const selected = tenantId && tenantId === matchedTenantId ? "selected" : "";
+                                    return `<option value="${escapeHTML(tenantId)}" ${selected}>${escapeHTML(String(tenant.tenantName || tenant.clientName || tenantId))}</option>`;
+                                }).join("")
+                                : '<option value="">No connected tenants</option>';
                             const alternativesText = Array.isArray(invoice.alternatives) && invoice.alternatives.length
                                 ? invoice.alternatives.map((item) => `${item?.tenantName || "Tenant"} (${Math.round(Number(item?.confidence || 0) * 100)}%)`).join(", ")
                                 : "None";
@@ -37771,6 +37991,7 @@
                                 <td>
                                     <button class="ghost-button" type="button" data-juk-row-action="approve" data-juk-row-id="${escapeHTML(invoice.id)}">Approve</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="skip" data-juk-row-id="${escapeHTML(invoice.id)}">Skip</button>
+                                    <button class="ghost-button" type="button" data-juk-row-action="override" data-juk-row-id="${escapeHTML(invoice.id)}">Override</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
@@ -37794,6 +38015,17 @@
                                             <article class="juk-detail-card">
                                                 <h6>Error</h6>
                                                 <p>${escapeHTML(invoice.errorMessage || "None")}</p>
+                                            </article>
+                                            <article class="juk-detail-card">
+                                                <h6>Manual Override</h6>
+                                                <p>Select a destination tenant and optionally save this as a reusable rule for future batches.</p>
+                                                <div class="juk-override-row">
+                                                    <select data-juk-override-tenant="${escapeHTML(invoice.id)}">
+                                                        ${overrideTenantOptions}
+                                                    </select>
+                                                    <label><input type="checkbox" data-juk-override-save="${escapeHTML(invoice.id)}" checked> Remember this match</label>
+                                                    <button class="primary-button" type="button" data-juk-override-apply="${escapeHTML(invoice.id)}">Apply override</button>
+                                                </div>
                                             </article>
                                         </div>
                                     </div>
@@ -37835,9 +38067,64 @@
                                 } catch (error) {
                                     return showToast(error?.message || "Unable to skip invoice.", "error");
                                 }
+                            } else if (action === "override") {
+                                jukExpandedInvoiceId = target.id;
                             } else if (action === "explain") {
                                 jukExpandedInvoiceId = jukExpandedInvoiceId === target.id ? "" : target.id;
                             }
+                            renderJukInvoicesScreen();
+                        });
+                    });
+                    reviewTable.querySelectorAll("[data-juk-override-apply]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const invoiceId = String(button.dataset.jukOverrideApply || "").trim();
+                            if (!invoiceId) return;
+                            const invoice = batch.invoices.find((item) => jukInvoiceIdKey(item.id) === jukInvoiceIdKey(invoiceId));
+                            if (!invoice) return;
+                            const card = button.closest(".juk-detail-card");
+                            const tenantSelect = card?.querySelector("[data-juk-override-tenant]");
+                            const saveCheckbox = card?.querySelector("[data-juk-override-save]");
+                            const tenantId = String(tenantSelect?.value || "").trim();
+                            const saveRule = Boolean(saveCheckbox?.checked);
+                            if (!tenantId) {
+                                showToast("Select a destination tenant first.", "info");
+                                return;
+                            }
+                            try {
+                                const response = await requestJSON(api.endpoints.juksibOverride, {
+                                    method: "POST",
+                                    body: JSON.stringify({
+                                        invoiceId,
+                                        tenantId,
+                                        saveRule,
+                                        applySimilar: false,
+                                        note: "Manual override from Step 3 bulk review",
+                                        excludeOnly: false,
+                                    }),
+                                }, { batchId: batch.id });
+                                jukApplyServerBatchPayload(response || {});
+                                await jukRefreshFromAPI({ silent: true, batchId: batch.id });
+                                showToast("Manual override applied.", "success");
+                            } catch (error) {
+                                const tenant = connectedTenants.find((row) => String(row.tenantId || "").trim() === tenantId);
+                                if (!tenant) {
+                                    showToast(error?.message || "Unable to apply manual override.", "error");
+                                    return;
+                                }
+                                invoice.status = "approved";
+                                invoice.matchedTenantId = tenant.tenantId;
+                                invoice.matchedTenantName = tenant.tenantName || tenant.clientName || tenantId;
+                                invoice.matchedClientId = tenant.clientId || tenant.tenantId || "";
+                                invoice.matchSource = saveRule ? "saved_rule" : "manual_override";
+                                invoice.matchConfidence = 1;
+                                invoice.matchReason = "Manually overridden from bulk review.";
+                                invoice.approvedBy = "Current user";
+                                invoice.approvedAt = new Date().toISOString();
+                                if (saveRule) jukAddLocalOverrideRule(invoice, tenant);
+                                jukRebuildBatchSummary(batch);
+                                showToast("Override applied locally. Saved for next runs.", "success");
+                            }
+                            jukExpandedInvoiceId = invoiceId;
                             renderJukInvoicesScreen();
                         });
                     });
@@ -37985,6 +38272,9 @@
 
                 const progressFill = document.getElementById("jukInvoicesProgressFill");
                 const progressSummary = document.getElementById("jukInvoicesProgressSummary");
+                const liveDot = document.getElementById("jukInvoicesLiveDot");
+                const liveMessage = document.getElementById("jukInvoicesLiveMessage");
+                const liveStages = document.getElementById("jukInvoicesLiveStages");
                 const progressCards = document.getElementById("jukInvoicesProgressCards");
                 const publishExperienceCards = document.getElementById("jukInvoicesPublishExperienceCards");
                 const publishExperienceSummary = document.getElementById("jukInvoicesPublishExperienceSummary");
@@ -37997,11 +38287,43 @@
                 const skippedRows = (batch.invoices || []).filter((invoice) => invoice.status === "skipped" || invoice.status === "manually_excluded");
                 const blockedRows = Math.max(0, Number(stats.totalImported || 0) - publishableRows.length - skippedRows.length - Number(stats.published || 0));
                 const isTestMode = String(batch.mode || "test").toLowerCase() !== "live";
-                if (progressFill) progressFill.style.width = `${percent}%`;
+                if (progressFill) {
+                    progressFill.style.width = `${percent}%`;
+                    progressFill.classList.toggle("is-running", Boolean(progress.running));
+                }
                 if (progressSummary) {
                     progressSummary.textContent = progress.running
                         ? `Publishing ${progress.current || "batch"} · ${progress.processed}/${progress.total} (${percent}%).`
                         : (progress.total ? `Publish complete: ${progress.published} published, ${progress.failed} failed, ${progress.skipped} skipped.` : "Publish is ready once at least one invoice is approved.");
+                }
+                if (liveDot) liveDot.hidden = !progress.running;
+                if (liveMessage) {
+                    liveMessage.textContent = progress.running
+                        ? (progress.current || "Creating destination bills and attaching files...")
+                        : (progress.total ? "Publish completed. Review per-invoice outcomes below." : "Ready to publish.");
+                }
+                if (liveStages) {
+                    const stageStates = progress.running
+                        ? [
+                            { label: "Validating", state: percent >= 25 ? "complete" : "active" },
+                            { label: "Creating bills", state: percent >= 60 ? "complete" : percent >= 25 ? "active" : "" },
+                            { label: "Attaching files", state: percent >= 90 ? "complete" : percent >= 60 ? "active" : "" },
+                            { label: "Finalizing", state: percent >= 90 ? "active" : "" },
+                        ]
+                        : progress.total
+                            ? [
+                                { label: "Validating", state: "complete" },
+                                { label: "Creating bills", state: "complete" },
+                                { label: "Attaching files", state: "complete" },
+                                { label: "Finalizing", state: "complete" },
+                            ]
+                            : [
+                                { label: "Validating", state: "active" },
+                                { label: "Creating bills", state: "" },
+                                { label: "Attaching files", state: "" },
+                                { label: "Finalizing", state: "" },
+                            ];
+                    liveStages.innerHTML = stageStates.map((stage) => `<div class="juk-live-stage ${stage.state === "active" ? "is-active" : stage.state === "complete" ? "is-complete" : ""}">${escapeHTML(stage.label)}</div>`).join("");
                 }
                 if (progressCards) {
                     progressCards.innerHTML = [
@@ -38090,6 +38412,42 @@
                         ["Duplicates prevented", stats.duplicates || 0],
                         ["Manual rules", jukInvoicesState.rules.filter((rule) => rule.active).length],
                     ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+                }
+                const summaryPublishedBody = document.getElementById("jukInvoicesSummaryPublishedBody");
+                if (summaryPublishedBody) {
+                    const invoiceById = new Map((batch.invoices || []).map((invoice) => [jukInvoiceIdKey(invoice.id), invoice]));
+                    const publishRows = Array.isArray(progress.rows) ? progress.rows : [];
+                    const displayRows = publishRows.length
+                        ? publishRows
+                        : (batch.invoices || [])
+                            .filter((invoice) => ["published", "duplicate"].includes(String(invoice.status || "")))
+                            .map((invoice) => ({
+                                invoiceId: invoice.id,
+                                status: invoice.status,
+                                billId: invoice.publishedBillId,
+                                xeroConfirmed: Boolean(invoice.publishedBillId) || String(invoice.status || "") === "duplicate",
+                                noteAdded: false,
+                                noteError: "",
+                                message: invoice.errorMessage || "",
+                            }));
+                    summaryPublishedBody.innerHTML = displayRows.length
+                        ? displayRows.map((row) => {
+                            const invoice = invoiceById.get(jukInvoiceIdKey(row.invoiceId)) || {};
+                            const confirmed = Boolean(row.xeroConfirmed) || (["published", "duplicate"].includes(String(row.status || "")) && Boolean(row.billId));
+                            const noteAdded = Boolean(row.noteAdded);
+                            const noteError = String(row.noteError || "").trim();
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHTML(String(invoice.jukInvoiceNumber || row.invoiceId || "--"))}</strong></td>
+                                    <td>${escapeHTML(String(invoice.jukContactName || "--"))}</td>
+                                    <td>${escapeHTML(String(invoice.matchedTenantName || "--"))}</td>
+                                    <td>${escapeHTML(String(row.billId || invoice.publishedBillId || "--"))}</td>
+                                    <td>${confirmed ? '<span class="juk-confirm-pill"><i>\u2713</i>Confirmed</span>' : '<span class="status-pill">Pending</span>'}</td>
+                                    <td>${noteAdded ? '<span class="juk-confirm-pill"><i>\u2713</i>Added</span>' : escapeHTML(noteError || "Queued during publish")}</td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No published invoices yet</p><h4>Confirmation appears after publish</h4><p>Run Step 5 publish to populate invoice confirmations and note status.</p></div></td></tr>';
                 }
 
                 const exportCsvButton = document.getElementById("jukInvoicesExportCsvButton");
