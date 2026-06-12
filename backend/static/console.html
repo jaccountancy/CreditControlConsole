@@ -76991,9 +76991,27 @@
                     const maxCandidates = Number(journalDiagnostics?.maxCandidates || 0);
                     const inPeriodTruncated = Boolean(journalDiagnostics?.inPeriodTruncated);
                     const outsideTruncated = Boolean(journalDiagnostics?.outsidePeriodTruncated);
+                    const includedWithoutCreatedAt = Number(journalDiagnostics?.includedWithoutCreatedAt || 0);
+                    const skippedPreSubmission = Number(journalDiagnostics?.skippedPreSubmission || 0);
+                    const skippedMissingJournalDate = Number(journalDiagnostics?.skippedMissingJournalDate || 0);
                     guidance.push(
                         `Journal diagnostics: fetched ${fetchedJournalCount.toLocaleString("en-GB")}, in-period ${inPeriodReturned.toLocaleString("en-GB")}/${inPeriodTotal.toLocaleString("en-GB")}, outside-period ${outsideReturned.toLocaleString("en-GB")}/${outsideTotal.toLocaleString("en-GB")}${(inPeriodTruncated || outsideTruncated) && maxCandidates > 0 ? ` (truncated to max ${maxCandidates.toLocaleString("en-GB")} each bucket)` : ""}.`
                     );
+                    if (includedWithoutCreatedAt > 0) {
+                        guidance.push(
+                            `Journal filter note: ${includedWithoutCreatedAt.toLocaleString("en-GB")} candidate journal${includedWithoutCreatedAt === 1 ? "" : "s"} had no CreatedDate in Xero and was still included for review.`
+                        );
+                    }
+                    if (skippedPreSubmission > 0) {
+                        guidance.push(
+                            `Journal filter note: ${skippedPreSubmission.toLocaleString("en-GB")} journal${skippedPreSubmission === 1 ? "" : "s"} was excluded because it was created on or before the submission timestamp.`
+                        );
+                    }
+                    if (skippedMissingJournalDate > 0) {
+                        guidance.push(
+                            `Journal filter note: ${skippedMissingJournalDate.toLocaleString("en-GB")} journal${skippedMissingJournalDate === 1 ? "" : "s"} was excluded because no journal date was available.`
+                        );
+                    }
                     const nonJournalFetched = nonJournalDiagnostics?.fetchedRows || {};
                     const nonJournalFetchedTotal = Number(nonJournalFetched?.invoices || 0)
                         + Number(nonJournalFetched?.creditNotes || 0)
