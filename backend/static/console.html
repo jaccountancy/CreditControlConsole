@@ -24615,6 +24615,33 @@
                 margin-bottom: 12px;
                 transform-origin: top center;
             }
+            .juk-batch-modal-backdrop {
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.48);
+                backdrop-filter: blur(2px);
+                z-index: 74;
+            }
+            .juk-batch-modal-backdrop[hidden] {
+                display: none !important;
+            }
+            .juk-panel.juk-step1-modal {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: min(1120px, calc(100vw - 48px));
+                max-height: calc(100vh - 72px);
+                overflow: auto;
+                z-index: 75;
+                box-shadow: 0 28px 56px rgba(15, 23, 42, 0.28);
+                border: 1px solid rgba(99, 102, 241, 0.36);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 255, 0.98) 100%);
+                margin-bottom: 0;
+            }
+            body.juk-batch-modal-open {
+                overflow: hidden;
+            }
             .juk-panel.is-entering {
                 animation: jukPanelEnter 360ms cubic-bezier(0.22, 1, 0.36, 1);
             }
@@ -29233,6 +29260,7 @@
                                     <button class="primary-button" id="jukInvoicesNewBatchButton" type="button">Start New Batch</button>
                                 </div>
                             </div>
+                            <div class="juk-batch-modal-backdrop" id="jukInvoicesStep1Backdrop" hidden></div>
 
                             <p class="late-charge-summary" id="jukInvoicesSummary">JUKSIB is ready. Create a batch to import invoices and run matching.</p>
 
@@ -29246,11 +29274,14 @@
                                 <button class="juk-step-button" type="button" data-juk-step="7"><strong>7. Summary</strong><small>Audit and export</small></button>
                             </div>
 
-                            <section class="juk-panel" id="jukInvoicesStep1Panel">
+                            <section class="juk-panel juk-step1-modal" id="jukInvoicesStep1Panel" hidden>
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Step 1</p>
                                         <h4>Create JUKSIB Batch</h4>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="jukInvoicesStep1CloseButton" type="button">Close</button>
                                     </div>
                                 </div>
                                 <form class="juk-form-grid" id="jukInvoicesCreateBatchForm">
@@ -35744,7 +35775,8 @@
                 currentBatchId: "",
                 selectedInvoiceIds: [],
                 reviewFilter: "all",
-                step: 1,
+                step: 7,
+                batchModalOpen: false,
                 publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [] },
             };
             let jukInvoicesState = loadJukInvoicesState();
@@ -36203,6 +36235,7 @@
 
             function jukSetStep(step = 1) {
                 jukInvoicesState.step = Math.max(1, Math.min(7, Number(step || 1)));
+                if (jukInvoicesState.step !== 1) jukInvoicesState.batchModalOpen = false;
             }
 
             function jukActiveRows(batch) {
@@ -36357,6 +36390,8 @@
                 const refreshButton = document.getElementById("jukInvoicesRefreshButton");
                 const openMeReportButton = document.getElementById("jukInvoicesOpenMeReportButton");
                 const newBatchButton = document.getElementById("jukInvoicesNewBatchButton");
+                const step1Backdrop = document.getElementById("jukInvoicesStep1Backdrop");
+                const step1CloseButton = document.getElementById("jukInvoicesStep1CloseButton");
                 const stepButtons = [...document.querySelectorAll("[data-juk-step]")];
                 const panels = {
                     1: document.getElementById("jukInvoicesStep1Panel"),
@@ -36373,6 +36408,9 @@
                 const batch = jukCurrentBatch();
                 const nextReferenceInput = document.getElementById("jukInvoicesBatchReferenceInput");
                 if (nextReferenceInput) nextReferenceInput.value = batch?.batchReference || jukNextBatchReference();
+                if (Number(jukInvoicesState.step || 1) === 1 && !jukInvoicesState.batchModalOpen) {
+                    jukInvoicesState.step = batch ? 2 : 7;
+                }
 
                 stepButtons.forEach((button) => {
                     const step = Number(button.dataset.jukStep || 1);
@@ -36383,6 +36421,7 @@
                     if (button.dataset.jukWired !== "true") {
                         button.dataset.jukWired = "true";
                         button.addEventListener("click", () => {
+                            if (step === 1) jukInvoicesState.batchModalOpen = true;
                             jukSetStep(step);
                             renderJukInvoicesScreen();
                         });
@@ -36392,13 +36431,20 @@
                     if (!panel) return;
                     const currentStep = Number(jukInvoicesState.step || 1);
                     const isCurrent = Number(step) === currentStep;
-                    panel.hidden = !isCurrent;
+                    if (Number(step) === 1) {
+                        panel.hidden = !(isCurrent && Boolean(jukInvoicesState.batchModalOpen));
+                    } else {
+                        panel.hidden = !isCurrent;
+                    }
                     if (isCurrent && currentStep !== jukLastRenderedStep) {
                         panel.classList.remove("is-entering");
                         void panel.offsetWidth;
                         panel.classList.add("is-entering");
                     }
                 });
+                const step1Open = Number(jukInvoicesState.step || 1) === 1 && Boolean(jukInvoicesState.batchModalOpen);
+                if (step1Backdrop) step1Backdrop.hidden = !step1Open;
+                document.body.classList.toggle("juk-batch-modal-open", step1Open);
                 jukLastRenderedStep = Number(jukInvoicesState.step || 1);
 
                 if (refreshButton.dataset.jukInvoicesWired !== "true") {
@@ -36431,8 +36477,29 @@
                         setJukLoading(true, "Preparing a new batch…");
                         jukInvoicesState.currentBatchId = "";
                         jukInvoicesState.selectedInvoiceIds = [];
+                        jukInvoicesState.batchModalOpen = true;
                         jukSetStep(1);
                         setJukLoading(false);
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (step1CloseButton && step1CloseButton.dataset.jukWired !== "true") {
+                    step1CloseButton.dataset.jukWired = "true";
+                    step1CloseButton.addEventListener("click", () => {
+                        jukInvoicesState.batchModalOpen = false;
+                        if (Number(jukInvoicesState.step || 1) === 1) {
+                            jukSetStep(jukInvoicesState.currentBatchId ? 2 : 7);
+                        }
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (step1Backdrop && step1Backdrop.dataset.jukWired !== "true") {
+                    step1Backdrop.dataset.jukWired = "true";
+                    step1Backdrop.addEventListener("click", () => {
+                        jukInvoicesState.batchModalOpen = false;
+                        if (Number(jukInvoicesState.step || 1) === 1) {
+                            jukSetStep(jukInvoicesState.currentBatchId ? 2 : 7);
+                        }
                         renderJukInvoicesScreen();
                     });
                 }
