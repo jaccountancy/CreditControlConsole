@@ -16638,6 +16638,29 @@ async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
             if not batch_row:
                 # Idempotent delete: stale client state or retries should not surface as hard failures.
                 return {"deletedBatchId": requested_batch_id, "alreadyDeleted": True, **await juksib_list_batches(user, limit=30)}
+
+            summary = batch_row.get("summary") if isinstance(batch_row.get("summary"), dict) else {}
+            published = int(summary.get("published") or 0)
+            failed = int(summary.get("failed") or 0)
+            skipped = int(summary.get("skipped") or 0)
+            batch_status = str(batch_row.get("status") or "").strip().lower()
+            lifecycle_completed = False
+            if published > 0 and failed == 0:
+                lifecycle_completed = True
+            elif published > 0 and failed > 0:
+                lifecycle_completed = True
+            elif published == 0 and failed > 0:
+                lifecycle_completed = True
+            elif published == 0 and failed == 0 and skipped > 0:
+                lifecycle_completed = True
+            if batch_status in {"completed", "published"}:
+                lifecycle_completed = True
+            if lifecycle_completed:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Only draft JUKSIB batches can be deleted.",
+                )
+
             resolved_batch_id = str(batch_row.get("id") or requested_batch_id).strip()
             cursor.execute(
                 """
