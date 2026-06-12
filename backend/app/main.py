@@ -2275,7 +2275,6 @@ async def api_juksib_batch(batch_id: str, user: dict = Depends(require_panel_use
 
 @app.delete("/api/juksib/batches/{batch_id}")
 async def api_juksib_delete_batch(batch_id: str, user: dict = Depends(require_panel_user)):
-    require_panel_write_user(user, "delete JUKSIB batches")
     return {"status": "ok", **await juksib_delete_batch(user, batch_id)}
 
 

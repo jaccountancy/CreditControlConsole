@@ -16556,47 +16556,49 @@ async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
 
 
 async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
+    requested_batch_id = str(batch_id or "").strip()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT *
                 FROM juksib_batches
-                WHERE id = %s
+                WHERE id::text = %s
                   AND user_id = %s
                 LIMIT 1
                 """,
-                (batch_id, user["id"]),
+                (requested_batch_id, user["id"]),
             )
             batch_row = cursor.fetchone()
             if not batch_row:
                 # Idempotent delete: stale client state or retries should not surface as hard failures.
-                return {"deletedBatchId": batch_id, "alreadyDeleted": True, **await juksib_list_batches(user, limit=30)}
+                return {"deletedBatchId": requested_batch_id, "alreadyDeleted": True, **await juksib_list_batches(user, limit=30)}
+            resolved_batch_id = str(batch_row.get("id") or requested_batch_id).strip()
             cursor.execute(
                 """
                 DELETE FROM juksib_batches
-                WHERE id = %s
+                WHERE id::text = %s
                   AND user_id = %s
                 """,
-                (batch_id, user["id"]),
+                (resolved_batch_id, user["id"]),
             )
         connection.commit()
 
     batch_reference = str(batch_row.get("batch_reference") or "").strip()
     _juksib_record_audit(
         user_id=user["id"],
-        batch_id=batch_id,
+        batch_id=resolved_batch_id,
         entity_type="juksib_batch",
-        entity_id=batch_id,
+        entity_id=resolved_batch_id,
         action="batch_deleted",
         old_value={
             "batchReference": batch_reference,
             "status": str(batch_row.get("status") or ""),
             "summary": batch_row.get("summary") if isinstance(batch_row.get("summary"), dict) else {},
         },
-        notes=f"Deleted batch {batch_reference or batch_id}.",
+        notes=f"Deleted batch {batch_reference or resolved_batch_id}.",
     )
-    return {"deletedBatchId": batch_id, **await juksib_list_batches(user, limit=30)}
+    return {"deletedBatchId": resolved_batch_id, **await juksib_list_batches(user, limit=30)}
 
 
 async def juksib_bulk_update_invoice_status(user: dict, batch_id: str, payload: dict | None = None) -> dict:

@@ -23334,6 +23334,134 @@
                 font-size: 12px;
                 font-weight: 700;
             }
+            .contact-archive-table-controls-row th {
+                padding: 0;
+                background: transparent;
+                border-bottom: 1px solid var(--line);
+            }
+            .contact-archive-table-controls {
+                display: grid;
+                grid-template-columns: minmax(220px, 1.2fr) minmax(170px, 0.5fr) minmax(170px, 0.5fr) auto auto auto auto;
+                gap: 10px;
+                align-items: center;
+                padding: 12px;
+                background: linear-gradient(180deg, rgba(248, 251, 255, 0.92), rgba(240, 246, 255, 0.88));
+            }
+            .contact-archive-table-controls input[type="search"],
+            .contact-archive-table-controls select {
+                width: 100%;
+                min-height: 36px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 11px;
+                background: var(--surface-strong);
+                color: var(--ink);
+            }
+            .contact-archive-table-controls .ch-register-toolbar-meta {
+                margin-left: 0;
+                justify-self: end;
+                white-space: nowrap;
+            }
+            .contact-archive-progress {
+                margin-top: 12px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                border-radius: 12px;
+                background: linear-gradient(145deg, rgba(29, 103, 242, 0.09), rgba(39, 176, 95, 0.08));
+                padding: 11px 12px;
+                display: grid;
+                gap: 8px;
+            }
+            .contact-archive-progress-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .contact-archive-progress-mode {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                padding: 4px 9px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                color: var(--blue);
+                background: rgba(255, 255, 255, 0.82);
+            }
+            .contact-archive-progress-mode::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 999px;
+                background: var(--blue);
+                box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.34);
+                animation: contact-archive-pulse 1.25s ease-in-out infinite;
+            }
+            .contact-archive-progress-track {
+                height: 9px;
+                border-radius: 999px;
+                overflow: hidden;
+                background: rgba(61, 85, 130, 0.17);
+                position: relative;
+            }
+            .contact-archive-progress-bar {
+                height: 100%;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #27b05f);
+                position: relative;
+                overflow: hidden;
+                transition: width 0.25s ease;
+            }
+            .contact-archive-progress-bar::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(115deg, rgba(255, 255, 255, 0) 12%, rgba(255, 255, 255, 0.44) 40%, rgba(255, 255, 255, 0) 72%);
+                transform: translateX(-140%);
+                animation: contact-archive-shimmer 1.4s linear infinite;
+            }
+            .contact-archive-progress-stats {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px 14px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--muted);
+            }
+            .contact-archive-progress-stats strong {
+                color: var(--ink);
+            }
+            @keyframes contact-archive-shimmer {
+                to { transform: translateX(140%); }
+            }
+            @keyframes contact-archive-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.3); opacity: 0.95; }
+                70% { box-shadow: 0 0 0 7px rgba(29, 103, 242, 0); opacity: 0.55; }
+                100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0); opacity: 0.95; }
+            }
+            @media (max-width: 1320px) {
+                .contact-archive-table-controls {
+                    grid-template-columns: repeat(4, minmax(160px, 1fr));
+                }
+                .contact-archive-table-controls .ch-register-toolbar-meta {
+                    justify-self: start;
+                    grid-column: 1 / -1;
+                }
+            }
+            @media (max-width: 920px) {
+                .contact-archive-table-controls {
+                    grid-template-columns: 1fr;
+                }
+                .contact-archive-table-controls .ghost-button,
+                .contact-archive-table-controls .ch-register-toolbar-meta {
+                    justify-self: stretch;
+                }
+            }
             .ch-review-tab-nav {
                 display: inline-flex;
                 flex-wrap: wrap;
@@ -28554,20 +28682,31 @@
                                 <div class="ch-settings-actions">
                                     <span class="ch-settings-status is-muted" id="contactArchiveStatus">Ready to review clients.</span>
                                 </div>
-                                <div class="ch-register-toolbar">
-                                    <input id="contactArchiveSearchInput" type="search" placeholder="Search contact name or email...">
-                                    <select id="contactArchiveFilterSelect" aria-label="Filter contacts">
-                                        <option value="flagged">Flagged only</option>
-                                        <option value="all">All customer contacts</option>
-                                        <option value="matched">Matched to register</option>
-                                    </select>
-                                    <button class="ghost-button" type="button" id="contactArchiveSelectAllVisibleButton">Select visible</button>
-                                    <button class="ghost-button" type="button" id="contactArchiveClearSelectionButton">Clear selection</button>
-                                    <span class="ch-register-toolbar-meta" id="contactArchiveTableMeta">0 rows</span>
-                                </div>
                                 <div class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Contact archive review table">
                                         <thead>
+                                            <tr class="contact-archive-table-controls-row">
+                                                <th colspan="6">
+                                                    <div class="contact-archive-table-controls">
+                                                        <input id="contactArchiveSearchInput" type="search" placeholder="Search contact name or email...">
+                                                        <select id="contactArchiveFilterSelect" aria-label="Filter contacts">
+                                                            <option value="flagged">Flagged only</option>
+                                                            <option value="all">All customer contacts</option>
+                                                            <option value="matched">Matched to register</option>
+                                                        </select>
+                                                        <select id="contactArchiveSortSelect" aria-label="Sort contacts">
+                                                            <option value="flagged">Sort: flagged first</option>
+                                                            <option value="name-asc">Sort: name A-Z</option>
+                                                            <option value="name-desc">Sort: name Z-A</option>
+                                                            <option value="email-asc">Sort: email A-Z</option>
+                                                            <option value="status">Sort: status</option>
+                                                        </select>
+                                                        <button class="ghost-button" type="button" id="contactArchiveSelectAllVisibleButton">Select visible</button>
+                                                        <button class="ghost-button" type="button" id="contactArchiveClearSelectionButton">Clear selection</button>
+                                                        <span class="ch-register-toolbar-meta" id="contactArchiveTableMeta">0 rows</span>
+                                                    </div>
+                                                </th>
+                                            </tr>
                                             <tr>
                                                 <th>Select</th>
                                                 <th>Contact</th>
@@ -28580,10 +28719,18 @@
                                         <tbody id="contactArchiveTableBody"></tbody>
                                     </table>
                                 </div>
-                                <div style="margin-top: 12px;" id="contactArchiveProgressWrap" hidden>
-                                    <div class="settings-help is-muted" id="contactArchiveProgressText">Archiving contacts…</div>
-                                    <div style="height: 8px; background: rgba(61, 85, 130, 0.14); border-radius: 999px; overflow: hidden;">
-                                        <div id="contactArchiveProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #1d67f2, #27b05f); transition: width 0.2s ease;"></div>
+                                <div class="contact-archive-progress" id="contactArchiveProgressWrap" hidden>
+                                    <div class="contact-archive-progress-head">
+                                        <div class="settings-help is-muted" id="contactArchiveProgressText">Archiving contacts…</div>
+                                        <span class="contact-archive-progress-mode" id="contactArchiveProgressMode">Live</span>
+                                    </div>
+                                    <div class="contact-archive-progress-track">
+                                        <div class="contact-archive-progress-bar" id="contactArchiveProgressBar"></div>
+                                    </div>
+                                    <div class="contact-archive-progress-stats">
+                                        <span id="contactArchiveProgressStage"><strong>Stage:</strong> Waiting</span>
+                                        <span id="contactArchiveProgressElapsed"><strong>Elapsed:</strong> 00:00</span>
+                                        <span id="contactArchiveProgressEta"><strong>ETA:</strong> --</span>
                                     </div>
                                 </div>
                             </section>
@@ -32774,8 +32921,11 @@
                 summary: { xeroCustomerContactCount: 0, clientRegisterCount: 0, flaggedCount: 0, reviewedCount: 0 },
                 searchTerm: "",
                 filter: "flagged",
+                sort: "flagged",
                 selectedIds: new Set(),
-                progress: { active: false, completed: 0, total: 0, message: "" },
+                progress: { active: false, mode: "idle", completed: 0, total: 0, percent: 0, message: "", stage: "", etaSeconds: null, startedAt: 0, elapsedMs: 0 },
+                reviewFeedbackTimer: null,
+                reviewDurationMs: 0,
             };
             const topbarViewTitles = {
                 ledger: "Credit Control",
@@ -50024,15 +50174,90 @@
                 node.classList.add(tone === "error" ? "is-error" : tone === "success" ? "is-success" : "is-muted");
             }
 
+            function contactArchiveFormatSeconds(totalSeconds) {
+                const seconds = Math.max(0, Number(totalSeconds || 0));
+                const minutes = Math.floor(seconds / 60);
+                const remainder = seconds % 60;
+                return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+            }
+
+            function clearContactArchiveReviewFeedbackTimer() {
+                if (!contactArchiveState.reviewFeedbackTimer) return;
+                window.clearInterval(contactArchiveState.reviewFeedbackTimer);
+                contactArchiveState.reviewFeedbackTimer = null;
+            }
+
+            function startContactArchiveReviewFeedback() {
+                clearContactArchiveReviewFeedbackTimer();
+                const stages = [
+                    "Opening Xero connection",
+                    "Pulling customer contacts",
+                    "Cross-checking client register",
+                    "Scoring archive candidates",
+                    "Finalising review snapshot",
+                ];
+                const expectedMs = Math.max(6000, Number(contactArchiveState.reviewDurationMs || 0) || 14000);
+                const startedAt = Date.now();
+                let pulseTick = 0;
+                contactArchiveState.progress = {
+                    active: true,
+                    mode: "review",
+                    completed: 0,
+                    total: 100,
+                    percent: 3,
+                    message: "Reviewing master Xero customer contacts…",
+                    stage: stages[0],
+                    etaSeconds: Math.ceil(expectedMs / 1000),
+                    startedAt,
+                    elapsedMs: 0,
+                };
+                renderContactArchiveProgress();
+                contactArchiveState.reviewFeedbackTimer = window.setInterval(() => {
+                    if (!contactArchiveState.loading) return;
+                    const elapsedMs = Date.now() - startedAt;
+                    const elapsedRatio = Math.min(1, elapsedMs / expectedMs);
+                    const stageIndex = Math.min(stages.length - 1, Math.floor(elapsedRatio * stages.length));
+                    pulseTick = (pulseTick + 1) % 4;
+                    const dots = ".".repeat(Math.max(1, pulseTick));
+                    contactArchiveState.progress = {
+                        ...contactArchiveState.progress,
+                        active: true,
+                        mode: "review",
+                        stage: stages[stageIndex],
+                        message: `Reviewing master Xero customer contacts${dots}`,
+                        elapsedMs,
+                        percent: Math.min(92, Math.max(4, Math.round(elapsedRatio * 92))),
+                        etaSeconds: Math.max(1, Math.ceil((expectedMs - elapsedMs) / 1000)),
+                    };
+                    renderContactArchiveProgress();
+                }, 360);
+            }
+
             function contactArchiveFilteredRows() {
                 const search = String(contactArchiveState.searchTerm || "").trim().toLowerCase();
                 const filter = String(contactArchiveState.filter || "flagged");
-                return (contactArchiveState.rows || []).filter((row) => {
+                const sort = String(contactArchiveState.sort || "flagged");
+                const rows = (contactArchiveState.rows || []).filter((row) => {
                     if (filter === "flagged" && !row.flagged) return false;
                     if (filter === "matched" && row.flagged) return false;
                     if (!search) return true;
                     const blob = `${row.contactName || ""} ${row.email || ""}`.toLowerCase();
                     return blob.includes(search);
+                });
+                return rows.sort((left, right) => {
+                    const leftName = String(left.contactName || "").toLowerCase();
+                    const rightName = String(right.contactName || "").toLowerCase();
+                    const leftEmail = String(left.email || "").toLowerCase();
+                    const rightEmail = String(right.email || "").toLowerCase();
+                    const leftStatus = String(left.contactStatus || "").toLowerCase();
+                    const rightStatus = String(right.contactStatus || "").toLowerCase();
+                    if (sort === "name-asc") return leftName.localeCompare(rightName, "en-GB");
+                    if (sort === "name-desc") return rightName.localeCompare(leftName, "en-GB");
+                    if (sort === "email-asc") return leftEmail.localeCompare(rightEmail, "en-GB");
+                    if (sort === "status") return leftStatus.localeCompare(rightStatus, "en-GB") || leftName.localeCompare(rightName, "en-GB");
+                    if (left.flagged !== right.flagged) return left.flagged ? -1 : 1;
+                    if (left.archived !== right.archived) return left.archived ? 1 : -1;
+                    return leftName.localeCompare(rightName, "en-GB");
                 });
             }
 
@@ -50040,11 +50265,26 @@
                 const wrap = document.getElementById("contactArchiveProgressWrap");
                 const text = document.getElementById("contactArchiveProgressText");
                 const bar = document.getElementById("contactArchiveProgressBar");
+                const mode = document.getElementById("contactArchiveProgressMode");
+                const stage = document.getElementById("contactArchiveProgressStage");
+                const elapsed = document.getElementById("contactArchiveProgressElapsed");
+                const eta = document.getElementById("contactArchiveProgressEta");
                 const progress = contactArchiveState.progress || { active: false, completed: 0, total: 0, message: "" };
                 if (wrap) wrap.hidden = !progress.active;
                 if (text) text.textContent = progress.message || "Archiving contacts…";
+                if (mode) mode.textContent = progress.mode === "review" ? "Reviewing" : progress.mode === "archive" ? "Archiving" : "Live";
+                if (stage) stage.innerHTML = `<strong>Stage:</strong> ${escapeHTML(progress.stage || "Preparing")}`;
+                if (elapsed) elapsed.innerHTML = `<strong>Elapsed:</strong> ${contactArchiveFormatSeconds(Math.round(Number(progress.elapsedMs || 0) / 1000))}`;
+                if (eta) {
+                    const etaText = Number.isFinite(Number(progress.etaSeconds)) && Number(progress.etaSeconds) >= 0
+                        ? contactArchiveFormatSeconds(Math.round(Number(progress.etaSeconds)))
+                        : "--";
+                    eta.innerHTML = `<strong>ETA:</strong> ${etaText}`;
+                }
                 if (bar) {
-                    const ratio = progress.total > 0 ? Math.min(1, Math.max(0, progress.completed / progress.total)) : 0;
+                    const ratioFromTotals = progress.total > 0 ? Math.min(1, Math.max(0, progress.completed / progress.total)) : 0;
+                    const ratioFromPercent = Number.isFinite(Number(progress.percent)) ? Math.min(1, Math.max(0, Number(progress.percent) / 100)) : 0;
+                    const ratio = ratioFromPercent > 0 ? ratioFromPercent : ratioFromTotals;
                     bar.style.width = `${Math.round(ratio * 100)}%`;
                 }
             }
@@ -85319,6 +85559,100 @@
                 return `status-${code}`;
             }
 
+            const DNS_DIAGNOSTIC_RESOLVERS = [
+                {
+                    name: "Google",
+                    endpoint: (name, type) => `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
+                    init: { method: "GET", cache: "no-store" },
+                },
+                {
+                    name: "Cloudflare",
+                    endpoint: (name, type) => `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
+                    init: {
+                        method: "GET",
+                        cache: "no-store",
+                        headers: { Accept: "application/dns-json" },
+                    },
+                },
+            ];
+
+            function parseDnsDiagnosticPayload(payload) {
+                const answers = (Array.isArray(payload?.Answer) ? payload.Answer : [])
+                    .map((answer) => String(answer?.data || "").trim())
+                    .filter(Boolean);
+                const authorityRecord = (Array.isArray(payload?.Authority) ? payload.Authority : [])
+                    .find((record) => Number(record?.type) === 6);
+                const statusCode = Number.isFinite(Number(payload?.Status)) ? Number(payload.Status) : null;
+                return {
+                    status: formatDnsStatus(statusCode),
+                    statusCode,
+                    answers,
+                    authority: String(authorityRecord?.data || "").trim(),
+                    comment: String(payload?.Comment || "").trim(),
+                };
+            }
+
+            function pickBestDnsDiagnosticResult(results) {
+                const candidates = Array.isArray(results) ? results.filter(Boolean) : [];
+                if (!candidates.length) {
+                    return {
+                        status: "network-error",
+                        statusCode: null,
+                        answers: [],
+                        authority: "",
+                        comment: "All resolver lookups failed.",
+                    };
+                }
+                const score = (result) => {
+                    if (!result) return 0;
+                    if (Array.isArray(result.answers) && result.answers.length && result.status === "ok") return 100;
+                    if (result.status === "ok") return 90;
+                    if (result.status === "nxdomain") return 70;
+                    if (result.status === "servfail") return 60;
+                    if (result.status === "refused") return 50;
+                    if (result.status === "http-error") return 40;
+                    if (result.status === "network-error") return 20;
+                    return 30;
+                };
+                return [...candidates].sort((a, b) => score(b) - score(a))[0];
+            }
+
+            async function resolveDnsDiagnosticFromResolver(resolver, name, type) {
+                const endpoint = resolver.endpoint(name, type);
+                let response;
+                try {
+                    response = await fetch(endpoint, resolver.init || { method: "GET", cache: "no-store" });
+                } catch (error) {
+                    return {
+                        resolver: resolver.name,
+                        endpoint,
+                        status: "network-error",
+                        statusCode: null,
+                        answers: [],
+                        authority: "",
+                        comment: error?.message || "DNS endpoint request failed.",
+                    };
+                }
+                if (!response.ok) {
+                    return {
+                        resolver: resolver.name,
+                        endpoint,
+                        status: "http-error",
+                        statusCode: response.status,
+                        answers: [],
+                        authority: "",
+                        comment: `HTTP ${response.status}`,
+                    };
+                }
+                const payload = await response.json().catch(() => ({}));
+                const parsed = parseDnsDiagnosticPayload(payload);
+                return {
+                    resolver: resolver.name,
+                    endpoint,
+                    ...parsed,
+                };
+            }
+
             async function resolveDnsDiagnostic(name, type) {
                 const safeName = normaliseDomainHost(name);
                 const safeType = String(type || "").trim().toUpperCase();
@@ -85334,48 +85668,38 @@
                         comment: "",
                     };
                 }
-                const endpoint = `https://dns.google/resolve?name=${encodeURIComponent(safeName)}&type=${encodeURIComponent(safeType)}`;
-                let response;
-                try {
-                    response = await fetch(endpoint, { method: "GET", cache: "no-store" });
-                } catch (error) {
-                    return {
-                        name: safeName,
-                        type: safeType,
-                        endpoint,
-                        status: "network-error",
-                        statusCode: null,
-                        answers: [],
-                        authority: "",
-                        comment: error?.message || "DNS endpoint request failed.",
-                    };
-                }
-                if (!response.ok) {
-                    return {
-                        name: safeName,
-                        type: safeType,
-                        endpoint,
-                        status: "http-error",
-                        statusCode: response.status,
-                        answers: [],
-                        authority: "",
-                        comment: `HTTP ${response.status}`,
-                    };
-                }
-                const payload = await response.json().catch(() => ({}));
-                const answers = (Array.isArray(payload?.Answer) ? payload.Answer : [])
-                    .map((answer) => String(answer?.data || "").trim())
+                const resolverResults = await Promise.all(
+                    DNS_DIAGNOSTIC_RESOLVERS.map((resolver) => resolveDnsDiagnosticFromResolver(resolver, safeName, safeType))
+                );
+                const best = pickBestDnsDiagnosticResult(resolverResults);
+                const endpoint = resolverResults
+                    .map((result) => result?.endpoint)
+                    .filter(Boolean)
+                    .join(" | ");
+                const answers = [...new Set(
+                    resolverResults.flatMap((result) => (Array.isArray(result?.answers) ? result.answers : []))
+                )];
+                const authority = best?.authority
+                    || resolverResults.map((result) => String(result?.authority || "").trim()).find(Boolean)
+                    || "";
+                const commentParts = resolverResults
+                    .map((result) => {
+                        const resolverName = String(result?.resolver || "Resolver");
+                        const status = String(result?.status || "unknown");
+                        const note = String(result?.comment || "").trim();
+                        return note ? `${resolverName}: ${status} (${note})` : `${resolverName}: ${status}`;
+                    })
                     .filter(Boolean);
-                const authorityRecord = (Array.isArray(payload?.Authority) ? payload.Authority : []).find((record) => Number(record?.type) === 6);
                 return {
                     name: safeName,
                     type: safeType,
                     endpoint,
-                    status: formatDnsStatus(payload?.Status),
-                    statusCode: Number.isFinite(Number(payload?.Status)) ? Number(payload.Status) : null,
+                    status: best?.status || "unknown",
+                    statusCode: Number.isFinite(Number(best?.statusCode)) ? Number(best.statusCode) : null,
                     answers,
-                    authority: String(authorityRecord?.data || "").trim(),
-                    comment: String(payload?.Comment || "").trim(),
+                    authority,
+                    comment: commentParts.join(" · "),
+                    resolvers: resolverResults,
                 };
             }
 
@@ -85651,9 +85975,49 @@
                 }
             }
 
+            const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
+                "co.uk",
+                "org.uk",
+                "gov.uk",
+                "ac.uk",
+                "net.uk",
+                "sch.uk",
+                "co.nz",
+                "com.au",
+                "net.au",
+                "org.au",
+                "co.jp",
+                "co.kr",
+                "co.in",
+                "com.sg",
+                "com.my",
+                "com.br",
+                "com.mx",
+                "com.tr",
+                "com.cn",
+                "com.hk",
+                "co.za",
+            ]);
+
+            function inferRegistrableDomain(hostname) {
+                const host = normaliseDomainHost(hostname);
+                if (!host) return "";
+                const parts = host.split(".").filter(Boolean);
+                if (parts.length <= 2) return host;
+                const trailingTwo = parts.slice(-2).join(".");
+                if (MULTI_LABEL_PUBLIC_SUFFIXES.has(trailingTwo) && parts.length >= 3) {
+                    return parts.slice(-3).join(".");
+                }
+                return parts.slice(-2).join(".");
+            }
+
             function inferDnsZoneBase(publicHost) {
                 const host = normaliseDomainHost(publicHost);
                 if (!host) return "";
+                const registrable = inferRegistrableDomain(host);
+                if (!registrable) return "";
+                if (host === registrable) return host;
+                if (host.endsWith(`.${registrable}`)) return registrable;
                 const parts = host.split(".");
                 if (parts.length <= 1) return "";
                 return parts.slice(1).join(".");
@@ -85681,8 +86045,14 @@
                 }
                 const cnameDns = String(result?.dnsDiagnostics?.cname?.status || "");
                 const txtDns = String(result?.dnsDiagnostics?.txt?.status || "");
-                if (cnameDns === "nxdomain") findings.push(`Authoritative DNS returned NXDOMAIN for ${result.domainHost || "the public host"}.`);
-                if (txtDns === "nxdomain") findings.push(`Authoritative DNS returned NXDOMAIN for ${result.txtHost || "the TXT host"}.`);
+                const cnameAuthority = String(result?.dnsDiagnostics?.cname?.authority || "").trim();
+                const txtAuthority = String(result?.dnsDiagnostics?.txt?.authority || "").trim();
+                if (cnameDns === "nxdomain") {
+                    findings.push(`DNS returned NXDOMAIN for ${result.domainHost || "the public host"}${cnameAuthority ? ` (authority: ${cnameAuthority})` : ""}.`);
+                }
+                if (txtDns === "nxdomain") {
+                    findings.push(`DNS returned NXDOMAIN for ${result.txtHost || "the TXT host"}${txtAuthority ? ` (authority: ${txtAuthority})` : ""}.`);
+                }
                 if (!Array.isArray(result.liveCname) || !result.liveCname.length) findings.push("No live CNAME answer was returned for the public domain.");
                 if (!Array.isArray(result.liveTxt) || !result.liveTxt.length) findings.push("No live TXT verification answer was returned.");
                 if (String(result.expectedTxt || "").trim().length > 0 && String(result.expectedTxt || "").trim().length < 20) {
