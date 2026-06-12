@@ -32332,7 +32332,6 @@ async def xero_vat_coded_transactions_by_tenant(
         INVOICES_URL,
         "Invoices",
         params={"where": 'Status!="DELETED"', "order": "Date DESC"},
-        max_pages=60,
     )
     normalised_rows = _normalise_vat_transaction_rows(_invoice_lines_for_vat_period(raw_invoices, None, None))
     vat_rows: list[dict] = []
