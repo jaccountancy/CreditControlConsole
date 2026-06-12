@@ -16654,6 +16654,8 @@ async def juksib_get_batch(user: dict, batch_id: str) -> dict:
 
 
 async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
+    batch_rows: list[dict] = []
+    rules: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -16667,17 +16669,37 @@ async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
                 (user["id"], max(1, min(int(limit or 30), 200))),
             )
             batch_rows = cursor.fetchall() or []
-            cursor.execute(
-                """
-                SELECT *
-                FROM juksib_match_rules
-                WHERE user_id = %s
-                ORDER BY updated_at DESC NULLS LAST, created_at DESC
-                LIMIT 400
-                """,
-                (user["id"],),
-            )
-            rules = cursor.fetchall() or []
+            try:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM juksib_match_rules
+                    WHERE user_id = %s
+                    ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                    LIMIT 400
+                    """,
+                    (user["id"],),
+                )
+                rules = cursor.fetchall() or []
+            except Exception:
+                # Backward-compatibility guard for environments where updated_at/index migrations
+                # have not landed yet. Keep batch listing available even when rules cannot be ordered by updated_at.
+                logger.exception("JUKSIB: match rules query with updated_at failed, falling back to created_at ordering.")
+                try:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM juksib_match_rules
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 400
+                        """,
+                        (user["id"],),
+                    )
+                    rules = cursor.fetchall() or []
+                except Exception:
+                    logger.exception("JUKSIB: match rules fallback query failed; returning batches without rules.")
+                    rules = []
         connection.commit()
     batches = []
     for row in batch_rows:
@@ -16710,6 +16732,7 @@ async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
                 "notes": str(rule.get("notes") or ""),
             }
             for rule in rules
+            if isinstance(rule, dict)
         ],
     }
 
