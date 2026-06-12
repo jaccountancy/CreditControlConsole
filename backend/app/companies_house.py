@@ -83,6 +83,7 @@ CLIENT_IMPORT_HEADER_ALIASES = {
         "client phone number",
     },
     "client_address": {"client address", "address", "postal address", "client postal address"},
+    "vat_number": {"vat number", "vat no", "vat no.", "vat registration number", "vat registration no", "vat reg number", "vat reg no", "vat"},
     "assigned_staff": {"assigned staff", "assigned staff member", "staff", "owner", "manager", "account manager"},
     "notes": {"notes", "note", "internal notes", "comment"},
     "company_type": {"company type", "type", "legal type", "entity type"},
@@ -4167,6 +4168,7 @@ def _upsert_auth_code_register_row(
     client_type: str,
     client_manager: str,
     client_id: str,
+    vat_number: str,
     normalised_name: str,
     auth_code: str,
     filename: str,
@@ -4185,6 +4187,7 @@ def _upsert_auth_code_register_row(
                 client_type = COALESCE(NULLIF(%s, ''), client_type),
                 client_manager = COALESCE(NULLIF(%s, ''), client_manager),
                 client_id = COALESCE(NULLIF(%s, ''), client_id),
+                vat_number = COALESCE(NULLIF(%s, ''), vat_number),
                 normalised_name = %s,
                 code_encrypted = %s,
                 code_hint = %s,
@@ -4201,6 +4204,7 @@ def _upsert_auth_code_register_row(
                 client_type,
                 client_manager,
                 client_id,
+                vat_number,
                 normalised_name,
                 encrypted,
                 hint,
@@ -4219,6 +4223,7 @@ def _upsert_auth_code_register_row(
                 client_type = COALESCE(NULLIF(%s, ''), client_type),
                 client_manager = COALESCE(NULLIF(%s, ''), client_manager),
                 client_id = COALESCE(NULLIF(%s, ''), client_id),
+                vat_number = COALESCE(NULLIF(%s, ''), vat_number),
                 code_encrypted = %s,
                 code_hint = %s,
                 source_filename = %s,
@@ -4235,6 +4240,7 @@ def _upsert_auth_code_register_row(
                 client_type,
                 client_manager,
                 client_id,
+                vat_number,
                 encrypted,
                 hint,
                 filename,
@@ -4254,6 +4260,7 @@ def _upsert_auth_code_register_row(
             client_type,
             client_manager,
             client_id,
+            vat_number,
             normalised_name,
             code_encrypted,
             code_hint,
@@ -4262,7 +4269,7 @@ def _upsert_auth_code_register_row(
             uploaded_at,
             updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
         """,
         (
@@ -4272,6 +4279,7 @@ def _upsert_auth_code_register_row(
             client_type,
             client_manager,
             client_id,
+            vat_number,
             normalised_name,
             encrypted,
             hint,
@@ -4377,6 +4385,7 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "clientType": client_type,
                 "clientManager": _coerce_text(row_payload.get("manager_reference") or row_payload.get("assigned_staff"), 120),
                 "clientId": _coerce_text(row_payload.get("client_id"), 80),
+                "vatNumber": _coerce_text(row_payload.get("vat_number"), 120),
                 "contactEmail": _coerce_text(row_payload.get("contact_email"), 250),
                 "contactPhone": _coerce_text(row_payload.get("contact_phone"), 120),
                 "clientAddress": _coerce_text(row_payload.get("client_address"), 1000),
@@ -4407,6 +4416,7 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
                     client_type=row.get("clientType") or "",
                     client_manager=row.get("clientManager") or "",
                     client_id=row.get("clientId") or "",
+                    vat_number=row.get("vatNumber") or "",
                     normalised_name=row["normalisedName"],
                     auth_code=row["authCode"],
                     filename=_coerce_text(filename, 250),
@@ -4496,6 +4506,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                        client_type,
                        client_id,
                        client_manager,
+                       vat_number,
                        source_filename,
                        uploaded_at
                 FROM ch_auth_code_register
@@ -4523,6 +4534,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
             "clientType": _normalise_client_type(row.get("clientType")),
             "clientManager": row.get("clientManager") or "",
             "clientId": row.get("clientId") or "",
+            "vatNumber": row.get("vatNumber") or "",
             "contactEmail": row.get("contactEmail") or "",
             "contactPhone": row.get("contactPhone") or "",
             "clientAddress": row.get("clientAddress") or "",
@@ -4539,6 +4551,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                     "clientType": row_payload["clientType"],
                     "clientManager": row_payload["clientManager"],
                     "clientId": row_payload["clientId"],
+                    "vatNumber": row_payload["vatNumber"],
                     "contactEmail": row_payload["contactEmail"],
                     "contactPhone": row_payload["contactPhone"],
                     "clientAddress": row_payload["clientAddress"],
@@ -4546,6 +4559,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                     "existingClientType": existing.get("client_type") or "",
                     "existingClientManager": existing.get("client_manager") or "",
                     "existingClientId": existing.get("client_id") or "",
+                    "existingVatNumber": existing.get("vat_number") or "",
                 }
             )
         else:
@@ -4557,6 +4571,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                     "clientType": row_payload["clientType"],
                     "clientManager": row_payload["clientManager"],
                     "clientId": row_payload["clientId"],
+                    "vatNumber": row_payload["vatNumber"],
                     "contactEmail": row_payload["contactEmail"],
                     "contactPhone": row_payload["contactPhone"],
                     "clientAddress": row_payload["clientAddress"],
@@ -4580,6 +4595,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
                 "clientType": existing.get("client_type") or "",
                 "clientManager": existing.get("client_manager") or "",
                 "clientId": existing.get("client_id") or "",
+                "vatNumber": existing.get("vat_number") or "",
                 "sourceFilename": existing.get("source_filename") or "",
                 "uploadedAt": existing.get("uploaded_at").isoformat() if existing.get("uploaded_at") else None,
             }
@@ -4627,6 +4643,7 @@ def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes
                     client_type=_normalise_client_type(row.get("clientType")),
                     client_manager=_coerce_text(row.get("clientManager"), 120),
                     client_id=_coerce_text(row.get("clientId"), 80),
+                    vat_number=_coerce_text(row.get("vatNumber"), 120),
                     normalised_name=_coerce_text(row.get("normalisedName"), 250),
                     auth_code=_coerce_text(row.get("authCode"), 80),
                     filename=filename,
@@ -4699,6 +4716,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.client_type,
                        r.client_manager,
                        r.client_id,
+                       r.vat_number,
                        c.contact_email,
                        c.contact_phone,
                        c.client_address,
@@ -4727,6 +4745,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 "clientType": row.get("client_type") or "",
                 "clientManager": row.get("client_manager") or "",
                 "clientId": row.get("client_id") or "",
+                "vatNumber": row.get("vat_number") or "",
                 "clientEmail": row.get("contact_email") or "",
                 "clientPhone": row.get("contact_phone") or "",
                 "clientAddress": row.get("client_address") or "",
