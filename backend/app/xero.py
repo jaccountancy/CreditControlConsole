@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import re
 import time
@@ -389,7 +391,6 @@ async def refresh_connection(connection_id: str) -> dict:
             payload = response.json()
 
     expires_at = utcnow() + timedelta(seconds=payload["expires_in"])
-    now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             # Xero rotates refresh tokens. A single user can have multiple tenant rows
@@ -401,7 +402,7 @@ async def refresh_connection(connection_id: str) -> dict:
                     refresh_token = %s,
                     expires_at = %s,
                     scope = COALESCE(NULLIF(%s, ''), scope),
-                    updated_at = %s
+                    updated_at = NOW()
                 WHERE user_id = %s
                   AND refresh_token = %s
                 """,
@@ -410,7 +411,6 @@ async def refresh_connection(connection_id: str) -> dict:
                     payload["refresh_token"],
                     expires_at,
                     str(payload.get("scope") or "").strip(),
-                    now,
                     row["user_id"],
                     refresh_token_used,
                 ),

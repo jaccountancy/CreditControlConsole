@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import csv
 import hashlib
@@ -307,7 +309,7 @@ def _validated_package_reference(*, package_reference: str, environment: str) ->
 
 
 def _ch_auth_method() -> str:
-    return "clear"
+    return "MD5"
 
 
 def _load_settings_row() -> dict | None:
@@ -459,6 +461,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         )
 
     api_key = _validated_companies_house_api_key(configured_api_key(settings_row))
+    if not api_key:
+        api_key = _validated_companies_house_api_key(decrypt_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import csv
@@ -15715,7 +15717,7 @@ async def me_report_juk_invoice_check(user: dict, client_id: str, payload: dict 
 def _juksib_normalise_name(value: str | None) -> str:
     raw = str(value or "").strip().lower()
     raw = re.sub(r"[^a-z0-9 ]+", " ", raw)
-    raw = re.sub(r"\b(ltd|limited|uk|the)\b", " ", raw)
+    raw = re.sub(r"\b(ltd|limited|uk|the|and)\b", " ", raw)
     return re.sub(r"\s+", " ", raw).strip()
 
 
@@ -15731,7 +15733,9 @@ def _juksib_similarity(left: str | None, right: str | None) -> Decimal:
     if not left_tokens or not right_tokens:
         return Decimal("0")
     intersection = len(left_tokens.intersection(right_tokens))
-    score = Decimal(intersection) / Decimal(max(len(left_tokens), len(right_tokens), 1))
+    token_score = Decimal(intersection) / Decimal(max(len(left_tokens), len(right_tokens), 1))
+    sequence_score = Decimal(str(difflib.SequenceMatcher(None, left_norm, right_norm).ratio()))
+    score = max(token_score, sequence_score)
     if left_norm.startswith(right_norm) or right_norm.startswith(left_norm):
         score = min(Decimal("1"), score + Decimal("0.15"))
     return score
@@ -16946,15 +16950,15 @@ def _juksib_is_purchase_account(account_row: dict) -> bool:
 
 
 def _juksib_account_name_score(name: str) -> Decimal:
-    candidates = (
-        "audit and accountancy fees",
-        "accountancy fees",
-        "audit fees",
-        "professional fees",
-        "legal and professional fees",
-        "accounting fees",
+    weighted_candidates = (
+        ("audit and accountancy fees", Decimal("1.00")),
+        ("accountancy fees", Decimal("0.95")),
+        ("audit fees", Decimal("0.92")),
+        ("professional fees", Decimal("0.86")),
+        ("legal and professional fees", Decimal("0.84")),
+        ("accounting fees", Decimal("0.90")),
     )
-    return max((_juksib_similarity(name, candidate) for candidate in candidates), default=Decimal("0"))
+    return max((_juksib_similarity(name, candidate) * weight for candidate, weight in weighted_candidates), default=Decimal("0"))
 
 
 async def _juksib_openai_pick_purchase_account(
