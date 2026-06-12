@@ -33,11 +33,16 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("accounting.payments", scopes)
 
     def test_removes_payroll_scopes_when_disabled(self):
-        configured = "openid profile email offline_access payroll.employees payroll.payruns"
+        configured = (
+            "openid profile email offline_access "
+            "payroll.employees payroll.payruns payroll.settings payroll.payslip"
+        )
         scopes = xero_scope_string(configured, include_payroll_scopes=False).split()
 
         self.assertNotIn("payroll.employees", scopes)
         self.assertNotIn("payroll.payruns", scopes)
+        self.assertNotIn("payroll.settings", scopes)
+        self.assertNotIn("payroll.payslip", scopes)
 
     def test_expands_legacy_transactions_scope(self):
         scopes = xero_scope_string("accounting.transactions").split()

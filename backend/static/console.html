@@ -6432,7 +6432,7 @@
                 margin-left: auto;
                 margin-right: auto;
             }
-            .page-pills { display: flex; gap: 8px; }
+            .page-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
             .page-pill {
                 min-width: 32px;
                 height: 32px;
@@ -6442,6 +6442,13 @@
                 color: var(--muted);
             }
             .page-pill.is-active { background: var(--blue); color: white; border-color: transparent; }
+            .page-pills-meta {
+                margin-left: auto;
+                color: var(--muted);
+                font-size: 0.85rem;
+                font-weight: 700;
+                white-space: nowrap;
+            }
             .detail-card {
                 width: 100%;
                 margin-top: 22px;
@@ -25350,6 +25357,16 @@
                 display: grid;
                 gap: 4px;
             }
+            #jukPreviousYearsModal .ch-table td:nth-child(2),
+            #jukPreviousYearsModal .ch-table td:nth-child(3),
+            #jukPreviousYearsModal .ch-table td:nth-child(4),
+            #jukExcludedInvoicesModal .ch-table td:nth-child(5) {
+                text-align: right;
+                white-space: nowrap;
+            }
+            #jukPreviousYearsModal .ch-table td:last-child {
+                text-align: left;
+            }
             .juk-invoice-breakdown-trigger {
                 width: 24px;
                 height: 24px;
@@ -29187,6 +29204,7 @@
                                 <div class="page-pills" id="chRegisterDataTabs" style="margin: 8px 0 2px;">
                                     <button class="page-pill is-active" type="button" data-ch-register-tab="clients">Client table</button>
                                     <button class="page-pill" type="button" data-ch-register-tab="tasks">Outstanding tasks table</button>
+                                    <span class="page-pills-meta" id="chAuthCodeRegisterLoadedMeta"></span>
                                 </div>
                                 <div class="ch-register-toolbar">
                                     <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, VAT number, manager, email, phone, address, source...">
@@ -40338,6 +40356,12 @@
                 const previousYearsModal = document.getElementById("jukPreviousYearsModal");
                 const previousYearsModalCloseButton = document.getElementById("jukPreviousYearsCloseButton");
                 const previousYearsBody = document.getElementById("jukPreviousYearsBody");
+                if (previousYearsButton) {
+                    previousYearsButton.disabled = !batch;
+                    previousYearsButton.title = batch
+                        ? "Compare available prior years across Companies House and Xero."
+                        : "Load a batch first to review previous years.";
+                }
                 const closePreviousYearsModal = () => {
                     if (previousYearsModal) previousYearsModal.hidden = true;
                 };
@@ -40345,6 +40369,10 @@
                     previousYearsButton.dataset.jukWired = "true";
                     previousYearsButton.addEventListener("click", () => {
                         const currentBatch = jukCurrentBatch();
+                        if (!currentBatch) {
+                            showToast("Load a batch first to view previous years.", "info");
+                            return;
+                        }
                         const rows = Array.isArray(currentBatch?.invoices) ? currentBatch.invoices : [];
                         const byYear = new Map();
                         rows.forEach((invoice) => {
@@ -40356,15 +40384,22 @@
                         const years = [...byYear.keys()].sort((a, b) => b - a);
                         if (previousYearsBody) {
                             previousYearsBody.innerHTML = years.length
-                                ? years.map((year) => `
+                                ? years.map((year, index) => {
+                                    const xeroValue = Number(byYear.get(year) || 0);
+                                    const priorYearValue = index < years.length - 1 ? Number(byYear.get(years[index + 1]) || 0) : null;
+                                    const movement = priorYearValue === null
+                                        ? "--"
+                                        : formatCurrency(xeroValue - priorYearValue);
+                                    return `
                                     <tr>
                                         <td><strong>${escapeHTML(String(year))}</strong></td>
                                         <td>Pending data source</td>
-                                        <td>${escapeHTML(formatCurrency(Number(byYear.get(year) || 0)))}</td>
-                                        <td>--</td>
-                                        <td>Companies House + Xero comparison view</td>
+                                        <td>${escapeHTML(formatCurrency(xeroValue))}</td>
+                                        <td>${escapeHTML(String(movement))}</td>
+                                        <td>Xero imported totals ready. Companies House figures load from filed accounts data when available.</td>
                                     </tr>
-                                `).join("")
+                                `;
+                                }).join("")
                                 : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No periods available</p><h4>No prior years found yet</h4><p>Import invoices first, then open this view to compare previous years.</p></div></td></tr>';
                         }
                         if (previousYearsModal) previousYearsModal.hidden = false;
@@ -41183,6 +41218,9 @@
                 if (excludedButton) {
                     excludedButton.disabled = excludedInvoices.length === 0;
                     excludedButton.textContent = `Excluded invoices (${excludedInvoices.length})`;
+                    excludedButton.title = excludedInvoices.length
+                        ? "Review excluded Self Assessment / tax-return invoices and include selected rows if required."
+                        : "No excluded invoices in this batch.";
                 }
                 if (selectReadyButton) {
                     selectReadyButton.onclick = () => {
@@ -52345,8 +52383,6 @@
                     showToast("Select at least one flagged contact to archive.", "info");
                     return;
                 }
-                const confirmed = window.confirm(`Archive ${targetIds.length.toLocaleString("en-GB")} contact${targetIds.length === 1 ? "" : "s"} in Xero?`);
-                if (!confirmed) return;
 
                 contactArchiveState.archiving = true;
                 contactArchiveState.progress = {
@@ -69953,8 +69989,6 @@
             async function updateMeReportClientStatus(clientId, statusValue) {
                 if (!clientId) return;
                 const nextStatus = statusValue === "archived" ? "archived" : "active";
-                const client = (meReportData.clients || []).find((item) => item.id === clientId);
-                if (nextStatus === "archived" && !window.confirm(`Archive ${client?.clientName || "this ME Report workspace"}? It will be hidden from the default Active view.`)) return;
                 try {
                     const response = await requestJSON(api.endpoints.meReportClientStatus, {
                         method: "POST",
@@ -92396,6 +92430,7 @@
                 const nextPageButton = document.getElementById("chAuthCodeRegisterNextPageButton");
                 const loadMoreButton = document.getElementById("chAuthCodeRegisterLoadMoreButton");
                 const meta = document.getElementById("chAuthCodeRegisterTableMeta");
+                const loadedMeta = document.getElementById("chAuthCodeRegisterLoadedMeta");
                 if (!body) return;
                 const list = Array.isArray(rows) ? rows : [];
                 renderAuthRegisterHeader();
@@ -92457,10 +92492,11 @@
                     meta.textContent = `${pageRows.length.toLocaleString("en-GB")} shown · ${filteredRows.length.toLocaleString("en-GB")} matched of ${Number(totalCount || list.length).toLocaleString("en-GB")}`;
                 }
                 if (list.length) {
-                    setAuthCodeRegisterStatus(
-                        `Loaded ${filteredRows.length.toLocaleString("en-GB")} matched rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
-                        "muted"
-                    );
+                    const loadedText = `Loaded ${filteredRows.length.toLocaleString("en-GB")} matched rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`;
+                    if (loadedMeta) loadedMeta.textContent = loadedText;
+                    setAuthCodeRegisterStatus(loadedText, "muted");
+                } else if (loadedMeta) {
+                    loadedMeta.textContent = "";
                 }
                 syncAuthRegisterOverrideButton();
                 setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");

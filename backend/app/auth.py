@@ -136,7 +136,7 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
                 scopes.append(scope)
 
     if not include_payroll_scopes:
-        scopes = [scope for scope in scopes if scope not in XERO_PAYROLL_SCOPES]
+        scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
 
     for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
