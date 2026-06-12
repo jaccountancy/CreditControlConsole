@@ -574,14 +574,26 @@ def login_page(request: Request):
 
 
 @app.get("/auth/xero/start")
-def auth_xero_start(request: Request, redirect_to: str = "/", force: int = 0):
+def auth_xero_start(
+    request: Request,
+    redirect_to: str = "/",
+    force: int = 0,
+    include_payroll: int = 0,
+):
     redirect_to = normalise_oauth_redirect(redirect_to)
     if not force:
         response = xero_connected_redirect(request, redirect_to)
         if response:
             return response
     state_token = start_oauth_state(redirect_to=redirect_to)
-    return RedirectResponse(xero_authorize_url(state_token, prompt_consent=bool(force)), status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(
+        xero_authorize_url(
+            state_token,
+            prompt_consent=bool(force),
+            include_payroll_scopes=bool(include_payroll),
+        ),
+        status_code=status.HTTP_302_FOUND,
+    )
 
 
 @app.get("/auth/xero/connected")
@@ -748,8 +760,30 @@ def queue_initial_xero_sync(user: dict) -> tuple[dict | None, bool]:
 
 
 @app.get("/auth/xero/callback")
-async def auth_xero_callback(request: Request, code: str, state: str):
+async def auth_xero_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
     try:
+        if error:
+            message = f"Xero authorisation failed: {error}."
+            description_text = str(error_description or "").strip()
+            if description_text:
+                message = f"{message} {description_text}"
+            if str(error).strip().lower() == "invalid_scope":
+                message = (
+                    "Xero authorisation failed because an invalid scope was requested. "
+                    "Disable payroll scopes (or only request them when your Xero app is approved for payroll), then retry."
+                )
+            return xero_login_error_response(message, status.HTTP_400_BAD_REQUEST)
+        if not code or not state:
+            return xero_login_error_response(
+                "Xero authorisation did not return a valid code/state pair. Please retry the connection.",
+                status.HTTP_400_BAD_REQUEST,
+            )
         state_row = consume_oauth_state(state)
         token_payload = await exchange_code_for_tokens(code)
         profile = await fetch_user_profile(token_payload["access_token"])

@@ -430,13 +430,17 @@ def approve_device_code(verification_code: str, user_id: str) -> str:
     return complete_device_login(row["device_code"], user_id)
 
 
-def xero_authorize_url(state_token: str, prompt_consent: bool = False) -> str:
+def xero_authorize_url(
+    state_token: str,
+    prompt_consent: bool = False,
+    include_payroll_scopes: bool = False,
+) -> str:
     settings = get_settings()
     params = {
         "response_type": "code",
         "client_id": settings.xero_client_id,
         "redirect_uri": settings.xero_redirect_uri,
-        "scope": xero_scope_string(settings.xero_scopes, include_payroll_scopes=settings.xero_include_payroll_scopes),
+        "scope": xero_scope_string(settings.xero_scopes, include_payroll_scopes=include_payroll_scopes),
         "state": state_token,
     }
     if prompt_consent:

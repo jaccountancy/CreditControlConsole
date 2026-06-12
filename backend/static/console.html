@@ -54,6 +54,41 @@
             body.credit-control-console-ready .console-hidden-page-title {
                 display: none !important;
             }
+            .console-view-surface {
+                opacity: 0;
+                transform: translateY(12px) scale(0.988);
+                filter: saturate(0.92);
+                transition:
+                    opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+                    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+                    filter 0.34s ease;
+                will-change: opacity, transform, filter;
+            }
+            .console-view-surface.is-screen-visible {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                filter: saturate(1);
+            }
+            .console-view-surface.is-screen-entering {
+                animation: consoleScreenEnterGlow 0.52s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .console-view-surface.is-screen-leaving {
+                opacity: 0;
+                transform: translateY(10px) scale(0.985);
+                filter: saturate(0.9);
+                pointer-events: none;
+            }
+            @keyframes consoleScreenEnterGlow {
+                0% {
+                    box-shadow: 0 0 0 rgba(29, 103, 242, 0);
+                }
+                35% {
+                    box-shadow: 0 18px 28px rgba(29, 103, 242, 0.08);
+                }
+                100% {
+                    box-shadow: 0 0 0 rgba(29, 103, 242, 0);
+                }
+            }
             .console-app {
                 position: relative;
                 isolation: isolate;
@@ -6152,6 +6187,35 @@
             .status-pill.payment-plan { color: #146c54; background: rgba(31, 143, 110, 0.13); }
             .status-pill.court { color: var(--purple); background: var(--purple-soft); }
             .status-pill.bad-debt { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
+            .status-pill.juk-status-pill-action {
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                cursor: pointer;
+                transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, filter 0.16s ease;
+            }
+            .status-pill.juk-status-pill-action.is-unmatched {
+                color: #b71f2f;
+                background: rgba(255, 83, 83, 0.16);
+                border-color: rgba(183, 31, 47, 0.3);
+            }
+            .status-pill.juk-status-pill-action.is-unmatched:hover,
+            .status-pill.juk-status-pill-action.is-unmatched:focus-visible {
+                outline: none;
+                transform: translateY(-1px);
+                box-shadow: 0 8px 14px rgba(183, 31, 47, 0.18);
+                border-color: rgba(183, 31, 47, 0.44);
+                filter: saturate(1.04);
+            }
+            .status-pill.juk-status-pill-pending {
+                color: #925907;
+                background: linear-gradient(90deg, rgba(255, 209, 118, 0.32), rgba(255, 191, 88, 0.22), rgba(255, 209, 118, 0.32));
+                border: 1px solid rgba(192, 126, 24, 0.36);
+                background-size: 190% 100%;
+                animation: jukPendingPillPulse 1.15s ease-in-out infinite;
+            }
+            @keyframes jukPendingPillPulse {
+                0%, 100% { background-position: 0% 0; transform: translateY(0); }
+                50% { background-position: 100% 0; transform: translateY(-1px); }
+            }
             .actions-cell {
                 position: relative;
                 text-align: right;
@@ -7554,6 +7618,9 @@
                 padding: 26px;
                 isolation: isolate;
             }
+            .insights-loading-stage::selection {
+                background: rgba(29, 103, 242, 0.18);
+            }
             .insights-loading-stage::before,
             .insights-loading-stage::after {
                 content: "";
@@ -7562,6 +7629,22 @@
                 pointer-events: none;
                 z-index: 0;
                 animation: insightsLoadingOrbFloat 5.2s ease-in-out infinite;
+            }
+            .insights-loading-stage .insights-loading-grid::before {
+                content: "";
+                position: absolute;
+                inset: -18% -10%;
+                pointer-events: none;
+                background:
+                    linear-gradient(112deg, transparent 36%, rgba(255, 255, 255, 0.44) 50%, transparent 64%),
+                    repeating-linear-gradient(
+                        0deg,
+                        rgba(32, 73, 144, 0.04) 0 1px,
+                        transparent 1px 13px
+                    );
+                mix-blend-mode: screen;
+                transform: translateX(-26%);
+                animation: insightsLoadingScanSweep 3.2s linear infinite;
             }
             .insights-loading-stage::before {
                 width: 220px;
@@ -7791,16 +7874,31 @@
             .insights-loading-card.is-delay-2 { animation-delay: 0.34s; }
             .insights-loading-card.is-delay-3 { animation-delay: 0.44s; }
             .insights-loading-line {
+                --line-shift: 0ms;
                 height: 10px;
                 border-radius: 999px;
                 background: linear-gradient(90deg, rgba(29, 103, 242, 0.2), rgba(39, 176, 95, 0.18));
+                transform-origin: left center;
+                animation: insightsLoadingLineWave 1.8s ease-in-out infinite;
+                animation-delay: var(--line-shift);
             }
             .insights-loading-line.is-short { width: 36%; }
             .insights-loading-line.is-medium { width: 58%; }
             .insights-loading-line.is-long { width: 82%; }
+            .insights-loading-card .insights-loading-line:nth-child(1) { --line-shift: 60ms; }
+            .insights-loading-card .insights-loading-line:nth-child(2) { --line-shift: 180ms; }
+            .insights-loading-card .insights-loading-line:nth-child(3) { --line-shift: 320ms; }
+            .insights-loading-copy.is-rolling {
+                animation: insightsLoadingCopyRoll 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+            }
             @keyframes insightsLoadingOrbFloat {
                 0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
                 50% { transform: translateY(8px) scale(1.04); opacity: 0.82; }
+            }
+            @keyframes insightsLoadingScanSweep {
+                0% { transform: translateX(-28%); opacity: 0.72; }
+                70% { transform: translateX(26%); opacity: 0.5; }
+                100% { transform: translateX(28%); opacity: 0.3; }
             }
             @keyframes insightsLoadingLogoIn {
                 to { opacity: 1; transform: translateY(0) scale(1); }
@@ -7808,6 +7906,10 @@
             @keyframes insightsLoadingFadeIn {
                 from { opacity: 0; transform: translateY(6px); }
                 to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes insightsLoadingCopyRoll {
+                0% { opacity: 0.28; transform: translateY(6px); }
+                100% { opacity: 1; transform: translateY(0); }
             }
             @keyframes insightsLoadingProgress {
                 0% { transform: translateX(-36%); }
@@ -7822,6 +7924,11 @@
             }
             @keyframes insightsLoadingSheen {
                 to { transform: translateX(140%); }
+            }
+            @keyframes insightsLoadingLineWave {
+                0%, 100% { transform: scaleX(0.96); opacity: 0.86; }
+                45% { transform: scaleX(1.03); opacity: 1; }
+                70% { transform: scaleX(0.98); opacity: 0.9; }
             }
             .insights-home-overview {
                 display: grid;
@@ -8562,8 +8669,10 @@
             @media (prefers-reduced-motion: reduce) {
                 .insights-loading-stage::before,
                 .insights-loading-stage::after,
+                .insights-loading-stage .insights-loading-grid::before,
                 .insights-loading-progress span,
-                .insights-loading-card::after {
+                .insights-loading-card::after,
+                .insights-loading-line {
                     animation: none;
                 }
                 .insights-loading-logo-shell,
@@ -8575,6 +8684,16 @@
                     animation: none;
                     opacity: 1;
                     transform: none;
+                }
+                .console-view-surface,
+                .console-view-surface.is-screen-visible,
+                .console-view-surface.is-screen-entering,
+                .console-view-surface.is-screen-leaving {
+                    transition: none !important;
+                    animation: none !important;
+                    opacity: 1 !important;
+                    transform: none !important;
+                    filter: none !important;
                 }
             }
             .urgency-high { border-left: 4px solid var(--red); }
@@ -30917,7 +31036,6 @@
                                 <div class="detail-actions">
                                     <span class="juk-loading-indicator" id="jukInvoicesLoadingIndicator" hidden>Working…</span>
                                     <button class="ghost-button" id="jukInvoicesRefreshButton" type="button">Refresh</button>
-                                    <button class="ghost-button" id="jukInvoicesOpenMeReportButton" type="button">Open Monthly Flows</button>
                                     <button class="primary-button" id="jukInvoicesNewBatchButton" type="button">Start New Batch</button>
                                 </div>
                             </div>
@@ -31098,6 +31216,11 @@
                                                 <span>Date Window</span>
                                                 <strong id="jukInvoicesStep1WindowValue">Not set</strong>
                                                 <small id="jukInvoicesStep1WindowDetail">Set from and to dates before import.</small>
+                                            </article>
+                                            <article>
+                                                <span>Invoices Up To</span>
+                                                <strong id="jukInvoicesStep1LastInvoicedValue">Not available</strong>
+                                                <small id="jukInvoicesStep1LastInvoicedDetail">No completed batch yet.</small>
                                             </article>
                                             <article>
                                                 <span>Publish Mode</span>
@@ -37397,8 +37520,47 @@
 
             function setElementVisible(element, isVisible) {
                 if (!element) return;
-                element.hidden = !isVisible;
-                element.style.display = isVisible ? "" : "none";
+                const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                if (!element.classList.contains("console-view-surface")) {
+                    element.classList.add("console-view-surface");
+                }
+                if (element.__screenHideTimer) {
+                    window.clearTimeout(element.__screenHideTimer);
+                    element.__screenHideTimer = 0;
+                }
+                if (isVisible) {
+                    element.hidden = false;
+                    element.style.display = "";
+                    element.classList.remove("is-screen-leaving");
+                    if (prefersReducedMotion) {
+                        element.classList.remove("is-screen-entering");
+                        element.classList.add("is-screen-visible");
+                        return;
+                    }
+                    element.classList.add("is-screen-entering");
+                    window.requestAnimationFrame(() => {
+                        element.classList.add("is-screen-visible");
+                    });
+                    element.__screenEnterTimer = window.setTimeout(() => {
+                        element.classList.remove("is-screen-entering");
+                    }, 520);
+                    return;
+                }
+                element.classList.remove("is-screen-visible", "is-screen-entering");
+                if (prefersReducedMotion) {
+                    element.classList.remove("is-screen-leaving");
+                    element.hidden = true;
+                    element.style.display = "none";
+                    return;
+                }
+                element.classList.add("is-screen-leaving");
+                element.__screenHideTimer = window.setTimeout(() => {
+                    if (!element.classList.contains("is-screen-visible")) {
+                        element.hidden = true;
+                        element.style.display = "none";
+                        element.classList.remove("is-screen-leaving");
+                    }
+                }, 220);
             }
 
             function activeNavForView() {
@@ -38299,12 +38461,15 @@
                 const scopeDetail = document.getElementById("jukInvoicesStep1ScopeDetail");
                 const windowValue = document.getElementById("jukInvoicesStep1WindowValue");
                 const windowDetail = document.getElementById("jukInvoicesStep1WindowDetail");
+                const lastInvoicedValue = document.getElementById("jukInvoicesStep1LastInvoicedValue");
+                const lastInvoicedDetail = document.getElementById("jukInvoicesStep1LastInvoicedDetail");
                 const modeValue = document.getElementById("jukInvoicesStep1ModeValue");
                 const modeDetail = document.getElementById("jukInvoicesStep1ModeDetail");
                 const readyPill = document.getElementById("jukInvoicesStep1ReadyPill");
                 const coverageWarning = document.getElementById("jukInvoicesCoverageWarning");
                 const coverageWarningTitle = document.getElementById("jukInvoicesCoverageWarningTitle");
                 const coverageWarningDetail = document.getElementById("jukInvoicesCoverageWarningDetail");
+                const latestBatch = jukLatestCompletedBatch();
                 const scopeMap = {
                     "since-last": "Since last successful batch",
                     "date-range": "Selected date range",
@@ -38349,6 +38514,15 @@
                         : coverage.hasGap
                             ? `Gap detected: ${coverage.missingDays.toLocaleString("en-GB")} day${coverage.missingDays === 1 ? "" : "s"} from ${formatDate(coverage.missingFromISO) || coverage.missingFromISO} to ${formatDate(coverage.missingToISO) || coverage.missingToISO} would be skipped.`
                             : (hasDateWindow ? "Range will be sent directly to the import query." : "Date range can be auto-filled when opening a new batch.");
+                }
+                const lastInvoicedISO = latestBatch ? jukDateToISO(latestBatch.invoiceDateTo || latestBatch.createdAt) : "";
+                const lastInvoicedLabel = lastInvoicedISO ? (formatDate(lastInvoicedISO) || lastInvoicedISO) : "Not available";
+                if (lastInvoicedValue) lastInvoicedValue.textContent = lastInvoicedLabel;
+                if (lastInvoicedDetail) {
+                    const batchLabel = String(latestBatch?.batchReference || "").trim();
+                    lastInvoicedDetail.textContent = lastInvoicedISO
+                        ? `${batchLabel || "Last successful batch"} processed invoices up to ${lastInvoicedLabel}.`
+                        : "No completed batch found yet. First import will set this marker.";
                 }
                 if (modeValue) modeValue.textContent = modeLabel;
                 if (modeDetail) {
@@ -39383,7 +39557,6 @@
             function renderJukInvoicesScreen() {
                 const summary = document.getElementById("jukInvoicesSummary");
                 const refreshButton = document.getElementById("jukInvoicesRefreshButton");
-                const openMeReportButton = document.getElementById("jukInvoicesOpenMeReportButton");
                 const newBatchButton = document.getElementById("jukInvoicesNewBatchButton");
                 const wizardBackdrop = document.getElementById("jukInvoicesWizardBackdrop");
                 const wizardModal = document.getElementById("jukInvoicesWizardModal");
@@ -39403,7 +39576,7 @@
                     5: document.getElementById("jukInvoicesStep6Panel"),
                     6: document.getElementById("jukInvoicesStep7Panel"),
                 };
-                if (!summary || !refreshButton || !openMeReportButton || !newBatchButton) return;
+                if (!summary || !refreshButton || !newBatchButton) return;
                 setJukLoading(jukLoadingState.active, jukLoadingState.message);
 
                 const batch = jukCurrentBatch();
@@ -39466,10 +39639,6 @@
                             renderJukInvoicesScreen();
                         }
                     });
-                }
-                if (openMeReportButton.dataset.jukInvoicesWired !== "true") {
-                    openMeReportButton.dataset.jukInvoicesWired = "true";
-                    openMeReportButton.addEventListener("click", () => openMeReportScreen());
                 }
                 if (newBatchButton.dataset.jukInvoicesWired !== "true") {
                     newBatchButton.dataset.jukInvoicesWired = "true";
@@ -39897,6 +40066,40 @@
                 const connectedTenants = jukConnectedTenants();
                 const reviewRows = jukSortRows(jukActiveRows(batch));
                 const reviewTable = document.getElementById("jukInvoicesReviewTableBody");
+                const openJukOverrideModal = (invoiceId) => {
+                    const normalizedInvoiceId = jukInvoiceIdKey(invoiceId);
+                    if (!normalizedInvoiceId) return;
+                    const invoice = (batch.invoices || []).find((item) => jukInvoiceIdKey(item.id) === normalizedInvoiceId);
+                    if (!invoice) return;
+                    if (!connectedTenants.length) {
+                        showToast("No connected destination tenants available for override yet.", "info");
+                        return;
+                    }
+                    const overrideModal = document.getElementById("jukOverrideModal");
+                    const overrideMeta = document.getElementById("jukOverrideModalMeta");
+                    const tenantSelect = document.getElementById("jukOverrideTenantSelect");
+                    const saveCheckbox = document.getElementById("jukOverrideSaveRuleCheckbox");
+                    if (!overrideModal || !tenantSelect) return;
+                    tenantSelect.innerHTML = connectedTenants
+                        .map((tenant) => `<option value="${escapeHTML(tenant.tenantId || tenant.clientId || "")}">${escapeHTML(tenant.tenantName || tenant.clientName || tenant.tenantId || "Tenant")}</option>`)
+                        .join("");
+                    const preferredTenantId = String(
+                        invoice.matchedTenantId
+                        || invoice.matchedClientId
+                        || (Array.isArray(invoice.alternatives) && invoice.alternatives.length ? invoice.alternatives[0]?.tenantId : "")
+                        || connectedTenants[0]?.tenantId
+                        || connectedTenants[0]?.clientId
+                        || ""
+                    ).trim();
+                    if (preferredTenantId) tenantSelect.value = preferredTenantId;
+                    if (saveCheckbox) saveCheckbox.checked = true;
+                    if (overrideMeta) {
+                        const invoiceLabel = String(invoice.jukInvoiceNumber || invoice.id || "invoice").trim();
+                        overrideMeta.textContent = `Override ${invoiceLabel} by selecting the destination client tenant.`;
+                    }
+                    jukOverrideModalInvoiceId = normalizedInvoiceId;
+                    overrideModal.hidden = false;
+                };
                 if (reviewTable) {
                     reviewTable.innerHTML = reviewRows.length
                         ? reviewRows.map((invoice) => {
@@ -39908,6 +40111,13 @@
                             const alternativesText = Array.isArray(invoice.alternatives) && invoice.alternatives.length
                                 ? invoice.alternatives.map((item) => `${item?.tenantName || "Tenant"} (${Math.round(Number(item?.confidence || 0) * 100)}%)`).join(", ")
                                 : "None";
+                            const statusCode = String(invoice.status || "").trim().toLowerCase();
+                            const statusLabel = String(JUK_STATUS_LABELS[invoice.status] || invoice.status || "--");
+                            const statusMarkup = statusCode === "unmatched"
+                                ? `<button class="status-pill juk-status-pill-action is-unmatched" type="button" data-juk-open-override="${escapeHTML(invoice.id)}" title="Unmatched. Click to choose destination tenant">${escapeHTML(statusLabel)}</button>`
+                                : (statusCode === "retry_pending" || statusCode === "publishing")
+                                    ? `<span class="status-pill juk-status-pill-pending">${escapeHTML(statusLabel)}</span>`
+                                    : `<span class="status-pill">${escapeHTML(statusLabel)}</span>`;
                             return `
                             <tr>
                                 <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(jukInvoiceIdKey(invoice.id)) ? "checked" : ""}></td>
@@ -39928,7 +40138,7 @@
                                 </td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.vatTotal || 0))}</td>
-                                <td><span class="status-pill">${escapeHTML(JUK_STATUS_LABELS[invoice.status] || invoice.status)}</span></td>
+                                <td>${statusMarkup}</td>
                             </tr>
                             ${isExpanded ? `
                             <tr class="juk-detail-row">
@@ -39981,6 +40191,15 @@
                             if (!id) return;
                             jukExpandedInvoiceId = jukExpandedInvoiceId === id ? "" : id;
                             renderJukInvoicesScreen();
+                        });
+                    });
+                    reviewTable.querySelectorAll("[data-juk-open-override]").forEach((button) => {
+                        button.addEventListener("click", (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const id = String(button.getAttribute("data-juk-open-override") || "").trim();
+                            if (!id) return;
+                            openJukOverrideModal(id);
                         });
                     });
                     const openBreakdownModal = (invoice) => {
@@ -40328,6 +40547,15 @@
                     ? Math.max(0, Math.ceil((estimatedDurationMs - elapsedMs) / 1000))
                     : 0;
                 const etaLabel = etaRemainingSeconds > 0 ? formatSyncDuration(etaRemainingSeconds) : "";
+                const runningPhaseLabel = !progress.running
+                    ? ""
+                    : elapsedMs < estimatedDurationMs * 0.28
+                        ? "Validating invoice payload"
+                        : elapsedMs < estimatedDurationMs * 0.58
+                            ? "Creating destination bill"
+                            : elapsedMs < estimatedDurationMs * 0.86
+                                ? "Attaching source PDF"
+                                : "Finalizing and confirming publish";
                 const publishableRows = (batch.invoices || []).filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending");
                 const skippedRows = (batch.invoices || []).filter((invoice) => invoice.status === "skipped" || invoice.status === "manually_excluded");
                 const blockedRows = Math.max(0, Number(stats.totalImported || 0) - publishableRows.length - skippedRows.length - Number(stats.published || 0));
@@ -40347,7 +40575,7 @@
                         ? animatedQueue[Math.max(0, Math.min(animatedQueue.length - 1, Number(progress.animationIndex || 0)))]
                         : null;
                     liveMessage.textContent = progress.running
-                        ? (activeAnimated ? `Pushing ${activeAnimated.invoiceNumber} into ${activeAnimated.tenant}...` : (progress.current || "Creating destination bills and attaching files..."))
+                        ? (activeAnimated ? `${runningPhaseLabel}: ${activeAnimated.invoiceNumber} → ${activeAnimated.tenant}` : (progress.current || "Creating destination bills and attaching files..."))
                         : (progress.total ? "Publish completed. Review per-invoice outcomes below." : "Ready to publish.");
                 }
                 if (liveStages) {
@@ -40396,7 +40624,13 @@
                             let stateLabel = progress.running ? "Queued" : "Queued";
                             if (progress.running && index === activeIndex) {
                                 stateClass = "is-active";
-                                stateLabel = "Publishing";
+                                stateLabel = elapsedMs < estimatedDurationMs * 0.28
+                                    ? "Validating"
+                                    : elapsedMs < estimatedDurationMs * 0.58
+                                        ? "Creating bill"
+                                        : elapsedMs < estimatedDurationMs * 0.86
+                                            ? "Attaching PDF"
+                                            : "Finalizing";
                             } else if (progress.running && index < activeIndex) {
                                 stateClass = "is-complete";
                                 stateLabel = "Published";
@@ -72232,7 +72466,8 @@
                 const root = document.getElementById("insightsLoadingStage");
                 if (!root || root.hidden) return;
                 const elapsedSeconds = Math.max(0, (Date.now() - insightsLoaderStartedAt) / 1000);
-                const progress = Math.min(97, Math.round(12 + elapsedSeconds * 5.8));
+                const waveOffset = Math.sin(elapsedSeconds * 1.35) * 3.2 + Math.sin(elapsedSeconds * 0.55) * 1.6;
+                const progress = Math.min(97, Math.round(12 + elapsedSeconds * 5.4 + waveOffset));
                 const etaSeconds = Math.max(6, Math.round((100 - progress) / 5.6));
                 const progressFill = document.getElementById("insightsLoadingProgressFill");
                 if (progressFill) progressFill.style.width = `${progress}%`;
@@ -72244,7 +72479,12 @@
                     const messages = insightsLoadingMessages();
                     const message = messages[insightsLoaderMessageIndex % messages.length];
                     const target = document.getElementById("insightsLoadingFunnyMessage");
-                    if (target) target.textContent = message;
+                    if (target) {
+                        target.textContent = message;
+                        target.classList.remove("is-rolling");
+                        void target.offsetWidth;
+                        target.classList.add("is-rolling");
+                    }
                     insightsLoaderMessageIndex += 1;
                 }
                 const sections = insightsLoadingSections();

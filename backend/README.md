@@ -27,7 +27,7 @@ Required variables:
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
 - `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.journals.read accounting.contacts accounting.settings accounting.attachments accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read`
-- `XERO_INCLUDE_PAYROLL_SCOPES=false` (set `true` only if payroll scopes are required and approved in your Xero app)
+- Payroll scopes are excluded by default from `/auth/xero/start` to protect the normal connect flow. Only request them explicitly with `/auth/xero/start?include_payroll=1` after enabling payroll scopes in your Xero app.
 - `IGNITION_CLIENT_ID`
 - `IGNITION_CLIENT_SECRET`
 - `IGNITION_REDIRECT_URI=https://<your-api-domain>/api/ignition/callback`
