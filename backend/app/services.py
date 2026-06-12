@@ -16570,7 +16570,8 @@ async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
             )
             batch_row = cursor.fetchone()
             if not batch_row:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+                # Idempotent delete: stale client state or retries should not surface as hard failures.
+                return {"deletedBatchId": batch_id, "alreadyDeleted": True, **await juksib_list_batches(user, limit=30)}
             cursor.execute(
                 """
                 DELETE FROM juksib_batches
