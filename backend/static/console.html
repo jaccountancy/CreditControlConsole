@@ -31490,6 +31490,7 @@
                                     <button class="ghost-button" id="jukInvoicesMarkNotConnectedSelectedButton" type="button">Mark not connected</button>
                                     <button class="ghost-button" id="jukInvoicesSkipSelectedButton" type="button">Skip selected</button>
                                     <button class="ghost-button" id="jukInvoicesRetrySelectedButton" type="button">Retry selected</button>
+                                    <button class="primary-button" id="jukInvoicesProceedApprovedButton" type="button">Proceed with approved invoices</button>
                                 </div>
                                 <div class="juk-command-bar" id="jukInvoicesCommandBar">
                                     <div class="juk-command-metric">
@@ -40868,12 +40869,16 @@
                 const markNotConnectedSelectedButton = document.getElementById("jukInvoicesMarkNotConnectedSelectedButton");
                 const skipSelectedButton = document.getElementById("jukInvoicesSkipSelectedButton");
                 const retrySelectedButton = document.getElementById("jukInvoicesRetrySelectedButton");
+                const proceedApprovedButton = document.getElementById("jukInvoicesProceedApprovedButton");
                 const commandCount = document.getElementById("jukInvoicesSelectedCount");
                 const commandTotal = document.getElementById("jukInvoicesSelectedTotal");
                 const commandApprove = document.getElementById("jukInvoicesCommandApproveButton");
                 const commandSkip = document.getElementById("jukInvoicesCommandSkipButton");
                 const selectedIds = jukNormalisedSelectedInvoiceIds(batch);
                 const selectedCount = selectedIds.length;
+                const approvedReadyCount = (batch.invoices || [])
+                    .filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending")
+                    .length;
                 const selectedTotalValue = (batch.invoices || [])
                     .filter((invoice) => selectedIds.includes(jukInvoiceIdKey(invoice.id)))
                     .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
@@ -40883,6 +40888,7 @@
                 if (markNotConnectedSelectedButton) markNotConnectedSelectedButton.disabled = selectedCount === 0;
                 if (skipSelectedButton) skipSelectedButton.disabled = selectedCount === 0;
                 if (retrySelectedButton) retrySelectedButton.disabled = selectedCount === 0;
+                if (proceedApprovedButton) proceedApprovedButton.disabled = approvedReadyCount === 0;
                 if (commandApprove) commandApprove.disabled = selectedCount === 0;
                 if (commandSkip) commandSkip.disabled = selectedCount === 0;
                 if (selectReadyButton) {
@@ -40976,6 +40982,16 @@
                         } catch (error) {
                             showToast(error?.message || "Unable to retry selected invoices.", "error");
                         }
+                    };
+                }
+                if (proceedApprovedButton) {
+                    proceedApprovedButton.onclick = () => {
+                        if (approvedReadyCount <= 0) {
+                            showToast("Approve at least one invoice in Step 3 before continuing.", "info");
+                            return;
+                        }
+                        jukSetStep(4);
+                        renderJukInvoicesScreen();
                     };
                 }
                 if (commandApprove) commandApprove.onclick = () => approveSelectedButton?.click();
