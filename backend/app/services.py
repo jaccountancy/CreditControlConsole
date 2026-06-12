@@ -75,6 +75,7 @@ from .xero import (
     normalise_contact,
     normalise_invoice,
     normalise_payment,
+    upsert_contact,
     update_bank_transaction_status,
     update_credit_note_status,
     update_invoice_status,
@@ -121,6 +122,15 @@ JUKSIB_OPENAI_MATCH_TIMEOUT_SECONDS = 8
 JUKSIB_OPENAI_MATCH_BUDGET_SECONDS = 22
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
+JUKSIB_DEFAULT_SUPPLIER_ADDRESS = {
+    "AddressType": "STREET",
+    "AddressLine1": "Maling Exchange",
+    "AddressLine2": "Hoults Yard",
+    "AddressLine3": "Walker Road",
+    "City": "Newcastle upon Tyne",
+    "PostalCode": "NE6 2HL",
+    "Country": "United Kingdom",
+}
 JUKSIB_IMPORT_HISTORY_NOTE = "This Invoice was imported the Xero Ledger using Jenius AI."
 JUKSIB_EXPENSES_VAT_TAX_TYPE = "INPUT2"
 JUKSIB_NO_VAT_TAX_TYPE = "NONE"
@@ -17121,6 +17131,18 @@ async def _juksib_resolve_supplier_contact_id(
     destination_connection: dict,
     supplier_name: str,
 ) -> str:
+    def has_populated_address(contact_row: dict) -> bool:
+        addresses = contact_row.get("Addresses")
+        if not isinstance(addresses, list):
+            return False
+        for address in addresses:
+            if not isinstance(address, dict):
+                continue
+            for key in ("AddressLine1", "AddressLine2", "AddressLine3", "City", "PostalCode"):
+                if str(address.get(key) or "").strip():
+                    return True
+        return False
+
     supplier = str(supplier_name or "").strip()
     if not supplier:
         return ""
@@ -17139,7 +17161,25 @@ async def _juksib_resolve_supplier_contact_id(
         if not isinstance(contact, dict):
             continue
         if str(contact.get("Name") or "").strip().lower() == supplier.lower():
-            return str(contact.get("ContactID") or contact.get("ContactId") or "").strip()
+            contact_id = str(contact.get("ContactID") or contact.get("ContactId") or "").strip()
+            if contact_id and not has_populated_address(contact):
+                try:
+                    await upsert_contact(
+                        destination_connection,
+                        {
+                            "ContactID": contact_id,
+                            "Name": supplier,
+                            "Addresses": [JUKSIB_DEFAULT_SUPPLIER_ADDRESS],
+                        },
+                        idempotency_key=f"juksib-supplier-address-{destination_connection.get('tenant_id')}-{contact_id}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "JUKSIB: Unable to auto-populate supplier address for contact %s on tenant %s",
+                        contact_id,
+                        destination_connection.get("tenant_id"),
+                    )
+            return contact_id
     return ""
 
 
@@ -17922,7 +17962,11 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
         due_date = row.get("due_date") or invoice_date
         destination_payload = {
             "Type": "ACCPAY",
-            "Contact": {"ContactID": cached_supplier_contact_id} if cached_supplier_contact_id else {"Name": supplier_name},
+            "Contact": (
+                {"ContactID": cached_supplier_contact_id}
+                if cached_supplier_contact_id
+                else {"Name": supplier_name, "Addresses": [JUKSIB_DEFAULT_SUPPLIER_ADDRESS]}
+            ),
             "Date": invoice_date.isoformat() if hasattr(invoice_date, "isoformat") else str(invoice_date),
             "DueDate": due_date.isoformat() if hasattr(due_date, "isoformat") else str(due_date),
             "InvoiceNumber": invoice_number[:120],
