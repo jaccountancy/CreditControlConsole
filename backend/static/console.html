@@ -23820,6 +23820,34 @@
                 letter-spacing: 0.08em;
                 background: #edf4ff;
             }
+            #xeroLockDateTableBody tr {
+                transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            #xeroLockDateTableBody tr:hover {
+                transform: translateY(-1px);
+                box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.12);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-matched {
+                border-left-color: #21a35d;
+                background: linear-gradient(90deg, rgba(39, 176, 95, 0.13), rgba(39, 176, 95, 0.04) 18%, rgba(255, 255, 255, 0.96) 52%);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-matched:hover {
+                background: linear-gradient(90deg, rgba(39, 176, 95, 0.16), rgba(39, 176, 95, 0.06) 18%, rgba(255, 255, 255, 0.98) 52%);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-variance {
+                border-left-color: #e34b4b;
+                background: linear-gradient(90deg, rgba(255, 83, 83, 0.16), rgba(255, 83, 83, 0.06) 18%, rgba(255, 255, 255, 0.96) 52%);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-variance:hover {
+                background: linear-gradient(90deg, rgba(255, 83, 83, 0.2), rgba(255, 83, 83, 0.08) 18%, rgba(255, 255, 255, 0.98) 52%);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-awaiting {
+                border-left-color: #ffb648;
+                background: linear-gradient(90deg, rgba(255, 182, 72, 0.2), rgba(255, 182, 72, 0.08) 22%, rgba(255, 255, 255, 0.96) 56%);
+            }
+            #xeroLockDateTableBody tr.code-breaker-row-awaiting:hover {
+                background: linear-gradient(90deg, rgba(255, 182, 72, 0.24), rgba(255, 182, 72, 0.1) 22%, rgba(255, 255, 255, 0.98) 56%);
+            }
             #xeroLockDateScreen .xero-lock-status-head {
                 display: inline-flex;
                 align-items: center;
@@ -29752,12 +29780,10 @@
                                     <p class="detail-meta">Find Ignition Micro/Starter clients, match to Xero organisations, and remove VAT coding for compliance.</p>
                                 </div>
                                 <div class="detail-actions">
-                                    <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh list</button>
-                                    <button class="ghost-button" id="microAnalyzerRestoreHiddenButton" type="button">Restore hidden</button>
-                                    <button class="primary-button" id="microAnalyzerRunAllButton" type="button">Analyze all</button>
+                                    <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh tenants</button>
                                 </div>
                             </div>
-                            <p class="late-charge-summary" id="microAnalyzerSummary">Loading Xero-connected clients with active Ignition Micro/Starter/Solo plans.</p>
+                            <p class="late-charge-summary" id="microAnalyzerSummary">Loading connected Xero organisation tenants.</p>
                             <section class="ch-companies-table-wrap" id="microAnalyzerConnectionsSection">
                                 <table class="ch-table" aria-label="VAT on Unregistered connected Xero accounts">
                                     <thead>
@@ -29771,50 +29797,6 @@
                                     </thead>
                                     <tbody id="microAnalyzerConnectionsTableBody"></tbody>
                                 </table>
-                            </section>
-                            <section class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="Micro analyzer client table">
-                                    <thead>
-                                        <tr>
-                                            <th>Ignition client</th>
-                                            <th>Plan</th>
-                                            <th>Xero match</th>
-                                            <th>VAT-coded lines</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="microAnalyzerTableBody"></tbody>
-                                </table>
-                            </section>
-                            <section class="detail-panel" id="microAnalyzerWorkspace" hidden>
-                                <div class="detail-hero">
-                                    <div>
-                                        <p class="eyebrow">Client workspace</p>
-                                        <h4 id="microAnalyzerWorkspaceTitle">VAT on Unregistered workspace</h4>
-                                        <p class="detail-meta" id="microAnalyzerWorkspaceMeta">Open a client to review VAT-coded transactions and bulk set them to NO VAT.</p>
-                                    </div>
-                                    <div class="detail-actions">
-                                        <button class="ghost-button" id="microAnalyzerWorkspaceBackButton" type="button">Back to client list</button>
-                                        <button class="ghost-button" id="microAnalyzerWorkspaceHideClientButton" type="button">Hide client</button>
-                                        <button class="primary-button" id="microAnalyzerWorkspaceBulkNoVatButton" type="button">Mark all as NO VAT</button>
-                                    </div>
-                                </div>
-                                <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="VAT-coded transactions for selected client">
-                                        <thead>
-                                            <tr>
-                                                <th>VAT period</th>
-                                                <th>Date</th>
-                                                <th>Reference</th>
-                                                <th>Description</th>
-                                                <th>Net</th>
-                                                <th>VAT</th>
-                                                <th>Tax code</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="microAnalyzerWorkspaceTransactionsBody"></tbody>
-                                    </table>
-                                </section>
                             </section>
                         </section>
                     </section>
@@ -46815,6 +46797,11 @@
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const accountsDataMissing = Boolean(row?.flags?.insufficientAccountsData);
+                        const rowClass = isFlagged
+                            ? "code-breaker-row-variance"
+                            : (mappingMissing || accountsDataMissing)
+                                ? "code-breaker-row-awaiting"
+                                : "code-breaker-row-matched";
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
                         const lastSubmittedDate = companiesHouse?.yearEndDate || companiesHouse?.accountsFiledDate || "";
                         const companyNumberRaw = String(companiesHouse?.companyNumber || mapping?.companyNumber || "").trim().toUpperCase();
@@ -46844,7 +46831,7 @@
                         ].find((value) => String(value || "").trim());
                         const isSelected = selectedXeroLockDateTenantIds.has(tenantId);
                         return `
-                            <tr>
+                            <tr class="${rowClass}">
                                 <td class="select-cell">
                                     <input type="checkbox" data-xero-lock-select="${escapeHTML(tenantId)}" aria-label="Select ${escapeHTML(row?.tenantName || "tenant")}" ${isSelected ? "checked" : ""}>
                                 </td>
@@ -81887,28 +81874,11 @@
                 const summary = document.getElementById("microAnalyzerSummary");
                 const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
                 const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
-                const tableBody = document.getElementById("microAnalyzerTableBody");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
-                const restoreHiddenButton = document.getElementById("microAnalyzerRestoreHiddenButton");
-                const runAllButton = document.getElementById("microAnalyzerRunAllButton");
-                const workspaceSection = document.getElementById("microAnalyzerWorkspace");
-                const workspaceTitle = document.getElementById("microAnalyzerWorkspaceTitle");
-                const workspaceMeta = document.getElementById("microAnalyzerWorkspaceMeta");
-                const workspaceTransactionsBody = document.getElementById("microAnalyzerWorkspaceTransactionsBody");
-                const workspaceBackButton = document.getElementById("microAnalyzerWorkspaceBackButton");
-                const workspaceHideClientButton = document.getElementById("microAnalyzerWorkspaceHideClientButton");
-                const workspaceBulkNoVatButton = document.getElementById("microAnalyzerWorkspaceBulkNoVatButton");
-                if (!summary || !refreshButton || !tableBody || !runAllButton || !workspaceSection || !workspaceTitle || !workspaceMeta || !workspaceTransactionsBody || !workspaceBackButton || !workspaceHideClientButton || !workspaceBulkNoVatButton) return;
+                if (!summary || !refreshButton) return;
 
                 const connectedAccountCount = renderMicroAnalyzerConnectionsTable(connectionsTableBody, connectionsSection);
-                const visibleRows = microAnalyzerVisibleRows();
-                const hiddenCount = Math.max((microAnalyzerRows || []).length - visibleRows.length, 0);
-                const rowTenantCount = new Set(
-                    visibleRows
-                        .map((row) => String(row?.tenantId || "").trim())
-                        .filter((tenantId) => Boolean(tenantId))
-                ).size;
-                const connectedTenantCount = connectedAccountCount || rowTenantCount;
+                const connectedTenantCount = connectedAccountCount;
                 const connectedTenantIds = new Set(
                     (typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [])
                         .map((row) => String(row?.tenantId || "").trim())
@@ -81917,164 +81887,26 @@
                 const workspaceCount = (microAnalyzerWorkspaces || []).filter((workspace) => (
                     connectedTenantIds.has(String(workspace?.tenantId || "").trim())
                 )).length;
-                const selectedRow = microAnalyzerRowById(selectedMicroAnalyzerRowId, false);
-                const viewingWorkspace = microAnalyzerWorkspaceMode === "workspace" && Boolean(selectedRow);
-
-                summary.hidden = viewingWorkspace;
-                if (connectionsSection) connectionsSection.hidden = viewingWorkspace;
-                tableBody.closest("section").hidden = viewingWorkspace;
-                workspaceSection.hidden = !viewingWorkspace;
-                refreshButton.hidden = viewingWorkspace;
-                runAllButton.hidden = viewingWorkspace;
-                if (restoreHiddenButton) restoreHiddenButton.hidden = viewingWorkspace;
 
                 summary.textContent = microAnalyzerLoading
                     ? "Loading connected Xero accounts..."
-                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} set up · ${visibleRows.length.toLocaleString("en-GB")} active client${visibleRows.length === 1 ? "" : "s"}${hiddenCount ? ` · ${hiddenCount.toLocaleString("en-GB")} hidden` : ""}.`;
-
-                tableBody.innerHTML = visibleRows.length
-                    ? visibleRows.map((row) => {
-                        const result = microAnalyzerResultsByCustomerId[row.id] || null;
-                        const vatCount = Number(result?.vatCount || 0);
-                        const vatLabel = result?.error
-                            ? `<span class="lock-status-pill is-overdue">${escapeHTML(result.error)}</span>`
-                            : result
-                                ? `<span class="lock-status-pill ${vatCount > 0 ? "is-overdue" : "is-open"}">${vatCount.toLocaleString("en-GB")} VAT line${vatCount === 1 ? "" : "s"}</span>`
-                                : '<span class="lock-status-pill is-review">Not analysed</span>';
-                        return `
-                            <tr>
-                                <td><strong>${escapeHTML(row.clientName || "Client")}</strong><small>${escapeHTML(xeroWorkspaceLabel(row.tenantName || "", row.tenantId || "", "Xero account"))}</small></td>
-                                <td><span class="lock-status-pill is-open">${escapeHTML(row.planName || "Plan")}</span></td>
-                                <td>${escapeHTML(row.customerName || "Matched client")}</td>
-                                <td>${vatLabel}</td>
-                                <td>
-                                    <div class="table-actions">
-                                        <button class="ghost-button" type="button" data-micro-analyzer-open="${escapeHTML(row.id || "")}">Open workspace</button>
-                                        <button class="ghost-button" type="button" data-micro-analyzer-analyze="${escapeHTML(row.id || "")}">Analyze</button>
-                                        <button class="ghost-button" type="button" data-micro-analyzer-hide="${escapeHTML(row.id || "")}">Hide</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `;
-                    }).join("")
-                    : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No active clients in this VAT-on-unregistered list</h4><p>All clients are hidden or there are no matching Xero/Ignition clients yet.</p></div></td></tr>';
-
-                tableBody.querySelectorAll("[data-micro-analyzer-open]").forEach((button) => {
-                    button.addEventListener("click", () => openMicroAnalyzerWorkspace(button.dataset.microAnalyzerOpen || ""));
-                });
-                tableBody.querySelectorAll("[data-micro-analyzer-analyze]").forEach((button) => {
-                    button.addEventListener("click", () => runMicroAnalyzerForRow(button.dataset.microAnalyzerAnalyze || ""));
-                });
-                tableBody.querySelectorAll("[data-micro-analyzer-hide]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        const rowId = String(button.dataset.microAnalyzerHide || "").trim();
-                        const row = microAnalyzerRowById(rowId);
-                        if (!row) return;
-                        microAnalyzerSetClientHidden(rowId, true);
-                        showToast(`${row.clientName || "Client"} was hidden from this VAT-on-unregistered list.`, "success");
-                        renderMicroAnalyzerScreen();
-                    });
-                });
-
-                if (viewingWorkspace && selectedRow) {
-                    const result = microAnalyzerResultsByCustomerId[selectedRow.id] || null;
-                    const entries = Array.isArray(result?.entries) ? result.entries : [];
-                    const vatRows = Array.isArray(result?.vatRows) ? result.vatRows : [];
-                    workspaceTitle.textContent = `${selectedRow.clientName || "Client"} · VAT on Unregistered workspace`;
-                    workspaceMeta.textContent = entries.length
-                        ? `${selectedRow.planName || "Plan"} · ${selectedRow.customerName || "Matched client"} · ${vatRows.length.toLocaleString("en-GB")} VAT-coded transaction${vatRows.length === 1 ? "" : "s"} across ${entries.length.toLocaleString("en-GB")} VAT period${entries.length === 1 ? "" : "s"}.`
-                        : "Loading VAT-coded transactions for this client.";
-                    workspaceTransactionsBody.innerHTML = result?.error
-                        ? `<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not prepare this workspace</h4><p>${escapeHTML(result.error)}</p></div></td></tr>`
-                        : vatRows.length
-                            ? vatRows
-                                .sort((left, right) => {
-                                    const rightPeriod = dateSortValue(right?.periodEndISO || "");
-                                    const leftPeriod = dateSortValue(left?.periodEndISO || "");
-                                    if (rightPeriod !== leftPeriod) return rightPeriod - leftPeriod;
-                                    return dateSortValue(right?.date) - dateSortValue(left?.date);
-                                })
-                                .map((row) => `
-                                    <tr>
-                                        <td>${escapeHTML(row?.periodEndISO ? formatDate(row.periodEndISO) : "—")}</td>
-                                        <td>${escapeHTML(row?.date ? formatDate(row.date) : "—")}</td>
-                                        <td>${escapeHTML(row?.reference || "—")}</td>
-                                        <td>${escapeHTML(row?.description || "Transaction")}</td>
-                                        <td>${formatCurrency(row?.netAmount || 0)}</td>
-                                        <td>${formatCurrency(row?.taxAmount || 0)}</td>
-                                        <td>${escapeHTML(row?.taxCode || "—")}</td>
-                                    </tr>
-                                `).join("")
-                            : '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No VAT-coded rows</p><h4>This workspace is already clean</h4><p>No transactions in scope currently carry VAT coding.</p></div></td></tr>';
-                    workspaceBulkNoVatButton.disabled = microAnalyzerBulkApplyInFlight || !entries.length || !vatRows.length;
-                    workspaceBulkNoVatButton.textContent = microAnalyzerBulkApplyInFlight ? "Updating..." : "Mark all as NO VAT";
-                    workspaceHideClientButton.disabled = false;
-                } else {
-                    workspaceTitle.textContent = "VAT on Unregistered workspace";
-                    workspaceMeta.textContent = "Open a client to review VAT-coded transactions and bulk set them to NO VAT.";
-                    workspaceTransactionsBody.innerHTML = "";
-                    workspaceBulkNoVatButton.disabled = true;
-                    workspaceBulkNoVatButton.textContent = "Mark all as NO VAT";
-                    workspaceHideClientButton.disabled = true;
-                }
-
-                runAllButton.disabled = microAnalyzerRunAllInFlight || !visibleRows.length;
-                runAllButton.textContent = microAnalyzerRunAllInFlight ? "Analyzing..." : "Analyze all";
-                if (restoreHiddenButton) {
-                    restoreHiddenButton.disabled = !hiddenCount;
-                    restoreHiddenButton.textContent = hiddenCount ? `Restore hidden (${hiddenCount.toLocaleString("en-GB")})` : "Restore hidden";
-                }
+                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} set up.`;
 
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
-                    refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
-                }
-                if (runAllButton.dataset.microWired !== "true") {
-                    runAllButton.dataset.microWired = "true";
-                    runAllButton.addEventListener("click", async () => {
-                        const rows = microAnalyzerVisibleRows();
-                        if (!rows.length || microAnalyzerRunAllInFlight) return;
-                        microAnalyzerRunAllInFlight = true;
+                    refreshButton.addEventListener("click", async () => {
+                        if (microAnalyzerLoading) return;
+                        microAnalyzerLoading = true;
                         renderMicroAnalyzerScreen();
                         try {
-                            for (const row of rows) {
-                                await runMicroAnalyzerForRow(String(row.id || ""));
-                            }
-                            showToast(`Analyzed ${rows.length.toLocaleString("en-GB")} client${rows.length === 1 ? "" : "s"}.`, "success");
+                            await loadMeReport(true);
+                            showToast("Connected Xero tenants refreshed.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to refresh connected Xero tenants.", "error");
                         } finally {
-                            microAnalyzerRunAllInFlight = false;
+                            microAnalyzerLoading = false;
                             renderMicroAnalyzerScreen();
                         }
-                    });
-                }
-                if (restoreHiddenButton && restoreHiddenButton.dataset.microWired !== "true") {
-                    restoreHiddenButton.dataset.microWired = "true";
-                    restoreHiddenButton.addEventListener("click", () => {
-                        microAnalyzerHiddenClientIds = [];
-                        persistMicroAnalyzerHiddenClientIds();
-                        showToast("Hidden VAT-on-unregistered clients were restored to the list.", "success");
-                        renderMicroAnalyzerScreen();
-                    });
-                }
-                if (workspaceBackButton.dataset.microWired !== "true") {
-                    workspaceBackButton.dataset.microWired = "true";
-                    workspaceBackButton.addEventListener("click", closeMicroAnalyzerWorkspace);
-                }
-                if (workspaceBulkNoVatButton.dataset.microWired !== "true") {
-                    workspaceBulkNoVatButton.dataset.microWired = "true";
-                    workspaceBulkNoVatButton.addEventListener("click", () => {
-                        if (!selectedMicroAnalyzerRowId) return;
-                        applyMicroAnalyzerFix(selectedMicroAnalyzerRowId);
-                    });
-                }
-                if (workspaceHideClientButton.dataset.microWired !== "true") {
-                    workspaceHideClientButton.dataset.microWired = "true";
-                    workspaceHideClientButton.addEventListener("click", () => {
-                        const row = microAnalyzerRowById(selectedMicroAnalyzerRowId);
-                        if (!row) return;
-                        microAnalyzerSetClientHidden(String(row.id || ""), true);
-                        closeMicroAnalyzerWorkspace();
-                        showToast(`${row.clientName || "Client"} was hidden from this VAT-on-unregistered list.`, "success");
                     });
                 }
             }
