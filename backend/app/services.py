@@ -15991,6 +15991,8 @@ def _juksib_preview_vat_profile(
 
 def _juksib_serialise_batch_row(batch_row: dict, invoices: list[dict]) -> dict:
     summary = _juksib_build_summary(invoices)
+    metadata = batch_row.get("metadata") if isinstance(batch_row.get("metadata"), dict) else {}
+    excluded_invoices = metadata.get("excludedInvoices") if isinstance(metadata.get("excludedInvoices"), list) else []
     return {
         "id": str(batch_row.get("id") or ""),
         "batchReference": str(batch_row.get("batch_reference") or ""),
@@ -16002,6 +16004,8 @@ def _juksib_serialise_batch_row(batch_row: dict, invoices: list[dict]) -> dict:
         "invoiceDateTo": _iso(batch_row.get("invoice_date_to")) or "",
         "mode": str(batch_row.get("mode") or "test"),
         "status": str(batch_row.get("status") or "imported"),
+        "excludedInvoiceCount": int(metadata.get("excludedInvoiceCount") or len(excluded_invoices) or 0),
+        "excludedInvoices": excluded_invoices[:300],
         "summary": summary,
         "invoices": invoices,
     }
@@ -16238,6 +16242,36 @@ async def _juksib_match_invoice(
 
 def _juksib_source_invoice_rows(raw_invoices: list[dict], *, date_from: date | None = None, date_to: date | None = None) -> list[dict]:
     rows = []
+    excluded_rows: list[dict] = []
+
+    def self_assessment_reason(raw_invoice: dict, line_items: list[dict]) -> str:
+        tokens = [
+            str(raw_invoice.get("InvoiceNumber") or ""),
+            str(raw_invoice.get("Reference") or ""),
+            str(raw_invoice.get("BrandingThemeID") or ""),
+            str(raw_invoice.get("Url") or ""),
+        ]
+        contact = raw_invoice.get("Contact") if isinstance(raw_invoice.get("Contact"), dict) else {}
+        tokens.append(str(contact.get("Name") or ""))
+        for line in line_items or []:
+            if not isinstance(line, dict):
+                continue
+            tokens.append(str(line.get("Description") or line.get("ItemCode") or ""))
+        haystack = " ".join(tokens).lower()
+        patterns = [
+            "self assessment",
+            "self-assessment",
+            "sa100",
+            "tax return",
+            "tax-return",
+            "personal tax",
+            "self employed tax",
+        ]
+        for pattern in patterns:
+            if pattern in haystack:
+                return f"Matched exclusion rule '{pattern}'."
+        return ""
+
     for raw in raw_invoices or []:
         invoice_id = str(raw.get("InvoiceID") or raw.get("InvoiceId") or "").strip()
         if not invoice_id:
@@ -16257,6 +16291,29 @@ def _juksib_source_invoice_rows(raw_invoices: list[dict], *, date_from: date | N
         total = _juksib_decimal(raw.get("Total"))
         amount_due = _juksib_decimal(raw.get("AmountDue"))
         due_date = _parse_optional_iso_date(raw.get("DueDate"))
+        exclusion_reason = self_assessment_reason(raw, line_items)
+        if exclusion_reason:
+            excluded_rows.append(
+                {
+                    "juk_xero_invoice_id": invoice_id,
+                    "juk_invoice_number": str(raw.get("InvoiceNumber") or "").strip(),
+                    "juk_contact_id": str(contact.get("ContactID") or contact.get("ContactId") or "").strip(),
+                    "juk_contact_name": str(contact.get("Name") or "").strip(),
+                    "invoice_date": _iso(invoice_date) or "",
+                    "due_date": _iso(due_date) or "",
+                    "subtotal": float(_money(subtotal)),
+                    "vat_total": float(_money(total_tax)),
+                    "total": float(_money(total)),
+                    "amount_due": float(_money(amount_due if amount_due > Decimal("0") else total)),
+                    "currency": str(raw.get("CurrencyCode") or "GBP").strip() or "GBP",
+                    "line_items": line_items,
+                    "raw_xero_payload": raw,
+                    "pdf_file_reference": f"/api/juksib/source-invoices/{invoice_id}/pdf",
+                    "status": "excluded_self_assessment",
+                    "exclude_reason": exclusion_reason,
+                }
+            )
+            continue
         rows.append(
             {
                 "juk_xero_invoice_id": invoice_id,
@@ -16276,6 +16333,7 @@ def _juksib_source_invoice_rows(raw_invoices: list[dict], *, date_from: date | N
                 "status": "imported",
             }
         )
+    _juksib_source_invoice_rows.last_excluded_rows = excluded_rows
     return rows
 
 
@@ -16335,6 +16393,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
         max_pages=max_pages,
     )
     source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=effective_date_from, date_to=effective_date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
+    excluded_rows = list(getattr(_juksib_source_invoice_rows, "last_excluded_rows", []) or [])
     if source_rows and not include_imported:
         source_invoice_ids = [str(row.get("juk_xero_invoice_id") or "").strip() for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip()]
         seen_source_ids: set[str] = set()
@@ -16370,6 +16429,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                 connection.commit()
         if seen_source_ids:
             source_rows = [row for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip() not in seen_source_ids]
+            excluded_rows = [row for row in excluded_rows if str(row.get("juk_xero_invoice_id") or "").strip() not in seen_source_ids]
 
     rules: list[dict] = []
     with get_connection() as connection:
@@ -16467,6 +16527,8 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                             "effectiveDateTo": _iso(effective_date_to),
                             "xeroFetchMaxPages": max_pages,
                             "candidateTenantCount": len(candidates),
+                            "excludedInvoiceCount": len(excluded_rows),
+                            "excludedInvoices": excluded_rows[:300],
                         },
                         default=_json_default,
                     ),
@@ -16650,6 +16712,9 @@ async def juksib_get_batch(user: dict, batch_id: str) -> dict:
         invoice["vatLookupSource"] = str(vat_profile.get("lookupSource") or "")
         invoice["vatLookupReason"] = str(vat_profile.get("lookupReason") or "")
         invoice["vatTaxType"] = str(vat_profile.get("taxType") or JUKSIB_NO_VAT_TAX_TYPE)
+        invoice["vatClientName"] = str(vat_profile.get("registerName") or vat_profile.get("clientName") or invoice.get("jukContactName") or "").strip()
+        invoice["vatClientId"] = str(vat_profile.get("registerId") or invoice.get("matchedClientId") or "").strip()
+        invoice["vatNumber"] = str(vat_profile.get("vatNumber") or "").strip()
     return {"batch": _juksib_serialise_batch_row(batch_row, serialised_invoices)}
 
 
@@ -16900,6 +16965,261 @@ async def juksib_bulk_update_invoice_status(user: dict, batch_id: str, payload: 
     )
     response = await juksib_get_batch(user, batch_id)
     response["updatedCount"] = updated_count
+    return response
+
+
+async def juksib_include_excluded_invoices(user: dict, batch_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    selected_invoice_ids = [str(item).strip() for item in (payload.get("invoiceIds") or []) if str(item).strip()]
+    if not selected_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one excluded invoice.")
+    target_tenant_id = str(payload.get("tenantId") or "").strip()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batches
+                WHERE id = %s::uuid
+                  AND user_id = %s::uuid
+                LIMIT 1
+                """,
+                (batch_id, user["id"]),
+            )
+            batch_row = cursor.fetchone()
+            if not batch_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+            if _juksib_batch_is_lifecycle_completed(batch_row):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Completed batches are read-only.")
+            metadata = batch_row.get("metadata") if isinstance(batch_row.get("metadata"), dict) else {}
+            excluded_rows = metadata.get("excludedInvoices") if isinstance(metadata.get("excludedInvoices"), list) else []
+            excluded_by_id = {
+                str(row.get("juk_xero_invoice_id") or "").strip(): row
+                for row in excluded_rows
+                if isinstance(row, dict) and str(row.get("juk_xero_invoice_id") or "").strip()
+            }
+            selected_rows = [excluded_by_id.get(invoice_id) for invoice_id in selected_invoice_ids if excluded_by_id.get(invoice_id)]
+            if not selected_rows:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected invoices are not available in exclusions.")
+        connection.commit()
+
+    _, sub_connections = _juksib_master_and_sub_connections(user)
+    mappings_by_tenant: dict[str, dict] = {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM xero_tenant_company_mappings")
+            for mapping in (cursor.fetchall() or []):
+                tenant_key = str(mapping.get("tenant_id") or "").strip()
+                if tenant_key:
+                    mappings_by_tenant[tenant_key] = mapping
+        connection.commit()
+    candidates = []
+    for row in sub_connections:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
+            continue
+        tenant_name = str(row.get("tenant_name") or "").strip()
+        mapping = mappings_by_tenant.get(tenant_id, {})
+        company_name = str(mapping.get("company_name") or "").strip()
+        client_name = str(mapping.get("client_name") or "").strip()
+        company_number = str(mapping.get("company_number") or "").strip()
+        aliases = [alias for alias in [tenant_name, company_name, client_name] if alias]
+        active_state = str(row.get("status") or "").strip().lower() not in {"disconnected", "inactive"}
+        candidates.append(
+            {
+                "tenant_id": tenant_id,
+                "tenant_name": tenant_name,
+                "client_id": str(row.get("client_id") or tenant_id).strip() or tenant_id,
+                "client_name": client_name,
+                "company_name": company_name,
+                "company_number": company_number,
+                "aliases": aliases,
+                "active": active_state,
+            }
+        )
+
+    rules: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_match_rules
+                WHERE user_id = %s
+                  AND active = TRUE
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (user["id"],),
+            )
+            rules = cursor.fetchall() or []
+        connection.commit()
+
+    match_cache: dict[str, dict] = {}
+    inserted_count = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for raw_row in selected_rows:
+                row = raw_row if isinstance(raw_row, dict) else {}
+                source_invoice_id = str(row.get("juk_xero_invoice_id") or "").strip()
+                if not source_invoice_id:
+                    continue
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM juksib_batch_invoices
+                    WHERE batch_id = %s::uuid
+                      AND user_id = %s::uuid
+                      AND juk_xero_invoice_id = %s
+                    LIMIT 1
+                    """,
+                    (batch_id, user["id"], source_invoice_id),
+                )
+                if cursor.fetchone():
+                    continue
+
+                if target_tenant_id:
+                    target_connection = xero_connection_for_user_tenant(user, target_tenant_id, include_fallback=False)
+                    match_row = {
+                        "status": "approved",
+                        "matched_rule_id": "",
+                        "matched_client_id": target_tenant_id,
+                        "matched_xero_tenant_id": target_tenant_id,
+                        "matched_xero_tenant_name": str(target_connection.get("tenant_name") or "").strip(),
+                        "match_source": "manual_include_exclusion",
+                        "match_confidence": Decimal("1"),
+                        "match_reason": "Included from excluded invoice list by user selection.",
+                        "alternatives": [],
+                    }
+                else:
+                    contact_name = str(row.get("juk_contact_name") or "").strip()
+                    cache_key = _juksib_normalise_name(contact_name) or contact_name.lower()
+                    if cache_key and cache_key in match_cache:
+                        match_row = dict(match_cache[cache_key])
+                    else:
+                        match_row = await _juksib_match_invoice(
+                            user=user,
+                            contact_name=contact_name,
+                            rules=rules,
+                            candidates=candidates,
+                            allow_openai=True,
+                        )
+                        if cache_key:
+                            match_cache[cache_key] = dict(match_row)
+
+                duplicate_flag = False
+                if match_row.get("matched_xero_tenant_id"):
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM juksib_sync_records
+                        WHERE user_id = %s
+                          AND juk_xero_invoice_id = %s
+                          AND destination_tenant_id = %s
+                          AND sync_status = 'published'
+                        LIMIT 1
+                        """,
+                        (
+                            user["id"],
+                            source_invoice_id,
+                            str(match_row.get("matched_xero_tenant_id") or ""),
+                        ),
+                    )
+                    duplicate_flag = bool(cursor.fetchone())
+                status_value = str(match_row.get("status") or "imported")
+                if duplicate_flag:
+                    status_value = "duplicate"
+
+                cursor.execute(
+                    """
+                    INSERT INTO juksib_batch_invoices (
+                        batch_id, user_id, juk_xero_invoice_id, juk_invoice_number, juk_contact_id, juk_contact_name,
+                        invoice_date, due_date, subtotal, vat_total, total, amount_due, currency, line_items, raw_xero_payload,
+                        pdf_file_reference, status, duplicate_flag, matched_client_id, matched_xero_tenant_id, matched_xero_tenant_name,
+                        match_source, match_confidence, match_reason, alternatives, created_at, updated_at
+                    )
+                    VALUES (
+                        %s::uuid, %s::uuid, %s, %s, %s, %s, %s::date, %s::date, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW(), NOW()
+                    )
+                    """,
+                    (
+                        batch_id,
+                        user["id"],
+                        source_invoice_id,
+                        str(row.get("juk_invoice_number") or ""),
+                        str(row.get("juk_contact_id") or ""),
+                        str(row.get("juk_contact_name") or ""),
+                        _parse_optional_iso_date(row.get("invoice_date")),
+                        _parse_optional_iso_date(row.get("due_date")),
+                        _juksib_decimal(row.get("subtotal")),
+                        _juksib_decimal(row.get("vat_total")),
+                        _juksib_decimal(row.get("total")),
+                        _juksib_decimal(row.get("amount_due")),
+                        str(row.get("currency") or "GBP"),
+                        json.dumps(row.get("line_items") or [], default=_json_default),
+                        json.dumps(row.get("raw_xero_payload") or {}, default=_json_default),
+                        str(row.get("pdf_file_reference") or f"/api/juksib/source-invoices/{source_invoice_id}/pdf"),
+                        status_value,
+                        duplicate_flag,
+                        str(match_row.get("matched_client_id") or ""),
+                        str(match_row.get("matched_xero_tenant_id") or ""),
+                        str(match_row.get("matched_xero_tenant_name") or ""),
+                        str(match_row.get("match_source") or ""),
+                        _juksib_decimal(match_row.get("match_confidence")),
+                        str(match_row.get("match_reason") or "Included from excluded invoice list."),
+                        json.dumps(match_row.get("alternatives") or [], default=_json_default),
+                    ),
+                )
+                inserted_count += 1
+
+            remaining_excluded = [
+                row for row in excluded_rows
+                if str((row or {}).get("juk_xero_invoice_id") or "").strip() not in set(selected_invoice_ids)
+            ]
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batch_invoices
+                WHERE batch_id = %s::uuid
+                  AND user_id = %s::uuid
+                """,
+                (batch_id, user["id"]),
+            )
+            current_rows = cursor.fetchall() or []
+            summary = _juksib_build_summary(current_rows)
+            next_metadata = metadata if isinstance(metadata, dict) else {}
+            next_metadata["excludedInvoices"] = remaining_excluded[:300]
+            next_metadata["excludedInvoiceCount"] = len(remaining_excluded)
+            cursor.execute(
+                """
+                UPDATE juksib_batches
+                SET metadata = %s::jsonb,
+                    summary = %s::jsonb,
+                    updated_at = NOW()
+                WHERE id = %s::uuid
+                  AND user_id = %s::uuid
+                """,
+                (
+                    json.dumps(next_metadata, default=_json_default),
+                    json.dumps(summary, default=_json_default),
+                    batch_id,
+                    user["id"],
+                ),
+            )
+        connection.commit()
+
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_batch",
+        entity_id=batch_id,
+        action="included_excluded_invoices",
+        new_value={"includedCount": inserted_count},
+        notes=f"Included {inserted_count} invoice(s) from excluded list.",
+    )
+    response = await juksib_get_batch(user, batch_id)
+    response["includedCount"] = inserted_count
     return response
 
 

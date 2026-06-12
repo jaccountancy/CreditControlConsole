@@ -249,6 +249,7 @@ from .services import (
     run_juksib_automation_now,
     juksib_batch_audit,
     juksib_bulk_update_invoice_status,
+    juksib_include_excluded_invoices,
     juksib_get_batch,
     juksib_import_batch,
     juksib_list_batches,
@@ -2641,6 +2642,16 @@ async def api_juksib_override(batch_id: str, request: Request, user: dict = Depe
     except Exception:
         payload = {}
     return {"status": "ok", **await juksib_apply_override(user, batch_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/juksib/batches/{batch_id}/include-excluded")
+async def api_juksib_include_excluded(batch_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "include excluded JUKSIB invoices")
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await juksib_include_excluded_invoices(user, batch_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/juksib/batches/{batch_id}/publish")
