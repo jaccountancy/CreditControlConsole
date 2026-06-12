@@ -24625,11 +24625,22 @@
             .juk-batch-modal-backdrop[hidden] {
                 display: none !important;
             }
-            .juk-panel.juk-step1-modal {
+            .juk-wizard-modal {
                 position: fixed;
-                top: 50%;
+                inset: 0;
+                z-index: 75;
+                display: grid;
+                place-items: center;
+                padding: 24px;
+            }
+            .juk-wizard-modal[hidden] {
+                display: none !important;
+            }
+            .juk-wizard-modal-panel {
+                position: fixed;
+                top: 24px;
                 left: 50%;
-                transform: translate(-50%, -50%);
+                transform: translateX(-50%);
                 width: min(1120px, calc(100vw - 48px));
                 max-height: calc(100vh - 72px);
                 overflow: auto;
@@ -24638,6 +24649,39 @@
                 border: 1px solid rgba(99, 102, 241, 0.36);
                 background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 255, 0.98) 100%);
                 margin-bottom: 0;
+                border-radius: 14px;
+                padding: 14px;
+            }
+            .juk-batch-table-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .juk-batch-table-toolbar .search-wrap {
+                min-width: 260px;
+                flex: 1;
+            }
+            .juk-batch-table-toolbar select {
+                min-width: 180px;
+            }
+            .juk-batch-status-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                padding: 4px 9px;
+                font-size: 11px;
+                font-weight: 700;
+                border: 1px solid rgba(59, 130, 246, 0.25);
+                background: rgba(219, 234, 254, 0.64);
+                color: #1e40af;
+            }
+            .juk-batch-status-pill.is-completed {
+                border-color: rgba(16, 185, 129, 0.3);
+                background: rgba(209, 250, 229, 0.75);
+                color: #065f46;
             }
             .juk-form-grid input.juk-date-autofill {
                 border-color: rgba(59, 130, 246, 0.54);
@@ -25246,6 +25290,10 @@
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
                             </button>
+                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="juksib-automation">
+                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 12a8 8 0 1 0 3-6.2"></path><path d="M4 4v6h6"></path><path d="M12 8v5l3 2"></path></svg></span>
+                                <span class="app-nav-copy"><strong>JUK Automation</strong><span>Batch scheduler</span></span>
+                            </button>
                             <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="factory-reset">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
@@ -25351,6 +25399,10 @@
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="developer-log">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
+                            </button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="juksib-automation">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 12a8 8 0 1 0 3-6.2"></path><path d="M4 4v6h6"></path><path d="M12 8v5l3 2"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>JUK Automation</strong><span>Batch scheduler</span></span>
                             </button>
                             <div class="factory-reset-gate-wrap settings-nav-group-item" id="settingsFactoryGateWrap" data-settings-group-item="technical-settings">
                                 <button class="settings-sidebar-button danger-button factory-reset-trigger" id="settingsFactorySidebarButton" type="button" aria-expanded="false" aria-controls="settingsFactoryPinPanel">
@@ -26240,6 +26292,75 @@
                                 <div class="developer-log-list settings-developer-log-list" id="pendingXeroActionsList">
                                     <div class="empty-state"><p class="eyebrow">No pending changes</p><h4>Xero outbox is clear</h4><p>Actions queued during a Xero rate limit will be saved here until they are pushed.</p></div>
                                 </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="juksib-automation">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">JUK automation</p>
+                                        <h3>Daily Auto Sync Settings</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="jukInvoicesAutomationRefreshButton" type="button">Refresh</button>
+                                        <button class="primary-button" id="jukInvoicesAutomationRunNowButton" type="button">Run now</button>
+                                    </div>
+                                </div>
+                                <div class="juk-toolbar" role="tablist" aria-label="JUK automation tabs">
+                                    <button class="ghost-button" id="jukAutomationTabSettings" type="button" aria-selected="true">Automation settings</button>
+                                    <button class="ghost-button" id="jukAutomationTabHistory" type="button" aria-selected="false">Automation history</button>
+                                </div>
+                                <section class="detail-panel">
+                                    <div class="juk-form-grid">
+                                        <label>Enable daily auto sync
+                                            <select id="jukAutomationEnabledSelect">
+                                                <option value="no">Disabled</option>
+                                                <option value="yes">Enabled</option>
+                                            </select>
+                                        </label>
+                                        <label>Schedule time
+                                            <input id="jukAutomationTimeInput" type="time" value="09:00">
+                                        </label>
+                                        <label>Timezone
+                                            <input id="jukAutomationTimezoneInput" type="text" value="Europe/London">
+                                        </label>
+                                        <label>Include paid invoices
+                                            <select id="jukAutomationIncludePaidSelect">
+                                                <option value="no">No</option>
+                                                <option value="yes">Yes</option>
+                                            </select>
+                                        </label>
+                                        <label>Auto publish approved rows
+                                            <select id="jukAutomationAutoPublishSelect">
+                                                <option value="yes">Yes</option>
+                                                <option value="no">No</option>
+                                            </select>
+                                        </label>
+                                        <label>Report recipient emails
+                                            <textarea id="jukAutomationRecipientsInput" placeholder="one@example.com, two@example.com"></textarea>
+                                        </label>
+                                    </div>
+                                    <div class="juk-toolbar">
+                                        <button class="primary-button" id="jukAutomationSaveButton" type="button">Save automation settings</button>
+                                    </div>
+                                    <small id="jukAutomationMeta">Configure daily JUKSIB sync and reporting.</small>
+                                </section>
+                                <section class="ch-companies-table-wrap" id="jukAutomationHistorySection" hidden>
+                                    <table class="ch-table" aria-label="JUK automation history">
+                                        <thead>
+                                            <tr>
+                                                <th>Started</th>
+                                                <th>Trigger</th>
+                                                <th>Status</th>
+                                                <th>Batch</th>
+                                                <th>Imported</th>
+                                                <th>Published</th>
+                                                <th>Failed</th>
+                                                <th>Error</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="jukAutomationHistoryBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="developer-log">
@@ -29365,10 +29486,54 @@
                                     <button class="primary-button" id="jukInvoicesNewBatchButton" type="button">Start New Batch</button>
                                 </div>
                             </div>
-                            <div class="juk-batch-modal-backdrop" id="jukInvoicesStep1Backdrop" hidden></div>
-
                             <p class="late-charge-summary" id="jukInvoicesSummary">JUKSIB is ready. Create a batch to import invoices and run matching.</p>
+                            <div class="juk-batch-table-toolbar">
+                                <label class="search-wrap">
+                                    <span class="search-icon">⌕</span>
+                                    <input id="jukInvoicesBatchSearchInput" type="search" placeholder="Search batch reference or mode...">
+                                </label>
+                                <select id="jukInvoicesBatchStatusFilter">
+                                    <option value="all">All batches</option>
+                                    <option value="draft">Draft / in-progress</option>
+                                    <option value="completed">Completed</option>
+                                </select>
+                                <select id="jukInvoicesBatchSortSelect">
+                                    <option value="created-desc">Newest first</option>
+                                    <option value="created-asc">Oldest first</option>
+                                    <option value="reference-asc">Reference A-Z</option>
+                                </select>
+                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="JUK batch table">
+                                    <thead>
+                                        <tr>
+                                            <th>Batch</th>
+                                            <th>Status</th>
+                                            <th>Mode</th>
+                                            <th>Date Window</th>
+                                            <th>Created</th>
+                                            <th>Imported</th>
+                                            <th>Ready</th>
+                                            <th>Published</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="jukInvoicesMainBatchTableBody"></tbody>
+                                </table>
+                            </section>
 
+                            <div class="juk-batch-modal-backdrop" id="jukInvoicesWizardBackdrop" hidden></div>
+                            <div class="juk-wizard-modal" id="jukInvoicesWizardModal" hidden>
+                            <section class="juk-wizard-modal-panel" role="dialog" aria-modal="true" aria-labelledby="jukWizardModalTitle">
+                            <div class="panel-heading">
+                                <div>
+                                    <p class="eyebrow">JUKSIB workflow</p>
+                                    <h4 id="jukWizardModalTitle">Batch Wizard</h4>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="jukInvoicesWizardCloseButton" type="button">Close wizard</button>
+                                </div>
+                            </div>
                             <div class="juk-wizard-steps" id="jukInvoicesSteps">
                                 <button class="juk-step-button" type="button" data-juk-step="1"><strong>1. Create Batch</strong><small>Import scope</small></button>
                                 <button class="juk-step-button" type="button" data-juk-step="2"><strong>2. Dashboard</strong><small>Batch metrics</small></button>
@@ -29379,14 +29544,14 @@
                                 <button class="juk-step-button" type="button" data-juk-step="7"><strong>7. Summary</strong><small>Audit and export</small></button>
                             </div>
 
-                            <section class="juk-panel juk-step1-modal" id="jukInvoicesStep1Panel" hidden>
+                            <section class="juk-panel" id="jukInvoicesStep1Panel" hidden>
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Step 1</p>
                                         <h4>Create JUKSIB Batch</h4>
                                     </div>
                                     <div class="detail-actions">
-                                        <button class="ghost-button" id="jukInvoicesStep1CloseButton" type="button">Close</button>
+                                        <button class="ghost-button" id="jukInvoicesStep1CloseButton" type="button">Close wizard</button>
                                     </div>
                                 </div>
                                 <section class="juk-wizard-activity" id="jukWizardActivityPanel" hidden>
@@ -29611,72 +29776,6 @@
                                     <button class="ghost-button" id="jukInvoicesExportExcelButton" type="button">Export Excel report</button>
                                     <button class="ghost-button" id="jukInvoicesExportAuditButton" type="button">Export audit log</button>
                                 </div>
-                                <div class="juk-toolbar" role="tablist" aria-label="JUK automation tabs">
-                                    <button class="ghost-button" id="jukAutomationTabSettings" type="button" aria-selected="true">Automation settings</button>
-                                    <button class="ghost-button" id="jukAutomationTabHistory" type="button" aria-selected="false">Automation history</button>
-                                </div>
-                                <section class="detail-panel">
-                                    <div class="panel-heading">
-                                        <div>
-                                            <p class="eyebrow">Automation</p>
-                                            <h4>Daily Auto Sync Settings</h4>
-                                        </div>
-                                        <div class="detail-actions">
-                                            <button class="ghost-button" id="jukInvoicesAutomationRefreshButton" type="button">Refresh</button>
-                                            <button class="primary-button" id="jukInvoicesAutomationRunNowButton" type="button">Run now</button>
-                                        </div>
-                                    </div>
-                                    <div class="juk-form-grid">
-                                        <label>Enable daily auto sync
-                                            <select id="jukAutomationEnabledSelect">
-                                                <option value="no">Disabled</option>
-                                                <option value="yes">Enabled</option>
-                                            </select>
-                                        </label>
-                                        <label>Schedule time
-                                            <input id="jukAutomationTimeInput" type="time" value="09:00">
-                                        </label>
-                                        <label>Timezone
-                                            <input id="jukAutomationTimezoneInput" type="text" value="Europe/London">
-                                        </label>
-                                        <label>Include paid invoices
-                                            <select id="jukAutomationIncludePaidSelect">
-                                                <option value="no">No</option>
-                                                <option value="yes">Yes</option>
-                                            </select>
-                                        </label>
-                                        <label>Auto publish approved rows
-                                            <select id="jukAutomationAutoPublishSelect">
-                                                <option value="yes">Yes</option>
-                                                <option value="no">No</option>
-                                            </select>
-                                        </label>
-                                        <label>Report recipient emails
-                                            <textarea id="jukAutomationRecipientsInput" placeholder="one@example.com, two@example.com"></textarea>
-                                        </label>
-                                    </div>
-                                    <div class="juk-toolbar">
-                                        <button class="primary-button" id="jukAutomationSaveButton" type="button">Save automation settings</button>
-                                    </div>
-                                    <small id="jukAutomationMeta">Configure daily JUKSIB sync and reporting.</small>
-                                </section>
-                                <section class="ch-companies-table-wrap" id="jukAutomationHistorySection" hidden>
-                                    <table class="ch-table" aria-label="JUK automation history">
-                                        <thead>
-                                            <tr>
-                                                <th>Started</th>
-                                                <th>Trigger</th>
-                                                <th>Status</th>
-                                                <th>Batch</th>
-                                                <th>Imported</th>
-                                                <th>Published</th>
-                                                <th>Failed</th>
-                                                <th>Error</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="jukAutomationHistoryBody"></tbody>
-                                    </table>
-                                </section>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="JUK batch history">
                                         <thead>
@@ -29694,6 +29793,8 @@
                                     </table>
                                 </section>
                             </section>
+                            </section>
+                            </div>
                         </section>
                     </section>
 
@@ -35898,6 +35999,9 @@
                 reviewFilter: "all",
                 step: 7,
                 batchModalOpen: false,
+                batchSearch: "",
+                batchStatusFilter: "all",
+                batchSort: "created-desc",
                 publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [] },
             };
             let jukInvoicesState = loadJukInvoicesState();
@@ -36038,6 +36142,15 @@
                     modalTitle: `Import failed${statusCode ? ` (HTTP ${statusCode})` : ""}.`,
                     modalDetail: message,
                 };
+            }
+
+            function jukBatchLifecycleStatus(batch = {}) {
+                const summary = batch?.summary || {};
+                const published = Number(summary.published || 0);
+                const failed = Number(summary.failed || 0);
+                if (published > 0 && failed === 0) return { key: "completed", label: "Completed" };
+                if (published > 0 && failed > 0) return { key: "completed", label: "Completed with issues" };
+                return { key: "draft", label: "Draft / in progress" };
             }
 
             function jukDateToISO(value) {
@@ -36540,7 +36653,6 @@
 
             function jukSetStep(step = 1) {
                 jukInvoicesState.step = Math.max(1, Math.min(7, Number(step || 1)));
-                if (jukInvoicesState.step !== 1) jukInvoicesState.batchModalOpen = false;
             }
 
             function jukActiveRows(batch) {
@@ -36690,13 +36802,157 @@
                 URL.revokeObjectURL(anchor.href);
             }
 
+            function renderJukAutomationSection(activeBatchId = "") {
+                const automationSettings = jukAutomationState?.settings || {};
+                const automationEnabledSelect = document.getElementById("jukAutomationEnabledSelect");
+                const automationTimeInput = document.getElementById("jukAutomationTimeInput");
+                const automationTimezoneInput = document.getElementById("jukAutomationTimezoneInput");
+                const automationRecipientsInput = document.getElementById("jukAutomationRecipientsInput");
+                const automationIncludePaidSelect = document.getElementById("jukAutomationIncludePaidSelect");
+                const automationAutoPublishSelect = document.getElementById("jukAutomationAutoPublishSelect");
+                const automationSaveButton = document.getElementById("jukAutomationSaveButton");
+                const automationRefreshButton = document.getElementById("jukInvoicesAutomationRefreshButton");
+                const automationRunNowButton = document.getElementById("jukInvoicesAutomationRunNowButton");
+                const automationMeta = document.getElementById("jukAutomationMeta");
+                const automationHistoryBody = document.getElementById("jukAutomationHistoryBody");
+                const automationSettingsPanel = document.getElementById("jukAutomationSaveButton")?.closest(".detail-panel") || null;
+                const automationHistorySection = document.getElementById("jukAutomationHistorySection");
+                const automationTabSettings = document.getElementById("jukAutomationTabSettings");
+                const automationTabHistory = document.getElementById("jukAutomationTabHistory");
+
+                const renderAutomationTabState = () => {
+                    const showSettings = jukAutomationTab !== "history";
+                    if (automationSettingsPanel) automationSettingsPanel.hidden = !showSettings;
+                    if (automationHistorySection) automationHistorySection.hidden = showSettings;
+                    if (automationTabSettings) {
+                        automationTabSettings.setAttribute("aria-selected", showSettings ? "true" : "false");
+                        automationTabSettings.classList.toggle("primary-button", showSettings);
+                    }
+                    if (automationTabHistory) {
+                        automationTabHistory.setAttribute("aria-selected", showSettings ? "false" : "true");
+                        automationTabHistory.classList.toggle("primary-button", !showSettings);
+                    }
+                };
+                renderAutomationTabState();
+
+                if (automationTabSettings) {
+                    automationTabSettings.onclick = () => {
+                        jukAutomationTab = "settings";
+                        renderAutomationTabState();
+                    };
+                }
+                if (automationTabHistory) {
+                    automationTabHistory.onclick = () => {
+                        jukAutomationTab = "history";
+                        renderAutomationTabState();
+                    };
+                }
+
+                if (automationEnabledSelect) automationEnabledSelect.value = automationSettings.enabled ? "yes" : "no";
+                if (automationTimeInput) automationTimeInput.value = String(automationSettings.scheduleTime || "09:00");
+                if (automationTimezoneInput) automationTimezoneInput.value = String(automationSettings.timezone || "Europe/London");
+                if (automationRecipientsInput) automationRecipientsInput.value = Array.isArray(automationSettings.recipientEmails) ? automationSettings.recipientEmails.join(", ") : "";
+                if (automationIncludePaidSelect) automationIncludePaidSelect.value = automationSettings.includePaidInvoices ? "yes" : "no";
+                if (automationAutoPublishSelect) automationAutoPublishSelect.value = automationSettings.autoPublish === false ? "no" : "yes";
+                if (automationMeta) {
+                    const lastRunText = automationSettings.lastRunAt ? ` Last run: ${formatDateTime(automationSettings.lastRunAt)}.` : "";
+                    automationMeta.textContent = `Daily auto-sync is ${automationSettings.enabled ? "enabled" : "disabled"} at ${automationSettings.scheduleTime || "09:00"} (${automationSettings.timezone || "Europe/London"}).${lastRunText}`;
+                }
+                if (automationSaveButton) {
+                    automationSaveButton.onclick = async () => {
+                        const payload = {
+                            enabled: String(document.getElementById("jukAutomationEnabledSelect")?.value || "no") === "yes",
+                            scheduleTime: String(document.getElementById("jukAutomationTimeInput")?.value || "09:00"),
+                            timezone: String(document.getElementById("jukAutomationTimezoneInput")?.value || "Europe/London"),
+                            recipientEmails: String(document.getElementById("jukAutomationRecipientsInput")?.value || ""),
+                            includePaidInvoices: String(document.getElementById("jukAutomationIncludePaidSelect")?.value || "no") === "yes",
+                            autoPublish: String(document.getElementById("jukAutomationAutoPublishSelect")?.value || "yes") === "yes",
+                        };
+                        setJukLoading(true, "Saving automation settings…");
+                        try {
+                            const response = await requestJSON(api.endpoints.juksibAutomationSettings, {
+                                method: "POST",
+                                body: JSON.stringify(payload),
+                            });
+                            jukAutomationState = response?.automation || jukAutomationState;
+                            renderJukAutomationSection(activeBatchId);
+                            showToast("JUKSIB automation settings saved.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to save automation settings.", "error");
+                        } finally {
+                            setJukLoading(false);
+                        }
+                    };
+                }
+                if (automationRefreshButton) {
+                    automationRefreshButton.onclick = async () => {
+                        setJukLoading(true, "Refreshing automation status…");
+                        try {
+                            await jukRefreshFromAPI({ silent: true, batchId: activeBatchId || jukInvoicesState.currentBatchId || "" });
+                            renderJukAutomationSection(activeBatchId);
+                        } catch (error) {
+                            showToast(error?.message || "Unable to refresh automation status.", "error");
+                        } finally {
+                            setJukLoading(false);
+                        }
+                    };
+                }
+                if (automationRunNowButton) {
+                    automationRunNowButton.onclick = async () => {
+                        automationRunNowButton.disabled = true;
+                        const originalLabel = automationRunNowButton.textContent;
+                        automationRunNowButton.textContent = "Running...";
+                        setJukLoading(true, "Running automation now…");
+                        try {
+                            const response = await requestJSON(api.endpoints.juksibAutomationRunNow, {
+                                method: "POST",
+                                body: JSON.stringify({}),
+                            });
+                            jukAutomationState = response?.automation || jukAutomationState;
+                            await jukRefreshFromAPI({ silent: true });
+                            renderJukAutomationSection(activeBatchId);
+                            showToast("JUKSIB automation run completed.", "success");
+                        } catch (error) {
+                            showToast(error?.message || "Unable to run JUKSIB automation.", "error");
+                        } finally {
+                            automationRunNowButton.disabled = false;
+                            automationRunNowButton.textContent = originalLabel || "Run now";
+                            setJukLoading(false);
+                        }
+                    };
+                }
+                if (automationHistoryBody) {
+                    const historyRows = Array.isArray(jukAutomationState?.history) ? jukAutomationState.history : [];
+                    automationHistoryBody.innerHTML = historyRows.length
+                        ? historyRows.slice(0, 80).map((run) => `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(run.startedAt) || "--")}</td>
+                                <td>${escapeHTML(String(run.triggerType || "--"))}</td>
+                                <td>${escapeHTML(String(run.status || "--"))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).batchReference || "--"))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).imported || 0))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).published || 0))}</td>
+                                <td>${escapeHTML(String((run.summary || {}).failed || 0))}</td>
+                                <td>${escapeHTML(String(run.errorMessage || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No auto runs</p><h4>No automation history yet</h4><p>Enable daily automation or run now to populate this list.</p></div></td></tr>';
+                }
+            }
+
             function renderJukInvoicesScreen() {
                 const summary = document.getElementById("jukInvoicesSummary");
                 const refreshButton = document.getElementById("jukInvoicesRefreshButton");
                 const openMeReportButton = document.getElementById("jukInvoicesOpenMeReportButton");
                 const newBatchButton = document.getElementById("jukInvoicesNewBatchButton");
-                const step1Backdrop = document.getElementById("jukInvoicesStep1Backdrop");
+                const wizardBackdrop = document.getElementById("jukInvoicesWizardBackdrop");
+                const wizardModal = document.getElementById("jukInvoicesWizardModal");
+                const wizardCloseButton = document.getElementById("jukInvoicesWizardCloseButton");
                 const step1CloseButton = document.getElementById("jukInvoicesStep1CloseButton");
+                const batchSearchInput = document.getElementById("jukInvoicesBatchSearchInput");
+                const batchStatusFilter = document.getElementById("jukInvoicesBatchStatusFilter");
+                const batchSortSelect = document.getElementById("jukInvoicesBatchSortSelect");
+                const mainBatchTableBody = document.getElementById("jukInvoicesMainBatchTableBody");
                 const stepButtons = [...document.querySelectorAll("[data-juk-step]")];
                 const panels = {
                     1: document.getElementById("jukInvoicesStep1Panel"),
@@ -36711,11 +36967,9 @@
                 setJukLoading(jukLoadingState.active, jukLoadingState.message);
 
                 const batch = jukCurrentBatch();
+                renderJukAutomationSection(batch?.id || jukInvoicesState.currentBatchId || "");
                 const nextReferenceInput = document.getElementById("jukInvoicesBatchReferenceInput");
                 if (nextReferenceInput) nextReferenceInput.value = batch?.batchReference || jukNextBatchReference();
-                if (Number(jukInvoicesState.step || 1) === 1 && !jukInvoicesState.batchModalOpen) {
-                    jukInvoicesState.step = batch ? 2 : 7;
-                }
                 if (Number(jukInvoicesState.step || 1) === 1 && jukInvoicesState.batchModalOpen) {
                     void jukAutofillBatchDateRange({ animate: false, force: false });
                 }
@@ -36740,20 +36994,16 @@
                     if (!panel) return;
                     const currentStep = Number(jukInvoicesState.step || 1);
                     const isCurrent = Number(step) === currentStep;
-                    if (Number(step) === 1) {
-                        panel.hidden = !(isCurrent && Boolean(jukInvoicesState.batchModalOpen));
-                    } else {
-                        panel.hidden = !isCurrent;
-                    }
+                    panel.hidden = !(isCurrent && Boolean(jukInvoicesState.batchModalOpen));
                     if (isCurrent && currentStep !== jukLastRenderedStep) {
                         panel.classList.remove("is-entering");
                         void panel.offsetWidth;
                         panel.classList.add("is-entering");
                     }
                 });
-                const step1Open = Number(jukInvoicesState.step || 1) === 1 && Boolean(jukInvoicesState.batchModalOpen);
-                if (step1Backdrop) step1Backdrop.hidden = !step1Open;
-                document.body.classList.toggle("juk-batch-modal-open", step1Open);
+                if (wizardModal) wizardModal.hidden = !Boolean(jukInvoicesState.batchModalOpen);
+                if (wizardBackdrop) wizardBackdrop.hidden = !Boolean(jukInvoicesState.batchModalOpen);
+                document.body.classList.toggle("juk-batch-modal-open", Boolean(jukInvoicesState.batchModalOpen));
                 jukLastRenderedStep = Number(jukInvoicesState.step || 1);
 
                 if (refreshButton.dataset.jukInvoicesWired !== "true") {
@@ -36818,22 +37068,99 @@
                         jukStopWizardActivityTicker();
                         jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
                         jukInvoicesState.batchModalOpen = false;
-                        if (Number(jukInvoicesState.step || 1) === 1) {
-                            jukSetStep(jukInvoicesState.currentBatchId ? 2 : 7);
-                        }
                         renderJukInvoicesScreen();
                     });
                 }
-                if (step1Backdrop && step1Backdrop.dataset.jukWired !== "true") {
-                    step1Backdrop.dataset.jukWired = "true";
-                    step1Backdrop.addEventListener("click", () => {
+                if (wizardCloseButton && wizardCloseButton.dataset.jukWired !== "true") {
+                    wizardCloseButton.dataset.jukWired = "true";
+                    wizardCloseButton.addEventListener("click", () => {
                         jukStopWizardActivityTicker();
                         jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
                         jukInvoicesState.batchModalOpen = false;
-                        if (Number(jukInvoicesState.step || 1) === 1) {
-                            jukSetStep(jukInvoicesState.currentBatchId ? 2 : 7);
-                        }
                         renderJukInvoicesScreen();
+                    });
+                }
+                if (wizardBackdrop && wizardBackdrop.dataset.jukWired !== "true") {
+                    wizardBackdrop.dataset.jukWired = "true";
+                    wizardBackdrop.addEventListener("click", () => {
+                        jukStopWizardActivityTicker();
+                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+                        jukInvoicesState.batchModalOpen = false;
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (batchSearchInput && batchSearchInput.dataset.jukWired !== "true") {
+                    batchSearchInput.dataset.jukWired = "true";
+                    batchSearchInput.addEventListener("input", () => {
+                        jukInvoicesState.batchSearch = String(batchSearchInput.value || "");
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (batchStatusFilter && batchStatusFilter.dataset.jukWired !== "true") {
+                    batchStatusFilter.dataset.jukWired = "true";
+                    batchStatusFilter.addEventListener("change", () => {
+                        jukInvoicesState.batchStatusFilter = String(batchStatusFilter.value || "all");
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (batchSortSelect && batchSortSelect.dataset.jukWired !== "true") {
+                    batchSortSelect.dataset.jukWired = "true";
+                    batchSortSelect.addEventListener("change", () => {
+                        jukInvoicesState.batchSort = String(batchSortSelect.value || "created-desc");
+                        renderJukInvoicesScreen();
+                    });
+                }
+                if (batchSearchInput) batchSearchInput.value = String(jukInvoicesState.batchSearch || "");
+                if (batchStatusFilter) batchStatusFilter.value = String(jukInvoicesState.batchStatusFilter || "all");
+                if (batchSortSelect) batchSortSelect.value = String(jukInvoicesState.batchSort || "created-desc");
+                if (mainBatchTableBody) {
+                    const query = String(jukInvoicesState.batchSearch || "").trim().toLowerCase();
+                    const filter = String(jukInvoicesState.batchStatusFilter || "all");
+                    const sortMode = String(jukInvoicesState.batchSort || "created-desc");
+                    const rows = [...(jukInvoicesState.batches || [])]
+                        .filter((item) => {
+                            const lifecycle = jukBatchLifecycleStatus(item);
+                            if (filter !== "all" && lifecycle.key !== filter) return false;
+                            if (!query) return true;
+                            const haystack = `${item.batchReference || ""} ${item.mode || ""} ${lifecycle.label}`.toLowerCase();
+                            return haystack.includes(query);
+                        })
+                        .sort((left, right) => {
+                            if (sortMode === "created-asc") return String(left.createdAt || "").localeCompare(String(right.createdAt || ""));
+                            if (sortMode === "reference-asc") return String(left.batchReference || "").localeCompare(String(right.batchReference || ""));
+                            return String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
+                        });
+                    mainBatchTableBody.innerHTML = rows.length ? rows.map((item) => {
+                        const itemSummary = item.summary || {};
+                        const lifecycle = jukBatchLifecycleStatus(item);
+                        const statusClass = lifecycle.key === "completed" ? "is-completed" : "";
+                        const windowLabel = `${item.invoiceDateFrom ? formatDate(item.invoiceDateFrom) : "--"} → ${item.invoiceDateTo ? formatDate(item.invoiceDateTo) : "--"}`;
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(item.batchReference || "--")}</strong></td>
+                                <td><span class="juk-batch-status-pill ${statusClass}">${escapeHTML(lifecycle.label)}</span></td>
+                                <td>${escapeHTML(String(item.mode || "test").toUpperCase())}</td>
+                                <td>${escapeHTML(windowLabel)}</td>
+                                <td>${escapeHTML(formatDateTime(item.createdAt) || "--")}</td>
+                                <td>${escapeHTML(String(itemSummary.totalImported || 0))}</td>
+                                <td>${escapeHTML(String(itemSummary.readyToPublish || 0))}</td>
+                                <td>${escapeHTML(String(itemSummary.published || 0))}</td>
+                                <td><button class="ghost-button" type="button" data-juk-open-wizard-batch="${escapeHTML(item.id || "")}">Open wizard</button></td>
+                            </tr>
+                        `;
+                    }).join("") : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No batches</p><h4>No matching JUK batch records</h4><p>Create a new batch or adjust search/filter.</p></div></td></tr>';
+                    mainBatchTableBody.querySelectorAll("[data-juk-open-wizard-batch]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const batchId = String(button.dataset.jukOpenWizardBatch || "").trim();
+                            if (!batchId) return;
+                            jukInvoicesState.currentBatchId = batchId;
+                            jukInvoicesState.batchModalOpen = true;
+                            jukSetStep(2);
+                            try {
+                                await jukRefreshFromAPI({ silent: true, batchId });
+                            } catch {}
+                            renderJukInvoicesScreen();
+                        });
                     });
                 }
 
@@ -37396,142 +37723,6 @@
                 }
                 if (exportAuditButton) exportAuditButton.onclick = () => jukExportAudit();
 
-                const automationSettings = jukAutomationState?.settings || {};
-                const automationEnabledSelect = document.getElementById("jukAutomationEnabledSelect");
-                const automationTimeInput = document.getElementById("jukAutomationTimeInput");
-                const automationTimezoneInput = document.getElementById("jukAutomationTimezoneInput");
-                const automationRecipientsInput = document.getElementById("jukAutomationRecipientsInput");
-                const automationIncludePaidSelect = document.getElementById("jukAutomationIncludePaidSelect");
-                const automationAutoPublishSelect = document.getElementById("jukAutomationAutoPublishSelect");
-                const automationSaveButton = document.getElementById("jukAutomationSaveButton");
-                const automationRefreshButton = document.getElementById("jukInvoicesAutomationRefreshButton");
-                const automationRunNowButton = document.getElementById("jukInvoicesAutomationRunNowButton");
-                const automationMeta = document.getElementById("jukAutomationMeta");
-                const automationHistoryBody = document.getElementById("jukAutomationHistoryBody");
-                const automationSettingsPanel = document.getElementById("jukAutomationSaveButton")?.closest(".detail-panel") || null;
-                const automationHistorySection = document.getElementById("jukAutomationHistorySection");
-                const automationTabSettings = document.getElementById("jukAutomationTabSettings");
-                const automationTabHistory = document.getElementById("jukAutomationTabHistory");
-
-                const renderAutomationTabState = () => {
-                    const showSettings = jukAutomationTab !== "history";
-                    if (automationSettingsPanel) automationSettingsPanel.hidden = !showSettings;
-                    if (automationHistorySection) automationHistorySection.hidden = showSettings;
-                    if (automationTabSettings) {
-                        automationTabSettings.setAttribute("aria-selected", showSettings ? "true" : "false");
-                        automationTabSettings.classList.toggle("primary-button", showSettings);
-                    }
-                    if (automationTabHistory) {
-                        automationTabHistory.setAttribute("aria-selected", showSettings ? "false" : "true");
-                        automationTabHistory.classList.toggle("primary-button", !showSettings);
-                    }
-                };
-                renderAutomationTabState();
-
-                if (automationTabSettings) {
-                    automationTabSettings.onclick = () => {
-                        jukAutomationTab = "settings";
-                        renderAutomationTabState();
-                    };
-                }
-                if (automationTabHistory) {
-                    automationTabHistory.onclick = () => {
-                        jukAutomationTab = "history";
-                        renderAutomationTabState();
-                    };
-                }
-
-                if (automationEnabledSelect) automationEnabledSelect.value = automationSettings.enabled ? "yes" : "no";
-                if (automationTimeInput) automationTimeInput.value = String(automationSettings.scheduleTime || "09:00");
-                if (automationTimezoneInput) automationTimezoneInput.value = String(automationSettings.timezone || "Europe/London");
-                if (automationRecipientsInput) automationRecipientsInput.value = Array.isArray(automationSettings.recipientEmails) ? automationSettings.recipientEmails.join(", ") : "";
-                if (automationIncludePaidSelect) automationIncludePaidSelect.value = automationSettings.includePaidInvoices ? "yes" : "no";
-                if (automationAutoPublishSelect) automationAutoPublishSelect.value = automationSettings.autoPublish === false ? "no" : "yes";
-                if (automationMeta) {
-                    const lastRunText = automationSettings.lastRunAt ? ` Last run: ${formatDateTime(automationSettings.lastRunAt)}.` : "";
-                    automationMeta.textContent = `Daily auto-sync is ${automationSettings.enabled ? "enabled" : "disabled"} at ${automationSettings.scheduleTime || "09:00"} (${automationSettings.timezone || "Europe/London"}).${lastRunText}`;
-                }
-                if (automationSaveButton) {
-                    automationSaveButton.onclick = async () => {
-                        const payload = {
-                            enabled: String(document.getElementById("jukAutomationEnabledSelect")?.value || "no") === "yes",
-                            scheduleTime: String(document.getElementById("jukAutomationTimeInput")?.value || "09:00"),
-                            timezone: String(document.getElementById("jukAutomationTimezoneInput")?.value || "Europe/London"),
-                            recipientEmails: String(document.getElementById("jukAutomationRecipientsInput")?.value || ""),
-                            includePaidInvoices: String(document.getElementById("jukAutomationIncludePaidSelect")?.value || "no") === "yes",
-                            autoPublish: String(document.getElementById("jukAutomationAutoPublishSelect")?.value || "yes") === "yes",
-                        };
-                        setJukLoading(true, "Saving automation settings…");
-                        try {
-                            const response = await requestJSON(api.endpoints.juksibAutomationSettings, {
-                                method: "POST",
-                                body: JSON.stringify(payload),
-                            });
-                            jukAutomationState = response?.automation || jukAutomationState;
-                            renderJukInvoicesScreen();
-                            showToast("JUKSIB automation settings saved.", "success");
-                        } catch (error) {
-                            showToast(error?.message || "Unable to save automation settings.", "error");
-                        } finally {
-                            setJukLoading(false);
-                        }
-                    };
-                }
-                if (automationRefreshButton) {
-                    automationRefreshButton.onclick = async () => {
-                        setJukLoading(true, "Refreshing automation status…");
-                        try {
-                            await jukRefreshFromAPI({ silent: true, batchId: batch.id });
-                            renderJukInvoicesScreen();
-                        } catch (error) {
-                            showToast(error?.message || "Unable to refresh automation status.", "error");
-                        } finally {
-                            setJukLoading(false);
-                        }
-                    };
-                }
-                if (automationRunNowButton) {
-                    automationRunNowButton.onclick = async () => {
-                        automationRunNowButton.disabled = true;
-                        const originalLabel = automationRunNowButton.textContent;
-                        automationRunNowButton.textContent = "Running...";
-                        setJukLoading(true, "Running automation now…");
-                        try {
-                            const response = await requestJSON(api.endpoints.juksibAutomationRunNow, {
-                                method: "POST",
-                                body: JSON.stringify({}),
-                            });
-                            jukAutomationState = response?.automation || jukAutomationState;
-                            await jukRefreshFromAPI({ silent: true });
-                            renderJukInvoicesScreen();
-                            showToast("JUKSIB automation run completed.", "success");
-                        } catch (error) {
-                            showToast(error?.message || "Unable to run JUKSIB automation.", "error");
-                        } finally {
-                            automationRunNowButton.disabled = false;
-                            automationRunNowButton.textContent = originalLabel || "Run now";
-                            setJukLoading(false);
-                        }
-                    };
-                }
-                if (automationHistoryBody) {
-                    const historyRows = Array.isArray(jukAutomationState?.history) ? jukAutomationState.history : [];
-                    automationHistoryBody.innerHTML = historyRows.length
-                        ? historyRows.slice(0, 80).map((run) => `
-                            <tr>
-                                <td>${escapeHTML(formatDateTime(run.startedAt) || "--")}</td>
-                                <td>${escapeHTML(String(run.triggerType || "--"))}</td>
-                                <td>${escapeHTML(String(run.status || "--"))}</td>
-                                <td>${escapeHTML(String((run.summary || {}).batchReference || "--"))}</td>
-                                <td>${escapeHTML(String((run.summary || {}).imported || 0))}</td>
-                                <td>${escapeHTML(String((run.summary || {}).published || 0))}</td>
-                                <td>${escapeHTML(String((run.summary || {}).failed || 0))}</td>
-                                <td>${escapeHTML(String(run.errorMessage || ""))}</td>
-                            </tr>
-                        `).join("")
-                        : '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No auto runs</p><h4>No automation history yet</h4><p>Enable daily automation or run now to populate this list.</p></div></td></tr>';
-                }
-
                 const historyBody = document.getElementById("jukInvoicesBatchHistoryBody");
                 if (historyBody) {
                     historyBody.innerHTML = jukInvoicesState.batches.slice(0, 40).map((item) => {
@@ -37551,6 +37742,7 @@
                     historyBody.querySelectorAll("[data-juk-load-batch]").forEach((button) => {
                         button.addEventListener("click", async () => {
                             jukInvoicesState.currentBatchId = button.dataset.jukLoadBatch;
+                            jukInvoicesState.batchModalOpen = true;
                             try {
                                 await jukRefreshFromAPI({ silent: true, batchId: jukInvoicesState.currentBatchId });
                             } catch {}
@@ -83277,6 +83469,11 @@
                     title: "Developer Log / Activity Audit",
                     meta: "Inspect sync events, backend errors, and API calls."
                 },
+                "juksib-automation": {
+                    eyebrow: "JUK automation",
+                    title: "JUK Invoice Automation",
+                    meta: "Configure daily JUK invoice import and optional auto-publish."
+                },
                 "system-status": {
                     eyebrow: "System status",
                     title: "System Status",
@@ -83312,6 +83509,7 @@
                 usage: "technical-settings",
                 "product-releases": "technical-settings",
                 "developer-log": "technical-settings",
+                "juksib-automation": "technical-settings",
             };
             const SETTINGS_MENU_PIN_CODE = "1973";
             let expandedSettingsNavGroups = new Set();
