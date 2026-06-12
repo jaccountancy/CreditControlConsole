@@ -723,7 +723,7 @@ def usage_detail_payload(
 
 
 def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
-    safe_limit = max(min(_to_int(limit, 120), 300), 1)
+    safe_limit = max(min(_to_int(limit, 120), 2000), 1)
     user_id = str(user.get("id") or "").strip() or None
     _sync_git_push_release_updates(max(180, safe_limit))
     _sync_runtime_release_update()

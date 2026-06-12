@@ -253,6 +253,7 @@ from .services import (
     juksib_import_batch,
     juksib_list_batches,
     juksib_delete_batch,
+    juksib_revert_batch_to_draft,
     juksib_publish_batch,
     juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
     start_juksib_automation_worker,
@@ -1617,7 +1618,7 @@ def api_settings_usage_detail(
 
 @app.get("/api/settings/releases")
 def api_settings_releases(
-    limit: int = Query(120, ge=1, le=300),
+    limit: int = Query(120, ge=1, le=2000),
     user: dict = Depends(require_panel_user),
 ):
     return deployment_updates_payload(user, limit=limit)
@@ -2614,6 +2615,12 @@ async def api_juksib_batch(batch_id: str, user: dict = Depends(require_panel_use
 @app.delete("/api/juksib/batches/{batch_id}")
 async def api_juksib_delete_batch(batch_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await juksib_delete_batch(user, batch_id)}
+
+
+@app.post("/api/juksib/batches/{batch_id}/revert-to-draft")
+async def api_juksib_revert_to_draft(batch_id: str, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "revert JUKSIB batches to draft")
+    return {"status": "ok", **await juksib_revert_batch_to_draft(user, batch_id)}
 
 
 @app.post("/api/juksib/batches/{batch_id}/invoices/status")

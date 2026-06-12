@@ -15910,6 +15910,85 @@ def _juksib_serialise_invoice_row(row: dict) -> dict:
     }
 
 
+def _juksib_preview_vat_profile(
+    *,
+    client_name: str,
+    matched_client_id: str,
+    register_index: dict,
+    run_cache: dict[str, dict],
+) -> dict:
+    contact_name = str(client_name or "").strip()
+    normalised_client_name = _bm_tasks_normalise_name_key(contact_name) or _juksib_normalise_name(contact_name)
+    if not normalised_client_name:
+        return _juksib_default_vat_profile(contact_name, "empty_name", "Client name was empty; defaulted to no VAT.")
+    if normalised_client_name in run_cache:
+        return run_cache[normalised_client_name]
+
+    register_rows = register_index.get("rows") if isinstance(register_index.get("rows"), list) else []
+    by_client_id = register_index.get("byClientId") if isinstance(register_index.get("byClientId"), dict) else {}
+    by_name = register_index.get("byName") if isinstance(register_index.get("byName"), dict) else {}
+
+    matched_row = None
+    lookup_source = "register_none"
+    lookup_reason = "No client register row matched; defaulted to no VAT."
+    lookup_confidence = Decimal("0")
+
+    matched_client_id_key = str(matched_client_id or "").strip().lower()
+    if matched_client_id_key and matched_client_id_key in by_client_id:
+        matched_row = by_client_id.get(matched_client_id_key)
+        lookup_source = "register_client_id"
+        lookup_reason = "Matched using client id from the destination candidate."
+        lookup_confidence = Decimal("1")
+    if not matched_row:
+        exact_name_row = by_name.get(normalised_client_name)
+        if exact_name_row:
+            matched_row = exact_name_row
+            lookup_source = "register_exact"
+            lookup_reason = "Exact client register name match."
+            lookup_confidence = Decimal("0.99")
+    if not matched_row and contact_name and register_rows:
+        scored_rows = sorted(
+            (
+                {
+                    "row": row,
+                    "score": _juksib_similarity(contact_name, _juksib_register_display_name(row)),
+                }
+                for row in register_rows
+                if _juksib_register_display_name(row)
+            ),
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+        if scored_rows:
+            top = scored_rows[0]
+            second = scored_rows[1] if len(scored_rows) > 1 else {"score": Decimal("0")}
+            if top["score"] >= Decimal("0.82") and (top["score"] - second["score"]) >= Decimal("0.12"):
+                matched_row = top["row"]
+                lookup_source = "register_fuzzy"
+                lookup_reason = "High-confidence fuzzy match against client register name."
+                lookup_confidence = top["score"]
+
+    if matched_row:
+        vat_number = _juksib_clean_vat_number(matched_row.get("vat_number"))
+        vat_registered = bool(vat_number)
+        profile = {
+            "clientName": contact_name,
+            "vatRegistered": vat_registered,
+            "vatNumber": vat_number,
+            "taxType": JUKSIB_EXPENSES_VAT_TAX_TYPE if vat_registered else JUKSIB_NO_VAT_TAX_TYPE,
+            "lookupSource": lookup_source,
+            "lookupReason": lookup_reason,
+            "lookupConfidence": float(lookup_confidence),
+            "registerId": str(matched_row.get("id") or "").strip(),
+            "registerName": _juksib_register_display_name(matched_row),
+        }
+    else:
+        profile = _juksib_default_vat_profile(contact_name, lookup_source, lookup_reason)
+
+    run_cache[normalised_client_name] = profile
+    return profile
+
+
 def _juksib_serialise_batch_row(batch_row: dict, invoices: list[dict]) -> dict:
     summary = _juksib_build_summary(invoices)
     return {
@@ -16556,6 +16635,21 @@ async def juksib_get_batch(user: dict, batch_id: str) -> dict:
             invoice_rows = cursor.fetchall() or []
         connection.commit()
     serialised_invoices = [_juksib_serialise_invoice_row(row) for row in invoice_rows]
+    register_index = _juksib_build_vat_register_index(_juksib_fetch_client_register_rows_for_vat())
+    vat_preview_cache: dict[str, dict] = {}
+    for invoice in serialised_invoices:
+        vat_profile = _juksib_preview_vat_profile(
+            client_name=str(invoice.get("jukContactName") or ""),
+            matched_client_id=str(invoice.get("matchedClientId") or ""),
+            register_index=register_index,
+            run_cache=vat_preview_cache,
+        )
+        vat_registered = bool(vat_profile.get("vatRegistered"))
+        invoice["vatPostingApplies"] = vat_registered
+        invoice["vatPostingLabel"] = "VAT" if vat_registered else "No VAT"
+        invoice["vatLookupSource"] = str(vat_profile.get("lookupSource") or "")
+        invoice["vatLookupReason"] = str(vat_profile.get("lookupReason") or "")
+        invoice["vatTaxType"] = str(vat_profile.get("taxType") or JUKSIB_NO_VAT_TAX_TYPE)
     return {"batch": _juksib_serialise_batch_row(batch_row, serialised_invoices)}
 
 
@@ -16620,6 +16714,24 @@ async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
     }
 
 
+def _juksib_batch_is_lifecycle_completed(batch_row: dict | None) -> bool:
+    row = batch_row if isinstance(batch_row, dict) else {}
+    summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+    published = int(summary.get("published") or 0)
+    failed = int(summary.get("failed") or 0)
+    skipped = int(summary.get("skipped") or 0)
+    batch_status = str(row.get("status") or "").strip().lower()
+    if published > 0 and failed == 0:
+        return True
+    if published > 0 and failed > 0:
+        return True
+    if published == 0 and failed > 0:
+        return True
+    if published == 0 and failed == 0 and skipped > 0:
+        return True
+    return batch_status in {"completed", "published"}
+
+
 async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
     requested_batch_id = str(batch_id or "").strip()
     with get_connection() as connection:
@@ -16638,24 +16750,7 @@ async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
             if not batch_row:
                 # Idempotent delete: stale client state or retries should not surface as hard failures.
                 return {"deletedBatchId": requested_batch_id, "alreadyDeleted": True, **await juksib_list_batches(user, limit=30)}
-
-            summary = batch_row.get("summary") if isinstance(batch_row.get("summary"), dict) else {}
-            published = int(summary.get("published") or 0)
-            failed = int(summary.get("failed") or 0)
-            skipped = int(summary.get("skipped") or 0)
-            batch_status = str(batch_row.get("status") or "").strip().lower()
-            lifecycle_completed = False
-            if published > 0 and failed == 0:
-                lifecycle_completed = True
-            elif published > 0 and failed > 0:
-                lifecycle_completed = True
-            elif published == 0 and failed > 0:
-                lifecycle_completed = True
-            elif published == 0 and failed == 0 and skipped > 0:
-                lifecycle_completed = True
-            if batch_status in {"completed", "published"}:
-                lifecycle_completed = True
-            if lifecycle_completed:
+            if _juksib_batch_is_lifecycle_completed(batch_row):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Only draft JUKSIB batches can be deleted.",
@@ -16688,6 +16783,61 @@ async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
         notes=f"Deleted batch {batch_reference or resolved_batch_id}.",
     )
     return {"deletedBatchId": resolved_batch_id, **await juksib_list_batches(user, limit=30)}
+
+
+async def juksib_revert_batch_to_draft(user: dict, batch_id: str) -> dict:
+    requested_batch_id = str(batch_id or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batches
+                WHERE id::text = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (requested_batch_id, user["id"]),
+            )
+            batch_row = cursor.fetchone()
+            if not batch_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+            if not _juksib_batch_is_lifecycle_completed(batch_row):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Only completed JUKSIB batches can be reverted to draft.",
+                )
+            resolved_batch_id = str(batch_row.get("id") or requested_batch_id).strip()
+            cursor.execute(
+                """
+                UPDATE juksib_batches
+                SET status = 'draft',
+                    updated_at = %s
+                WHERE id::text = %s
+                  AND user_id = %s
+                """,
+                (utcnow(), resolved_batch_id, user["id"]),
+            )
+        connection.commit()
+
+    batch_reference = str(batch_row.get("batch_reference") or "").strip()
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=resolved_batch_id,
+        entity_type="juksib_batch",
+        entity_id=resolved_batch_id,
+        action="batch_reverted_to_draft",
+        old_value={
+            "batchReference": batch_reference,
+            "status": str(batch_row.get("status") or ""),
+            "summary": batch_row.get("summary") if isinstance(batch_row.get("summary"), dict) else {},
+        },
+        new_value={
+            "status": "draft",
+        },
+        notes=f"Reverted batch {batch_reference or resolved_batch_id} to draft from settings.",
+    )
+    return {"revertedBatchId": resolved_batch_id, **await juksib_list_batches(user, limit=30)}
 
 
 async def juksib_bulk_update_invoice_status(user: dict, batch_id: str, payload: dict | None = None) -> dict:
