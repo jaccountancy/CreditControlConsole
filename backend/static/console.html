@@ -24657,6 +24657,26 @@
                 border-radius: 14px;
                 padding: 14px;
             }
+            .juk-wizard-modal.is-step3 .juk-wizard-modal-panel {
+                top: 16px;
+                width: min(1880px, calc(100vw - 32px));
+                max-height: calc(100vh - 32px);
+            }
+            .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel {
+                display: grid;
+                grid-template-rows: auto auto auto minmax(0, 1fr);
+                min-height: calc(100vh - 236px);
+                margin-bottom: 0;
+            }
+            .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel .ch-companies-table-wrap {
+                min-height: 0;
+                max-height: none;
+                height: 100%;
+                overflow: auto;
+            }
+            .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel .ch-table {
+                width: 100%;
+            }
             .juk-batch-table-toolbar {
                 display: flex;
                 flex-wrap: wrap;
@@ -29944,8 +29964,6 @@
                                                 <th>Invoice</th>
                                                 <th>Client Name</th>
                                                 <th>Suggested Client</th>
-                                                <th>Suggested Tenant</th>
-                                                <th>Source</th>
                                                 <th>Confidence</th>
                                                 <th>Amount</th>
                                                 <th>VAT</th>
@@ -37411,6 +37429,7 @@
                 });
                 if (wizardModal) wizardModal.hidden = !Boolean(jukInvoicesState.batchModalOpen);
                 if (wizardBackdrop) wizardBackdrop.hidden = !Boolean(jukInvoicesState.batchModalOpen);
+                if (wizardModal) wizardModal.classList.toggle("is-step3", Boolean(jukInvoicesState.batchModalOpen) && Number(jukInvoicesState.step || 1) === 3);
                 document.body.classList.toggle("juk-batch-modal-open", Boolean(jukInvoicesState.batchModalOpen));
                 jukLastRenderedStep = Number(jukInvoicesState.step || 1);
 
@@ -37763,8 +37782,6 @@
                                 <td><strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong><small>${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</small></td>
                                 <td>${escapeHTML(invoice.jukContactName || "--")}</td>
                                 <td>${escapeHTML(suggestedClientName || "No match")}</td>
-                                <td>${escapeHTML(invoice.matchedTenantName || "No match")}</td>
-                                <td>${escapeHTML(invoice.matchSource || "--")}</td>
                                 <td>
                                     <div class="juk-confidence-wrap">
                                         <div class="juk-confidence-bar"><div class="juk-confidence-fill" style="width:${confidencePct}%"></div></div>
@@ -37778,14 +37795,12 @@
                                     <button class="ghost-button" type="button" data-juk-row-action="approve" data-juk-row-id="${escapeHTML(invoice.id)}">Approve</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="skip" data-juk-row-id="${escapeHTML(invoice.id)}">Skip</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="exception" data-juk-row-id="${escapeHTML(invoice.id)}">Exception</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="pdf" data-juk-row-id="${escapeHTML(invoice.id)}">PDF</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="raw" data-juk-row-id="${escapeHTML(invoice.id)}">Raw</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
                             ${isExpanded ? `
                             <tr class="juk-detail-row">
-                                <td colspan="11">
+                                <td colspan="9">
                                     <div class="juk-detail-panel">
                                         <div class="juk-detail-grid">
                                             <article class="juk-detail-card">
@@ -37811,7 +37826,7 @@
                             ` : ""}
                             `;
                         }).join("")
-                        : '<tr><td colspan="11"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
+                        : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
                     reviewTable.querySelectorAll("[data-juk-select-row]").forEach((checkbox) => {
                         checkbox.addEventListener("change", () => jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked));
                     });
@@ -37845,18 +37860,6 @@
                                 jukSetStep(4);
                                 const invoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
                                 if (invoiceSelect) invoiceSelect.value = target.id;
-                            } else if (action === "pdf") {
-                                const invoiceId = String(target.jukXeroInvoiceId || "").trim();
-                                if (!invoiceId) return showToast("No source PDF available for this invoice.", "info");
-                                const url = endpointURL(api.endpoints.juksibSourceInvoicePdf, { invoiceId });
-                                window.open(url, "_blank", "noopener");
-                            } else if (action === "raw") {
-                                const payload = target.rawPayload || {};
-                                const rawText = JSON.stringify(payload, null, 2);
-                                const blob = new Blob([rawText], { type: "application/json;charset=utf-8" });
-                                const rawUrl = URL.createObjectURL(blob);
-                                window.open(rawUrl, "_blank", "noopener");
-                                setTimeout(() => URL.revokeObjectURL(rawUrl), 5000);
                             } else if (action === "explain") {
                                 jukExpandedInvoiceId = jukExpandedInvoiceId === target.id ? "" : target.id;
                             }
