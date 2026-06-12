@@ -72,6 +72,7 @@ from .companies_house import (
     sync_companies_house_companies,
     test_companies_house_connection,
     upload_auth_code_register_csv,
+    update_auth_code_register_row,
     update_company,
     validate_company_secretarial_filing,
 )
@@ -1812,6 +1813,17 @@ async def api_companies_house_auth_code_register_populate(
     payload = await request.json()
     result = populate_auth_codes_from_register(user, payload)
     return {"status": "ok", "result": result}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}")
+async def api_companies_house_auth_code_register_update(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    result = update_auth_code_register_row(user, row_id, payload)
+    return {"status": "ok", **result}
 
 
 @app.post("/api/code-breaker/workspace-snapshot")

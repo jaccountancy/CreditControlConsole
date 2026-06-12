@@ -5004,6 +5004,168 @@ def list_auth_code_register(limit: int = 300) -> dict:
     }
 
 
+def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload.")
+
+    display_name = _coerce_text(payload.get("displayName"), 250)
+    if not display_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company name is required.")
+
+    company_number = normalise_company_number(payload.get("companyNumber"))
+    client_type = _normalise_client_type(payload.get("clientType"))
+    client_manager = _coerce_text(payload.get("clientManager"), 120)
+    client_id = _coerce_text(payload.get("clientId"), 80)
+    vat_number = _coerce_text(payload.get("vatNumber"), 120)
+    contact_email = _coerce_text(payload.get("clientEmail"), 250)
+    contact_phone = _coerce_text(payload.get("clientPhone"), 120)
+    client_address = _coerce_text(payload.get("clientAddress"), 1000)
+    source_filename = _coerce_text(payload.get("sourceFilename"), 250) or "manual-edit"
+    auth_code = _coerce_text(payload.get("authCode"), 80)
+    normalised_name = _coerce_text(display_name.lower(), 250)
+    user_id = user.get("id") if isinstance(user, dict) else None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       code_encrypted,
+                       code_hint
+                FROM ch_auth_code_register
+                WHERE id = %s
+                """,
+                (safe_row_id,),
+            )
+            existing = cursor.fetchone() or {}
+            if not existing:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+
+            register_key = company_number or normalised_name
+            code_encrypted = existing.get("code_encrypted") or ""
+            code_hint = existing.get("code_hint") or ""
+            if auth_code:
+                code_encrypted = _encrypt_register_auth_code(auth_code, register_key)
+                code_hint = _mask(auth_code)
+
+            cursor.execute(
+                """
+                UPDATE ch_auth_code_register
+                SET company_number = %s,
+                    client_name = %s,
+                    company_name = %s,
+                    client_type = %s,
+                    client_manager = %s,
+                    client_id = %s,
+                    vat_number = %s,
+                    normalised_name = %s,
+                    code_encrypted = %s,
+                    code_hint = %s,
+                    source_filename = %s,
+                    uploaded_by_user_id = %s,
+                    uploaded_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (
+                    company_number,
+                    display_name,
+                    display_name,
+                    client_type,
+                    client_manager,
+                    client_id,
+                    vat_number,
+                    normalised_name,
+                    code_encrypted,
+                    code_hint,
+                    source_filename,
+                    user_id,
+                    safe_row_id,
+                ),
+            )
+
+            _sync_auth_register_contacts_to_company(
+                cursor,
+                company_number=company_number,
+                display_name=display_name,
+                client_id=client_id,
+                client_manager=client_manager,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                client_address=client_address,
+                user_id=user_id,
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, 'auth_code_register_row_updated', %s::jsonb, %s)
+                """,
+                (
+                    safe_row_id,
+                    json.dumps(
+                        {
+                            "companyNumber": company_number,
+                            "displayName": display_name,
+                            "clientType": client_type,
+                            "clientManager": client_manager,
+                            "clientId": client_id,
+                            "vatNumber": vat_number,
+                            "sourceFilename": source_filename,
+                            "authCodeUpdated": bool(auth_code),
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+
+            cursor.execute(
+                """
+                SELECT r.id,
+                       r.company_number,
+                       COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
+                       r.client_type,
+                       r.client_manager,
+                       r.client_id,
+                       r.vat_number,
+                       c.contact_email,
+                       c.contact_phone,
+                       c.client_address,
+                       r.code_hint,
+                       r.source_filename,
+                       r.uploaded_at
+                FROM ch_auth_code_register r
+                LEFT JOIN ch_companies c
+                  ON c.company_number = r.company_number
+                WHERE r.id = %s
+                """,
+                (safe_row_id,),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+
+    return {
+        "row": {
+            "id": str(row.get("id") or ""),
+            "companyNumber": row.get("company_number") or "",
+            "displayName": row.get("display_name") or "",
+            "clientType": row.get("client_type") or "",
+            "clientManager": row.get("client_manager") or "",
+            "clientId": row.get("client_id") or "",
+            "vatNumber": row.get("vat_number") or "",
+            "clientEmail": row.get("contact_email") or "",
+            "clientPhone": row.get("contact_phone") or "",
+            "clientAddress": row.get("client_address") or "",
+            "authCodeHint": row.get("code_hint") or "",
+            "sourceFilename": row.get("source_filename") or "",
+            "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+        }
+    }
+
+
 COMPANY_SECRETARIAL_ALLOWED_MODES = {"api", "assisted", "manual"}
 COMPANY_SECRETARIAL_ALLOWED_STATUSES = {
     "DRAFT",

@@ -29026,7 +29026,7 @@
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
                                 </div>
                                 <div class="ch-companies-table-wrap" id="chAuthCodeRegisterTableWrap">
-                                    <table class="ch-table">
+                                    <table class="ch-table" style="width: 100%; table-layout: fixed;">
                                         <thead id="chAuthCodeRegisterTableHead"></thead>
                                         <tbody id="chAuthCodeRegisterTableBody"></tbody>
                                     </table>
@@ -29103,6 +29103,54 @@
                                             </div>
                                         </article>
                                     </div>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="chRegisterEditModal" hidden>
+                                <section class="company-secretarial-modal-panel ch-register-upload-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterEditModalTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client register row</p>
+                                            <h4 id="chRegisterEditModalTitle">Edit client record</h4>
+                                            <p class="detail-meta">Update fields and save to apply changes immediately.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="chRegisterEditModalCloseButton">Close</button>
+                                        </div>
+                                    </div>
+                                    <form id="chRegisterEditForm" class="ch-register-upload-grid">
+                                        <article class="ch-register-upload-card">
+                                            <p class="eyebrow">Identity</p>
+                                            <label class="detail-meta" for="chRegisterEditDisplayName">Company</label>
+                                            <input id="chRegisterEditDisplayName" type="text" required>
+                                            <label class="detail-meta" for="chRegisterEditClientType">Client type</label>
+                                            <input id="chRegisterEditClientType" type="text">
+                                            <label class="detail-meta" for="chRegisterEditClientId">Client ID</label>
+                                            <input id="chRegisterEditClientId" type="text">
+                                            <label class="detail-meta" for="chRegisterEditCompanyNumber">Company number</label>
+                                            <input id="chRegisterEditCompanyNumber" type="text">
+                                            <label class="detail-meta" for="chRegisterEditAuthCode">Auth code</label>
+                                            <input id="chRegisterEditAuthCode" type="text" autocomplete="off" placeholder="Leave blank to keep current code">
+                                        </article>
+                                        <article class="ch-register-upload-card">
+                                            <p class="eyebrow">Contact and source</p>
+                                            <label class="detail-meta" for="chRegisterEditManager">Manager</label>
+                                            <input id="chRegisterEditManager" type="text">
+                                            <label class="detail-meta" for="chRegisterEditVatNumber">VAT number</label>
+                                            <input id="chRegisterEditVatNumber" type="text">
+                                            <label class="detail-meta" for="chRegisterEditClientEmail">Client email</label>
+                                            <input id="chRegisterEditClientEmail" type="email">
+                                            <label class="detail-meta" for="chRegisterEditClientPhone">Client telephone</label>
+                                            <input id="chRegisterEditClientPhone" type="text">
+                                            <label class="detail-meta" for="chRegisterEditClientAddress">Client address</label>
+                                            <textarea id="chRegisterEditClientAddress" rows="3"></textarea>
+                                            <label class="detail-meta" for="chRegisterEditSourceFilename">Source file</label>
+                                            <input id="chRegisterEditSourceFilename" type="text">
+                                        </article>
+                                        <div class="detail-actions" style="grid-column: 1 / -1; justify-content: flex-end;">
+                                            <button class="ghost-button" type="button" id="chRegisterEditCancelButton">Cancel</button>
+                                            <button class="primary-button" type="submit" id="chRegisterEditSaveButton">Save</button>
+                                        </div>
+                                    </form>
                                 </section>
                             </div>
                         </section>
@@ -31252,12 +31300,12 @@
                                             </label>
                                             <label class="juk-toggle-field">Publish Mode
                                                 <div class="juk-toggle-group" role="radiogroup" aria-label="Publish Mode" data-juk-toggle-for="jukInvoicesModeSelect">
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="test">Draft test mode</button>
                                                     <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="live">Live publish mode</button>
+                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="test">Draft test mode</button>
                                                 </div>
                                                 <select id="jukInvoicesModeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
+                                                    <option value="live" selected>Live publish mode</option>
                                                     <option value="test">Draft test mode</option>
-                                                    <option value="live">Live publish mode</option>
                                                 </select>
                                             </label>
                                         </form>
@@ -38536,7 +38584,7 @@
                 const scope = String(document.getElementById("jukInvoicesScopeSelect")?.value || "since-last");
                 const status = String(document.getElementById("jukInvoicesStatusSelect")?.value || "authorised");
                 const includeImported = String(document.getElementById("jukInvoicesIncludeImportedSelect")?.value || "no") === "yes";
-                const mode = String(document.getElementById("jukInvoicesModeSelect")?.value || "test");
+                const mode = String(document.getElementById("jukInvoicesModeSelect")?.value || "live");
                 const from = String(document.getElementById("jukInvoicesDateFromInput")?.value || "").trim();
                 const to = String(document.getElementById("jukInvoicesDateToInput")?.value || "").trim();
                 const scopeHint = document.getElementById("jukInvoicesStep1ScopeHint");
@@ -39098,7 +39146,7 @@
             function jukCreateBatchFromForm() {
                 const dateFrom = String(document.getElementById("jukInvoicesDateFromInput")?.value || "");
                 const dateTo = String(document.getElementById("jukInvoicesDateToInput")?.value || "");
-                const mode = String(document.getElementById("jukInvoicesModeSelect")?.value || "test");
+                const mode = String(document.getElementById("jukInvoicesModeSelect")?.value || "live");
                 const statusScope = String(document.getElementById("jukInvoicesStatusSelect")?.value || "authorised");
                 const importScope = String(document.getElementById("jukInvoicesScopeSelect")?.value || "since-last");
                 const batchNumber = Number(jukInvoicesState.lastBatchNumber || 0) + 1;
@@ -39190,7 +39238,9 @@
             }
 
             function jukSetStep(step = 1) {
-                jukInvoicesState.step = Math.max(1, Math.min(6, Number(step || 1)));
+                let safeStep = Math.max(1, Math.min(6, Number(step || 1)));
+                if (safeStep === 2) safeStep = 3;
+                jukInvoicesState.step = safeStep;
             }
 
             function jukInvoiceIdKey(invoiceId) {
@@ -39504,7 +39554,7 @@
                     animationIndex: 0,
                     animationQueue,
                 };
-                jukSetStep(6);
+                jukSetStep(5);
                 renderJukInvoicesScreen();
                 const progressIntervalId = window.setInterval(() => {
                     if (!jukInvoicesState.publish.running) {
@@ -39807,6 +39857,7 @@
                 stepButtons.forEach((button) => {
                     const step = Number(button.dataset.jukStep || 1);
                     const currentStep = Number(jukInvoicesState.step || 1);
+                    button.hidden = step === 2;
                     button.classList.toggle("is-active", step === currentStep);
                     button.classList.toggle("is-current", step === currentStep);
                     button.classList.toggle("is-complete", step < currentStep);
@@ -40124,7 +40175,7 @@
                             scope: scopeValue,
                         });
                         const payload = {
-                            mode: String(document.getElementById("jukInvoicesModeSelect")?.value || "test"),
+                            mode: String(document.getElementById("jukInvoicesModeSelect")?.value || "live"),
                             importScope: scopeValue,
                             invoiceDateFrom: dateFromValue || null,
                             invoiceDateTo: dateToValue || null,
@@ -40730,7 +40781,7 @@
                 const confirmPublishButton = document.getElementById("jukInvoicesConfirmPublishButton");
                 if (confirmPublishButton) {
                     confirmPublishButton.onclick = async () => {
-                        jukSetStep(6);
+                        jukSetStep(5);
                         renderJukInvoicesScreen();
                         await jukPublishApproved(batch);
                         persistJukInvoicesState();
@@ -90996,6 +91047,10 @@
                     assignee: "",
                     status: "",
                 },
+                authRegisterEdit: {
+                    rowId: "",
+                    saving: false,
+                },
             };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
@@ -91035,6 +91090,128 @@
                 modal.hidden = true;
                 if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
                     document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function closeClientRegisterEditModal() {
+                const modal = document.getElementById("chRegisterEditModal");
+                if (!modal) return;
+                modal.hidden = true;
+                companiesHouseSettings.authRegisterEdit = {
+                    ...companiesHouseSettings.authRegisterEdit,
+                    rowId: "",
+                    saving: false,
+                };
+                const form = document.getElementById("chRegisterEditForm");
+                if (form) form.reset();
+                const saveButton = document.getElementById("chRegisterEditSaveButton");
+                if (saveButton) saveButton.disabled = false;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function openClientRegisterEditModal(rowId) {
+                const safeRowId = String(rowId || "").trim();
+                if (!safeRowId) return;
+                const row = (companiesHouseSettings.authRegisterRows || []).find((item) => String(item?.id || "") === safeRowId);
+                if (!row) {
+                    showToast("Unable to find selected client register row.", "error");
+                    return;
+                }
+                companiesHouseSettings.authRegisterEdit = {
+                    ...companiesHouseSettings.authRegisterEdit,
+                    rowId: safeRowId,
+                    saving: false,
+                };
+                const assign = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.value = value == null ? "" : String(value);
+                };
+                assign("chRegisterEditDisplayName", row.displayName);
+                assign("chRegisterEditClientType", row.clientType);
+                assign("chRegisterEditClientId", row.clientId);
+                assign("chRegisterEditCompanyNumber", row.companyNumber);
+                assign("chRegisterEditManager", row.clientManager);
+                assign("chRegisterEditVatNumber", row.vatNumber);
+                assign("chRegisterEditClientEmail", row.clientEmail);
+                assign("chRegisterEditClientPhone", row.clientPhone);
+                assign("chRegisterEditClientAddress", row.clientAddress);
+                assign("chRegisterEditSourceFilename", row.sourceFilename);
+                assign("chRegisterEditAuthCode", "");
+                const modal = document.getElementById("chRegisterEditModal");
+                if (!modal) return;
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+            }
+
+            async function saveClientRegisterEditModal() {
+                if (companiesHouseSettings.authRegisterEdit?.saving) return;
+                const rowId = String(companiesHouseSettings.authRegisterEdit?.rowId || "").trim();
+                if (!rowId) {
+                    closeClientRegisterEditModal();
+                    return;
+                }
+                const value = (id) => String(document.getElementById(id)?.value || "").trim();
+                const displayName = value("chRegisterEditDisplayName");
+                if (!displayName) {
+                    showToast("Company name is required.", "error");
+                    return;
+                }
+                const payload = {
+                    displayName,
+                    clientType: value("chRegisterEditClientType"),
+                    clientId: value("chRegisterEditClientId"),
+                    companyNumber: value("chRegisterEditCompanyNumber"),
+                    clientManager: value("chRegisterEditManager"),
+                    vatNumber: value("chRegisterEditVatNumber"),
+                    clientEmail: value("chRegisterEditClientEmail"),
+                    clientPhone: value("chRegisterEditClientPhone"),
+                    clientAddress: value("chRegisterEditClientAddress"),
+                    sourceFilename: value("chRegisterEditSourceFilename"),
+                    authCode: value("chRegisterEditAuthCode"),
+                };
+                companiesHouseSettings.authRegisterEdit = {
+                    ...companiesHouseSettings.authRegisterEdit,
+                    saving: true,
+                };
+                const saveButton = document.getElementById("chRegisterEditSaveButton");
+                if (saveButton) saveButton.disabled = true;
+                try {
+                    const result = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}`, {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                    });
+                    const updatedRow = result?.row || null;
+                    if (!updatedRow?.id) throw new Error("Updated row was not returned.");
+                    companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((row) => (
+                        String(row?.id || "") === String(updatedRow.id || "") ? updatedRow : row
+                    ));
+                    companiesHouseSettings.authRegisterLookupByNumber = new Map(
+                        (companiesHouseSettings.authRegisterRows || [])
+                            .map((row) => [normaliseCompanyNumberInput(row?.companyNumber || ""), row])
+                            .filter(([companyNumber]) => Boolean(companyNumber))
+                    );
+                    renderAuthCodeRegisterDirectory(
+                        companiesHouseSettings.authRegisterRows || [],
+                        companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0
+                    );
+                    renderTaskTrackerScreen();
+                    setAuthCodeRegisterStatus(`Saved changes for ${updatedRow.displayName || "client row"}.`, "success");
+                    showToast("Client register row updated.", "success");
+                    closeClientRegisterEditModal();
+                } catch (error) {
+                    console.error("Unable to update client register row", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    setAuthCodeRegisterStatus(error?.message || "Unable to save client register row.", "error");
+                    showToast(error?.message || "Unable to save client register row.", "error");
+                    companiesHouseSettings.authRegisterEdit = {
+                        ...companiesHouseSettings.authRegisterEdit,
+                        saving: false,
+                    };
+                    if (saveButton) saveButton.disabled = false;
                 }
             }
 
@@ -91618,7 +91795,7 @@
                     body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
                     if (!list.length) setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 } else {
-                    body.innerHTML = pageRows.map((row) => `<tr>${visibleColumns.map((column) => `<td>${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
+                    body.innerHTML = pageRows.map((row) => `<tr data-auth-register-id="${escapeHTML(String(row?.id || ""))}" style="cursor: pointer;">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
                 }
                 if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
                 if (prevPageButton) prevPageButton.disabled = currentPage <= 1;
@@ -92523,6 +92700,22 @@
                 document.getElementById("chRegisterUploadModalCloseButton")?.addEventListener("click", closeClientRegisterUploadModal);
                 document.getElementById("chRegisterUploadModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "chRegisterUploadModal") closeClientRegisterUploadModal();
+                });
+                document.getElementById("chRegisterEditModalCloseButton")?.addEventListener("click", closeClientRegisterEditModal);
+                document.getElementById("chRegisterEditCancelButton")?.addEventListener("click", closeClientRegisterEditModal);
+                document.getElementById("chRegisterEditModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "chRegisterEditModal") closeClientRegisterEditModal();
+                });
+                document.getElementById("chRegisterEditForm")?.addEventListener("submit", async (event) => {
+                    event.preventDefault();
+                    await saveClientRegisterEditModal();
+                });
+                document.getElementById("chAuthCodeRegisterTableBody")?.addEventListener("click", (event) => {
+                    const row = event.target?.closest?.("[data-auth-register-id]");
+                    if (!row) return;
+                    const rowId = String(row.getAttribute("data-auth-register-id") || "").trim();
+                    if (!rowId) return;
+                    openClientRegisterEditModal(rowId);
                 });
                 document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
                     const input = event?.target;
