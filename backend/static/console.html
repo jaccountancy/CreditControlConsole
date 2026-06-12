@@ -29201,9 +29201,6 @@
                         <section class="detail-panel">
                             <div class="detail-hero xero-lock-date-hero">
                                 <div class="xero-lock-date-hero-main">
-                                    <p class="eyebrow">Cross-tenant lock controls</p>
-                                    <h3>Xero lock-date overview</h3>
-                                    <p class="detail-meta">Monitor all connected Xero organisations, map each tenant to a Companies House company, and flag accounts filed where period lock dates are still open.</p>
                                 </div>
                                 <div class="xero-lock-date-control-stack">
                                     <div class="detail-actions">
@@ -30239,9 +30236,6 @@
                         <section class="detail-panel">
                             <div class="detail-hero">
                                 <div>
-                                    <p class="eyebrow">Practice Tools</p>
-                                    <h3>VAT on Unregistered</h3>
-                                    <p class="detail-meta">Find Ignition Micro/Starter clients, match to Xero organisations, and remove VAT coding for compliance.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh tenants</button>
@@ -34251,6 +34245,7 @@
                         customerTransactionActions: config.endpoints?.customerTransactionActions || "/api/customers/:customerId/xero-transactions/actions",
                         vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
+                        vatReturnTransactionsByTenant: config.endpoints?.vatReturnTransactionsByTenant || "/api/xero/vat-returns/:periodEnd/transactions",
                         vatNoVatSuggestions: config.endpoints?.vatNoVatSuggestions || "/api/customers/:customerId/vat-returns/:periodEnd/no-vat-suggestions",
                         vatUnreconciledTransactions: config.endpoints?.vatUnreconciledTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/unreconciled",
                         vatApplyEdits: config.endpoints?.vatApplyEdits || "/api/customers/:customerId/vat-returns/:periodEnd/apply-edits",
@@ -82820,7 +82815,7 @@
                             const periodStartISO = String(row?.periodStartISO || "").trim() || vatPeriodStartISOFromPeriodEnd(periodEndISO);
                             const deadlineISO = String(row?.deadlineISO || "").trim() || periodEndISO;
                             return {
-                                key: `micro-tenant:${cleanTenantId}:${String(row?.clientId || row?.xeroContactId || "org")}:${periodEndISO}`,
+                                key: `micro-tenant:${cleanTenantId}:${periodEndISO}`,
                                 clientId: String(row?.clientId || "").trim(),
                                 clientName: String(row?.clientName || row?.tenantName || "Xero organisation").trim(),
                                 periodStartISO,
@@ -82830,12 +82825,20 @@
                                 tenantName: String(row?.tenantName || "").trim(),
                             };
                         })
-                        .filter((row) => row && row.clientId && row.periodEndISO);
+                        .filter((row) => row && row.periodEndISO);
                     const vatRows = [];
                     for (const entry of periodRows) {
-                        await ensureVatReturnTransactions(entry, force, { silent: true });
-                        const cache = vatReturnTransactionCache.get(entry.key) || {};
-                        const transactions = vatTransactionsWithEdits(entry, Array.isArray(cache?.transactions) ? cache.transactions : []);
+                        const requestPath = endpointURL(
+                            api.endpoints.vatReturnTransactionsByTenant,
+                            { periodEnd: entry.periodEndISO }
+                        );
+                        const query = new URLSearchParams();
+                        query.set("tenantId", cleanTenantId);
+                        if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                        if (force) query.set("refresh", "true");
+                        const tenantEndpoint = query.toString() ? `${requestPath}?${query.toString()}` : requestPath;
+                        const payload = await requestJSON(tenantEndpoint, { suppressFailurePanel: true });
+                        const transactions = (Array.isArray(payload?.transactions) ? payload.transactions : []).map((row) => normaliseVatTransaction(row));
                         microAnalyzerVatRows(transactions).forEach((tx) => {
                             vatRows.push({
                                 ...tx,
@@ -83133,13 +83136,20 @@
                         <td><code>${escapeHTML(row.tenantId || "--")}</code></td>
                         <td><small>${escapeHTML(row.tenantType ? `${row.tenantType} · Connected` : "Connected")}</small></td>
                         <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "VAT workspace")}</strong>` : '<small>No workspace set up</small>'}</td>
-                        <td><button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${workspace ? "Reconfigure" : "Set up"}</button></td>
+                        <td><button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${workspace ? "Open" : "Set up"}</button></td>
                     </tr>
                 `;
                 }).join("");
                 tableBody.querySelectorAll("[data-micro-analyzer-setup-workspace]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        setupMicroAnalyzerWorkspace(button.dataset.microAnalyzerSetupWorkspace || "");
+                        const tenantId = String(button.dataset.microAnalyzerSetupWorkspace || "").trim();
+                        if (!tenantId) return;
+                        const workspace = microAnalyzerWorkspaceByTenant(tenantId);
+                        if (workspace) {
+                            openMicroAnalyzerTenantWorkspace(tenantId);
+                            return;
+                        }
+                        setupMicroAnalyzerWorkspace(tenantId);
                     });
                 });
                 tableBody.querySelectorAll("[data-micro-analyzer-open-tenant]").forEach((button) => {

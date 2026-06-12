@@ -31124,6 +31124,66 @@ async def customer_vat_return_transactions(
     }
 
 
+async def xero_vat_return_transactions_by_tenant(
+    period_end: str,
+    user: dict,
+    *,
+    tenant_id: str,
+    period_start: str | None = None,
+    refresh: bool = False,
+) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenantId is required.")
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    period_end_date = _parse_optional_iso_date(period_end)
+    if period_end_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period end date must be in YYYY-MM-DD format.")
+    period_start_date = _parse_optional_iso_date(period_start) if period_start else None
+    if period_start_date is None:
+        period_start_date = _vat_return_period_start_from_end(period_end_date)
+    if period_start_date > period_end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period start date cannot be after period end date.")
+
+    period_end_exclusive = period_end_date + timedelta(days=1)
+    date_where = (
+        f"(Date>={_xero_datetime_where_literal(period_start_date)}"
+        f"&&Date<{_xero_datetime_where_literal(period_end_exclusive)})"
+    )
+    where_clause = f'{date_where}&&Status!="DELETED"'
+    raw_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": where_clause, "order": "Date DESC"},
+        max_pages=24,
+    )
+    transactions = _normalise_vat_transaction_rows(
+        _invoice_lines_for_vat_period(raw_invoices, period_start_date, period_end_date)
+    )
+    vat_queue = await xero_vat_returns_payload(user, tenant_id=connection_row.get("tenant_id"))
+    tax_return_row = _tax_return_for_period(vat_queue.get("rows") or [], period_end_date)
+
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "periodStartISO": period_start_date.isoformat(),
+        "periodEndISO": period_end_date.isoformat(),
+        "taxReturn": tax_return_row,
+        "transactions": transactions,
+        "cacheStatus": {
+            "source": "xero_tenant_full",
+            "fetchedFromXero": True,
+            "incrementalRefresh": False,
+            "refreshRequested": bool(refresh),
+            "cachedRows": len(transactions),
+            "lastFetchedAt": _iso(utcnow()) or "",
+            "latestXeroUpdatedAt": "",
+        },
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
 def _xero_datetime_where_literal(value: date) -> str:
     return f"DateTime({value.year}, {value.month}, {value.day})"
 

@@ -219,6 +219,7 @@ from .services import (
     xero_lock_date_mismatch_pdf,
     xero_chart_of_accounts_payload,
     xero_vat_returns_payload,
+    xero_vat_return_transactions_by_tenant,
     xero_scope_audit_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
@@ -2849,6 +2850,23 @@ async def api_code_breaker_xero_transaction_action(customer_id: str, request: Re
 @app.get("/api/xero/vat-returns")
 async def api_xero_vat_returns(tenantId: str = Query(default=""), user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await xero_vat_returns_payload(user, tenant_id=tenantId or None)}
+
+
+@app.get("/api/xero/vat-returns/{period_end}/transactions")
+async def api_xero_vat_return_transactions_by_tenant(
+    period_end: str,
+    tenantId: str = Query(default=""),
+    periodStart: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    user: dict = Depends(require_panel_user),
+):
+    return await xero_vat_return_transactions_by_tenant(
+        period_end,
+        user,
+        tenant_id=tenantId or "",
+        period_start=periodStart or None,
+        refresh=refresh,
+    )
 
 
 @app.get("/api/customers/{customer_id}/vat-returns/{period_end}/transactions")
