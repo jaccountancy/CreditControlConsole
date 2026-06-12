@@ -29779,10 +29779,9 @@
                                 <button class="juk-step-button" type="button" data-juk-step="1"><strong>1. Create Batch</strong></button>
                                 <button class="juk-step-button" type="button" data-juk-step="2"><strong>2. Dashboard</strong></button>
                                 <button class="juk-step-button" type="button" data-juk-step="3"><strong>3. Bulk Review</strong></button>
-                                <button class="juk-step-button" type="button" data-juk-step="4"><strong>4. Exceptions</strong></button>
-                                <button class="juk-step-button" type="button" data-juk-step="5"><strong>5. Confirm</strong></button>
-                                <button class="juk-step-button" type="button" data-juk-step="6"><strong>6. Publish</strong></button>
-                                <button class="juk-step-button" type="button" data-juk-step="7"><strong>7. Summary</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="4"><strong>4. Confirm</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="5"><strong>5. Publish</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="6"><strong>6. Summary</strong></button>
                             </div>
 
                             <section class="juk-panel" id="jukInvoicesStep1Panel" hidden>
@@ -29953,7 +29952,6 @@
                                     <div class="juk-command-actions">
                                         <button class="primary-button" id="jukInvoicesCommandApproveButton" type="button">Approve selected</button>
                                         <button class="ghost-button" id="jukInvoicesCommandSkipButton" type="button">Skip</button>
-                                        <button class="ghost-button" id="jukInvoicesCommandExceptionButton" type="button">Send to exceptions</button>
                                     </div>
                                 </div>
                                 <section class="ch-companies-table-wrap">
@@ -29976,47 +29974,10 @@
                                 </section>
                             </section>
 
-                            <section class="juk-panel" id="jukInvoicesStep4Panel" hidden>
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Step 4</p>
-                                        <h4>Exception Review</h4>
-                                    </div>
-                                </div>
-                                <div class="juk-form-grid">
-                                    <label>Exception Invoice
-                                        <select id="jukInvoicesExceptionInvoiceSelect"></select>
-                                    </label>
-                                    <label>Destination Tenant
-                                        <select id="jukInvoicesExceptionTenantSelect"></select>
-                                    </label>
-                                    <label>Save Rule?
-                                        <select id="jukInvoicesExceptionSaveRuleSelect">
-                                            <option value="yes">Save future matching rule</option>
-                                            <option value="no">Apply once only</option>
-                                        </select>
-                                    </label>
-                                    <label>Apply to similar in this batch?
-                                        <select id="jukInvoicesExceptionApplySimilarSelect">
-                                            <option value="no">No</option>
-                                            <option value="yes">Yes</option>
-                                        </select>
-                                    </label>
-                                    <label>Internal Note
-                                        <textarea id="jukInvoicesExceptionNoteInput" placeholder="Reason for override or exclusion"></textarea>
-                                    </label>
-                                </div>
-                                <div class="juk-toolbar">
-                                    <button class="primary-button" id="jukInvoicesApplyExceptionButton" type="button">Apply override</button>
-                                    <button class="ghost-button" id="jukInvoicesMarkNotConnectedButton" type="button">Mark not connected</button>
-                                </div>
-                                <small id="jukInvoicesExceptionMeta">Resolve medium and low-confidence matches here.</small>
-                            </section>
-
                             <section class="juk-panel" id="jukInvoicesStep5Panel" hidden>
                                 <div class="panel-heading">
                                     <div>
-                                        <p class="eyebrow">Step 5</p>
+                                        <p class="eyebrow">Step 4</p>
                                         <h4>Pre-Publish Confirmation</h4>
                                     </div>
                                 </div>
@@ -30030,7 +29991,7 @@
                             <section class="juk-panel" id="jukInvoicesStep6Panel" hidden>
                                 <div class="panel-heading">
                                     <div>
-                                        <p class="eyebrow">Step 6</p>
+                                        <p class="eyebrow">Step 5</p>
                                         <h4>Publishing Progress</h4>
                                     </div>
                                 </div>
@@ -30059,7 +30020,7 @@
                             <section class="juk-panel" id="jukInvoicesStep7Panel" hidden>
                                 <div class="panel-heading">
                                     <div>
-                                        <p class="eyebrow">Step 7</p>
+                                        <p class="eyebrow">Step 6</p>
                                         <h4>Batch Summary and Audit</h4>
                                     </div>
                                 </div>
@@ -36661,12 +36622,15 @@
                     return {
                         ...JUK_DEFAULT_STATE,
                         ...parsed,
+                        step: Math.max(1, Math.min(6, Number(parsed.step || JUK_DEFAULT_STATE.step || 1))),
                         publish: { ...JUK_DEFAULT_STATE.publish, ...(parsed.publish || {}) },
                         batches: Array.isArray(parsed.batches) ? parsed.batches : [],
                         rules: Array.isArray(parsed.rules) ? parsed.rules : [],
                         syncRecords: Array.isArray(parsed.syncRecords) ? parsed.syncRecords : [],
                         audit: Array.isArray(parsed.audit) ? parsed.audit : [],
-                        selectedInvoiceIds: Array.isArray(parsed.selectedInvoiceIds) ? parsed.selectedInvoiceIds : [],
+                        selectedInvoiceIds: Array.isArray(parsed.selectedInvoiceIds)
+                            ? parsed.selectedInvoiceIds.map((invoiceId) => String(invoiceId ?? "").trim()).filter(Boolean)
+                            : [],
                     };
                 } catch {
                     return { ...JUK_DEFAULT_STATE };
@@ -37077,7 +37041,11 @@
             }
 
             function jukSetStep(step = 1) {
-                jukInvoicesState.step = Math.max(1, Math.min(7, Number(step || 1)));
+                jukInvoicesState.step = Math.max(1, Math.min(6, Number(step || 1)));
+            }
+
+            function jukInvoiceIdKey(invoiceId) {
+                return String(invoiceId ?? "").trim();
             }
 
             function jukActiveRows(batch) {
@@ -37099,15 +37067,17 @@
 
             function jukSelectInvoice(invoiceId, checked) {
                 const selected = new Set(jukInvoicesState.selectedInvoiceIds || []);
-                if (checked) selected.add(invoiceId);
-                else selected.delete(invoiceId);
+                const idKey = jukInvoiceIdKey(invoiceId);
+                if (!idKey) return;
+                if (checked) selected.add(idKey);
+                else selected.delete(idKey);
                 jukInvoicesState.selectedInvoiceIds = [...selected];
             }
 
             function jukBulkUpdateStatus(batch, status) {
                 const selected = new Set(jukInvoicesState.selectedInvoiceIds || []);
                 batch.invoices = (batch.invoices || []).map((invoice) => {
-                    if (!selected.has(invoice.id)) return invoice;
+                    if (!selected.has(jukInvoiceIdKey(invoice.id))) return invoice;
                     if (invoice.status === "duplicate" || invoice.status === "published") return invoice;
                     return {
                         ...invoice,
@@ -37139,7 +37109,7 @@
                     current: "",
                     rows: [],
                 };
-                jukSetStep(6);
+                jukSetStep(5);
                 renderJukInvoicesScreen();
                 try {
                     const response = await requestJSON(api.endpoints.juksibPublish, {
@@ -37161,7 +37131,7 @@
                     jukInvoicesState.publish.current = "Publish run complete.";
                     jukInvoicesState.publish.rows = Array.isArray(result.rows) ? result.rows : [];
                     if (updatedBatch?.id) await jukRefreshFromAPI({ silent: true, batchId: updatedBatch.id });
-                    jukSetStep(7);
+                    jukSetStep(6);
                     renderJukInvoicesScreen();
                     showToast("JUKSIB publish run completed.", "success");
                 } catch (error) {
@@ -37384,10 +37354,9 @@
                     1: document.getElementById("jukInvoicesStep1Panel"),
                     2: document.getElementById("jukInvoicesStep2Panel"),
                     3: document.getElementById("jukInvoicesStep3Panel"),
-                    4: document.getElementById("jukInvoicesStep4Panel"),
-                    5: document.getElementById("jukInvoicesStep5Panel"),
-                    6: document.getElementById("jukInvoicesStep6Panel"),
-                    7: document.getElementById("jukInvoicesStep7Panel"),
+                    4: document.getElementById("jukInvoicesStep5Panel"),
+                    5: document.getElementById("jukInvoicesStep6Panel"),
+                    6: document.getElementById("jukInvoicesStep7Panel"),
                 };
                 if (!summary || !refreshButton || !openMeReportButton || !newBatchButton) return;
                 setJukLoading(jukLoadingState.active, jukLoadingState.message);
@@ -37778,7 +37747,7 @@
                                 : "None";
                             return `
                             <tr>
-                                <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(invoice.id) ? "checked" : ""}></td>
+                                <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(jukInvoiceIdKey(invoice.id)) ? "checked" : ""}></td>
                                 <td><strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong><small>${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</small></td>
                                 <td>${escapeHTML(invoice.jukContactName || "--")}</td>
                                 <td>${escapeHTML(suggestedClientName || "No match")}</td>
@@ -37794,7 +37763,6 @@
                                 <td>
                                     <button class="ghost-button" type="button" data-juk-row-action="approve" data-juk-row-id="${escapeHTML(invoice.id)}">Approve</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="skip" data-juk-row-id="${escapeHTML(invoice.id)}">Skip</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="exception" data-juk-row-id="${escapeHTML(invoice.id)}">Exception</button>
                                     <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
                                 </td>
                             </tr>
@@ -37828,7 +37796,10 @@
                         }).join("")
                         : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
                     reviewTable.querySelectorAll("[data-juk-select-row]").forEach((checkbox) => {
-                        checkbox.addEventListener("change", () => jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked));
+                        checkbox.addEventListener("change", () => {
+                            jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked);
+                            renderJukInvoicesScreen();
+                        });
                     });
                     reviewTable.querySelectorAll("[data-juk-row-action]").forEach((button) => {
                         button.addEventListener("click", async () => {
@@ -37856,10 +37827,6 @@
                                 } catch (error) {
                                     return showToast(error?.message || "Unable to skip invoice.", "error");
                                 }
-                            } else if (action === "exception") {
-                                jukSetStep(4);
-                                const invoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
-                                if (invoiceSelect) invoiceSelect.value = target.id;
                             } else if (action === "explain") {
                                 jukExpandedInvoiceId = jukExpandedInvoiceId === target.id ? "" : target.id;
                             }
@@ -37871,10 +37838,10 @@
                 const selectAllRows = document.getElementById("jukInvoicesSelectAllRows");
                 if (selectAllRows) {
                     const selectedSet = new Set(jukInvoicesState.selectedInvoiceIds || []);
-                    const selectableIds = reviewRows.map((invoice) => invoice.id);
+                    const selectableIds = reviewRows.map((invoice) => jukInvoiceIdKey(invoice.id));
                     selectAllRows.checked = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
                     selectAllRows.onchange = () => {
-                        if (selectAllRows.checked) jukInvoicesState.selectedInvoiceIds = reviewRows.map((invoice) => invoice.id);
+                        if (selectAllRows.checked) jukInvoicesState.selectedInvoiceIds = reviewRows.map((invoice) => jukInvoiceIdKey(invoice.id)).filter(Boolean);
                         else jukInvoicesState.selectedInvoiceIds = [];
                         renderJukInvoicesScreen();
                     };
@@ -37889,10 +37856,9 @@
                 const commandTotal = document.getElementById("jukInvoicesSelectedTotal");
                 const commandApprove = document.getElementById("jukInvoicesCommandApproveButton");
                 const commandSkip = document.getElementById("jukInvoicesCommandSkipButton");
-                const commandException = document.getElementById("jukInvoicesCommandExceptionButton");
                 const selectedCount = (jukInvoicesState.selectedInvoiceIds || []).length;
                 const selectedTotalValue = (batch.invoices || [])
-                    .filter((invoice) => (jukInvoicesState.selectedInvoiceIds || []).includes(invoice.id))
+                    .filter((invoice) => (jukInvoicesState.selectedInvoiceIds || []).includes(jukInvoiceIdKey(invoice.id)))
                     .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
                 if (commandCount) commandCount.textContent = `${selectedCount}`;
                 if (commandTotal) commandTotal.textContent = formatCurrency(selectedTotalValue);
@@ -37902,7 +37868,6 @@
                 if (retrySelectedButton) retrySelectedButton.disabled = selectedCount === 0;
                 if (commandApprove) commandApprove.disabled = selectedCount === 0;
                 if (commandSkip) commandSkip.disabled = selectedCount === 0;
-                if (commandException) commandException.disabled = selectedCount === 0;
                 if (selectReadyButton) {
                     selectReadyButton.onclick = () => {
                         jukInvoicesState.selectedInvoiceIds = (batch.invoices || [])
@@ -37911,7 +37876,8 @@
                                 const confidence = Number(invoice.matchConfidence || 0);
                                 return (invoice.status === "matched_saved_rule" || invoice.status === "matched_openai") && confidence >= 0.9;
                             })
-                            .map((invoice) => invoice.id);
+                            .map((invoice) => jukInvoiceIdKey(invoice.id))
+                            .filter(Boolean);
                         renderJukInvoicesScreen();
                     };
                 }
@@ -37982,91 +37948,6 @@
                 }
                 if (commandApprove) commandApprove.onclick = () => approveSelectedButton?.click();
                 if (commandSkip) commandSkip.onclick = () => skipSelectedButton?.click();
-                if (commandException) {
-                    commandException.onclick = () => {
-                        const firstSelected = (jukInvoicesState.selectedInvoiceIds || [])[0] || "";
-                        if (!firstSelected) return;
-                        const invoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
-                        jukSetStep(4);
-                        if (invoiceSelect) invoiceSelect.value = firstSelected;
-                        renderJukInvoicesScreen();
-                    };
-                }
-
-                const exceptionInvoiceSelect = document.getElementById("jukInvoicesExceptionInvoiceSelect");
-                const exceptionTenantSelect = document.getElementById("jukInvoicesExceptionTenantSelect");
-                const applyExceptionButton = document.getElementById("jukInvoicesApplyExceptionButton");
-                const markNotConnectedButton = document.getElementById("jukInvoicesMarkNotConnectedButton");
-                const exceptionMeta = document.getElementById("jukInvoicesExceptionMeta");
-                if (exceptionInvoiceSelect && exceptionTenantSelect) {
-                    const exceptionRows = (batch.invoices || []).filter((invoice) => ["needs_review", "unmatched", "failed"].includes(invoice.status));
-                    exceptionInvoiceSelect.innerHTML = exceptionRows.length
-                        ? exceptionRows.map((invoice) => `<option value="${escapeHTML(invoice.id)}">${escapeHTML(invoice.jukInvoiceNumber)} · ${escapeHTML(invoice.jukContactName)}</option>`).join("")
-                        : '<option value="">No exceptions</option>';
-                    const tenants = jukConnectedTenants();
-                    exceptionTenantSelect.innerHTML = tenants.length
-                        ? tenants.map((tenant) => `<option value="${escapeHTML(tenant.tenantId)}">${escapeHTML(tenant.tenantName)}</option>`).join("")
-                        : '<option value="">No connected tenants</option>';
-                }
-                if (applyExceptionButton) {
-                    applyExceptionButton.onclick = async () => {
-                        const invoiceId = String(exceptionInvoiceSelect?.value || "");
-                        const tenantId = String(exceptionTenantSelect?.value || "");
-                        const saveRule = String(document.getElementById("jukInvoicesExceptionSaveRuleSelect")?.value || "yes") === "yes";
-                        const applySimilar = String(document.getElementById("jukInvoicesExceptionApplySimilarSelect")?.value || "no") === "yes";
-                        const note = String(document.getElementById("jukInvoicesExceptionNoteInput")?.value || "").trim();
-                        if (!invoiceId || !tenantId) return showToast("Choose an exception invoice and tenant first.", "info");
-                        try {
-                            const response = await requestJSON(api.endpoints.juksibOverride, {
-                                method: "POST",
-                                body: JSON.stringify({
-                                    invoiceId,
-                                    tenantId,
-                                    saveRule,
-                                    applySimilar,
-                                    note,
-                                    excludeOnly: false,
-                                }),
-                            }, { batchId: batch.id });
-                            jukApplyServerBatchPayload(response || {});
-                            await jukRefreshFromAPI({ silent: true, batchId: batch.id });
-                            renderJukInvoicesScreen();
-                            showToast("Exception override applied.", "success");
-                        } catch (error) {
-                            showToast(error?.message || "Unable to apply override.", "error");
-                        }
-                    };
-                }
-                if (markNotConnectedButton) {
-                    markNotConnectedButton.onclick = async () => {
-                        const invoiceId = String(exceptionInvoiceSelect?.value || "");
-                        const note = String(document.getElementById("jukInvoicesExceptionNoteInput")?.value || "").trim();
-                        const saveRule = String(document.getElementById("jukInvoicesExceptionSaveRuleSelect")?.value || "yes") === "yes";
-                        if (!invoiceId) return showToast("Choose an exception invoice first.", "info");
-                        try {
-                            const response = await requestJSON(api.endpoints.juksibOverride, {
-                                method: "POST",
-                                body: JSON.stringify({
-                                    invoiceId,
-                                    tenantId: "",
-                                    saveRule,
-                                    applySimilar: false,
-                                    note,
-                                    excludeOnly: true,
-                                }),
-                            }, { batchId: batch.id });
-                            jukApplyServerBatchPayload(response || {});
-                            await jukRefreshFromAPI({ silent: true, batchId: batch.id });
-                            renderJukInvoicesScreen();
-                            showToast("Invoice marked as not connected.", "success");
-                        } catch (error) {
-                            showToast(error?.message || "Unable to mark invoice as not connected.", "error");
-                        }
-                    };
-                }
-                if (exceptionMeta) {
-                    exceptionMeta.textContent = `${(batch.invoices || []).filter((invoice) => ["needs_review", "unmatched", "failed"].includes(invoice.status)).length.toLocaleString("en-GB")} invoice(s) need manual review.`;
-                }
 
                 const prePublishCards = document.getElementById("jukInvoicesPrePublishCards");
                 if (prePublishCards) {
@@ -38089,7 +37970,7 @@
                 const confirmPublishButton = document.getElementById("jukInvoicesConfirmPublishButton");
                 if (confirmPublishButton) {
                     confirmPublishButton.onclick = () => {
-                        jukSetStep(6);
+                        jukSetStep(5);
                         renderJukInvoicesScreen();
                     };
                 }
