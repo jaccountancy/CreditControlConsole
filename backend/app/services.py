@@ -112,8 +112,8 @@ MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 JUKSIB_BATCH_PREFIX = "JUKSIB"
 JUKSIB_CONFIDENCE_HIGH = Decimal("0.90")
 JUKSIB_CONFIDENCE_MEDIUM = Decimal("0.70")
-JUKSIB_MAX_IMPORT_INVOICES = 400
-JUKSIB_OPENAI_MATCH_LIMIT = 80
+JUKSIB_MAX_IMPORT_INVOICES = 300
+JUKSIB_OPENAI_MATCH_LIMIT = 24
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
 JUKSIB_MATCH_RESPONSE_SCHEMA = {
@@ -14867,6 +14867,19 @@ async def _juksib_match_invoice(
     candidates: list[dict],
     allow_openai: bool = True,
 ) -> dict:
+    if not str(contact_name or "").strip():
+        return {
+            "status": "unmatched",
+            "duplicate_flag": False,
+            "matched_rule_id": "",
+            "matched_client_id": "",
+            "matched_xero_tenant_id": "",
+            "matched_xero_tenant_name": "",
+            "match_source": "heuristic",
+            "match_confidence": Decimal("0"),
+            "match_reason": "Invoice contact name is empty.",
+            "alternatives": [],
+        }
     rule = _juksib_rule_match(contact_name, rules)
     if rule:
         rule_type = str(rule.get("match_type") or "manual_override")
@@ -15034,24 +15047,59 @@ def _juksib_source_invoice_rows(raw_invoices: list[dict], *, date_from: date | N
 async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     mode = str(payload.get("mode") or "test").strip().lower() or "test"
+    import_scope = str(payload.get("importScope") or "since-last").strip().lower() or "since-last"
+    if import_scope not in {"since-last", "date-range", "recent"}:
+        import_scope = "since-last"
     include_paid = bool(payload.get("includePaidInvoices"))
     include_imported = bool(payload.get("includeAlreadyImported"))
     date_from = _parse_optional_iso_date(payload.get("invoiceDateFrom"))
     date_to = _parse_optional_iso_date(payload.get("invoiceDateTo"))
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice Date From must be on or before Invoice Date To.")
 
     master_connection, sub_connections = _juksib_master_and_sub_connections(user)
+    effective_date_from = date_from
+    effective_date_to = date_to
+    if import_scope == "since-last" and effective_date_from is None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT invoice_date_to
+                    FROM juksib_batches
+                    WHERE user_id = %s
+                      AND status IN ('imported', 'published')
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                )
+                last_row = cursor.fetchone() or {}
+            connection.commit()
+        last_to = _parse_optional_iso_date(last_row.get("invoice_date_to"))
+        if last_to is not None:
+            effective_date_from = last_to + timedelta(days=1)
+    elif import_scope == "recent" and effective_date_from is None and effective_date_to is None:
+        effective_date_to = utcnow().date()
+        effective_date_from = effective_date_to - timedelta(days=14)
+
     where_clauses = ['Type=="ACCREC"', 'Status!="VOIDED"', 'Status!="DELETED"']
     if not include_paid:
         where_clauses.append('Status!="PAID"')
+    if effective_date_from is not None:
+        where_clauses.append(f"Date>={_xero_datetime_where_literal(effective_date_from)}")
+    if effective_date_to is not None:
+        where_clauses.append(f"Date<{_xero_datetime_where_literal(effective_date_to + timedelta(days=1))}")
     where = "&&".join(where_clauses)
+    max_pages = 3 if import_scope == "recent" else (8 if (effective_date_from or effective_date_to) else 10)
     raw_invoices = await fetch_paginated_collection(
         master_connection,
         INVOICES_URL,
         "Invoices",
         params={"where": where, "order": "Date DESC"},
-        max_pages=20,
+        max_pages=max_pages,
     )
-    source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=date_from, date_to=date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
+    source_rows = _juksib_source_invoice_rows(raw_invoices, date_from=effective_date_from, date_to=effective_date_to)[:JUKSIB_MAX_IMPORT_INVOICES]
     if source_rows and not include_imported:
         source_invoice_ids = [str(row.get("juk_xero_invoice_id") or "").strip() for row in source_rows if str(row.get("juk_xero_invoice_id") or "").strip()]
         seen_source_ids: set[str] = set()
@@ -15143,6 +15191,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
     batch_id = ""
     inserted_invoices = []
     openai_match_remaining = min(JUKSIB_OPENAI_MATCH_LIMIT, len(source_rows))
+    match_cache: dict[str, dict] = {}
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -15175,8 +15224,12 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                     "imported",
                     json.dumps(
                         {
+                            "importScope": import_scope,
                             "includePaidInvoices": include_paid,
                             "includeAlreadyImported": include_imported,
+                            "effectiveDateFrom": _iso(effective_date_from),
+                            "effectiveDateTo": _iso(effective_date_to),
+                            "xeroFetchMaxPages": max_pages,
                             "candidateTenantCount": len(candidates),
                         },
                         default=_json_default,
@@ -15188,15 +15241,22 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
             batch_id = str((cursor.fetchone() or {}).get("id") or "")
 
         for row in source_rows:
-            match_row = await _juksib_match_invoice(
-                user=user,
-                contact_name=row.get("juk_contact_name"),
-                rules=rules,
-                candidates=candidates,
-                allow_openai=openai_match_remaining > 0,
-            )
-            if str(match_row.get("match_source") or "") == "openai" and openai_match_remaining > 0:
-                openai_match_remaining -= 1
+            contact_name = str(row.get("juk_contact_name") or "").strip()
+            cache_key = _juksib_normalise_name(contact_name) or contact_name.lower()
+            if cache_key and cache_key in match_cache:
+                match_row = dict(match_cache[cache_key])
+            else:
+                match_row = await _juksib_match_invoice(
+                    user=user,
+                    contact_name=contact_name,
+                    rules=rules,
+                    candidates=candidates,
+                    allow_openai=openai_match_remaining > 0,
+                )
+                if cache_key:
+                    match_cache[cache_key] = dict(match_row)
+                if str(match_row.get("match_source") or "") == "openai" and openai_match_remaining > 0:
+                    openai_match_remaining -= 1
             duplicate_flag = False
             if match_row.get("matched_xero_tenant_id"):
                 with connection.cursor() as cursor:
