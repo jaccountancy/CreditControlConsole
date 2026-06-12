@@ -76415,7 +76415,14 @@
                         residualVariance = actionPlanResidual;
                         explainedVariance = Number(varianceTarget || 0) - residualVariance;
                     }
+                    const submittedDateLabel = formatDate(workspace?.submittedAt || "") || String(workspace?.submittedAt || "").slice(0, 10) || "the submission date";
+                    const postSubmissionRows = rows.filter((row) => row.postedSinceFiling);
+                    const mappedRows = rows.filter((row) => row.usedForVariance);
+                    const basicNarrative = postSubmissionRows.length
+                        ? `Looking only at transactions created after accounts were submitted (${submittedDateLabel}), I found ${postSubmissionRows.length.toLocaleString("en-GB")} row${postSubmissionRows.length === 1 ? "" : "s"}. ${mappedRows.length.toLocaleString("en-GB")} row${mappedRows.length === 1 ? "" : "s"} currently explain ${formatCurrency(explainedVariance)} of the ${formatCurrency(varianceTarget)} difference, leaving ${formatCurrency(residualVariance)} still unexplained.`
+                        : `Looking only at transactions created after accounts were submitted (${submittedDateLabel}), I found no rows to explain the ${formatCurrency(varianceTarget)} difference.`;
                     const aiNarrativeParts = [
+                        basicNarrative,
                         String(actionPlan?.summary || "").trim(),
                         String(postFiling?.summary || "").trim(),
                         String(postFiling?.reason || "").trim(),
