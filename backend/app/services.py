@@ -16993,7 +16993,9 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
     for row in invoice_rows:
         invoice_id = str(row.get("id") or "")
         source_invoice_id = str(row.get("juk_xero_invoice_id") or "")
-        destination_tenant_id = str(row.get("matched_xero_tenant_id") or "")
+        matched_tenant_id = str(row.get("matched_xero_tenant_id") or "").strip()
+        matched_client_id = str(row.get("matched_client_id") or "").strip()
+        destination_tenant_id = matched_tenant_id or matched_client_id
         invoice_number = str(row.get("juk_invoice_number") or source_invoice_id)
         if not destination_tenant_id:
             publish_result["failed"] += 1
@@ -17014,7 +17016,47 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 connection.commit()
             continue
 
-        destination_connection = xero_connection_for_user_tenant(user, destination_tenant_id, include_fallback=False)
+        try:
+            destination_connection = xero_connection_for_user_tenant(user, destination_tenant_id, include_fallback=False)
+        except Exception as exc:
+            message = f"Destination tenant '{destination_tenant_id}' is not connected for this user."
+            publish_result["failed"] += 1
+            publish_result["rows"].append(
+                {
+                    "invoiceId": invoice_id,
+                    "status": "failed",
+                    "tenantId": destination_tenant_id,
+                    "message": f"{message} {_sync_error_message(exc)}".strip(),
+                }
+            )
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE juksib_batch_invoices
+                        SET status = 'failed',
+                            error_message = %s,
+                            retry_count = retry_count + 1,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                        """,
+                        (message, invoice_id),
+                    )
+                connection.commit()
+            continue
+        if not matched_tenant_id and matched_client_id:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE juksib_batch_invoices
+                        SET matched_xero_tenant_id = %s,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                        """,
+                        (destination_tenant_id, invoice_id),
+                    )
+                connection.commit()
         cached_supplier_contact_id = supplier_contact_cache.get(destination_tenant_id)
         if cached_supplier_contact_id is None:
             cached_supplier_contact_id = await _juksib_resolve_supplier_contact_id(destination_connection, supplier_name)
