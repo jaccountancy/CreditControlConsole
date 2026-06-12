@@ -25088,6 +25088,75 @@
             .juk-override-modal-grid select {
                 width: 100%;
             }
+            .juk-invoice-cell {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .juk-invoice-breakdown-trigger {
+                width: 24px;
+                height: 24px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 78, 216, 0.28);
+                background: rgba(239, 246, 255, 0.88);
+                color: #1e3a8a;
+                font-size: 12px;
+                line-height: 1;
+                display: inline-grid;
+                place-items: center;
+                padding: 0;
+                cursor: pointer;
+                transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            }
+            .juk-invoice-breakdown-trigger:hover {
+                transform: translateY(-1px);
+                border-color: rgba(29, 78, 216, 0.48);
+                box-shadow: 0 6px 14px rgba(30, 58, 138, 0.18);
+            }
+            .juk-invoice-breakdown-modal-panel {
+                width: min(1040px, calc(100vw - 32px));
+                max-height: calc(100vh - 48px);
+                overflow: auto;
+            }
+            .juk-invoice-breakdown-summary {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .juk-invoice-breakdown-summary article {
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: rgba(248, 250, 252, 0.9);
+                display: grid;
+                gap: 4px;
+            }
+            .juk-invoice-breakdown-summary span {
+                font-size: 11px;
+                font-weight: 700;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .juk-invoice-breakdown-summary strong {
+                font-size: 14px;
+                color: #0f172a;
+            }
+            .juk-invoice-breakdown-explanation {
+                margin-top: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.24);
+                border-radius: 10px;
+                background: rgba(248, 250, 252, 0.8);
+                padding: 12px;
+                display: grid;
+                gap: 8px;
+            }
+            .juk-invoice-breakdown-explanation p {
+                margin: 0;
+                font-size: 0.9rem;
+                line-height: 1.45;
+            }
             .juk-wizard-modal {
                 position: fixed;
                 inset: 0;
@@ -31112,6 +31181,38 @@
                                         <button class="ghost-button" id="jukOverrideCancelButton" type="button">Cancel</button>
                                         <button class="primary-button" id="jukOverrideApplyButton" type="button">Apply override</button>
                                     </div>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="jukInvoiceBreakdownModal" hidden>
+                                <section class="company-secretarial-modal-panel juk-invoice-breakdown-modal-panel" role="dialog" aria-modal="true" aria-labelledby="jukInvoiceBreakdownTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Step 3 · Invoice breakdown</p>
+                                            <h4 id="jukInvoiceBreakdownTitle">Invoice line detail</h4>
+                                            <p class="detail-meta" id="jukInvoiceBreakdownMeta">Full line-level view and summary for the selected invoice.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="jukInvoiceBreakdownCloseButton" type="button">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="juk-invoice-breakdown-summary" id="jukInvoiceBreakdownSummary"></div>
+                                    <section class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="JUK invoice line breakdown">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Description</th>
+                                                    <th>Qty</th>
+                                                    <th>Unit</th>
+                                                    <th>Net</th>
+                                                    <th>VAT</th>
+                                                    <th>Gross</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="jukInvoiceBreakdownLinesBody"></tbody>
+                                        </table>
+                                    </section>
+                                    <section class="juk-invoice-breakdown-explanation" id="jukInvoiceBreakdownExplanation"></section>
                                 </section>
                             </div>
                             </div>
@@ -37642,6 +37743,7 @@
             let jukLoadingState = { active: false, message: "" };
             let jukGapWarningProceedHandler = null;
             let jukOverrideModalInvoiceId = "";
+            let jukInvoiceBreakdownModalInvoiceId = "";
             let jukExpandedInvoiceId = "";
             let jukWizardActivityIntervalId = 0;
             const jukWizardActivityState = {
@@ -37651,6 +37753,8 @@
                 message: "",
                 detail: "",
                 stage: "",
+                showEta: false,
+                etaDeadline: 0,
             };
 
             function wait(ms = 0) {
@@ -37677,6 +37781,8 @@
                     message: "message" in nextState ? String(nextState.message || "") : jukWizardActivityState.message,
                     detail: "detail" in nextState ? String(nextState.detail || "") : jukWizardActivityState.detail,
                     stage: "stage" in nextState ? String(nextState.stage || "") : jukWizardActivityState.stage,
+                    showEta: "showEta" in nextState ? Boolean(nextState.showEta) : jukWizardActivityState.showEta,
+                    etaDeadline: "etaDeadline" in nextState ? Math.max(0, Number(nextState.etaDeadline || 0)) : jukWizardActivityState.etaDeadline,
                 });
                 renderJukWizardActivity();
             }
@@ -37691,7 +37797,16 @@
                 panel.classList.toggle("is-success", jukWizardActivityState.tone === "success");
                 panel.classList.toggle("is-error", jukWizardActivityState.tone === "error");
                 message.textContent = jukWizardActivityState.message || "Working…";
-                detail.textContent = jukWizardActivityState.detail || "";
+                const detailParts = [];
+                const detailText = String(jukWizardActivityState.detail || "").trim();
+                if (detailText) detailParts.push(detailText);
+                if (jukWizardActivityState.active && jukWizardActivityState.showEta && Number(jukWizardActivityState.etaDeadline || 0) > 0) {
+                    const remainingSeconds = Math.max(0, Math.ceil((Number(jukWizardActivityState.etaDeadline || 0) - Date.now()) / 1000));
+                    const completionTime = new Date(Number(jukWizardActivityState.etaDeadline || 0))
+                        .toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+                    detailParts.push(`Estimated completion ${completionTime} (${formatSyncDuration(remainingSeconds)} left)`);
+                }
+                detail.textContent = detailParts.join(" · ");
                 fill.style.width = `${Math.max(0, Math.min(100, Number(jukWizardActivityState.progress || 0)))}%`;
                 [...document.querySelectorAll("[data-juk-wizard-step]")].forEach((chip) => {
                     chip.classList.toggle("is-active", String(chip.dataset.jukWizardStep || "") === jukWizardActivityState.stage);
@@ -37705,12 +37820,22 @@
                 }
             }
 
-            function jukStartWizardActivityTicker({ stage = "prepare", message = "Working…", detail = "", start = 8, cap = 90, rotate = [] } = {}) {
+            function jukStartWizardActivityTicker({ stage = "prepare", message = "Working…", detail = "", start = 8, cap = 90, rotate = [], showEta = false, estimatedSeconds = 0 } = {}) {
                 jukStopWizardActivityTicker();
                 const messages = Array.isArray(rotate) && rotate.length ? rotate : [message];
                 let index = 0;
                 let progress = Math.max(0, Math.min(cap, Number(start || 0)));
-                jukSetWizardActivity({ active: true, tone: "info", stage, message: messages[index] || message, detail, progress });
+                const etaSeconds = Math.max(0, Number(estimatedSeconds || 0));
+                jukSetWizardActivity({
+                    active: true,
+                    tone: "info",
+                    stage,
+                    message: messages[index] || message,
+                    detail,
+                    progress,
+                    showEta: Boolean(showEta && etaSeconds > 0),
+                    etaDeadline: Boolean(showEta && etaSeconds > 0) ? Date.now() + (etaSeconds * 1000) : 0,
+                });
                 jukWizardActivityIntervalId = window.setInterval(() => {
                     progress = Math.min(cap, progress + Math.max(1, Math.floor(Math.random() * 5)));
                     index = (index + 1) % messages.length;
@@ -37734,10 +37859,12 @@
                     message: message || (tone === "error" ? "Something went wrong." : "Ready."),
                     detail,
                     progress: 100,
+                    showEta: false,
+                    etaDeadline: 0,
                 });
                 if (!hideAfter) return;
                 await wait(holdMs);
-                jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+                jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info", showEta: false, etaDeadline: 0 });
             }
 
             function jukImportFailureSummary(error) {
@@ -38655,6 +38782,42 @@
                 return merged;
             }
 
+            function jukInvoiceLineRows(invoice = {}) {
+                const source = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
+                if (source.length) return source;
+                return [{
+                    description: invoice.description || invoice.matchReason || "Invoice line",
+                    quantity: 1,
+                    unitAmount: Number(invoice.subtotal || invoice.total || 0),
+                    vat: Number(invoice.vatTotal || 0),
+                    lineAmount: Number(invoice.subtotal || invoice.total || 0),
+                }];
+            }
+
+            function jukInvoiceLineQuantity(line = {}) {
+                const quantity = Number(line.quantity ?? line.Quantity ?? 1);
+                return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+            }
+
+            function jukInvoiceLineUnitAmount(line = {}) {
+                const unit = Number(line.unitAmount ?? line.UnitAmount ?? line.unitPrice ?? line.UnitPrice ?? 0);
+                return Number.isFinite(unit) ? unit : 0;
+            }
+
+            function jukInvoiceLineNetAmount(line = {}) {
+                const direct = Number(line.lineAmount ?? line.LineAmount ?? line.netAmount ?? line.NetAmount);
+                if (Number.isFinite(direct)) return direct;
+                return jukInvoiceLineQuantity(line) * jukInvoiceLineUnitAmount(line);
+            }
+
+            function jukInvoiceLineVatAmount(line = {}) {
+                const direct = Number(line.vat ?? line.taxAmount ?? line.TaxAmount ?? line.vatAmount);
+                if (Number.isFinite(direct)) return direct;
+                const taxRate = Number(line.taxRate ?? line.TaxRate ?? 0);
+                if (!Number.isFinite(taxRate) || taxRate <= 0) return 0;
+                return jukInvoiceLineNetAmount(line) * taxRate;
+            }
+
             function jukEligibleInvoiceIdsForStatus(batch, statusValue, invoiceIds = []) {
                 const requested = new Set((invoiceIds || []).map((id) => jukInvoiceIdKey(id)).filter(Boolean));
                 if (!requested.size) return [];
@@ -39060,7 +39223,7 @@
                     step1CloseButton.dataset.jukWired = "true";
                     step1CloseButton.addEventListener("click", () => {
                         jukStopWizardActivityTicker();
-                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info", showEta: false, etaDeadline: 0 });
                         jukHideGapWarningModal();
                         const overrideModal = document.getElementById("jukOverrideModal");
                         if (overrideModal) overrideModal.hidden = true;
@@ -39080,7 +39243,7 @@
                     wizardCloseButton.dataset.jukWired = "true";
                     wizardCloseButton.addEventListener("click", () => {
                         jukStopWizardActivityTicker();
-                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info", showEta: false, etaDeadline: 0 });
                         jukHideGapWarningModal();
                         const overrideModal = document.getElementById("jukOverrideModal");
                         if (overrideModal) overrideModal.hidden = true;
@@ -39093,7 +39256,7 @@
                     wizardBackdrop.dataset.jukWired = "true";
                     wizardBackdrop.addEventListener("click", () => {
                         jukStopWizardActivityTicker();
-                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+                        jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info", showEta: false, etaDeadline: 0 });
                         jukHideGapWarningModal();
                         const overrideModal = document.getElementById("jukOverrideModal");
                         if (overrideModal) overrideModal.hidden = true;
@@ -39306,6 +39469,8 @@
                                 start: 22,
                                 cap: 92,
                                 detail: "Live progress updates while the import runs.",
+                                showEta: true,
+                                estimatedSeconds: 70,
                                 rotate: [
                                     "Connecting to JUK Xero API…",
                                     "Fetching invoices for selected range…",
@@ -39459,7 +39624,12 @@
                             return `
                             <tr>
                                 <td><input type="checkbox" data-juk-select-row="${escapeHTML(invoice.id)}" ${(jukInvoicesState.selectedInvoiceIds || []).includes(jukInvoiceIdKey(invoice.id)) ? "checked" : ""}></td>
-                                <td><strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong></td>
+                                <td>
+                                    <div class="juk-invoice-cell">
+                                        <strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong>
+                                        <button class="juk-invoice-breakdown-trigger" type="button" data-juk-invoice-breakdown="${escapeHTML(invoice.id)}" aria-label="View full breakdown for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}" title="View full invoice breakdown">👓</button>
+                                    </div>
+                                </td>
                                 <td>${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</td>
                                 <td>${escapeHTML(invoice.jukContactName || "--")}</td>
                                 <td>${escapeHTML(suggestedClientName || "No match")}</td>
@@ -39576,6 +39746,81 @@
                             renderJukInvoicesScreen();
                         });
                     });
+                    const openBreakdownModal = (invoice) => {
+                        const breakdownModal = document.getElementById("jukInvoiceBreakdownModal");
+                        const breakdownMeta = document.getElementById("jukInvoiceBreakdownMeta");
+                        const breakdownSummary = document.getElementById("jukInvoiceBreakdownSummary");
+                        const breakdownLinesBody = document.getElementById("jukInvoiceBreakdownLinesBody");
+                        const breakdownExplanation = document.getElementById("jukInvoiceBreakdownExplanation");
+                        if (!breakdownModal || !breakdownMeta || !breakdownSummary || !breakdownLinesBody || !breakdownExplanation) return;
+                        jukInvoiceBreakdownModalInvoiceId = String(invoice?.id || "");
+                        const lineRows = jukInvoiceLineRows(invoice);
+                        const invoiceNetTotal = lineRows.reduce((sum, line) => sum + jukInvoiceLineNetAmount(line), 0);
+                        const invoiceVatTotal = lineRows.reduce((sum, line) => sum + jukInvoiceLineVatAmount(line), 0);
+                        const invoiceGrossTotal = invoiceNetTotal + invoiceVatTotal;
+                        breakdownMeta.textContent = `${invoice.jukInvoiceNumber || "Invoice"} · ${invoice.jukContactName || "Unknown client"}`;
+                        breakdownSummary.innerHTML = [
+                            ["Invoice date", formatDate(invoice.invoiceDate) || "--"],
+                            ["Due date", formatDate(invoice.dueDate) || "--"],
+                            ["Lines", lineRows.length.toLocaleString("en-GB")],
+                            ["Total", formatCurrency(invoice.total || invoiceGrossTotal)],
+                        ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+                        breakdownLinesBody.innerHTML = lineRows.map((line, index) => {
+                            const quantity = jukInvoiceLineQuantity(line);
+                            const unitAmount = jukInvoiceLineUnitAmount(line);
+                            const netAmount = jukInvoiceLineNetAmount(line);
+                            const vatAmount = jukInvoiceLineVatAmount(line);
+                            const grossAmount = netAmount + vatAmount;
+                            const description = String(line?.description || line?.Description || line?.item || line?.name || "Invoice line").trim();
+                            return `
+                                <tr>
+                                    <td>${index + 1}</td>
+                                    <td><strong>${escapeHTML(description || "Invoice line")}</strong></td>
+                                    <td>${escapeHTML(quantity.toLocaleString("en-GB", { maximumFractionDigits: 2 }))}</td>
+                                    <td>${escapeHTML(formatCurrency(unitAmount))}</td>
+                                    <td>${escapeHTML(formatCurrency(netAmount))}</td>
+                                    <td>${escapeHTML(formatCurrency(vatAmount))}</td>
+                                    <td>${escapeHTML(formatCurrency(grossAmount))}</td>
+                                </tr>
+                            `;
+                        }).join("");
+                        const confidencePct = Math.max(0, Math.min(100, Math.round(Number(invoice.matchConfidence || 0) * 100)));
+                        const matchNarrative = String(invoice.matchReason || "").trim() || "No match explanation has been provided for this invoice yet.";
+                        const lineNarrative = lineRows
+                            .map((line) => String(line?.description || line?.Description || "").trim())
+                            .filter(Boolean)
+                            .slice(0, 4)
+                            .join(" · ");
+                        breakdownExplanation.innerHTML = `
+                            <p><strong>Invoice purpose:</strong> ${escapeHTML(lineNarrative || "Line descriptions are not available.")}</p>
+                            <p><strong>Matching summary:</strong> ${escapeHTML(matchNarrative)}</p>
+                            <p><strong>Confidence:</strong> ${escapeHTML(`${confidencePct}%`)} · <strong>Status:</strong> ${escapeHTML(JUK_STATUS_LABELS[invoice.status] || invoice.status || "Unknown")}</p>
+                            <p><strong>Computed totals:</strong> Net ${escapeHTML(formatCurrency(invoiceNetTotal))}, VAT ${escapeHTML(formatCurrency(invoiceVatTotal))}, Gross ${escapeHTML(formatCurrency(invoiceGrossTotal))}.</p>
+                        `;
+                        breakdownModal.hidden = false;
+                    };
+                    reviewTable.querySelectorAll("[data-juk-invoice-breakdown]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const invoiceId = String(button.dataset.jukInvoiceBreakdown || "").trim();
+                            const invoice = (batch.invoices || []).find((item) => jukInvoiceIdKey(item.id) === jukInvoiceIdKey(invoiceId));
+                            if (!invoice) return;
+                            openBreakdownModal(invoice);
+                        });
+                    });
+                }
+
+                const breakdownModal = document.getElementById("jukInvoiceBreakdownModal");
+                const breakdownModalCloseButton = document.getElementById("jukInvoiceBreakdownCloseButton");
+                const closeBreakdownModal = () => {
+                    if (breakdownModal) breakdownModal.hidden = true;
+                    jukInvoiceBreakdownModalInvoiceId = "";
+                };
+                if (breakdownModalCloseButton) breakdownModalCloseButton.onclick = closeBreakdownModal;
+                if (breakdownModal) {
+                    breakdownModal.onclick = (event) => {
+                        if (event.target === breakdownModal) closeBreakdownModal();
+                    };
+                    if (jukInvoiceBreakdownModalInvoiceId) breakdownModal.hidden = false;
                 }
 
                 const overrideModal = document.getElementById("jukOverrideModal");
