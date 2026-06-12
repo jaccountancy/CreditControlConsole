@@ -25657,6 +25657,34 @@
                 margin: 6px 0 18px;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
             }
+            .pi-clearing-workspace {
+                display: grid;
+                gap: 14px;
+            }
+            .pi-clearing-table-section {
+                border: 1px solid rgba(32, 71, 140, 0.14);
+                border-radius: 14px;
+                background: linear-gradient(180deg, rgba(252, 254, 255, 0.96), rgba(246, 250, 255, 0.9));
+                padding: 10px;
+            }
+            .pi-clearing-table-head {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 8px 12px;
+                margin: 2px 4px 10px;
+            }
+            .pi-clearing-table-head h4 {
+                margin: 0;
+                font-size: 14px;
+                color: #123f97;
+            }
+            .pi-clearing-table-head p {
+                margin: 0;
+                font-size: 12px;
+                color: var(--ink-soft);
+            }
             .pi-clearing-kpi {
                 border: 1px solid rgba(32, 71, 140, 0.16);
                 border-radius: 14px;
@@ -25676,12 +25704,42 @@
             }
             .pi-clearing-wizard-modal .pi-clearing-wizard-panel {
                 width: min(1180px, calc(100vw - 40px));
+                height: min(860px, calc(100dvh - 44px));
+                max-height: calc(100dvh - 44px);
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                overflow: hidden;
             }
             .pi-clearing-wizard-steps {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 10px;
-                margin: 12px 0;
+                margin: 4px 0 2px;
+            }
+            .pi-clearing-wizard-context {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 0 0 4px;
+            }
+            .pi-clearing-wizard-context-chip {
+                display: inline-flex;
+                align-items: center;
+                border: 1px solid rgba(30, 63, 124, 0.16);
+                border-radius: 999px;
+                padding: 5px 10px;
+                background: rgba(240, 246, 255, 0.88);
+                color: #24466f;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+            }
+            .pi-clearing-wizard-body {
+                flex: 1;
+                min-height: 0;
+                overflow: auto;
+                padding-right: 2px;
             }
             .pi-clearing-step-chip {
                 border-radius: 999px;
@@ -25702,6 +25760,10 @@
             }
             .pi-clearing-wizard-section {
                 animation: pi-clearing-enter 0.28s ease;
+            }
+            .pi-clearing-step-toolbar {
+                justify-content: flex-start;
+                margin-bottom: 6px;
             }
             .pi-clearing-analysis-grid {
                 display: grid;
@@ -25766,6 +25828,12 @@
             [data-pi-payout-key]:hover {
                 background: rgba(228, 238, 255, 0.5);
             }
+            .pi-clearing-wizard-footer {
+                margin-top: 0;
+                padding-top: 10px;
+                border-top: 1px solid rgba(30, 63, 124, 0.12);
+                background: linear-gradient(180deg, rgba(245, 250, 255, 0), rgba(245, 250, 255, 0.95));
+            }
             @keyframes pi-clearing-enter {
                 from { opacity: 0; transform: translateY(6px); }
                 to { opacity: 1; transform: translateY(0); }
@@ -25810,6 +25878,18 @@
                 }
                 .pi-clearing-wizard-steps {
                     grid-template-columns: 1fr;
+                }
+                .pi-clearing-wizard-modal .pi-clearing-wizard-panel {
+                    width: min(1180px, calc(100vw - 18px));
+                    height: calc(100dvh - 18px);
+                    max-height: calc(100dvh - 18px);
+                }
+                .pi-clearing-table-section {
+                    padding: 8px;
+                }
+                .pi-clearing-wizard-footer {
+                    position: sticky;
+                    bottom: 0;
                 }
             }
 
@@ -30930,7 +31010,7 @@
                         </section>
                     </section>
                     <section class="late-charges-screen detail-card" id="piClearingAccountScreen" hidden>
-                        <section class="detail-panel">
+                        <section class="detail-panel pi-clearing-workspace">
                             <div class="detail-hero">
                                 <div>
                                     <p class="eyebrow">Practice Tools</p>
@@ -30947,7 +31027,11 @@
                             </div>
                             <p class="late-charge-summary" id="piClearingAccountSummary">Loading PI Clearing Account workspace…</p>
                             <div class="summary-grid pi-clearing-kpi-grid" id="piClearingKpiGrid"></div>
-                            <section class="ch-companies-table-wrap">
+                            <section class="ch-companies-table-wrap pi-clearing-table-section">
+                                <div class="pi-clearing-table-head">
+                                    <h4>Monthly runs</h4>
+                                    <p>Open a completed run or start a new month workflow.</p>
+                                </div>
                                 <table class="ch-table" aria-label="PI clearing monthly runs">
                                     <thead>
                                         <tr>
@@ -30963,7 +31047,11 @@
                                     <tbody id="piClearingRunsBody"></tbody>
                                 </table>
                             </section>
-                            <section class="ch-companies-table-wrap">
+                            <section class="ch-companies-table-wrap pi-clearing-table-section">
+                                <div class="pi-clearing-table-head">
+                                    <h4>Reconciliation rows</h4>
+                                    <p>Review client-level variances between Xero and Ignition.</p>
+                                </div>
                                 <table class="ch-table" aria-label="PI clearing reconciliation rows for selected month">
                                     <thead>
                                         <tr>
@@ -31004,9 +31092,14 @@
                                 <span class="pi-clearing-step-chip" data-pi-step-chip="2">2. AI analysis</span>
                                 <span class="pi-clearing-step-chip" data-pi-step-chip="3">3. Credit notes</span>
                             </div>
+                            <div class="pi-clearing-wizard-context" aria-live="polite">
+                                <span class="pi-clearing-wizard-context-chip" id="piClearingWizardContextMonth">Month --</span>
+                                <span class="pi-clearing-wizard-context-chip" id="piClearingWizardContextRows">0 rows</span>
+                            </div>
+                            <div class="pi-clearing-wizard-body">
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="1">
                                 <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this month appear below.</p>
-                                <div class="detail-actions">
+                                <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                 </div>
                                 <section class="ch-companies-table-wrap">
@@ -31110,7 +31203,8 @@
                                     <button class="primary-button" id="piClearingCreateCreditNotesButton" type="button">Create credit notes in Xero</button>
                                 </div>
                             </section>
-                            <div class="detail-actions is-wide">
+                            </div>
+                            <div class="detail-actions is-wide pi-clearing-wizard-footer">
                                 <button class="ghost-button" id="piClearingWizardBackButton" type="button">Back</button>
                                 <button class="primary-button" id="piClearingWizardNextButton" type="button">Next</button>
                             </div>
@@ -40431,6 +40525,8 @@
                 const wizardAnalysisSummary = document.getElementById("piClearingWizardAnalysisSummary");
                 const wizardFindings = document.getElementById("piClearingWizardFindings");
                 const wizardActions = document.getElementById("piClearingWizardActions");
+                const wizardContextMonth = document.getElementById("piClearingWizardContextMonth");
+                const wizardContextRows = document.getElementById("piClearingWizardContextRows");
                 const wizardCreditSummary = document.getElementById("piClearingWizardCreditSummary");
                 const wizardCreditRowsBody = document.getElementById("piClearingWizardCreditRowsBody");
                 const step3BalanceGrid = document.getElementById("piClearingStep3BalanceGrid");
@@ -40475,10 +40571,17 @@
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const summaryRows = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const differenceTotal = Number(summaryRows?.differenceTotal || 0);
+                const selectedMonthLabel = formatMonthKey(piClearingRunMonth(run) || piClearingSelectedMonth);
                 const summaryPrefix = piClearingStatusMessage || (piClearingLoading ? "Loading PI clearing data..." : "");
-                const monthLabel = run ? formatMonthKey(piClearingRunMonth(run)) : formatMonthKey(piClearingSelectedMonth);
+                const monthLabel = run ? formatMonthKey(piClearingRunMonth(run)) : selectedMonthLabel;
                 summary.textContent = [summaryPrefix, monthLabel ? `Selected month: ${monthLabel}.` : ""].filter(Boolean).join(" ");
                 summary.dataset.tone = piClearingStatusTone || "info";
+                if (wizardContextMonth) {
+                    wizardContextMonth.textContent = selectedMonthLabel ? `Month ${selectedMonthLabel}` : "Month --";
+                }
+                if (wizardContextRows) {
+                    wizardContextRows.textContent = `${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`;
+                }
 
                 const kpiItems = [
                     { label: "Xero total", value: formatCurrency(summaryRows?.xeroTotal || 0) },
@@ -40578,18 +40681,23 @@
                 });
                 if (wizardBackButton) wizardBackButton.disabled = piClearingWizardStep <= 1;
                 if (wizardNextButton) {
-                    wizardNextButton.disabled = piClearingWizardStep >= 3;
+                    const stepOneBlocked = piClearingWizardStep === 1 && !runRows.length;
+                    wizardNextButton.disabled = piClearingWizardStep >= 3 || stepOneBlocked;
                     wizardNextButton.textContent = piClearingWizardStep >= 3 ? "Done" : "Next";
                 }
 
                 if (wizardSummary) {
                     wizardSummary.textContent = runRows.length
                         ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded from Xero and Ignition for ${formatMonthKey(piClearingRunMonth(run))}.`
-                        : "No rows loaded yet. Start a workflow for the selected month.";
+                        : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
-                    wizardLoadButton.textContent = piClearingWorkflowRunning ? "Loading transactions..." : "Get transactions";
+                    wizardLoadButton.textContent = piClearingWorkflowRunning
+                        ? "Loading transactions..."
+                        : runRows.length
+                            ? "Refresh transactions"
+                            : "Get transactions";
                     if (wizardLoadButton.dataset.piWired !== "true") {
                         wizardLoadButton.dataset.piWired = "true";
                         wizardLoadButton.addEventListener("click", runPiClearingWorkflow);
