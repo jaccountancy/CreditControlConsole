@@ -19124,6 +19124,25 @@
                 line-height: 1.45;
                 font-weight: 650;
             }
+            .code-breaker-variance-highlights {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 4px;
+            }
+            .code-breaker-variance-highlights li {
+                color: var(--ink);
+                font-size: 0.8rem;
+                line-height: 1.4;
+                font-weight: 700;
+            }
+            .code-breaker-variance-actions {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.8rem;
+                line-height: 1.4;
+                font-weight: 650;
+            }
             .code-breaker-variance-tag {
                 display: inline-flex;
                 align-items: center;
@@ -29741,8 +29760,8 @@
                                     </div>
                                     <div class="xero-transaction-summary" id="codeBreakerVarianceSummary"></div>
                                     <div class="code-breaker-variance-insight">
-                                        <h5>Jenius AI variance explanation</h5>
-                                        <p id="codeBreakerVarianceNarrative">Run the deep dive to explain how the variance was introduced.</p>
+                                        <h5>Variance summary</h5>
+                                        <p id="codeBreakerVarianceNarrative">Run the deep dive to get a short summary of what changed and what to do next.</p>
                                         <p id="codeBreakerVarianceResidual">Residual variance will be calculated after matching rows.</p>
                                     </div>
                                     <section class="ch-companies-table-wrap">
@@ -29797,6 +29816,36 @@
                                     </thead>
                                     <tbody id="microAnalyzerConnectionsTableBody"></tbody>
                                 </table>
+                            </section>
+                            <section class="detail-panel" id="microAnalyzerWorkspaceSection" hidden>
+                                <div class="detail-hero">
+                                    <div>
+                                        <p class="eyebrow">VAT on Unregistered workspace</p>
+                                        <h4 id="microAnalyzerWorkspaceTitle">Xero organisation VAT transactions</h4>
+                                        <p class="detail-meta" id="microAnalyzerWorkspaceMeta">Loading VAT-coded transactions for this Xero organisation.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="microAnalyzerWorkspaceBackButton" type="button">Back to tenants</button>
+                                        <button class="ghost-button" id="microAnalyzerWorkspaceRefreshButton" type="button">Refresh transactions</button>
+                                    </div>
+                                </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="VAT-coded transactions for selected Xero organisation">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Reference</th>
+                                                <th>Description</th>
+                                                <th>Net</th>
+                                                <th>VAT</th>
+                                                <th>Gross</th>
+                                                <th>VAT code</th>
+                                                <th>Period end</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="microAnalyzerWorkspaceTransactionsBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
                         </section>
                     </section>
@@ -32563,9 +32612,13 @@
             let microAnalyzerLoading = false;
             let microAnalyzerWorkspaceMode = "list";
             let selectedMicroAnalyzerRowId = "";
+            let selectedMicroAnalyzerTenantId = "";
+            let microAnalyzerWorkspaceLoading = false;
+            let microAnalyzerWorkspaceSyncingHash = false;
             let microAnalyzerRunAllInFlight = false;
             let microAnalyzerBulkApplyInFlight = false;
             const microAnalyzerResultsByCustomerId = {};
+            const microAnalyzerWorkspaceResultsByTenantId = {};
             let vaultLoading = false;
             let vaultFiles = [];
             let vaultFolders = [];
@@ -40368,7 +40421,6 @@
                 const run = currentPiClearingRun();
                 const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
-                const monthLabel = formatMonthKey(piClearingRunMonth(run) || piClearingSelectedMonth || currentMonthKey()) || "--";
                 return [
                     { label: "Xero total", value: formatCurrency(summary?.xeroTotal || 0) },
                     { label: "Ignition total", value: formatCurrency(summary?.ignitionTotal || 0) },
@@ -40376,7 +40428,6 @@
                     { label: "Existing CN", value: formatCurrency(summary?.existingCreditNoteTotal || 0) },
                     { label: "Difference", value: formatCurrency(summary?.differenceTotal || 0), className: "is-pi-difference" },
                     { label: "Rows", value: formatInteger(summary?.differenceCount || runRows.length || 0) },
-                    { label: "Month", value: monthLabel },
                 ];
             }
 
@@ -40695,10 +40746,7 @@
                         : runRows.length
                             ? "Refresh transactions"
                             : "Get transactions";
-                    if (wizardLoadButton.dataset.piWired !== "true") {
-                        wizardLoadButton.dataset.piWired = "true";
-                        wizardLoadButton.addEventListener("click", runPiClearingWorkflow);
-                    }
+                    wizardLoadButton.onclick = runPiClearingWorkflow;
                 }
                 if (wizardRowsBody) {
                     wizardRowsBody.innerHTML = runRows.length
@@ -41046,12 +41094,19 @@
                 activeView = "micro-analyzer";
                 microAnalyzerWorkspaceMode = "list";
                 selectedMicroAnalyzerRowId = "";
+                selectedMicroAnalyzerTenantId = "";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
                 loadMeReport();
-                refreshMicroAnalyzerRows();
+                const hashTenantId = microAnalyzerTenantIdFromHash();
+                if (hashTenantId) {
+                    openMicroAnalyzerTenantWorkspace(hashTenantId);
+                } else {
+                    syncMicroAnalyzerHash("");
+                    refreshMicroAnalyzerRows();
+                }
                 scrollConsoleToTop();
             }
 
@@ -41379,12 +41434,46 @@
                 settings: "credit-control-settings",
             };
 
+            function microAnalyzerTenantIdFromHash(hash = window.location.hash) {
+                const baseHash = String(appNavHashes["micro-analyzer"] || "").trim();
+                if (!baseHash) return "";
+                const cleanHash = String(hash || "").replace(/^#/, "");
+                const prefix = `${baseHash}:`;
+                if (!cleanHash.startsWith(prefix)) return "";
+                const rawTenantId = cleanHash.slice(prefix.length);
+                if (!rawTenantId) return "";
+                try {
+                    return decodeURIComponent(rawTenantId).trim();
+                } catch {
+                    return rawTenantId.trim();
+                }
+            }
+
+            function syncMicroAnalyzerHash(tenantId = "") {
+                const baseHash = String(appNavHashes["micro-analyzer"] || "").trim();
+                if (!baseHash) return;
+                const cleanTenantId = String(tenantId || "").trim();
+                const nextHash = cleanTenantId ? `${baseHash}:${encodeURIComponent(cleanTenantId)}` : baseHash;
+                const currentHash = String(window.location.hash || "").replace(/^#/, "");
+                if (currentHash === nextHash) return;
+                const url = new URL(window.location.href);
+                url.hash = nextHash;
+                microAnalyzerWorkspaceSyncingHash = true;
+                window.history.replaceState(window.history.state, document.title, url.toString());
+                window.setTimeout(() => {
+                    microAnalyzerWorkspaceSyncingHash = false;
+                }, 0);
+            }
+
             function appNavSectionFromHash(hash = window.location.hash) {
                 const cleanHash = String(hash || "").replace(/^#/, "");
-                return Object.entries(appNavHashes).find(([, value]) => value === cleanHash)?.[0] || "";
+                return Object.entries(appNavHashes).find(([, value]) => (
+                    value === cleanHash || cleanHash.startsWith(`${value}:`)
+                ))?.[0] || "";
             }
 
             function handleAppNavHashChange() {
+                if (microAnalyzerWorkspaceSyncingHash) return;
                 const section = appNavSectionFromHash();
                 if (!section) return;
                 handleAppNavigation(section);
@@ -78930,6 +79019,20 @@
                 return [];
             }
 
+            function codeBreakerCondenseWords(value, maxWords = 22) {
+                const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+                if (!words.length) return "";
+                if (!Number.isFinite(maxWords) || maxWords <= 0 || words.length <= maxWords) return words.join(" ");
+                return `${words.slice(0, maxWords).join(" ")}...`;
+            }
+
+            function codeBreakerFirstSentence(value) {
+                const text = String(value || "").replace(/\s+/g, " ").trim();
+                if (!text) return "";
+                const match = text.match(/[^.!?]+[.!?]?/);
+                return match ? match[0].trim() : text;
+            }
+
             function renderCodeBreakerVarianceModal() {
                 const modal = document.getElementById("codeBreakerVarianceModal");
                 const subtitle = document.getElementById("codeBreakerVarianceSubtitle");
@@ -78969,33 +79072,49 @@
                 `).join("");
                 const narrativeText = String(codeBreakerVarianceState.aiNarrative || "").trim();
                 const actionRows = Array.isArray(codeBreakerVarianceState.aiActions) ? codeBreakerVarianceState.aiActions : [];
+                const rowsPulled = Number(stateSummary.rowsPulled || 0);
+                const rowsUsed = Number(stateSummary.rowsUsed || 0);
+                const explainedValue = Number(stateSummary.explainedVariance || 0);
+                const residualValue = Number(codeBreakerVarianceState.residualVariance || 0);
+                const condensedNarrative = codeBreakerCondenseWords(codeBreakerFirstSentence(narrativeText), 24);
+                const highlights = [
+                    `Matched ${rowsUsed.toLocaleString("en-GB")} of ${rowsPulled.toLocaleString("en-GB")} rows.`,
+                    `${escapeHTML(formatCurrency(explainedValue))} explained so far.`,
+                    Math.abs(residualValue) <= 5
+                        ? `Residual ${formatCurrency(residualValue)} is within the £5 threshold.`
+                        : `Residual ${formatCurrency(residualValue)} still needs action.`,
+                ];
+                if (condensedNarrative) highlights.push(condensedNarrative);
+                narrative.innerHTML = `<ul class="code-breaker-variance-highlights">${highlights
+                    .slice(0, 4)
+                    .map((item) => `<li>${escapeHTML(String(item || ""))}</li>`)
+                    .join("")}</ul>`;
                 if (actionRows.length) {
                     const actionsHTML = actionRows
-                        .slice(0, 12)
+                        .slice(0, 3)
                         .map((row, index) => {
-                            const instruction = String(row?.instruction || "").trim() || "Review and apply corrective entry";
+                            const instruction = codeBreakerCondenseWords(String(row?.instruction || "").trim() || "Review corrective entry", 16);
                             const reference = String(row?.reference || "").trim();
-                            const reason = String(row?.reason || "").trim();
                             const expectedImpact = Number(row?.expectedImpact || 0);
-                            return `${index + 1}. ${escapeHTML(instruction)}${reference ? ` (${escapeHTML(reference)})` : ""}${Number.isFinite(expectedImpact) && expectedImpact !== 0 ? ` · expected impact ${escapeHTML(formatCurrency(expectedImpact))}` : ""}${reason ? ` · ${escapeHTML(reason)}` : ""}`;
+                            const impactLabel = Number.isFinite(expectedImpact) && expectedImpact !== 0 ? ` (${formatCurrency(expectedImpact)})` : "";
+                            return `${index + 1}. ${escapeHTML(instruction)}${reference ? ` - ${escapeHTML(reference)}` : ""}${escapeHTML(impactLabel)}`;
                         })
                         .join("<br>");
-                    narrative.innerHTML = `${narrativeText ? `${escapeHTML(narrativeText)}<br><br>` : ""}<strong>Suggested actions to restore filed position:</strong><br>${actionsHTML}`;
-                } else {
-                    narrative.textContent = narrativeText || "Jenius AI could not provide an additional narrative for this run.";
+                    narrative.innerHTML += `<p class="code-breaker-variance-actions"><strong>Top actions:</strong><br>${actionsHTML}</p>`;
                 }
-                const residualValue = Number(codeBreakerVarianceState.residualVariance || 0);
                 residual.innerHTML = `Residual variance: <strong class="code-breaker-variance-delta ${Math.abs(residualValue) <= 5 ? "is-good" : "is-bad"}">${escapeHTML(formatCurrency(residualValue))}</strong>${Math.abs(residualValue) <= 5 ? " (within £5 write-off threshold)." : " (needs further review or manual journal)."}`;
 
                 const rows = Array.isArray(codeBreakerVarianceState.rows) ? codeBreakerVarianceState.rows : [];
                 rowsBody.innerHTML = rows.length
                     ? rows.map((row) => {
                         const actions = codeBreakerVarianceActionOptions(row);
+                        const descriptionText = String(row.description || row.raw?.narration || row.raw?.reason || "").trim();
+                        const condensedDescription = codeBreakerCondenseWords(descriptionText, 18);
                         return `
                             <tr>
                                 <td>${escapeHTML(String(row.sourceType || ""))}</td>
                                 <td>${escapeHTML(String(row.reference || row.invoiceNumber || ""))}</td>
-                                <td>${escapeHTML(String(row.description || row.raw?.narration || row.raw?.reason || ""))}</td>
+                                <td title="${escapeHTML(descriptionText)}">${escapeHTML(condensedDescription || "No description provided")}</td>
                                 <td>${escapeHTML(formatDate(row.postedDate || ""))}</td>
                                 <td>${escapeHTML(String(row.status || ""))}</td>
                                 <td>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
@@ -81588,6 +81707,15 @@
                 });
             }
 
+            function microAnalyzerConnectionByTenant(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return null;
+                const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
+                return (Array.isArray(connections) ? connections : []).find(
+                    (row) => String(row?.tenantId || "").trim() === cleanTenantId
+                ) || null;
+            }
+
             function microAnalyzerSetClientHidden(rowId = "", hidden = true) {
                 const cleanRowId = String(rowId || "").trim();
                 if (!cleanRowId) return;
@@ -81601,6 +81729,8 @@
             function closeMicroAnalyzerWorkspace() {
                 microAnalyzerWorkspaceMode = "list";
                 selectedMicroAnalyzerRowId = "";
+                selectedMicroAnalyzerTenantId = "";
+                syncMicroAnalyzerHash("");
                 renderMicroAnalyzerScreen();
             }
 
@@ -81614,6 +81744,94 @@
                 microAnalyzerWorkspaceMode = "workspace";
                 renderMicroAnalyzerScreen();
                 await runMicroAnalyzerForRow(selectedMicroAnalyzerRowId);
+            }
+
+            async function loadMicroAnalyzerTenantWorkspace(tenantId = "", force = false) {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return;
+                if (microAnalyzerWorkspaceLoading) return;
+                if (!force && microAnalyzerWorkspaceResultsByTenantId[cleanTenantId]) return;
+                microAnalyzerWorkspaceLoading = true;
+                renderMicroAnalyzerScreen();
+                try {
+                    const endpoint = `${api.endpoints.vatReturns}?tenantId=${encodeURIComponent(cleanTenantId)}`;
+                    const payload = await requestJSON(endpoint, { suppressFailurePanel: true });
+                    const sourceRows = (Array.isArray(payload?.rows) ? payload.rows : [])
+                        .filter((row) => String(row?.tenantId || "").trim() === cleanTenantId)
+                        .sort((left, right) => dateSortValue(String(right?.periodEndISO || "")) - dateSortValue(String(left?.periodEndISO || "")));
+                    const periodRows = sourceRows
+                        .map((row) => {
+                            const periodEndISO = String(row?.periodEndISO || "").trim();
+                            if (!periodEndISO) return null;
+                            const periodStartISO = String(row?.periodStartISO || "").trim() || vatPeriodStartISOFromPeriodEnd(periodEndISO);
+                            const deadlineISO = String(row?.deadlineISO || "").trim() || periodEndISO;
+                            return {
+                                key: `micro-tenant:${cleanTenantId}:${String(row?.clientId || row?.xeroContactId || "org")}:${periodEndISO}`,
+                                clientId: String(row?.clientId || "").trim(),
+                                clientName: String(row?.clientName || row?.tenantName || "Xero organisation").trim(),
+                                periodStartISO,
+                                periodEndISO,
+                                deadlineISO,
+                                tenantId: cleanTenantId,
+                                tenantName: String(row?.tenantName || "").trim(),
+                            };
+                        })
+                        .filter((row) => row && row.clientId && row.periodEndISO);
+                    const vatRows = [];
+                    for (const entry of periodRows) {
+                        await ensureVatReturnTransactions(entry, force, { silent: true });
+                        const cache = vatReturnTransactionCache.get(entry.key) || {};
+                        const transactions = vatTransactionsWithEdits(entry, Array.isArray(cache?.transactions) ? cache.transactions : []);
+                        microAnalyzerVatRows(transactions).forEach((tx) => {
+                            vatRows.push({
+                                ...tx,
+                                periodEndISO: entry.periodEndISO,
+                                periodStartISO: entry.periodStartISO,
+                                clientName: entry.clientName,
+                            });
+                        });
+                    }
+                    const uniqueRows = [];
+                    const seen = new Set();
+                    vatRows.forEach((row) => {
+                        const key = `${String(row?.id || vatTransactionId(row))}:${String(row?.periodEndISO || "")}:${String(row?.clientName || "")}`;
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        uniqueRows.push(row);
+                    });
+                    microAnalyzerWorkspaceResultsByTenantId[cleanTenantId] = {
+                        tenantId: cleanTenantId,
+                        periodCount: periodRows.length,
+                        vatRows: uniqueRows.sort((left, right) => dateSortValue(right?.date || "") - dateSortValue(left?.date || "")),
+                        loadedAt: new Date().toISOString(),
+                        error: "",
+                    };
+                } catch (error) {
+                    microAnalyzerWorkspaceResultsByTenantId[cleanTenantId] = {
+                        tenantId: cleanTenantId,
+                        periodCount: 0,
+                        vatRows: [],
+                        loadedAt: new Date().toISOString(),
+                        error: error?.message || "Unable to load VAT-coded transactions for this Xero organisation.",
+                    };
+                } finally {
+                    microAnalyzerWorkspaceLoading = false;
+                    renderMicroAnalyzerScreen();
+                }
+            }
+
+            async function openMicroAnalyzerTenantWorkspace(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return;
+                if (!microAnalyzerConnectionByTenant(cleanTenantId)) {
+                    showToast("This Xero organisation is no longer connected.", "error");
+                    return;
+                }
+                selectedMicroAnalyzerTenantId = cleanTenantId;
+                microAnalyzerWorkspaceMode = "workspace";
+                syncMicroAnalyzerHash(cleanTenantId);
+                renderMicroAnalyzerScreen();
+                await loadMicroAnalyzerTenantWorkspace(cleanTenantId, true);
             }
 
             async function refreshMicroAnalyzerRows() {
@@ -81644,6 +81862,9 @@
                     microAnalyzerHiddenClientIds = (microAnalyzerHiddenClientIds || []).filter((value) => existingIds.has(String(value || "").trim()));
                     persistMicroAnalyzerHiddenClientIds();
                     if (selectedMicroAnalyzerRowId && !existingIds.has(String(selectedMicroAnalyzerRowId || "").trim())) {
+                        closeMicroAnalyzerWorkspace();
+                    }
+                    if (selectedMicroAnalyzerTenantId && !microAnalyzerConnectionByTenant(selectedMicroAnalyzerTenantId)) {
                         closeMicroAnalyzerWorkspace();
                     }
                 } catch (error) {
@@ -81854,7 +82075,7 @@
                     const workspace = microAnalyzerWorkspaceByTenant(row.tenantId);
                     return `
                     <tr>
-                        <td><strong>${escapeHTML(row.tenantName || row.tenantId)}</strong></td>
+                        <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
                         <td><code>${escapeHTML(row.tenantId || "--")}</code></td>
                         <td><small>${escapeHTML(row.tenantType ? `${row.tenantType} · Connected` : "Connected")}</small></td>
                         <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "VAT workspace")}</strong>` : '<small>No workspace set up</small>'}</td>
@@ -81867,6 +82088,11 @@
                         setupMicroAnalyzerWorkspace(button.dataset.microAnalyzerSetupWorkspace || "");
                     });
                 });
+                tableBody.querySelectorAll("[data-micro-analyzer-open-tenant]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        openMicroAnalyzerTenantWorkspace(button.dataset.microAnalyzerOpenTenant || "");
+                    });
+                });
                 return rows.length;
             }
 
@@ -81875,7 +82101,13 @@
                 const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
                 const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
-                if (!summary || !refreshButton) return;
+                const workspaceSection = document.getElementById("microAnalyzerWorkspaceSection");
+                const workspaceTitle = document.getElementById("microAnalyzerWorkspaceTitle");
+                const workspaceMeta = document.getElementById("microAnalyzerWorkspaceMeta");
+                const workspaceBody = document.getElementById("microAnalyzerWorkspaceTransactionsBody");
+                const workspaceBackButton = document.getElementById("microAnalyzerWorkspaceBackButton");
+                const workspaceRefreshButton = document.getElementById("microAnalyzerWorkspaceRefreshButton");
+                if (!summary || !refreshButton || !workspaceSection || !workspaceTitle || !workspaceMeta || !workspaceBody || !workspaceBackButton || !workspaceRefreshButton) return;
 
                 const connectedAccountCount = renderMicroAnalyzerConnectionsTable(connectionsTableBody, connectionsSection);
                 const connectedTenantCount = connectedAccountCount;
@@ -81887,10 +82119,26 @@
                 const workspaceCount = (microAnalyzerWorkspaces || []).filter((workspace) => (
                     connectedTenantIds.has(String(workspace?.tenantId || "").trim())
                 )).length;
+                const inWorkspaceMode = microAnalyzerWorkspaceMode === "workspace" && Boolean(String(selectedMicroAnalyzerTenantId || "").trim());
+                const activeTenantId = String(selectedMicroAnalyzerTenantId || "").trim();
+                const activeConnection = microAnalyzerConnectionByTenant(activeTenantId);
+                const activeTenantName = xeroWorkspaceLabel(activeConnection?.tenantName, activeTenantId, "Xero organisation");
+                const workspaceResult = activeTenantId ? microAnalyzerWorkspaceResultsByTenantId[activeTenantId] : null;
+                const vatRows = Array.isArray(workspaceResult?.vatRows) ? workspaceResult.vatRows : [];
+                const vatTotal = vatRows.reduce((sum, row) => sum + Number(row?.taxAmount || 0), 0);
 
-                summary.textContent = microAnalyzerLoading
-                    ? "Loading connected Xero accounts..."
-                    : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+                if (inWorkspaceMode) {
+                    summary.textContent = microAnalyzerWorkspaceLoading
+                        ? `Loading VAT-coded transactions for ${activeTenantName}.`
+                        : `${vatRows.length.toLocaleString("en-GB")} VAT-coded transaction${vatRows.length === 1 ? "" : "s"} found in ${activeTenantName}.`;
+                } else {
+                    summary.textContent = microAnalyzerLoading
+                        ? "Loading connected Xero accounts..."
+                        : `${connectedTenantCount.toLocaleString("en-GB")} Xero account${connectedTenantCount === 1 ? "" : "s"} connected · ${workspaceCount.toLocaleString("en-GB")} workspace${workspaceCount === 1 ? "" : "s"} set up.`;
+                }
+                connectionsSection.hidden = inWorkspaceMode;
+                workspaceSection.hidden = !inWorkspaceMode;
+                refreshButton.hidden = inWorkspaceMode;
 
                 if (refreshButton.dataset.microWired !== "true") {
                     refreshButton.dataset.microWired = "true";
@@ -81909,6 +82157,57 @@
                         }
                     });
                 }
+
+                workspaceTitle.textContent = inWorkspaceMode
+                    ? `${activeTenantName} · VAT transactions`
+                    : "Xero organisation VAT transactions";
+                workspaceMeta.textContent = inWorkspaceMode
+                    ? (microAnalyzerWorkspaceLoading
+                        ? "Loading VAT-coded rows from available VAT periods..."
+                        : workspaceResult?.error
+                            ? workspaceResult.error
+                            : `${vatRows.length.toLocaleString("en-GB")} VAT-coded row${vatRows.length === 1 ? "" : "s"} across ${(workspaceResult?.periodCount || 0).toLocaleString("en-GB")} VAT period${(workspaceResult?.periodCount || 0) === 1 ? "" : "s"} · VAT total ${formatCurrency(vatTotal)}.`)
+                    : "Loading VAT-coded transactions for this Xero organisation.";
+
+                if (workspaceBackButton.dataset.microWired !== "true") {
+                    workspaceBackButton.dataset.microWired = "true";
+                    workspaceBackButton.addEventListener("click", closeMicroAnalyzerWorkspace);
+                }
+                if (workspaceRefreshButton.dataset.microWired !== "true") {
+                    workspaceRefreshButton.dataset.microWired = "true";
+                    workspaceRefreshButton.addEventListener("click", () => loadMicroAnalyzerTenantWorkspace(selectedMicroAnalyzerTenantId, true));
+                }
+                workspaceRefreshButton.disabled = !inWorkspaceMode || microAnalyzerWorkspaceLoading;
+                workspaceRefreshButton.textContent = microAnalyzerWorkspaceLoading ? "Refreshing..." : "Refresh transactions";
+
+                if (!inWorkspaceMode) {
+                    workspaceBody.innerHTML = "";
+                    return;
+                }
+                if (microAnalyzerWorkspaceLoading && !vatRows.length) {
+                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT-coded transactions</h4><p>Checking all available VAT periods for this Xero organisation.</p></div></td></tr>';
+                    return;
+                }
+                if (workspaceResult?.error) {
+                    workspaceBody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not read VAT-coded transactions</h4><p>${escapeHTML(String(workspaceResult.error || ""))}</p></div></td></tr>`;
+                    return;
+                }
+                if (!vatRows.length) {
+                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No VAT rows</p><h4>No VAT-coded transactions found</h4><p>No VAT rows were detected in available VAT periods for this Xero organisation.</p></div></td></tr>';
+                    return;
+                }
+                workspaceBody.innerHTML = vatRows.map((row) => `
+                    <tr>
+                        <td>${escapeHTML(row?.date ? formatDate(row.date) : "—")}</td>
+                        <td><strong>${escapeHTML(String(row?.reference || "—"))}</strong><small>${escapeHTML(String(row?.clientName || ""))}</small></td>
+                        <td title="${escapeHTML(String(row?.description || ""))}">${escapeHTML(codeBreakerCondenseWords(String(row?.description || ""), 14) || "Transaction")}</td>
+                        <td>${escapeHTML(formatCurrency(Number(row?.netAmount || 0)))}</td>
+                        <td>${escapeHTML(formatCurrency(Number(row?.taxAmount || 0)))}</td>
+                        <td>${escapeHTML(formatCurrency(Number(row?.grossAmount || 0)))}</td>
+                        <td>${escapeHTML(String(row?.taxCode || "—"))}</td>
+                        <td>${escapeHTML(row?.periodEndISO ? formatDate(row.periodEndISO) : "—")}</td>
+                    </tr>
+                `).join("");
             }
 
             function microAnalyzerWorkspaceByTenant(tenantId = "") {
