@@ -26344,7 +26344,7 @@
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                                 <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Create flows from Xero clients</button>
                                 <button class="ghost-button" id="bulkDeployMeReportTenantsButton" type="button">Deploy flows (all tenants)</button>
-                                <a class="ghost-button" id="connectAdditionalXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect additional Xero</a>
+                                <a class="ghost-button" id="connectAdditionalXeroButton" data-xero-connect-target="me-report" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start?force=1">Connect additional Xero</a>
                                 <details class="xero-lock-columns me-report-flow-columns" id="meReportFlowColumns">
                                     <summary class="ghost-button">Columns</summary>
                                     <div class="xero-lock-columns-menu">
@@ -26863,7 +26863,10 @@
                                         <p class="eyebrow">Xero connection</p>
                                         <h3>Master + sub-tenant connections</h3>
                                     </div>
-                                    <button class="ghost-button danger-button" id="settingsDisconnectXeroButton" type="button">Disconnect Xero</button>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsConnectAdditionalXeroButton" data-xero-connect-target="xero-connection" type="button">Connect new Xero account</button>
+                                        <button class="ghost-button danger-button" id="settingsDisconnectXeroButton" type="button">Disconnect Xero</button>
+                                    </div>
                                 </div>
                                 <p class="settings-help">Debtor sync and contact pull uses the master tenant only. The master tenant is fixed to Jaccountancy; every other connected tenant is treated as a sub-tenant for optional push/pull workflows.</p>
                                 <div class="sync-settings-panel">
@@ -70750,6 +70753,11 @@
                 if (headerXeroAction) {
                     headerXeroAction.hidden = hideHeaderConnectAction;
                 }
+                const connectAdditionalXeroButton = document.getElementById("connectAdditionalXeroButton");
+                if (connectAdditionalXeroButton) {
+                    const target = String(connectAdditionalXeroButton.getAttribute("data-xero-connect-target") || "").trim();
+                    connectAdditionalXeroButton.href = forceXeroConnectURL(target);
+                }
                 const topbar = document.querySelector(".ledger-topbar");
                 const topbarRefreshDataButton = document.getElementById("topbarRefreshDataButton");
                 const showTopbarRefreshAction = hideConnectAction && activeView !== "late-charges";
@@ -87461,10 +87469,7 @@
                 document.addEventListener("click", (event) => {
                     if (!event.target.closest("#topbarMenuWrap")) closeTopbarMenu();
                 });
-                const connect = (event) => {
-                    event.preventDefault();
-                    closeTopbarMenu();
-                    const url = loginURL();
+                const openXeroConnectFlow = (url) => {
                     if (!url) {
                         window.alert("Unable to start the Xero login flow.");
                         return;
@@ -87473,8 +87478,24 @@
                     showToast("Opening Xero connection", "info");
                     window.location.assign(url);
                 };
+                const connect = (event) => {
+                    event.preventDefault();
+                    closeTopbarMenu();
+                    openXeroConnectFlow(loginURL());
+                };
+                const connectAdditional = (event) => {
+                    event.preventDefault();
+                    closeTopbarMenu();
+                    const trigger = event.currentTarget;
+                    const target = String(trigger?.getAttribute?.("data-xero-connect-target") || "").trim();
+                    const forcedUrl = forceXeroConnectURL(target);
+                    openXeroConnectFlow(forcedUrl || loginURL());
+                };
                 document.querySelectorAll("#connectXeroButton, #headerConnectXeroButton").forEach((button) => {
                     button.addEventListener("click", connect);
+                });
+                document.querySelectorAll("#connectAdditionalXeroButton, #settingsConnectAdditionalXeroButton").forEach((button) => {
+                    button.addEventListener("click", connectAdditional);
                 });
                 const sidebarConnectButton = document.getElementById("sidebarConnectButton");
                 if (sidebarConnectButton) sidebarConnectButton.addEventListener("click", (event) => {

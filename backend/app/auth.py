@@ -28,6 +28,8 @@ DEFAULT_XERO_ACCOUNTING_SCOPES = (
     "accounting.reports.balancesheet.read",
     "accounting.reports.profitandloss.read",
     "accounting.reports.trialbalance.read",
+)
+XERO_PAYROLL_SCOPES = (
     "payroll.employees",
     "payroll.payruns",
 )
@@ -47,16 +49,23 @@ LEGACY_XERO_SCOPE_REPLACEMENTS = {
 }
 
 
-def xero_scope_string(configured_scopes: str) -> str:
+def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = False) -> str:
     scopes = []
     for configured_scope in configured_scopes.split():
         for scope in LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,)):
             if scope and scope not in scopes:
                 scopes.append(scope)
 
+    if not include_payroll_scopes:
+        scopes = [scope for scope in scopes if scope not in XERO_PAYROLL_SCOPES]
+
     for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
             scopes.append(required_scope)
+    if include_payroll_scopes:
+        for payroll_scope in XERO_PAYROLL_SCOPES:
+            if payroll_scope not in scopes:
+                scopes.append(payroll_scope)
     return " ".join(scopes)
 
 
@@ -350,7 +359,7 @@ def xero_authorize_url(state_token: str, prompt_consent: bool = False) -> str:
         "response_type": "code",
         "client_id": settings.xero_client_id,
         "redirect_uri": settings.xero_redirect_uri,
-        "scope": xero_scope_string(settings.xero_scopes),
+        "scope": xero_scope_string(settings.xero_scopes, include_payroll_scopes=settings.xero_include_payroll_scopes),
         "state": state_token,
     }
     if prompt_consent:
