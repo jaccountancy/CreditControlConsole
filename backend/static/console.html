@@ -25157,6 +25157,30 @@
                 font-size: 0.9rem;
                 line-height: 1.45;
             }
+            .juk-confidence-meta {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .juk-confidence-help-icon {
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                border: 1px solid rgba(59, 130, 246, 0.28);
+                background: rgba(239, 246, 255, 0.9);
+                color: #1d4ed8;
+                font-size: 11px;
+                font-weight: 800;
+                line-height: 1;
+                display: inline-grid;
+                place-items: center;
+                padding: 0;
+                cursor: pointer;
+            }
+            .juk-confidence-help-icon:hover {
+                border-color: rgba(29, 78, 216, 0.5);
+                background: rgba(219, 234, 254, 0.95);
+            }
             .juk-wizard-modal {
                 position: fixed;
                 inset: 0;
@@ -31002,7 +31026,6 @@
                                                 <th>Amount</th>
                                                 <th>VAT</th>
                                                 <th>Status</th>
-                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="jukInvoicesReviewTableBody"></tbody>
@@ -39636,22 +39659,16 @@
                                 <td>
                                     <div class="juk-confidence-wrap">
                                         <div class="juk-confidence-bar"><div class="juk-confidence-fill" style="width:${confidencePct}%"></div></div>
-                                        <div><span class="juk-risk-pill ${risk.className}">${risk.label}</span> ${escapeHTML(`${confidencePct}%`)}</div>
+                                        <div class="juk-confidence-meta"><span class="juk-risk-pill ${risk.className}">${risk.label}</span> ${escapeHTML(`${confidencePct}%`)} <button class="juk-confidence-help-icon" type="button" data-juk-row-explain="${escapeHTML(invoice.id)}" aria-label="Explain confidence for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}" title="Explain confidence">?</button></div>
                                     </div>
                                 </td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.vatTotal || 0))}</td>
                                 <td><span class="status-pill">${escapeHTML(JUK_STATUS_LABELS[invoice.status] || invoice.status)}</span></td>
-                                <td>
-                                    <button class="ghost-button" type="button" data-juk-row-action="approve" data-juk-row-id="${escapeHTML(invoice.id)}">Approve</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="skip" data-juk-row-id="${escapeHTML(invoice.id)}">Skip</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="override" data-juk-row-id="${escapeHTML(invoice.id)}">Override</button>
-                                    <button class="ghost-button" type="button" data-juk-row-action="explain" data-juk-row-id="${escapeHTML(invoice.id)}">Explain</button>
-                                </td>
                             </tr>
                             ${isExpanded ? `
                             <tr class="juk-detail-row">
-                                <td colspan="10">
+                                <td colspan="9">
                                     <div class="juk-detail-panel">
                                         <div class="juk-detail-grid">
                                             <article class="juk-detail-card">
@@ -39677,7 +39694,7 @@
                             ` : ""}
                             `;
                         }).join("")
-                        : '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
+                        : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No invoices match this filter</h4><p>Choose another filter or import a new batch.</p></div></td></tr>';
                     reviewTable.querySelectorAll("[data-juk-select-row]").forEach((checkbox) => {
                         checkbox.addEventListener("change", () => {
                             jukSelectInvoice(checkbox.dataset.jukSelectRow, checkbox.checked);
@@ -39694,55 +39711,11 @@
                             checkbox.dispatchEvent(new Event("change", { bubbles: true }));
                         });
                     });
-                    reviewTable.querySelectorAll("[data-juk-row-action]").forEach((button) => {
-                        button.addEventListener("click", async () => {
-                            const id = button.dataset.jukRowId;
-                            const action = button.dataset.jukRowAction;
-                            const target = batch.invoices.find((invoice) => invoice.id === id);
-                            if (!target) return;
-                            if (action === "approve") {
-                                try {
-                                    const response = await requestJSON(api.endpoints.juksibBulkStatus, {
-                                        method: "POST",
-                                        body: JSON.stringify({ status: "approved", invoiceIds: [id] }),
-                                    }, { batchId: batch.id });
-                                    jukApplyServerBatchPayload(response || {});
-                                } catch (error) {
-                                    return showToast(error?.message || "Unable to approve invoice.", "error");
-                                }
-                            } else if (action === "skip") {
-                                try {
-                                    const response = await requestJSON(api.endpoints.juksibBulkStatus, {
-                                        method: "POST",
-                                        body: JSON.stringify({ status: "skipped", invoiceIds: [id] }),
-                                    }, { batchId: batch.id });
-                                    jukApplyServerBatchPayload(response || {});
-                                } catch (error) {
-                                    return showToast(error?.message || "Unable to skip invoice.", "error");
-                                }
-                            } else if (action === "override") {
-                                jukOverrideModalInvoiceId = target.id;
-                                const overrideTenantSelect = document.getElementById("jukOverrideTenantSelect");
-                                const overrideModalMeta = document.getElementById("jukOverrideModalMeta");
-                                const overrideModal = document.getElementById("jukOverrideModal");
-                                if (overrideTenantSelect) {
-                                    const matchedTenantId = String(target.matchedTenantId || "").trim();
-                                    overrideTenantSelect.innerHTML = connectedTenants.length
-                                        ? connectedTenants.map((tenant) => {
-                                            const tenantId = String(tenant.tenantId || "");
-                                            const selected = tenantId && tenantId === matchedTenantId ? "selected" : "";
-                                            return `<option value="${escapeHTML(tenantId)}" ${selected}>${escapeHTML(String(tenant.tenantName || tenant.clientName || tenantId))}</option>`;
-                                        }).join("")
-                                        : '<option value="">No connected tenants</option>';
-                                }
-                                if (overrideModalMeta) {
-                                    overrideModalMeta.textContent = `${target.jukInvoiceNumber || "Invoice"} · ${target.jukContactName || "Unknown client"}`;
-                                }
-                                if (overrideModal) overrideModal.hidden = false;
-                                return;
-                            } else if (action === "explain") {
-                                jukExpandedInvoiceId = jukExpandedInvoiceId === target.id ? "" : target.id;
-                            }
+                    reviewTable.querySelectorAll("[data-juk-row-explain]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const id = String(button.getAttribute("data-juk-row-explain") || "").trim();
+                            if (!id) return;
+                            jukExpandedInvoiceId = jukExpandedInvoiceId === id ? "" : id;
                             renderJukInvoicesScreen();
                         });
                     });
