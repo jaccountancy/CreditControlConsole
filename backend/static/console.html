@@ -35738,6 +35738,7 @@
             async function requestJSON(template, options = {}, params = {}) {
                 const {
                     suppressFailurePanel = false,
+                    timeoutMs = 0,
                     ...fetchOptions
                 } = options || {};
                 const activityContext = requestActivityContext(template, fetchOptions, params);
@@ -35747,13 +35748,44 @@
                 const method = String(fetchOptions.method || "GET").toUpperCase();
                 if (trackActivity) logAPIActivity("api.started", activityContext);
                 let response;
+                const timeout = Number(timeoutMs || 0);
+                const shouldTimeout = Number.isFinite(timeout) && timeout > 0;
+                const controller = shouldTimeout && !fetchOptions.signal ? new AbortController() : null;
+                let timeoutHandle = 0;
+                if (controller) {
+                    timeoutHandle = window.setTimeout(() => controller.abort(), timeout);
+                }
                 try {
                     response = await fetch(resolvedEndpoint, {
                         credentials: "include",
                         ...fetchOptions,
+                        signal: controller ? controller.signal : fetchOptions.signal,
                         headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(fetchOptions.headers || {}) }
                     });
                 } catch (error) {
+                    if (timeoutHandle) window.clearTimeout(timeoutHandle);
+                    const timedOut = Boolean(controller && controller.signal.aborted)
+                        || String(error?.name || "").toLowerCase() === "aborterror";
+                    if (timedOut) {
+                        const timeoutError = new APIRequestError("Request timed out. Please retry.");
+                        if (trackActivity) {
+                            logAPIActivity("api.failed", activityContext, {
+                                durationMs: Math.round(performance.now() - startedAt),
+                                error: timeoutError.message
+                            });
+                        }
+                        if (!suppressFailurePanel) {
+                            openFailureDetailsPanel({
+                                title: "Request timed out",
+                                summary: `The ${activityContext?.label || "request"} took too long to complete.`,
+                                endpoint: resolvedEndpoint,
+                                method,
+                                message: timeoutError.message,
+                                details: { timeoutMs: timeout || 0 },
+                            });
+                        }
+                        throw timeoutError;
+                    }
                     if (trackActivity) {
                         logAPIActivity("api.failed", activityContext, {
                             durationMs: Math.round(performance.now() - startedAt),
@@ -35772,6 +35804,7 @@
                     }
                     throw error;
                 }
+                if (timeoutHandle) window.clearTimeout(timeoutHandle);
                 const contentType = response.headers.get("content-type") || "";
                 const payload = contentType.includes("application/json")
                     ? await response.json().catch(() => null)
@@ -37745,7 +37778,7 @@
                 batchSearch: "",
                 batchStatusFilter: "all",
                 batchSort: "created-desc",
-                publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [] },
+                publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [], startedAt: 0, estimatedDurationMs: 0 },
             };
             let jukInvoicesState = loadJukInvoicesState();
             let jukAutomationState = {
@@ -38874,11 +38907,17 @@
 
             async function jukPublishApproved(batch) {
                 if (jukInvoicesState.publish.running) return;
+                if (String(batch?.mode || "test").toLowerCase() !== "live") {
+                    showToast("This batch is in test mode. Create a live batch to publish to Xero.", "info");
+                    return;
+                }
                 const publishable = (batch.invoices || []).filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending");
                 if (!publishable.length) {
                     showToast("No approved invoices to publish.", "info");
                     return;
                 }
+                const startedAt = Date.now();
+                const estimatedDurationMs = Math.max(30000, publishable.length * 5500);
                 setJukLoading(true, "Publishing approved invoices to destination tenants…");
                 jukInvoicesState.publish = {
                     running: true,
@@ -38887,11 +38926,20 @@
                     published: 0,
                     failed: 0,
                     skipped: 0,
-                    current: "",
+                    current: "Queued publish request…",
                     rows: [],
+                    startedAt,
+                    estimatedDurationMs,
                 };
-                jukSetStep(5);
+                jukSetStep(6);
                 renderJukInvoicesScreen();
+                const progressIntervalId = window.setInterval(() => {
+                    if (!jukInvoicesState.publish.running) {
+                        window.clearInterval(progressIntervalId);
+                        return;
+                    }
+                    renderJukInvoicesScreen();
+                }, 1000);
                 try {
                     const response = await requestJSON(api.endpoints.juksibPublish, {
                         method: "POST",
@@ -38900,6 +38948,7 @@
                             purchaseAccountCode: JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE,
                             supplierName: JUK_MASTER_TENANT_NAME,
                         }),
+                        timeoutMs: Math.max(240000, estimatedDurationMs * 3),
                     }, { batchId: batch.id });
                     const updatedBatch = jukApplyServerBatchPayload(response || {});
                     const result = response?.result || {};
@@ -38911,6 +38960,8 @@
                     jukInvoicesState.publish.skipped = Number(result.duplicates || 0);
                     jukInvoicesState.publish.current = "Publish run complete.";
                     jukInvoicesState.publish.rows = Array.isArray(result.rows) ? result.rows : [];
+                    jukInvoicesState.publish.startedAt = startedAt;
+                    jukInvoicesState.publish.estimatedDurationMs = estimatedDurationMs;
                     if (updatedBatch?.id) await jukRefreshFromAPI({ silent: true, batchId: updatedBatch.id });
                     jukSetStep(6);
                     renderJukInvoicesScreen();
@@ -38919,9 +38970,12 @@
                     jukInvoicesState.publish.running = false;
                     jukInvoicesState.publish.current = "Publish failed.";
                     jukInvoicesState.publish.rows = [];
+                    jukInvoicesState.publish.startedAt = startedAt;
+                    jukInvoicesState.publish.estimatedDurationMs = estimatedDurationMs;
                     renderJukInvoicesScreen();
                     showToast(error?.message || "Unable to publish JUKSIB batch.", "error");
                 } finally {
+                    window.clearInterval(progressIntervalId);
                     setJukLoading(false);
                 }
             }
@@ -40024,8 +40078,11 @@
                 }
                 const confirmPublishButton = document.getElementById("jukInvoicesConfirmPublishButton");
                 if (confirmPublishButton) {
-                    confirmPublishButton.onclick = () => {
-                        jukSetStep(5);
+                    confirmPublishButton.onclick = async () => {
+                        jukSetStep(6);
+                        renderJukInvoicesScreen();
+                        await jukPublishApproved(batch);
+                        persistJukInvoicesState();
                         renderJukInvoicesScreen();
                     };
                 }
@@ -40042,7 +40099,18 @@
                 const publishBackToConfirmButton = document.getElementById("jukInvoicesPublishBackToConfirmButton");
                 const startPublishButton = document.getElementById("jukInvoicesStartPublishButton");
                 const progress = jukInvoicesState.publish || JUK_DEFAULT_STATE.publish;
-                const percent = progress.total ? Math.round((progress.processed / progress.total) * 100) : 0;
+                const progressStartedAt = Number(progress.startedAt || 0);
+                const estimatedDurationMs = Number(progress.estimatedDurationMs || 0);
+                const elapsedMs = progressStartedAt > 0 ? Math.max(0, Date.now() - progressStartedAt) : 0;
+                const estimatedProcessed = progress.running && progress.total > 0 && estimatedDurationMs > 0
+                    ? Math.max(progress.processed || 0, Math.min(progress.total - 1, Math.floor((elapsedMs / estimatedDurationMs) * progress.total)))
+                    : progress.processed || 0;
+                const displayProcessed = progress.running ? estimatedProcessed : (progress.processed || 0);
+                const percent = progress.total ? Math.round((displayProcessed / progress.total) * 100) : 0;
+                const etaRemainingSeconds = progress.running && estimatedDurationMs > 0
+                    ? Math.max(0, Math.ceil((estimatedDurationMs - elapsedMs) / 1000))
+                    : 0;
+                const etaLabel = etaRemainingSeconds > 0 ? formatSyncDuration(etaRemainingSeconds) : "";
                 const publishableRows = (batch.invoices || []).filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending");
                 const skippedRows = (batch.invoices || []).filter((invoice) => invoice.status === "skipped" || invoice.status === "manually_excluded");
                 const blockedRows = Math.max(0, Number(stats.totalImported || 0) - publishableRows.length - skippedRows.length - Number(stats.published || 0));
@@ -40053,7 +40121,7 @@
                 }
                 if (progressSummary) {
                     progressSummary.textContent = progress.running
-                        ? `Publishing ${progress.current || "batch"} · ${progress.processed}/${progress.total} (${percent}%).`
+                        ? `Publishing ${progress.current || "batch"} · ${displayProcessed}/${progress.total} (${percent}%).${etaLabel ? ` Estimated time left ${etaLabel}.` : ""}`
                         : (progress.total ? `Publish complete: ${progress.published} published, ${progress.failed} failed, ${progress.skipped} skipped.` : "Publish is ready once at least one invoice is approved.");
                 }
                 if (liveDot) liveDot.hidden = !progress.running;
@@ -40087,7 +40155,7 @@
                 }
                 if (progressCards) {
                     progressCards.innerHTML = [
-                        ["Processed", `${progress.processed}/${progress.total}`],
+                        ["Processed", `${displayProcessed}/${progress.total}`],
                         ["Published", progress.published],
                         ["Failed", progress.failed],
                         ["Skipped", progress.skipped],
