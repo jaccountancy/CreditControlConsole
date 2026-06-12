@@ -77677,18 +77677,30 @@
                     const outsideTruncated = Boolean(journalDiagnostics?.outsidePeriodTruncated);
                     const includedWithoutCreatedAt = Number(journalDiagnostics?.includedWithoutCreatedAt || 0);
                     const skippedPreSubmission = Number(journalDiagnostics?.skippedPreSubmission || 0);
+                    const skippedMissingCreatedAt = Number(journalDiagnostics?.skippedMissingCreatedAt || 0);
+                    const skippedBeforePeriodStart = Number(journalDiagnostics?.skippedBeforePeriodStart || 0);
                     const skippedMissingJournalDate = Number(journalDiagnostics?.skippedMissingJournalDate || 0);
                     guidance.push(
                         `Journal diagnostics: fetched ${fetchedJournalCount.toLocaleString("en-GB")}, in-period ${inPeriodReturned.toLocaleString("en-GB")}/${inPeriodTotal.toLocaleString("en-GB")}, outside-period ${outsideReturned.toLocaleString("en-GB")}/${outsideTotal.toLocaleString("en-GB")}${(inPeriodTruncated || outsideTruncated) && maxCandidates > 0 ? ` (truncated to max ${maxCandidates.toLocaleString("en-GB")} each bucket)` : ""}.`
                     );
                     if (includedWithoutCreatedAt > 0) {
                         guidance.push(
-                            `Journal filter note: ${includedWithoutCreatedAt.toLocaleString("en-GB")} candidate journal${includedWithoutCreatedAt === 1 ? "" : "s"} had no CreatedDate in Xero and was still included for review.`
+                            `Journal filter note: ${includedWithoutCreatedAt.toLocaleString("en-GB")} candidate journal${includedWithoutCreatedAt === 1 ? "" : "s"} had no CreatedDate in Xero and was included for review.`
                         );
                     }
                     if (skippedPreSubmission > 0) {
                         guidance.push(
                             `Journal filter note: ${skippedPreSubmission.toLocaleString("en-GB")} journal${skippedPreSubmission === 1 ? "" : "s"} was excluded because it was created on or before the submission timestamp.`
+                        );
+                    }
+                    if (skippedMissingCreatedAt > 0) {
+                        guidance.push(
+                            `Journal filter note: ${skippedMissingCreatedAt.toLocaleString("en-GB")} journal${skippedMissingCreatedAt === 1 ? "" : "s"} was excluded because CreatedDate was missing, so post-filing timing could not be proven.`
+                        );
+                    }
+                    if (skippedBeforePeriodStart > 0) {
+                        guidance.push(
+                            `Journal filter note: ${skippedBeforePeriodStart.toLocaleString("en-GB")} journal${skippedBeforePeriodStart === 1 ? "" : "s"} was excluded because it was dated before the filed period start.`
                         );
                     }
                     if (skippedMissingJournalDate > 0) {

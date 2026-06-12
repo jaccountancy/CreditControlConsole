@@ -133,7 +133,7 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
         self.assertEqual(outside_period[0]["journalId"], "wrong-period")
         self.assertEqual(diagnostics["inPeriodTotal"], 1)
 
-    def test_journal_candidates_include_missing_created_date_for_review(self):
+    def test_journal_candidates_exclude_missing_created_date_when_submission_known(self):
         journals = [
             {
                 "JournalID": "missing-created",
@@ -147,6 +147,25 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             period_start_date=date(2025, 1, 1),
             as_at_date=date(2025, 5, 31),
             submitted_at=submission,
+        )
+        self.assertEqual(len(candidates), 0)
+        self.assertEqual(len(outside_period), 0)
+        self.assertEqual(diagnostics["inPeriodTotal"], 0)
+        self.assertEqual(diagnostics["skippedMissingCreatedAt"], 1)
+
+    def test_journal_candidates_include_missing_created_date_when_submission_unknown(self):
+        journals = [
+            {
+                "JournalID": "missing-created",
+                "JournalDate": "2025-05-31",
+                "JournalLines": [{"NetAmount": "0.40", "AccountCode": "400"}],
+            }
+        ]
+        candidates, outside_period, diagnostics = services._code_breaker_journal_candidates(
+            journals,
+            period_start_date=date(2025, 1, 1),
+            as_at_date=date(2025, 5, 31),
+            submitted_at=None,
         )
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["journalId"], "missing-created")
@@ -191,9 +210,9 @@ class CodeBreakerSnapshotSelectionTests(unittest.TestCase):
             submitted_at=submission,
         )
         self.assertEqual(len(candidates), 0)
-        self.assertEqual(len(outside_period), 1)
-        self.assertEqual(outside_period[0]["journalId"], "before-period")
+        self.assertEqual(len(outside_period), 0)
         self.assertEqual(diagnostics["inPeriodTotal"], 0)
+        self.assertEqual(diagnostics["skippedBeforePeriodStart"], 1)
 
     def test_journal_candidates_use_xero_datestring_epoch_for_period_classification(self):
         journals = [

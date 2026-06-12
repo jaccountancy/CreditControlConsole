@@ -18088,7 +18088,7 @@ async def _code_breaker_fetch_non_journal_contact_transactions(
             return
         if period_start_date is not None and posted_date < period_start_date:
             return
-        if submitted_at is not None and created_at is not None and created_at <= submitted_at:
+        if submitted_at is not None and (created_at is None or created_at <= submitted_at):
             return
         amount = _money(amount_raw)
         if amount == 0:
@@ -18212,8 +18212,9 @@ def _code_breaker_journal_candidates(
     outside_period_candidates: list[dict] = []
     skipped_missing_journal_date = 0
     skipped_pre_submission = 0
+    skipped_missing_created_at = 0
+    skipped_before_period_start = 0
     skipped_no_lines = 0
-    missing_created_at_included = 0
     for index, row in enumerate(journals):
         created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         journal_date = _parse_optional_iso_date(row.get("JournalDate") or row.get("Date") or row.get("DateString"))
@@ -18228,7 +18229,11 @@ def _code_breaker_journal_candidates(
                 skipped_pre_submission += 1
                 continue
             if created_at is None:
-                missing_created_at_included += 1
+                skipped_missing_created_at += 1
+                continue
+        if period_start_date is not None and journal_date < period_start_date:
+            skipped_before_period_start += 1
+            continue
         journal_id = str(row.get("JournalID") or row.get("Id") or "").strip()
         lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
         normalised_lines = []
@@ -18271,9 +18276,7 @@ def _code_breaker_journal_candidates(
             "narration": str(row.get("Narration") or "").strip(),
             "lines": normalised_lines,
         }
-        if period_start_date is not None and journal_date < period_start_date:
-            outside_period_candidates.append(candidate)
-        elif journal_date <= as_at_date:
+        if journal_date <= as_at_date:
             in_period_candidates.append(candidate)
         else:
             outside_period_candidates.append(candidate)
@@ -18304,8 +18307,10 @@ def _code_breaker_journal_candidates(
         "maxCandidates": CODE_BREAKER_MAX_VARIANCE_CANDIDATES,
         "skippedMissingJournalDate": skipped_missing_journal_date,
         "skippedPreSubmission": skipped_pre_submission,
+        "skippedMissingCreatedAt": skipped_missing_created_at,
+        "skippedBeforePeriodStart": skipped_before_period_start,
         "skippedNoLines": skipped_no_lines,
-        "includedWithoutCreatedAt": missing_created_at_included,
+        "includedWithoutCreatedAt": 0,
     }
     return in_period_rows, outside_period_rows, diagnostics
 
@@ -18814,14 +18819,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if outside_preview_rows:
                     for row in outside_preview_rows:
                         row["sourceType"] = "Journal (outside filed period)"
-                        row["reason"] = (
-                            (
-                                f"Journal dated outside filed period {period_start_date.isoformat()} to {as_at_date.isoformat()}; "
-                                "listed separately for review."
-                            )
-                            if period_start_date is not None
-                            else f"Journal dated after filed period end {as_at_date.isoformat()}; listed separately for review."
-                        )
+                        row["reason"] = f"Journal dated after filed period end {as_at_date.isoformat()}; listed separately for review."
                 post_filing_analysis["outsidePeriodCandidateCount"] = len(outside_period_candidates)
                 post_filing_analysis["outsidePeriodCandidateRows"] = outside_preview_rows
                 if (
@@ -18836,12 +18834,7 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
                 if outside_period_candidates:
                     warnings = post_filing_analysis.get("warnings") if isinstance(post_filing_analysis.get("warnings"), list) else []
                     warnings.append(
-                        (
-                            f"{len(outside_period_candidates)} journal(s) were outside the filed period "
-                            f"{period_start_date.isoformat()} to {as_at_date.isoformat()} and listed separately."
-                        )
-                        if period_start_date is not None
-                        else f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
+                        f"{len(outside_period_candidates)} journal(s) were dated after {as_at_date.isoformat()} and listed separately as outside-period items."
                     )
                     post_filing_analysis["warnings"] = warnings
                 if bool((journal_diagnostics or {}).get("inPeriodTruncated")) or bool((journal_diagnostics or {}).get("outsidePeriodTruncated")):
