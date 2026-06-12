@@ -25805,6 +25805,118 @@
                 color: #0f6a46;
                 font-weight: 700;
             }
+            .juk-live-publish-invoices {
+                display: grid;
+                gap: 8px;
+                margin-top: 10px;
+            }
+            .juk-live-invoice-row {
+                position: relative;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 10px;
+                border: 1px solid var(--line);
+                border-radius: 11px;
+                padding: 8px 10px;
+                background: #fff;
+                overflow: hidden;
+                transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+            }
+            .juk-live-invoice-row::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 0;
+                width: 4px;
+                background: rgba(61, 85, 130, 0.18);
+            }
+            .juk-live-invoice-row.is-active {
+                border-color: rgba(29, 103, 242, 0.36);
+                background: linear-gradient(90deg, rgba(29, 103, 242, 0.09), rgba(255, 255, 255, 0.98));
+                box-shadow: 0 10px 22px rgba(29, 103, 242, 0.15);
+                transform: translateX(3px);
+            }
+            .juk-live-invoice-row.is-active::before {
+                background: #1d67f2;
+                box-shadow: 0 0 0 5px rgba(29, 103, 242, 0.16);
+                animation: jukLiveInvoicePulse 1.1s ease-in-out infinite;
+            }
+            .juk-live-invoice-row.is-complete {
+                border-color: rgba(18, 122, 80, 0.3);
+                background: rgba(18, 122, 80, 0.09);
+            }
+            .juk-live-invoice-row.is-complete::before {
+                background: #127a50;
+            }
+            .juk-live-invoice-row.is-failed {
+                border-color: rgba(200, 55, 55, 0.33);
+                background: rgba(255, 83, 83, 0.09);
+            }
+            .juk-live-invoice-row.is-failed::before {
+                background: #d24747;
+            }
+            .juk-live-invoice-row.is-skipped::before {
+                background: #bc8500;
+            }
+            .juk-live-invoice-main {
+                min-width: 0;
+                display: grid;
+                gap: 3px;
+            }
+            .juk-live-invoice-main strong {
+                font-size: 12px;
+                color: var(--ink);
+                line-height: 1.25;
+                overflow-wrap: anywhere;
+            }
+            .juk-live-invoice-main span {
+                font-size: 11px;
+                color: var(--ink-soft);
+                line-height: 1.25;
+                overflow-wrap: anywhere;
+            }
+            .juk-live-invoice-status {
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.02em;
+                padding: 4px 7px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                background: rgba(244, 247, 253, 0.9);
+                color: var(--ink-soft);
+                white-space: nowrap;
+            }
+            .juk-live-invoice-row.is-active .juk-live-invoice-status {
+                border-color: rgba(29, 103, 242, 0.35);
+                background: rgba(29, 103, 242, 0.12);
+                color: #1647a7;
+            }
+            .juk-live-invoice-row.is-complete .juk-live-invoice-status {
+                border-color: rgba(18, 122, 80, 0.34);
+                background: rgba(18, 122, 80, 0.12);
+                color: #0f6a46;
+            }
+            .juk-live-invoice-row.is-failed .juk-live-invoice-status {
+                border-color: rgba(200, 55, 55, 0.34);
+                background: rgba(255, 83, 83, 0.14);
+                color: #9b2323;
+            }
+            .juk-live-invoice-row.is-skipped .juk-live-invoice-status {
+                border-color: rgba(188, 133, 0, 0.38);
+                background: rgba(255, 194, 26, 0.16);
+                color: #7e5b00;
+            }
+            @keyframes jukLiveInvoicePulse {
+                0%, 100% {
+                    box-shadow: 0 0 0 4px rgba(29, 103, 242, 0.13);
+                }
+                50% {
+                    box-shadow: 0 0 0 8px rgba(29, 103, 242, 0.04);
+                }
+            }
             .juk-confirm-pill {
                 display: inline-flex;
                 align-items: center;
@@ -31115,6 +31227,7 @@
                                         <strong id="jukInvoicesLiveMessage">Ready to publish.</strong>
                                     </div>
                                     <div class="juk-live-publish-stages" id="jukInvoicesLiveStages"></div>
+                                    <div class="juk-live-publish-invoices" id="jukInvoicesLiveInvoiceRail"></div>
                                 </section>
                                 <div class="juk-grid" id="jukInvoicesProgressCards"></div>
                                 <div class="juk-toolbar">
@@ -31134,7 +31247,7 @@
                                             <tr>
                                                 <th>Invoice</th>
                                                 <th>Status</th>
-                                                <th>Bill ID</th>
+                                                <th>Xero Bill</th>
                                                 <th>Account</th>
                                                 <th>Message</th>
                                             </tr>
@@ -31164,7 +31277,7 @@
                                                 <th>Invoice</th>
                                                 <th>Contact</th>
                                                 <th>Tenant</th>
-                                                <th>Xero Bill ID</th>
+                                                <th>Xero Bill</th>
                                                 <th>Confirmed</th>
                                                 <th>History Note</th>
                                             </tr>
@@ -36766,6 +36879,13 @@
                     : "#";
             }
 
+            function xeroBillURL(billId = "") {
+                const normalized = String(billId || "").trim();
+                return normalized
+                    ? `https://go.xero.com/AccountsPayable/View.aspx?InvoiceID=${encodeURIComponent(normalized)}`
+                    : "#";
+            }
+
             function contactXeroURL(client) {
                 const contactId = client?.xeroContactId || client?.contactId || client?.customerXeroContactId;
                 return contactId
@@ -37834,7 +37954,21 @@
                 batchSearch: "",
                 batchStatusFilter: "all",
                 batchSort: "created-desc",
-                publish: { running: false, total: 0, processed: 0, published: 0, failed: 0, skipped: 0, current: "", rows: [], startedAt: 0, estimatedDurationMs: 0 },
+                publish: {
+                    running: false,
+                    total: 0,
+                    processed: 0,
+                    published: 0,
+                    failed: 0,
+                    skipped: 0,
+                    current: "",
+                    rows: [],
+                    startedAt: 0,
+                    estimatedDurationMs: 0,
+                    animationTickMs: 1400,
+                    animationIndex: 0,
+                    animationQueue: [],
+                },
             };
             let jukInvoicesState = loadJukInvoicesState();
             let jukAutomationState = {
@@ -38974,6 +39108,13 @@
                 }
                 const startedAt = Date.now();
                 const estimatedDurationMs = Math.max(30000, publishable.length * 5500);
+                const animationQueue = publishable.map((invoice) => ({
+                    id: jukInvoiceIdKey(invoice.id),
+                    invoiceId: invoice.id,
+                    invoiceNumber: String(invoice.jukInvoiceNumber || invoice.id || "Invoice"),
+                    tenant: String(invoice.matchedTenantName || invoice.matchedTenantId || "Unmapped destination"),
+                    amount: Number(invoice.total || 0),
+                }));
                 setJukLoading(true, "Publishing approved invoices to destination tenants…");
                 jukInvoicesState.publish = {
                     running: true,
@@ -38986,6 +39127,9 @@
                     rows: [],
                     startedAt,
                     estimatedDurationMs,
+                    animationTickMs: Math.max(900, Math.min(1800, Math.floor(estimatedDurationMs / Math.max(publishable.length, 1)))),
+                    animationIndex: 0,
+                    animationQueue,
                 };
                 jukSetStep(6);
                 renderJukInvoicesScreen();
@@ -38993,6 +39137,17 @@
                     if (!jukInvoicesState.publish.running) {
                         window.clearInterval(progressIntervalId);
                         return;
+                    }
+                    const queue = Array.isArray(jukInvoicesState.publish.animationQueue) ? jukInvoicesState.publish.animationQueue : [];
+                    if (queue.length) {
+                        const elapsedMs = Math.max(0, Date.now() - startedAt);
+                        const tickMs = Math.max(900, Number(jukInvoicesState.publish.animationTickMs || 1400));
+                        const estimatedIndex = Math.min(queue.length - 1, Math.floor(elapsedMs / tickMs));
+                        jukInvoicesState.publish.animationIndex = estimatedIndex;
+                        const activeEntry = queue[estimatedIndex];
+                        if (activeEntry) {
+                            jukInvoicesState.publish.current = `${activeEntry.invoiceNumber} \u2192 ${activeEntry.tenant}`;
+                        }
                     }
                     renderJukInvoicesScreen();
                 }, 1000);
@@ -39018,6 +39173,8 @@
                     jukInvoicesState.publish.rows = Array.isArray(result.rows) ? result.rows : [];
                     jukInvoicesState.publish.startedAt = startedAt;
                     jukInvoicesState.publish.estimatedDurationMs = estimatedDurationMs;
+                    jukInvoicesState.publish.animationIndex = Math.max(0, publishable.length - 1);
+                    jukInvoicesState.publish.animationQueue = animationQueue;
                     if (updatedBatch?.id) await jukRefreshFromAPI({ silent: true, batchId: updatedBatch.id });
                     jukSetStep(6);
                     renderJukInvoicesScreen();
@@ -39028,6 +39185,8 @@
                     jukInvoicesState.publish.rows = [];
                     jukInvoicesState.publish.startedAt = startedAt;
                     jukInvoicesState.publish.estimatedDurationMs = estimatedDurationMs;
+                    jukInvoicesState.publish.animationIndex = Math.max(0, publishable.length - 1);
+                    jukInvoicesState.publish.animationQueue = animationQueue;
                     renderJukInvoicesScreen();
                     showToast(error?.message || "Unable to publish JUKSIB batch.", "error");
                 } finally {
@@ -40148,6 +40307,7 @@
                 const liveDot = document.getElementById("jukInvoicesLiveDot");
                 const liveMessage = document.getElementById("jukInvoicesLiveMessage");
                 const liveStages = document.getElementById("jukInvoicesLiveStages");
+                const liveInvoiceRail = document.getElementById("jukInvoicesLiveInvoiceRail");
                 const progressCards = document.getElementById("jukInvoicesProgressCards");
                 const publishExperienceCards = document.getElementById("jukInvoicesPublishExperienceCards");
                 const publishExperienceSummary = document.getElementById("jukInvoicesPublishExperienceSummary");
@@ -40158,10 +40318,16 @@
                 const progressStartedAt = Number(progress.startedAt || 0);
                 const estimatedDurationMs = Number(progress.estimatedDurationMs || 0);
                 const elapsedMs = progressStartedAt > 0 ? Math.max(0, Date.now() - progressStartedAt) : 0;
+                const animatedQueue = Array.isArray(progress.animationQueue) ? progress.animationQueue : [];
                 const estimatedProcessed = progress.running && progress.total > 0 && estimatedDurationMs > 0
                     ? Math.max(progress.processed || 0, Math.min(progress.total - 1, Math.floor((elapsedMs / estimatedDurationMs) * progress.total)))
                     : progress.processed || 0;
-                const displayProcessed = progress.running ? estimatedProcessed : (progress.processed || 0);
+                const animatedProcessed = progress.running && animatedQueue.length
+                    ? Math.max(0, Math.min(progress.total, Number(progress.animationIndex || 0) + 1))
+                    : 0;
+                const displayProcessed = progress.running
+                    ? (animatedQueue.length ? animatedProcessed : estimatedProcessed)
+                    : (progress.processed || 0);
                 const percent = progress.total ? Math.round((displayProcessed / progress.total) * 100) : 0;
                 const etaRemainingSeconds = progress.running && estimatedDurationMs > 0
                     ? Math.max(0, Math.ceil((estimatedDurationMs - elapsedMs) / 1000))
@@ -40182,8 +40348,11 @@
                 }
                 if (liveDot) liveDot.hidden = !progress.running;
                 if (liveMessage) {
+                    const activeAnimated = progress.running && animatedQueue.length
+                        ? animatedQueue[Math.max(0, Math.min(animatedQueue.length - 1, Number(progress.animationIndex || 0)))]
+                        : null;
                     liveMessage.textContent = progress.running
-                        ? (progress.current || "Creating destination bills and attaching files...")
+                        ? (activeAnimated ? `Pushing ${activeAnimated.invoiceNumber} into ${activeAnimated.tenant}...` : (progress.current || "Creating destination bills and attaching files..."))
                         : (progress.total ? "Publish completed. Review per-invoice outcomes below." : "Ready to publish.");
                 }
                 if (liveStages) {
@@ -40206,8 +40375,59 @@
                                 { label: "Creating bills", state: "" },
                                 { label: "Attaching files", state: "" },
                                 { label: "Finalizing", state: "" },
-                            ];
+                    ];
                     liveStages.innerHTML = stageStates.map((stage) => `<div class="juk-live-stage ${stage.state === "active" ? "is-active" : stage.state === "complete" ? "is-complete" : ""}">${escapeHTML(stage.label)}</div>`).join("");
+                }
+                if (liveInvoiceRail) {
+                    const publishRows = Array.isArray(progress.rows) ? progress.rows : [];
+                    const resultMap = new Map(
+                        publishRows.map((row) => [jukInvoiceIdKey(row.invoiceId), String(row.status || "").toLowerCase()])
+                    );
+                    const reviewRows = (batch.invoices || [])
+                        .filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending")
+                        .map((invoice) => ({
+                            id: jukInvoiceIdKey(invoice.id),
+                            invoiceId: invoice.id,
+                            invoiceNumber: String(invoice.jukInvoiceNumber || invoice.id || "Invoice"),
+                            tenant: String(invoice.matchedTenantName || invoice.matchedTenantId || "Unmapped destination"),
+                            amount: Number(invoice.total || 0),
+                        }));
+                    const queue = animatedQueue.length ? animatedQueue : reviewRows;
+                    const activeIndex = Math.max(0, Math.min(queue.length - 1, Number(progress.animationIndex || 0)));
+                    liveInvoiceRail.innerHTML = queue.length
+                        ? queue.map((entry, index) => {
+                            const finalStatus = resultMap.get(jukInvoiceIdKey(entry.id || entry.invoiceId || ""));
+                            let stateClass = "";
+                            let stateLabel = progress.running ? "Queued" : "Queued";
+                            if (progress.running && index === activeIndex) {
+                                stateClass = "is-active";
+                                stateLabel = "Publishing";
+                            } else if (progress.running && index < activeIndex) {
+                                stateClass = "is-complete";
+                                stateLabel = "Published";
+                            } else if (!progress.running && finalStatus) {
+                                if (finalStatus.includes("fail")) {
+                                    stateClass = "is-failed";
+                                    stateLabel = "Failed";
+                                } else if (finalStatus.includes("duplicate") || finalStatus.includes("skip")) {
+                                    stateClass = "is-skipped";
+                                    stateLabel = "Skipped";
+                                } else {
+                                    stateClass = "is-complete";
+                                    stateLabel = "Published";
+                                }
+                            }
+                            return `
+                                <article class="juk-live-invoice-row ${stateClass}">
+                                    <div class="juk-live-invoice-main">
+                                        <strong>${escapeHTML(String(entry.invoiceNumber || entry.invoiceId || "--"))}</strong>
+                                        <span>${escapeHTML(String(entry.tenant || "--"))} · ${escapeHTML(formatCurrency(Number(entry.amount || 0)))}</span>
+                                    </div>
+                                    <span class="juk-live-invoice-status">${escapeHTML(stateLabel)}</span>
+                                </article>
+                            `;
+                        }).join("")
+                        : '<div class="empty-state"><p class="eyebrow">No invoices queued</p><h4>Approve invoices in Step 3</h4><p>Invoice-by-invoice publish flow appears here once ready.</p></div>';
                 }
                 if (progressCards) {
                     progressCards.innerHTML = [
@@ -40256,7 +40476,7 @@
                             <tr>
                                 <td>${escapeHTML(String(row.invoiceId || "--"))}</td>
                                 <td>${escapeHTML(String(row.status || "--"))}</td>
-                                <td>${escapeHTML(String(row.billId || ""))}</td>
+                                <td>${row.billId ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(xeroBillURL(row.billId))}">Open in Xero</a>` : "--"}</td>
                                 <td>${escapeHTML(`${row.purchaseAccountCode || ""} ${row.purchaseAccountName || ""}`.trim() || "--")}</td>
                                 <td>${escapeHTML(String(row.message || ""))}</td>
                             </tr>
@@ -40320,12 +40540,13 @@
                             const confirmed = Boolean(row.xeroConfirmed) || (["published", "duplicate"].includes(String(row.status || "")) && Boolean(row.billId));
                             const noteAdded = Boolean(row.noteAdded);
                             const noteError = String(row.noteError || "").trim();
+                            const billId = String(row.billId || invoice.publishedBillId || "").trim();
                             return `
                                 <tr>
                                     <td><strong>${escapeHTML(String(invoice.jukInvoiceNumber || row.invoiceId || "--"))}</strong></td>
                                     <td>${escapeHTML(String(invoice.jukContactName || "--"))}</td>
                                     <td>${escapeHTML(String(invoice.matchedTenantName || "--"))}</td>
-                                    <td>${escapeHTML(String(row.billId || invoice.publishedBillId || "--"))}</td>
+                                    <td>${billId ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(xeroBillURL(billId))}">Open in Xero</a>` : "--"}</td>
                                     <td>${confirmed ? '<span class="juk-confirm-pill"><i>\u2713</i>Confirmed</span>' : '<span class="status-pill">Pending</span>'}</td>
                                     <td>${noteAdded ? '<span class="juk-confirm-pill"><i>\u2713</i>Added</span>' : escapeHTML(noteError || "Queued during publish")}</td>
                                 </tr>
