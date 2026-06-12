@@ -64,6 +64,22 @@ class Settings(BaseSettings):
     companies_house_sandbox_api_base: str = "https://api-sandbox.company-information.service.gov.uk"
     companies_house_production_api_base: str = "https://api.company-information.service.gov.uk"
     ch_alert_webhook_url: str | None = None
+    stripe_publishable_key: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_snack_webhook_secret: str | None = None
+    snack_weekly_threshold_cans: int = 4
+    snack_weekly_discount_percent: int = 10
+    snack_milestone_interval_orders: int = 10
+    snack_milestone_discount_percent: int = 50
+    snack_google_client_id: str | None = None
+    snack_google_client_secret: str | None = None
+    snack_google_redirect_uri: str | None = None
+    snack_facebook_client_id: str | None = None
+    snack_facebook_client_secret: str | None = None
+    snack_facebook_redirect_uri: str | None = None
+    snack_apple_client_id: str | None = None
+    snack_apple_client_secret: str | None = None
+    snack_apple_redirect_uri: str | None = None
 
     @field_validator("companies_house_auth_method")
     @classmethod

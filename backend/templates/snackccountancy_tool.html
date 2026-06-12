@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Snackccountancy | Jenius Tools</title>
+    <style>
+        :root {
+            --bg: #f3f7fb;
+            --surface: #ffffff;
+            --ink: #1c2f45;
+            --muted: #6a7f94;
+            --line: #d8e4ef;
+            --orange: #ff5a1f;
+            --blue: #0a3b8d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: radial-gradient(circle at 15% 20%, #eef7ff 0%, var(--bg) 35%, #f8fbff 100%);
+            color: var(--ink);
+            font-family: "Inter", "Segoe UI", sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .shell {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            gap: 16px;
+        }
+        .topbar {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--surface);
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .title {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+        .meta {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            text-decoration: none;
+            font-weight: 700;
+            padding: 10px 12px;
+            cursor: pointer;
+        }
+        .btn-primary { background: var(--blue); color: #fff; }
+        .btn-secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--surface);
+            padding: 14px;
+        }
+        .label { color: var(--muted); font-size: 0.82rem; }
+        .value { font-size: 1.24rem; font-weight: 800; margin-top: 5px; }
+        @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="topbar">
+            <div>
+                <h1 class="title">Snackccountancy</h1>
+                <div class="meta">Internal Jenius dashboard for orders, loyalty and product ops.</div>
+            </div>
+            <div class="actions">
+                <a class="btn btn-primary" href="/snackccountancy" target="_blank" rel="noopener">Open Public Checkout</a>
+                <a class="btn btn-secondary" href="/console" target="_blank" rel="noopener">Back to Console</a>
+            </div>
+        </div>
+
+        <section class="grid">
+            <article class="card"><div class="label">Today's revenue</div><div class="value">£{{ '%.2f' % ((snack_dashboard.today_revenue_pence or 0) / 100) }}</div></article>
+            <article class="card"><div class="label">Today's orders</div><div class="value">{{ snack_dashboard.today_orders or 0 }}</div></article>
+            <article class="card"><div class="label">Today's cans sold</div><div class="value">{{ snack_dashboard.today_cans_sold or 0 }}</div></article>
+            <article class="card"><div class="label">This week revenue</div><div class="value">£{{ '%.2f' % ((snack_dashboard.week_revenue_pence or 0) / 100) }}</div></article>
+            <article class="card"><div class="label">This week cans sold</div><div class="value">{{ snack_dashboard.week_cans_sold or 0 }}</div></article>
+            <article class="card"><div class="label">Active loyalty customers</div><div class="value">{{ snack_dashboard.active_loyalty_customers or 0 }}</div></article>
+            <article class="card"><div class="label">Guest orders</div><div class="value">{{ snack_dashboard.guest_orders or 0 }}</div></article>
+            <article class="card"><div class="label">Logged-in orders</div><div class="value">{{ snack_dashboard.logged_in_orders or 0 }}</div></article>
+            <article class="card"><div class="label">10th-order rewards used</div><div class="value">{{ snack_dashboard.milestone_rewards_used or 0 }}</div></article>
+            <article class="card"><div class="label">Weekly rewards used</div><div class="value">{{ snack_dashboard.weekly_rewards_used or 0 }}</div></article>
+            <article class="card"><div class="label">Double rewards used</div><div class="value">{{ snack_dashboard.double_rewards_used or 0 }}</div></article>
+            <article class="card"><div class="label">Total discounts given</div><div class="value">£{{ '%.2f' % ((snack_dashboard.total_discounts_pence or 0) / 100) }}</div></article>
+        </section>
+    </div>
+</body>
+</html>

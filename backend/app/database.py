@@ -2430,6 +2430,144 @@ ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTA
 
 CREATE INDEX IF NOT EXISTS juksib_automation_runs_user_started_idx
 ON juksib_automation_runs (user_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS snack_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sku TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'general',
+    price_pence INTEGER NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS snack_products_active_sort_idx
+ON snack_products (active, sort_order, name);
+
+CREATE TABLE IF NOT EXISTS snack_customers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    auth_provider TEXT NOT NULL DEFAULT 'email',
+    provider_user_id TEXT NOT NULL DEFAULT '',
+    stripe_customer_id TEXT NOT NULL DEFAULT '',
+    is_guest BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ,
+    total_orders INTEGER NOT NULL DEFAULT 0,
+    total_cans INTEGER NOT NULL DEFAULT 0,
+    lifetime_spend_pence INTEGER NOT NULL DEFAULT 0,
+    lifetime_savings_pence INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS snack_customers_email_idx
+ON snack_customers (email);
+
+CREATE TABLE IF NOT EXISTS snack_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID REFERENCES snack_customers(id) ON DELETE CASCADE,
+    session_token_hash TEXT NOT NULL UNIQUE,
+    device_label TEXT NOT NULL DEFAULT 'mobile-web',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS snack_sessions_customer_idx
+ON snack_sessions (customer_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS snack_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number TEXT NOT NULL UNIQUE,
+    customer_id UUID REFERENCES snack_customers(id) ON DELETE SET NULL,
+    guest_email TEXT,
+    stripe_customer_id TEXT NOT NULL DEFAULT '',
+    stripe_payment_intent_id TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    subtotal_pence INTEGER NOT NULL DEFAULT 0,
+    weekly_discount_pence INTEGER NOT NULL DEFAULT 0,
+    milestone_discount_pence INTEGER NOT NULL DEFAULT 0,
+    total_discount_pence INTEGER NOT NULL DEFAULT 0,
+    total_paid_pence INTEGER NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'gbp',
+    week_start_date DATE NOT NULL,
+    is_10th_order_reward BOOLEAN NOT NULL DEFAULT FALSE,
+    double_reward_active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    paid_at TIMESTAMPTZ,
+    refunded_at TIMESTAMPTZ,
+    admin_notes TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS snack_orders_customer_created_idx
+ON snack_orders (customer_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS snack_orders_status_created_idx
+ON snack_orders (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS snack_orders_week_status_idx
+ON snack_orders (week_start_date, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS snack_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES snack_orders(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES snack_products(id) ON DELETE SET NULL,
+    product_sku TEXT NOT NULL,
+    product_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price_pence INTEGER NOT NULL DEFAULT 0,
+    full_price_quantity INTEGER NOT NULL DEFAULT 0,
+    weekly_discount_quantity INTEGER NOT NULL DEFAULT 0,
+    weekly_discount_pence INTEGER NOT NULL DEFAULT 0,
+    milestone_discount_pence INTEGER NOT NULL DEFAULT 0,
+    final_line_total_pence INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS snack_order_items_order_idx
+ON snack_order_items (order_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS snack_loyalty_weeks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES snack_customers(id) ON DELETE CASCADE,
+    week_start_date DATE NOT NULL,
+    cans_purchased_count INTEGER NOT NULL DEFAULT 0,
+    weekly_discount_cans_count INTEGER NOT NULL DEFAULT 0,
+    weekly_savings_pence INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (customer_id, week_start_date)
+);
+
+CREATE INDEX IF NOT EXISTS snack_loyalty_weeks_customer_week_idx
+ON snack_loyalty_weeks (customer_id, week_start_date DESC);
+
+CREATE TABLE IF NOT EXISTS snack_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_type TEXT NOT NULL,
+    actor_id TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL DEFAULT '',
+    before_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    after_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS snack_audit_log_entity_idx
+ON snack_audit_log (entity_type, entity_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS snack_order_number_sequence (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY
+);
 """
 
 

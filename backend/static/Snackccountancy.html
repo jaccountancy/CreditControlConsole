@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Snackccountancy</title>
+    <link rel="canonical" href="https://jaccountancy.co.uk/snackccountancy/">
+    <meta property="og:url" content="https://jaccountancy.co.uk/snackccountancy/">
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        :root {
+            --orange: #ff5a1f;
+            --blue: #0a3b8d;
+            --ink: #15314a;
+            --muted: #667f96;
+            --line: #d8e4ef;
+            --bg: #f4f8ff;
+            --surface: #ffffff;
+            --ok: #0f9f56;
+            --warn: #b85e07;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; }
+        body {
+            font-family: "Manrope", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background: radial-gradient(circle at 14% 8%, #edf8ff 0%, #f8fbff 35%, #ffffff 100%);
+            padding-bottom: 200px;
+        }
+        .wrap {
+            width: min(760px, 100%);
+            margin: 0 auto;
+            padding: 14px 14px 28px;
+            display: grid;
+            gap: 12px;
+        }
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: var(--surface);
+            box-shadow: 0 16px 34px rgba(13, 51, 88, 0.08);
+            padding: 14px;
+        }
+        .hero {
+            border-top: 4px solid var(--orange);
+        }
+        h1 {
+            margin: 0;
+            font-size: clamp(1.3rem, 6.2vw, 1.55rem);
+            line-height: 1.1;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            max-width: 100%;
+        }
+        .sub { margin-top: 4px; color: var(--muted); font-size: 0.92rem; }
+        .products { display: grid; gap: 10px; }
+        .product {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .pname { font-weight: 800; }
+        .pprice { color: var(--blue); font-size: 1.08rem; font-weight: 800; }
+        .controls {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .controls button {
+            border: 0;
+            background: #fff;
+            color: var(--ink);
+            width: 42px;
+            height: 38px;
+            font-size: 1.15rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .qty {
+            min-width: 42px;
+            text-align: center;
+            font-weight: 800;
+            font-size: 1rem;
+        }
+        .reward { font-size: 0.92rem; color: var(--ink); display: grid; gap: 6px; }
+        .reward .item { display: flex; gap: 8px; }
+        .reward .item span:last-child {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .dot { color: var(--ok); font-weight: 800; }
+        .signin-grid { display: grid; gap: 8px; }
+        .signin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .signin-grid input {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            padding: 11px 12px;
+            font-size: 0.96rem;
+        }
+        .btn {
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-weight: 800;
+            padding: 11px 12px;
+            cursor: pointer;
+        }
+        .btn-main { background: var(--blue); color: #fff; }
+        .btn-soft { background: #fff; border-color: var(--line); color: var(--ink); }
+        .btn-wallet { background: #0d1118; color: #fff; }
+        .muted { color: var(--muted); font-size: 0.86rem; }
+        .status {
+            border-radius: 10px;
+            background: #f5f9ff;
+            border: 1px dashed #bdd5eb;
+            padding: 10px;
+            font-size: 0.9rem;
+            color: #23425f;
+        }
+        .status.warn {
+            background: #fff7ef;
+            border-color: #ffd7ae;
+            color: #8f4a00;
+        }
+        .sticky {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.98);
+            border-top: 1px solid var(--line);
+            box-shadow: 0 -14px 30px rgba(11, 49, 84, 0.1);
+            padding: 10px 12px 14px;
+            z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+        .sticky-wrap {
+            width: min(760px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 8px;
+        }
+        .basket-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+        }
+        .basket-total { font-size: 1.36rem; font-weight: 900; color: var(--blue); }
+        .wallet-row { display: grid; gap: 8px; }
+        #expressCheckout { min-height: 46px; }
+        #paymentElement { margin-top: 8px; }
+        [hidden] { display: none !important; }
+        @media (max-width: 420px) {
+            .signin-row { grid-template-columns: 1fr; }
+            .wrap { padding: 10px 10px 24px; }
+            .card { padding: 12px; }
+            .sub { font-size: 0.88rem; }
+            .product {
+                grid-template-columns: 1fr;
+                align-items: start;
+                gap: 10px;
+            }
+            .product > div:last-child {
+                width: 100%;
+                justify-items: start !important;
+                text-align: left !important;
+            }
+            .controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .controls button {
+                width: 46px;
+            }
+            .qty {
+                min-width: 56px;
+            }
+            .basket-row {
+                align-items: center;
+            }
+            .basket-total {
+                font-size: 1.2rem;
+            }
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="wrap">
+        <section class="card hero">
+            <h1><span style="color:var(--orange)">SNACK</span><span style="color:var(--blue)">CCOUNTANCY</span></h1>
+            <div class="sub">Quick drinks checkout at Unit 6, The Kiln.</div>
+        </section>
+
+        <section class="card">
+            <h2 style="margin:0 0 8px;font-size:1.05rem;">Products</h2>
+            <div class="products" id="productList"></div>
+        </section>
+
+        <section class="card reward">
+            <h2 style="margin:0;font-size:1.02rem;">Snackccountancy Rewards</h2>
+            <div class="item"><span class="dot">✔</span><span>Buy more than 4 cans in a week and get 10% off extra cans.</span></div>
+            <div class="item"><span class="dot">✔</span><span>Every 10th paid order is half price.</span></div>
+            <div class="item"><span class="dot">✔</span><span>Rewards stack for effective 55% discount on eligible cans.</span></div>
+            <div class="status" id="rewardLiveStatus">Guest checkout is enabled. Sign in for tracked rewards.</div>
+        </section>
+
+        <section class="card signin-grid">
+            <h2 style="margin:0;font-size:1.02rem;">Account</h2>
+            <div class="signin-row">
+                <input id="nameInput" placeholder="Your name (optional)" autocomplete="name">
+                <input id="emailInput" placeholder="Email for rewards" autocomplete="email" inputmode="email">
+            </div>
+            <div class="signin-row">
+                <button class="btn btn-main" id="emailSignInBtn" type="button">Sign in for rewards</button>
+                <button class="btn btn-soft" id="logoutBtn" type="button" hidden>Log out</button>
+            </div>
+            <div class="signin-row">
+                <button class="btn btn-soft" type="button" disabled>Google login (coming next)</button>
+                <button class="btn btn-soft" type="button" disabled>Apple/Facebook (coming next)</button>
+            </div>
+            <div class="muted">Once signed in, you stay signed in on this device until you log out.</div>
+        </section>
+
+        <section class="card" id="ordersCard" hidden>
+            <h2 style="margin:0 0 8px;font-size:1.02rem;">Your recent orders</h2>
+            <div id="ordersList" class="muted">Loading…</div>
+        </section>
+    </main>
+
+    <section class="sticky">
+        <div class="sticky-wrap">
+            <div class="basket-row">
+                <div>
+                    <div style="font-weight:800">Basket <span id="itemCount">0</span> item(s)</div>
+                    <div class="muted" id="discountLine">No rewards applied yet</div>
+                </div>
+                <div class="basket-total">£<span id="basketTotal">0.00</span></div>
+            </div>
+
+            <div class="wallet-row">
+                <div id="expressCheckout"></div>
+                <button class="btn btn-wallet" id="cardCheckoutBtn" type="button">Pay by card</button>
+                <div id="paymentElement" hidden></div>
+                <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Confirm card payment</button>
+                <div class="status" id="checkoutStatus">Add items to begin checkout.</div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const PUBLIC_BASE_URL = "https://jaccountancy.co.uk";
+        const API_BASE_URL = "https://jeniusai.jaccountancy.co.uk";
+        const FALLBACK_PRODUCTS = [
+            {
+                sku: "can_of_pop",
+                name: "Can of Pop",
+                description: "Standard chilled can.",
+                category: "standard_can",
+                price_pence: 100,
+            },
+            {
+                sku: "premium_can_of_pop",
+                name: "Premium Can of Pop",
+                description: "Premium branded can.",
+                category: "premium_can",
+                price_pence: 169,
+            },
+        ];
+
+        function snackPublicUrl(pathname) {
+            const base = PUBLIC_BASE_URL.replace(/\/+$/, "");
+            const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
+            return `${base}${path}`;
+        }
+
+        function snackApiUrl(pathname) {
+            const base = API_BASE_URL.replace(/\/+$/, "");
+            const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
+            return `${base}${path}`;
+        }
+
+        const state = {
+            products: [],
+            quantities: {},
+            basket: null,
+            customer: null,
+            stripe: null,
+            elements: null,
+            expressMounted: false,
+            cardMounted: false,
+            currentOrderNumber: "",
+            currentPaymentIntentId: "",
+        };
+
+        const ui = {
+            productList: document.getElementById("productList"),
+            rewardLiveStatus: document.getElementById("rewardLiveStatus"),
+            itemCount: document.getElementById("itemCount"),
+            basketTotal: document.getElementById("basketTotal"),
+            discountLine: document.getElementById("discountLine"),
+            checkoutStatus: document.getElementById("checkoutStatus"),
+            emailInput: document.getElementById("emailInput"),
+            nameInput: document.getElementById("nameInput"),
+            emailSignInBtn: document.getElementById("emailSignInBtn"),
+            logoutBtn: document.getElementById("logoutBtn"),
+            cardCheckoutBtn: document.getElementById("cardCheckoutBtn"),
+            confirmCardBtn: document.getElementById("confirmCardBtn"),
+            expressCheckout: document.getElementById("expressCheckout"),
+            paymentElement: document.getElementById("paymentElement"),
+            ordersCard: document.getElementById("ordersCard"),
+            ordersList: document.getElementById("ordersList"),
+        };
+
+        function money(pence) {
+            return ((Number(pence) || 0) / 100).toFixed(2);
+        }
+
+        function activeBasketItems() {
+            return state.products
+                .map((product) => ({ sku: product.sku, quantity: state.quantities[product.sku] || 0 }))
+                .filter((item) => item.quantity > 0);
+        }
+
+        function renderProducts() {
+            ui.productList.innerHTML = "";
+            state.products.forEach((product) => {
+                const qty = state.quantities[product.sku] || 0;
+                const card = document.createElement("article");
+                card.className = "product";
+                card.innerHTML = `
+                    <div>
+                        <div class="pname">${product.name}</div>
+                        <div class="muted">${product.description || ""}</div>
+                    </div>
+                    <div style="text-align:right;display:grid;gap:7px;justify-items:end;">
+                        <div class="pprice">£${money(product.price_pence)}</div>
+                        <div class="controls">
+                            <button type="button" data-action="minus" data-sku="${product.sku}">-</button>
+                            <div class="qty" id="qty-${product.sku}">${qty}</div>
+                            <button type="button" data-action="plus" data-sku="${product.sku}">+</button>
+                        </div>
+                    </div>
+                `;
+                ui.productList.appendChild(card);
+            });
+        }
+
+        function updateQtyDom(sku) {
+            const node = document.getElementById(`qty-${sku}`);
+            if (node) node.textContent = String(state.quantities[sku] || 0);
+        }
+
+        async function loadProducts() {
+            // Always render products immediately so checkout is usable on first paint.
+            state.products = [...FALLBACK_PRODUCTS];
+            for (const p of state.products) {
+                if (!(p.sku in state.quantities)) state.quantities[p.sku] = 0;
+            }
+            renderProducts();
+
+            let loadedProducts = [];
+            try {
+                const response = await fetch(snackApiUrl("/api/snackccountancy/products"), { credentials: "include" });
+                if (response.ok) {
+                    const data = await response.json();
+                    loadedProducts = data.products || [];
+                }
+            } catch (_) {}
+
+            state.products = loadedProducts.length ? loadedProducts : FALLBACK_PRODUCTS;
+            for (const p of state.products) {
+                if (!(p.sku in state.quantities)) state.quantities[p.sku] = 0;
+            }
+            renderProducts();
+        }
+
+        async function loadCustomer() {
+            const response = await fetch(snackApiUrl("/api/snackccountancy/customer/me"), { credentials: "include" });
+            if (!response.ok) return;
+            const data = await response.json();
+            state.customer = data;
+            applyCustomerSummary();
+            if (data?.authenticated) {
+                await loadOrders();
+            }
+        }
+
+        function applyCustomerSummary() {
+            const info = state.customer;
+            const authenticated = Boolean(info && info.authenticated && info.customer);
+            ui.logoutBtn.hidden = !authenticated;
+            if (!authenticated) {
+                ui.rewardLiveStatus.className = "status";
+                ui.rewardLiveStatus.textContent = "Guest checkout is enabled. Sign in for tracked rewards.";
+                ui.ordersCard.hidden = true;
+                return;
+            }
+
+            const rewards = info.rewards || {};
+            const nextMilestone = rewards.next_milestone_in || 10;
+            const weeklyCans = rewards.weekly_cans || 0;
+            const weeklyActive = Boolean(rewards.weekly_reward_active);
+            ui.rewardLiveStatus.className = "status";
+            ui.rewardLiveStatus.textContent = `Welcome back 👋 This week: ${weeklyCans} cans. ${weeklyActive ? "10% reward active." : "10% reward starts after 4 cans."} Next milestone: ${nextMilestone} order(s) until half price.`;
+            ui.ordersCard.hidden = false;
+        }
+
+        async function loadOrders() {
+            const response = await fetch(snackApiUrl("/api/snackccountancy/orders/me"), { credentials: "include" });
+            if (!response.ok) {
+                ui.ordersList.textContent = "No order history available yet.";
+                return;
+            }
+            const data = await response.json();
+            const orders = data.orders || [];
+            if (!orders.length) {
+                ui.ordersList.textContent = "No paid orders yet.";
+                return;
+            }
+            ui.ordersList.innerHTML = orders.slice(0, 6).map((order) => {
+                return `<div style="padding:7px 0;border-top:1px solid var(--line);">${order.order_number} · ${order.status} · £${money(order.total_paid_pence)}</div>`;
+            }).join("");
+        }
+
+        async function recalculateBasket() {
+            const items = activeBasketItems();
+            if (!items.length) {
+                state.basket = null;
+                ui.itemCount.textContent = "0";
+                ui.basketTotal.textContent = "0.00";
+                ui.discountLine.textContent = "No rewards applied yet";
+                ui.checkoutStatus.textContent = "Add items to begin checkout.";
+                return;
+            }
+
+            const response = await fetch(snackApiUrl("/api/snackccountancy/calculate-basket"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ items }),
+            });
+
+            if (!response.ok) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Unable to calculate basket right now.";
+                return;
+            }
+
+            const data = await response.json();
+            state.basket = data.basket;
+            state.customer = data.customer;
+            applyCustomerSummary();
+
+            ui.itemCount.textContent = String(state.basket.item_count || 0);
+            ui.basketTotal.textContent = money(state.basket.total_paid_pence || 0);
+
+            const weekly = Number(state.basket.weekly_discount_pence || 0);
+            const milestone = Number(state.basket.milestone_discount_pence || 0);
+            if (state.basket.double_reward_active) {
+                ui.discountLine.textContent = `Double reward active: -£${money(weekly)} weekly and -£${money(milestone)} milestone.`;
+            } else if (milestone > 0) {
+                ui.discountLine.textContent = `10th order discount active: -£${money(milestone)}.`;
+            } else if (weekly > 0) {
+                ui.discountLine.textContent = `Weekly discount active: -£${money(weekly)}.`;
+            } else {
+                ui.discountLine.textContent = "No rewards applied yet";
+            }
+
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = "Ready to pay with Apple Pay / Google Pay / Link or card.";
+        }
+
+        async function signInEmail() {
+            const email = ui.emailInput.value.trim();
+            const name = ui.nameInput.value.trim();
+            if (!email) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Enter your email to sign in.";
+                return;
+            }
+            const response = await fetch(snackApiUrl("/api/snackccountancy/auth/email"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ email, name }),
+            });
+            if (!response.ok) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Sign in failed. Please try again.";
+                return;
+            }
+            state.customer = await response.json();
+            applyCustomerSummary();
+            await recalculateBasket();
+            await loadOrders();
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = "Signed in. Rewards are now tracked on this device.";
+        }
+
+        async function logout() {
+            await fetch(snackApiUrl("/api/snackccountancy/auth/logout"), { method: "POST", credentials: "include" });
+            state.customer = null;
+            applyCustomerSummary();
+            await recalculateBasket();
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = "Logged out.";
+        }
+
+        async function createPayment() {
+            const items = activeBasketItems();
+            if (!items.length) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Add items before checkout.";
+                return null;
+            }
+
+            const guestEmail = (ui.emailInput.value || "").trim();
+            const response = await fetch(snackApiUrl("/api/snackccountancy/create-payment"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ items, guest_email: guestEmail || null }),
+            });
+
+            if (!response.ok) {
+                let detail = "Unable to create payment.";
+                try {
+                    const data = await response.json();
+                    detail = data?.detail?.message || data?.detail || detail;
+                } catch (_) {}
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = detail;
+                return null;
+            }
+
+            const data = await response.json();
+            state.currentOrderNumber = data.order_number || "";
+            state.currentPaymentIntentId = data.stripe_payment_intent_id || "";
+            return data;
+        }
+
+        async function claimPaidSessionAndRefresh(orderNumber, paymentIntentId) {
+            if (!orderNumber || !paymentIntentId) return;
+            try {
+                await fetch(snackApiUrl("/api/snackccountancy/claim-paid-session"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        order_number: orderNumber,
+                        payment_intent_id: paymentIntentId,
+                    }),
+                });
+            } catch (_) {}
+            await loadCustomer();
+            if (state.customer?.authenticated) {
+                await loadOrders();
+            }
+        }
+
+        async function mountWallets(createCardElement) {
+            const payment = await createPayment();
+            if (!payment) return;
+
+            if (!payment.publishable_key) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Stripe publishable key is not configured yet.";
+                return;
+            }
+
+            state.stripe = Stripe(payment.publishable_key);
+            state.elements = state.stripe.elements({ clientSecret: payment.client_secret });
+
+            ui.expressCheckout.innerHTML = "";
+            const express = state.elements.create("expressCheckout", {
+                buttonTheme: { applePay: "black", googlePay: "black", link: "dark" },
+                layout: { maxColumns: 1, maxRows: 3, overflow: "auto" },
+            });
+            express.mount("#expressCheckout");
+            state.expressMounted = true;
+
+            express.on("confirm", async (event) => {
+                event?.resolve?.();
+                await confirmPayment();
+            });
+
+            if (createCardElement) {
+                ui.paymentElement.hidden = false;
+                ui.confirmCardBtn.hidden = false;
+                if (!state.cardMounted) {
+                    const paymentElement = state.elements.create("payment");
+                    paymentElement.mount("#paymentElement");
+                    state.cardMounted = true;
+                }
+            }
+
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = "Choose wallet or card to complete payment.";
+        }
+
+        async function confirmPayment() {
+            if (!state.stripe || !state.elements) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Checkout is not ready.";
+                return;
+            }
+
+            const { error } = await state.stripe.confirmPayment({
+                elements: state.elements,
+                redirect: "if_required",
+                confirmParams: {
+                    return_url: `${snackPublicUrl("/snackccountancy/")}?order_number=${encodeURIComponent(state.currentOrderNumber || "")}`,
+                },
+            });
+
+            if (error) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = error.message || "Payment could not be completed.";
+                return;
+            }
+
+            await claimPaidSessionAndRefresh(state.currentOrderNumber, state.currentPaymentIntentId);
+            ui.checkoutStatus.className = "status";
+            ui.checkoutStatus.textContent = `Payment received. Order ${state.currentOrderNumber} confirmed.`;
+        }
+
+        ui.productList.addEventListener("click", async (event) => {
+            const button = event.target.closest("button[data-action][data-sku]");
+            if (!button) return;
+            const sku = button.getAttribute("data-sku");
+            const action = button.getAttribute("data-action");
+            const current = Number(state.quantities[sku] || 0);
+            if (action === "plus") state.quantities[sku] = current + 1;
+            if (action === "minus") state.quantities[sku] = Math.max(current - 1, 0);
+            updateQtyDom(sku);
+            await recalculateBasket();
+        });
+
+        ui.emailSignInBtn.addEventListener("click", signInEmail);
+        ui.logoutBtn.addEventListener("click", logout);
+        ui.cardCheckoutBtn.addEventListener("click", async () => {
+            await mountWallets(true);
+        });
+        ui.confirmCardBtn.addEventListener("click", confirmPayment);
+
+        (async function bootstrap() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const redirectedPaymentIntent = params.get("payment_intent") || "";
+                const redirectedOrderNumber = params.get("order_number") || "";
+                if (redirectedPaymentIntent && redirectedOrderNumber) {
+                    await claimPaidSessionAndRefresh(redirectedOrderNumber, redirectedPaymentIntent);
+                    ui.checkoutStatus.className = "status";
+                    ui.checkoutStatus.textContent = `Payment received. Order ${redirectedOrderNumber} confirmed.`;
+                }
+                await loadProducts();
+                await loadCustomer();
+                await recalculateBasket();
+            } catch (error) {
+                ui.checkoutStatus.className = "status warn";
+                ui.checkoutStatus.textContent = "Working in limited mode. Products are available below.";
+            }
+        })();
+    </script>
+</body>
+</html>

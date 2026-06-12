@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import io
 import json
 import logging
 import threading
@@ -282,10 +284,33 @@ from .hmrc_648 import (
     update_hmrc_64_8_request,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
+from .snackccountancy import (
+    SNACK_SESSION_LABEL,
+    calculate_snackccountancy_basket,
+    clear_snack_session_cookie,
+    set_snack_session_cookie,
+    snack_create_payment,
+    snack_customer_summary,
+    snack_dashboard_payload,
+    snack_handle_stripe_webhook,
+    snack_claim_paid_order_session,
+    snack_login_with_email,
+    snack_logout,
+    snack_orders_admin,
+    snack_orders_for_customer,
+    snack_products_admin_upsert,
+    snack_products_payload,
+    snack_session_context_from_request,
+    snack_customers_admin,
+    snack_customer_admin_patch,
+    snack_order_admin_patch,
+    _create_snack_session,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_PANEL_DIR = BASE_DIR.parent / "WebPanel"
 LEGACY_CONSOLE_PATH = BASE_DIR / "static" / "console.html"
+SNACKCCOUNTANCY_PATH = BASE_DIR / "static" / "Snackccountancy.html"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
@@ -894,6 +919,263 @@ def webpanel_standalone():
 @app.get("/console", response_class=HTMLResponse)
 def legacy_console_page():
     return FileResponse(LEGACY_CONSOLE_PATH)
+
+
+@app.get("/snackccountancy", response_class=HTMLResponse)
+def snackccountancy_page():
+    return FileResponse(SNACKCCOUNTANCY_PATH)
+
+
+@app.get("/snackccountancy/account", response_class=HTMLResponse)
+def snackccountancy_account_page():
+    return FileResponse(SNACKCCOUNTANCY_PATH)
+
+
+@app.get("/snackccountancy/success", response_class=HTMLResponse)
+def snackccountancy_success_page(order_number: str = ""):
+    safe_order = escape(order_number or "Pending")
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Snackccountancy payment success</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin:0; min-height:100vh; display:grid; place-items:center; background:#f4f8ff; color:#173149; }}
+                main {{ width:min(560px, calc(100vw - 36px)); background:#fff; border:1px solid #d7e4ef; border-radius:18px; padding:24px; }}
+                h1 {{ margin:0 0 10px; }}
+                p {{ margin:0 0 16px; color:#617791; }}
+                a {{ display:inline-flex; border-radius:10px; padding:10px 14px; background:#0a3b8d; color:#fff; text-decoration:none; font-weight:700; }}
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>Payment received</h1>
+                <p>Order number: <strong>{safe_order}</strong></p>
+                <a href="/snackccountancy">Back to Snackccountancy</a>
+            </main>
+        </body>
+        </html>
+        """
+    )
+
+
+@app.get("/snackccountancy/cancelled", response_class=HTMLResponse)
+def snackccountancy_cancelled_page():
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Snackccountancy payment cancelled</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin:0; min-height:100vh; display:grid; place-items:center; background:#f4f8ff; color:#173149; }
+                main { width:min(560px, calc(100vw - 36px)); background:#fff; border:1px solid #d7e4ef; border-radius:18px; padding:24px; }
+                h1 { margin:0 0 10px; }
+                p { margin:0 0 16px; color:#617791; }
+                a { display:inline-flex; border-radius:10px; padding:10px 14px; background:#0a3b8d; color:#fff; text-decoration:none; font-weight:700; }
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>Payment not completed</h1>
+                <p>You have not been charged.</p>
+                <a href="/snackccountancy">Try again</a>
+            </main>
+        </body>
+        </html>
+        """
+    )
+
+
+@app.get("/jenius/tools/snackccountancy", response_class=HTMLResponse)
+def jenius_snackccountancy_page(request: Request, user: dict = Depends(require_user)):
+    return templates.TemplateResponse(
+        request,
+        "snackccountancy_tool.html",
+        template_context(request, snack_dashboard=snack_dashboard_payload(), snack_user=user),
+    )
+
+
+@app.get("/api/snackccountancy/products")
+def api_snackccountancy_products():
+    return snack_products_payload()
+
+
+@app.get("/api/snackccountancy/customer/me")
+def api_snackccountancy_customer_me(request: Request):
+    context = snack_session_context_from_request(request)
+    return snack_customer_summary(context.customer)
+
+
+@app.post("/api/snackccountancy/auth/email")
+async def api_snackccountancy_auth_email(request: Request):
+    payload = await request.json()
+    email = str((payload or {}).get("email") or "").strip()
+    name = str((payload or {}).get("name") or "").strip()
+    customer = snack_login_with_email(email=email, name=name)
+    session_token = _create_snack_session(str(customer["id"]), device_label=SNACK_SESSION_LABEL)
+    response = JSONResponse(snack_customer_summary(customer))
+    set_snack_session_cookie(response, session_token)
+    return response
+
+
+@app.post("/api/snackccountancy/auth/logout")
+def api_snackccountancy_auth_logout(request: Request):
+    context = snack_session_context_from_request(request)
+    snack_logout(context.token)
+    response = JSONResponse({"status": "ok"})
+    clear_snack_session_cookie(response)
+    return response
+
+
+@app.post("/api/snackccountancy/calculate-basket")
+async def api_snackccountancy_calculate_basket(request: Request):
+    payload = await request.json()
+    context = snack_session_context_from_request(request)
+    basket = calculate_snackccountancy_basket(payload, customer=context.customer)
+    return {"basket": basket, "customer": snack_customer_summary(context.customer)}
+
+
+@app.post("/api/snackccountancy/create-payment")
+async def api_snackccountancy_create_payment(request: Request):
+    payload = await request.json()
+    context = snack_session_context_from_request(request)
+    return snack_create_payment(payload, customer=context.customer)
+
+
+@app.post("/api/snackccountancy/claim-paid-session")
+async def api_snackccountancy_claim_paid_session(request: Request):
+    payload = await request.json()
+    order_number = str((payload or {}).get("order_number") or "").strip()
+    payment_intent_id = str((payload or {}).get("payment_intent_id") or "").strip()
+    result = snack_claim_paid_order_session(order_number=order_number, payment_intent_id=payment_intent_id)
+    response = JSONResponse({"status": "ok", "customer": result["customer"]})
+    set_snack_session_cookie(response, result["session_token"])
+    return response
+
+
+@app.get("/api/snackccountancy/orders/me")
+def api_snackccountancy_orders_me(request: Request):
+    context = snack_session_context_from_request(request)
+    if not context.customer:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to view order history.")
+    return snack_orders_for_customer(str(context.customer["id"]))
+
+
+@app.post("/api/stripe/snackccountancy-webhook")
+async def api_snackccountancy_stripe_webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("Stripe-Signature")
+    result = snack_handle_stripe_webhook(body=body, signature=signature)
+    return JSONResponse(result)
+
+
+@app.get("/api/jenius/snackccountancy/dashboard")
+def api_jenius_snackccountancy_dashboard(user: dict = Depends(require_panel_user)):
+    return snack_dashboard_payload()
+
+
+@app.get("/api/jenius/snackccountancy/orders")
+def api_jenius_snackccountancy_orders(user: dict = Depends(require_panel_user)):
+    return snack_orders_admin()
+
+
+@app.get("/api/jenius/snackccountancy/customers")
+def api_jenius_snackccountancy_customers(user: dict = Depends(require_panel_user)):
+    return snack_customers_admin()
+
+
+@app.get("/api/jenius/snackccountancy/products")
+def api_jenius_snackccountancy_products(user: dict = Depends(require_panel_user)):
+    return snack_products_payload()
+
+
+@app.post("/api/jenius/snackccountancy/products")
+async def api_jenius_snackccountancy_upsert_products(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "manage Snackccountancy products")
+    payload = await request.json()
+    return snack_products_admin_upsert(payload)
+
+
+@app.patch("/api/jenius/snackccountancy/products/{product_id}")
+async def api_jenius_snackccountancy_patch_product(product_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "manage Snackccountancy products")
+    payload = await request.json()
+    payload["id"] = product_id
+    return snack_products_admin_upsert(payload)
+
+
+@app.patch("/api/jenius/snackccountancy/customers/{customer_id}")
+async def api_jenius_snackccountancy_patch_customer(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "manage Snackccountancy customers")
+    payload = await request.json()
+    return snack_customer_admin_patch(customer_id, payload)
+
+
+@app.patch("/api/jenius/snackccountancy/orders/{order_id}")
+async def api_jenius_snackccountancy_patch_order(order_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "manage Snackccountancy orders")
+    payload = await request.json()
+    return snack_order_admin_patch(order_id, payload)
+
+
+@app.get("/api/jenius/snackccountancy/export/orders.csv")
+def api_jenius_snackccountancy_export_orders_csv(user: dict = Depends(require_panel_user)):
+    data = snack_orders_admin().get("orders", [])
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "order_number",
+            "status",
+            "customer",
+            "customer_email",
+            "subtotal_pence",
+            "weekly_discount_pence",
+            "milestone_discount_pence",
+            "total_paid_pence",
+            "currency",
+            "stripe_payment_intent_id",
+            "is_10th_order_reward",
+            "double_reward_active",
+            "created_at",
+            "paid_at",
+        ],
+    )
+    writer.writeheader()
+    for row in data:
+        writer.writerow(row)
+    return Response(output.getvalue(), media_type="text/csv")
+
+
+@app.get("/api/jenius/snackccountancy/export/customers.csv")
+def api_jenius_snackccountancy_export_customers_csv(user: dict = Depends(require_panel_user)):
+    data = snack_customers_admin().get("customers", [])
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "id",
+            "name",
+            "email",
+            "auth_provider",
+            "total_orders",
+            "total_cans",
+            "lifetime_spend_pence",
+            "lifetime_savings_pence",
+            "created_at",
+            "last_login_at",
+        ],
+    )
+    writer.writeheader()
+    for row in data:
+        writer.writerow(row)
+    return Response(output.getvalue(), media_type="text/csv")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
