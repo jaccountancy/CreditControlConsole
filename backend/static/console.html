@@ -31006,6 +31006,9 @@
                             </div>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="1">
                                 <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this month appear below.</p>
+                                <div class="detail-actions">
+                                    <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
+                                </div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI clearing wizard transaction rows">
                                         <thead>
@@ -40436,6 +40439,7 @@
                 const wizardBackButton = document.getElementById("piClearingWizardBackButton");
                 const wizardNextButton = document.getElementById("piClearingWizardNextButton");
                 const wizardCreateButton = document.getElementById("piClearingCreateCreditNotesButton");
+                const wizardLoadButton = document.getElementById("piClearingLoadTransactionsButton");
                 const dryRunButton = document.getElementById("piClearingDryRunPdfButton");
                 const payoutDetailModal = document.getElementById("piClearingPayoutDetailModal");
                 const payoutDetailBody = document.getElementById("piClearingPayoutDetailBody");
@@ -40582,6 +40586,14 @@
                     wizardSummary.textContent = runRows.length
                         ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded from Xero and Ignition for ${formatMonthKey(piClearingRunMonth(run))}.`
                         : "No rows loaded yet. Start a workflow for the selected month.";
+                }
+                if (wizardLoadButton) {
+                    wizardLoadButton.disabled = piClearingWorkflowRunning;
+                    wizardLoadButton.textContent = piClearingWorkflowRunning ? "Loading transactions..." : "Get transactions";
+                    if (wizardLoadButton.dataset.piWired !== "true") {
+                        wizardLoadButton.dataset.piWired = "true";
+                        wizardLoadButton.addEventListener("click", runPiClearingWorkflow);
+                    }
                 }
                 if (wizardRowsBody) {
                     wizardRowsBody.innerHTML = runRows.length
