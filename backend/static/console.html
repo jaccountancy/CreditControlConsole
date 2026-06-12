@@ -24861,6 +24861,45 @@
             .juk-form-grid textarea {
                 min-height: 84px;
             }
+            .juk-toggle-field {
+                display: grid;
+                gap: 6px;
+            }
+            .juk-toggle-group {
+                display: inline-flex;
+                align-items: stretch;
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 4px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                border-radius: 12px;
+                background: linear-gradient(180deg, rgba(245, 249, 255, 0.95) 0%, rgba(238, 244, 255, 0.9) 100%);
+            }
+            .juk-toggle-option {
+                border: 1px solid transparent;
+                background: transparent;
+                color: #3d4d68;
+                border-radius: 9px;
+                padding: 8px 11px;
+                font-size: 12px;
+                font-weight: 800;
+                line-height: 1.2;
+                cursor: pointer;
+                transition: all 0.16s ease;
+            }
+            .juk-toggle-option:hover {
+                background: rgba(29, 103, 242, 0.09);
+                color: #1d4fb5;
+            }
+            .juk-toggle-option.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: linear-gradient(180deg, rgba(50, 124, 255, 0.22) 0%, rgba(29, 103, 242, 0.16) 100%);
+                color: #143f97;
+                box-shadow: 0 6px 16px rgba(29, 103, 242, 0.14);
+            }
+            .juk-toggle-source {
+                display: none !important;
+            }
             .juk-toolbar {
                 display: flex;
                 flex-wrap: wrap;
@@ -29540,13 +29579,13 @@
                                 </div>
                             </div>
                             <div class="juk-wizard-steps" id="jukInvoicesSteps">
-                                <button class="juk-step-button" type="button" data-juk-step="1"><strong>1. Create Batch</strong><small>Import scope</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="2"><strong>2. Dashboard</strong><small>Batch metrics</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="3"><strong>3. Bulk Review</strong><small>Approve and queue</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="4"><strong>4. Exceptions</strong><small>Manual override</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="5"><strong>5. Confirm</strong><small>Pre-publish checks</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="6"><strong>6. Publish</strong><small>Live progress</small></button>
-                                <button class="juk-step-button" type="button" data-juk-step="7"><strong>7. Summary</strong><small>Audit and export</small></button>
+                                <button class="juk-step-button" type="button" data-juk-step="1"><strong>1. Create Batch</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="2"><strong>2. Dashboard</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="3"><strong>3. Bulk Review</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="4"><strong>4. Exceptions</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="5"><strong>5. Confirm</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="6"><strong>6. Publish</strong></button>
+                                <button class="juk-step-button" type="button" data-juk-step="7"><strong>7. Summary</strong></button>
                             </div>
 
                             <section class="juk-panel" id="jukInvoicesStep1Panel" hidden>
@@ -29584,28 +29623,46 @@
                                     <label>Invoice Date To
                                         <input id="jukInvoicesDateToInput" type="date">
                                     </label>
-                                    <label>Import Scope
-                                        <select id="jukInvoicesScopeSelect">
+                                    <label class="juk-toggle-field">Import Scope
+                                        <div class="juk-toggle-group" role="radiogroup" aria-label="Import Scope" data-juk-toggle-for="jukInvoicesScopeSelect">
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="since-last">Since last batch</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="date-range">Selected range</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="recent">Most recent</button>
+                                        </div>
+                                        <select id="jukInvoicesScopeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
                                             <option value="since-last">All since last successful batch</option>
                                             <option value="date-range">Selected date range</option>
                                             <option value="recent">Most recent invoices</option>
                                         </select>
                                     </label>
-                                    <label>Invoice Status
-                                        <select id="jukInvoicesStatusSelect">
+                                    <label class="juk-toggle-field">Invoice Status
+                                        <div class="juk-toggle-group" role="radiogroup" aria-label="Invoice Status" data-juk-toggle-for="jukInvoicesStatusSelect">
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="authorised">Authorised</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="all">All statuses</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="paid">Include paid</button>
+                                        </div>
+                                        <select id="jukInvoicesStatusSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
                                             <option value="authorised">Authorised / Awaiting payment</option>
                                             <option value="all">All statuses</option>
                                             <option value="paid">Include paid</option>
                                         </select>
                                     </label>
-                                    <label>Include Previously Imported
-                                        <select id="jukInvoicesIncludeImportedSelect">
+                                    <label class="juk-toggle-field">Include Previously Imported
+                                        <div class="juk-toggle-group" role="radiogroup" aria-label="Include Previously Imported" data-juk-toggle-for="jukInvoicesIncludeImportedSelect">
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="no">No</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="yes">Yes</button>
+                                        </div>
+                                        <select id="jukInvoicesIncludeImportedSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
                                             <option value="no">No</option>
                                             <option value="yes">Yes</option>
                                         </select>
                                     </label>
-                                    <label>Publish Mode
-                                        <select id="jukInvoicesModeSelect">
+                                    <label class="juk-toggle-field">Publish Mode
+                                        <div class="juk-toggle-group" role="radiogroup" aria-label="Publish Mode" data-juk-toggle-for="jukInvoicesModeSelect">
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="test">Draft test mode</button>
+                                            <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="live">Live publish mode</button>
+                                        </div>
+                                        <select id="jukInvoicesModeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
                                             <option value="test">Draft test mode</option>
                                             <option value="live">Live publish mode</option>
                                         </select>
@@ -36206,6 +36263,42 @@
                 input.classList.remove("juk-date-autofill");
             }
 
+            function jukSyncCreateBatchToggleGroups() {
+                document.querySelectorAll("[data-juk-toggle-for]").forEach((group) => {
+                    const selectId = String(group.getAttribute("data-juk-toggle-for") || "").trim();
+                    if (!selectId) return;
+                    const select = document.getElementById(selectId);
+                    if (!(select instanceof HTMLSelectElement)) return;
+                    const options = [...group.querySelectorAll("[data-juk-toggle-value]")];
+                    if (!options.length) return;
+                    const fallbackValue = String(options[0].getAttribute("data-juk-toggle-value") || "").trim();
+                    const selectedValue = String(select.value || fallbackValue);
+                    options.forEach((button) => {
+                        if (!(button instanceof HTMLButtonElement)) return;
+                        const value = String(button.getAttribute("data-juk-toggle-value") || "").trim();
+                        if (!value) return;
+                        if (button.dataset.jukWired !== "true") {
+                            button.dataset.jukWired = "true";
+                            button.addEventListener("click", () => {
+                                if (select.value === value) return;
+                                select.value = value;
+                                select.dispatchEvent(new Event("change", { bubbles: true }));
+                                jukSyncCreateBatchToggleGroups();
+                            });
+                        }
+                        const active = value === selectedValue;
+                        button.classList.toggle("is-active", active);
+                        button.setAttribute("aria-checked", active ? "true" : "false");
+                    });
+                    if (group.dataset.jukSelectWired !== "true") {
+                        group.dataset.jukSelectWired = "true";
+                        select.addEventListener("change", () => {
+                            jukSyncCreateBatchToggleGroups();
+                        });
+                    }
+                });
+            }
+
             async function jukAutofillBatchDateRange(options = {}) {
                 const animate = options.animate !== false;
                 const force = options.force !== false;
@@ -37118,6 +37211,7 @@
                 if (batchSearchInput) batchSearchInput.value = String(jukInvoicesState.batchSearch || "");
                 if (batchStatusFilter) batchStatusFilter.value = String(jukInvoicesState.batchStatusFilter || "all");
                 if (batchSortSelect) batchSortSelect.value = String(jukInvoicesState.batchSort || "created-desc");
+                jukSyncCreateBatchToggleGroups();
                 if (mainBatchTableBody) {
                     const query = String(jukInvoicesState.batchSearch || "").trim().toLowerCase();
                     const filter = String(jukInvoicesState.batchStatusFilter || "all");
