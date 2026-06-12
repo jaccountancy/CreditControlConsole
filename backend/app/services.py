@@ -184,6 +184,22 @@ JUKSIB_VAT_LOOKUP_RESPONSE_SCHEMA = {
         },
     },
 }
+JUKSIB_PURCHASE_ACCOUNT_SELECTION_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "suggested_account_code",
+        "suggested_account_name",
+        "confidence",
+        "reason",
+    ],
+    "properties": {
+        "suggested_account_code": {"type": "string"},
+        "suggested_account_name": {"type": "string"},
+        "confidence": {"type": "number"},
+        "reason": {"type": "string"},
+    },
+}
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
 BANK_STATEMENT_MAX_OUTPUT_TOKENS = 24000
@@ -16941,7 +16957,104 @@ def _juksib_account_name_score(name: str) -> Decimal:
     return max((_juksib_similarity(name, candidate) for candidate in candidates), default=Decimal("0"))
 
 
+async def _juksib_openai_pick_purchase_account(
+    *,
+    user: dict,
+    destination_connection: dict,
+    purchase_accounts: list[dict],
+    fallback_code: str,
+) -> dict | None:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip() or not purchase_accounts:
+        return None
+
+    candidates: list[dict] = []
+    for row in purchase_accounts[:120]:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("Code") or "").strip()
+        if not code:
+            continue
+        candidates.append(
+            {
+                "code": code,
+                "name": str(row.get("Name") or "").strip(),
+                "type": str(row.get("Type") or "").strip().upper(),
+                "class": str(row.get("Class") or "").strip().upper(),
+                "description": str(row.get("Description") or "").strip(),
+            }
+        )
+    if not candidates:
+        return None
+
+    request_body = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You choose the best Xero nominal account for supplier bills. "
+                    "Prioritise accountancy/professional fees style expense accounts. "
+                    "Return strict JSON only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "task": "Select the best purchase account nominal code for posting accountancy invoices.",
+                        "supplier_name": JUKSIB_DEFAULT_SUPPLIER_NAME,
+                        "fallback_account_code": fallback_code,
+                        "tenant_id": str(destination_connection.get("tenant_id") or ""),
+                        "tenant_name": str(destination_connection.get("tenant_name") or ""),
+                        "accounts": candidates,
+                        "rules": {
+                            "prefer": [
+                                "accountancy fees",
+                                "professional fees",
+                                "legal and professional fees",
+                                "audit fees",
+                            ],
+                            "must_return_code_from_list": True,
+                            "use_fallback_if_unsure": True,
+                        },
+                    },
+                    default=_json_default,
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "juksib_purchase_account_selection",
+                "strict": True,
+                "schema": JUKSIB_PURCHASE_ACCOUNT_SELECTION_RESPONSE_SCHEMA,
+            }
+        },
+    }
+    try:
+        response_payload = await _post_openai_responses(
+            request_body,
+            purpose="JUKSIB purchase account selection",
+            feature="juksib",
+            page="juk-invoices",
+            user_id=user["id"],
+            timeout_seconds=JUKSIB_OPENAI_MATCH_TIMEOUT_SECONDS,
+        )
+        return _load_openai_json_response(
+            response_payload,
+            "OpenAI returned invalid JSON for JUKSIB purchase account selection.",
+        )
+    except Exception:
+        logger.exception(
+            "JUKSIB: OpenAI purchase account selection failed for tenant %s",
+            destination_connection.get("tenant_id"),
+        )
+        return None
+
+
 async def _juksib_resolve_purchase_account_code(
+    user: dict,
     destination_connection: dict,
     fallback_code: str,
 ) -> tuple[str, str]:
@@ -16962,6 +17075,12 @@ async def _juksib_resolve_purchase_account_code(
     if not purchase_accounts:
         return fallback, ""
 
+    by_code: dict[str, dict] = {
+        str(row.get("Code") or "").strip(): row
+        for row in purchase_accounts
+        if str(row.get("Code") or "").strip()
+    }
+    fallback_row = by_code.get(fallback)
     best = max(
         purchase_accounts,
         key=lambda row: (
@@ -16971,7 +17090,27 @@ async def _juksib_resolve_purchase_account_code(
     )
     best_code = str(best.get("Code") or "").strip() or fallback
     best_name = str(best.get("Name") or "").strip()
-    return best_code, best_name
+    best_score = _juksib_account_name_score(str(best.get("Name") or ""))
+    should_ask_openai = bool(user) and (not fallback_row or best_score < Decimal("0.82"))
+    if should_ask_openai:
+        openai_selection = await _juksib_openai_pick_purchase_account(
+            user=user,
+            destination_connection=destination_connection,
+            purchase_accounts=purchase_accounts,
+            fallback_code=fallback,
+        )
+        if openai_selection:
+            selected_code = str(openai_selection.get("suggested_account_code") or "").strip()
+            selected_row = by_code.get(selected_code)
+            if selected_row:
+                selected_name = str(selected_row.get("Name") or "").strip()
+                return selected_code, selected_name
+
+    if best_code:
+        return best_code, best_name
+    if fallback_row:
+        return fallback, str(fallback_row.get("Name") or "").strip()
+    return fallback, ""
 
 
 async def _juksib_resolve_supplier_contact_id(
@@ -17464,7 +17603,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             supplier_contact_cache[destination_tenant_id] = cached_supplier_contact_id
         cached_account = purchase_account_cache.get(destination_tenant_id)
         if cached_account is None:
-            cached_account = await _juksib_resolve_purchase_account_code(destination_connection, default_account_code)
+            cached_account = await _juksib_resolve_purchase_account_code(user, destination_connection, default_account_code)
             purchase_account_cache[destination_tenant_id] = cached_account
         target_account_code, target_account_name = cached_account
         vat_profile = await _juksib_resolve_vat_profile(
