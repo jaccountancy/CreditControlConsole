@@ -18148,6 +18148,10 @@ def _code_breaker_journal_candidates(
 ) -> tuple[list[dict], list[dict], dict]:
     in_period_candidates: list[dict] = []
     outside_period_candidates: list[dict] = []
+    skipped_missing_journal_date = 0
+    skipped_pre_submission = 0
+    skipped_no_lines = 0
+    missing_created_at_included = 0
     for index, row in enumerate(journals):
         created_at = _parse_optional_iso_datetime(row.get("CreatedDateUTC") or row.get("CreatedDate") or row.get("UpdatedDateUTC"))
         journal_date = _parse_optional_iso_date(row.get("JournalDate") or row.get("Date") or row.get("DateString"))
@@ -18155,10 +18159,14 @@ def _code_breaker_journal_candidates(
             # Some Xero journal payloads omit JournalDate; use created date as a fallback.
             journal_date = created_at.date()
         if journal_date is None:
+            skipped_missing_journal_date += 1
             continue
         if submitted_at is not None:
-            if created_at is None or created_at <= submitted_at:
+            if created_at is not None and created_at <= submitted_at:
+                skipped_pre_submission += 1
                 continue
+            if created_at is None:
+                missing_created_at_included += 1
         journal_id = str(row.get("JournalID") or row.get("Id") or "").strip()
         lines = row.get("JournalLines") if isinstance(row.get("JournalLines"), list) else []
         normalised_lines = []
@@ -18188,6 +18196,7 @@ def _code_breaker_journal_candidates(
                 }
             )
         if not normalised_lines:
+            skipped_no_lines += 1
             continue
         candidate = {
             "candidateId": f"J{index + 1}",
@@ -18231,6 +18240,10 @@ def _code_breaker_journal_candidates(
         "inPeriodTruncated": in_period_truncated,
         "outsidePeriodTruncated": outside_period_truncated,
         "maxCandidates": CODE_BREAKER_MAX_VARIANCE_CANDIDATES,
+        "skippedMissingJournalDate": skipped_missing_journal_date,
+        "skippedPreSubmission": skipped_pre_submission,
+        "skippedNoLines": skipped_no_lines,
+        "includedWithoutCreatedAt": missing_created_at_included,
     }
     return in_period_rows, outside_period_rows, diagnostics
 
