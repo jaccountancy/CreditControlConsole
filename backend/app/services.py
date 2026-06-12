@@ -16555,6 +16555,49 @@ async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
     }
 
 
+async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_batches
+                WHERE id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (batch_id, user["id"]),
+            )
+            batch_row = cursor.fetchone()
+            if not batch_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="JUKSIB batch not found.")
+            cursor.execute(
+                """
+                DELETE FROM juksib_batches
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (batch_id, user["id"]),
+            )
+        connection.commit()
+
+    batch_reference = str(batch_row.get("batch_reference") or "").strip()
+    _juksib_record_audit(
+        user_id=user["id"],
+        batch_id=batch_id,
+        entity_type="juksib_batch",
+        entity_id=batch_id,
+        action="batch_deleted",
+        old_value={
+            "batchReference": batch_reference,
+            "status": str(batch_row.get("status") or ""),
+            "summary": batch_row.get("summary") if isinstance(batch_row.get("summary"), dict) else {},
+        },
+        notes=f"Deleted batch {batch_reference or batch_id}.",
+    )
+    return {"deletedBatchId": batch_id, **await juksib_list_batches(user, limit=30)}
+
+
 async def juksib_bulk_update_invoice_status(user: dict, batch_id: str, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     status_value = str(payload.get("status") or "").strip()

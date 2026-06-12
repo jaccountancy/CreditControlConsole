@@ -245,6 +245,7 @@ from .services import (
     juksib_get_batch,
     juksib_import_batch,
     juksib_list_batches,
+    juksib_delete_batch,
     juksib_publish_batch,
     juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
     start_juksib_automation_worker,
@@ -2270,6 +2271,12 @@ async def api_juksib_import_batch(request: Request, user: dict = Depends(require
 @app.get("/api/juksib/batches/{batch_id}")
 async def api_juksib_batch(batch_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await juksib_get_batch(user, batch_id)}
+
+
+@app.delete("/api/juksib/batches/{batch_id}")
+async def api_juksib_delete_batch(batch_id: str, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "delete JUKSIB batches")
+    return {"status": "ok", **await juksib_delete_batch(user, batch_id)}
 
 
 @app.post("/api/juksib/batches/{batch_id}/invoices/status")

@@ -33696,6 +33696,7 @@
                         juksibBatches: config.endpoints?.juksibBatches || "/api/juksib/batches",
                         juksibImportBatch: config.endpoints?.juksibImportBatch || "/api/juksib/batches/import",
                         juksibBatch: config.endpoints?.juksibBatch || "/api/juksib/batches/:batchId",
+                        juksibDeleteBatch: config.endpoints?.juksibDeleteBatch || "/api/juksib/batches/:batchId",
                         juksibBulkStatus: config.endpoints?.juksibBulkStatus || "/api/juksib/batches/:batchId/invoices/status",
                         juksibOverride: config.endpoints?.juksibOverride || "/api/juksib/batches/:batchId/invoices/override",
                         juksibPublish: config.endpoints?.juksibPublish || "/api/juksib/batches/:batchId/publish",
@@ -38774,7 +38775,10 @@
                                 <td>${escapeHTML(String(itemSummary.totalImported || 0))}</td>
                                 <td>${escapeHTML(String(itemSummary.readyToPublish || 0))}</td>
                                 <td>${escapeHTML(String(itemSummary.published || 0))}</td>
-                                <td><button class="ghost-button" type="button" data-juk-open-wizard-batch="${escapeHTML(item.id || "")}">Open wizard</button></td>
+                                <td>
+                                    <button class="ghost-button" type="button" data-juk-open-wizard-batch="${escapeHTML(item.id || "")}">Open wizard</button>
+                                    <button class="ghost-button" type="button" data-juk-delete-batch="${escapeHTML(item.id || "")}" data-juk-delete-batch-reference="${escapeHTML(item.batchReference || "")}">Delete</button>
+                                </td>
                             </tr>
                         `;
                     }).join("") : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No batches</p><h4>No matching JUK batch records</h4><p>Create a new batch or adjust search/filter.</p></div></td></tr>';
@@ -38789,6 +38793,37 @@
                                 await jukRefreshFromAPI({ silent: true, batchId });
                             } catch {}
                             renderJukInvoicesScreen();
+                        });
+                    });
+                    mainBatchTableBody.querySelectorAll("[data-juk-delete-batch]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const batchId = String(button.dataset.jukDeleteBatch || "").trim();
+                            if (!batchId) return;
+                            const batchReference = String(button.dataset.jukDeleteBatchReference || "").trim() || "this batch";
+                            if (!window.confirm(`Delete ${batchReference}? This cannot be undone.`)) return;
+                            const originalLabel = button.textContent;
+                            const wasCurrentBatch = jukInvoicesState.currentBatchId === batchId;
+                            button.disabled = true;
+                            button.textContent = "Deleting...";
+                            try {
+                                const response = await requestJSON(api.endpoints.juksibDeleteBatch, {
+                                    method: "DELETE",
+                                }, { batchId });
+                                jukApplyServerListPayload(response || {});
+                                if (wasCurrentBatch) {
+                                    jukInvoicesState.batchModalOpen = false;
+                                    jukInvoicesState.selectedInvoiceIds = [];
+                                    jukInvoicesState.currentInvoiceId = "";
+                                    jukInvoicesState.audit = [];
+                                }
+                                renderJukInvoicesScreen();
+                                showToast(`${batchReference} deleted.`, "success");
+                            } catch (error) {
+                                showToast(error?.message || "Unable to delete this batch.", "error");
+                            } finally {
+                                button.disabled = false;
+                                button.textContent = originalLabel || "Delete";
+                            }
                         });
                     });
                 }
