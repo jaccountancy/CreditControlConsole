@@ -17836,6 +17836,12 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             if bool(vat_profile.get("vatRegistered"))
             else f"No VAT number found in client register; tax type {target_tax_type} applied."
         )
+        vat_history_note = (
+            f"Because we hold a VAT number for this client, this transaction has been processed with VAT "
+            f"using tax type ({target_tax_type})."
+            if bool(vat_profile.get("vatRegistered"))
+            else ""
+        )
         no_vat_history_note = (
             f"Jenius AI could not find a VAT number in the client register for "
             f"'{str(vat_profile.get('registerName') or vat_profile.get('clientName') or row.get('juk_contact_name') or 'this client').strip()}'. "
@@ -17843,6 +17849,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             if not bool(vat_profile.get("vatRegistered"))
             else ""
         )
+        history_extra_notes = [note for note in (vat_history_note, no_vat_history_note) if str(note or "").strip()]
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -17892,7 +17899,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 note_added, note_error = await _juksib_add_destination_invoice_note(
                     destination_connection,
                     duplicate_bill_id,
-                    extra_notes=[no_vat_history_note] if no_vat_history_note else [],
+                    extra_notes=history_extra_notes,
                 )
             publish_result["duplicates"] += 1
             publish_result["rows"].append(
@@ -17989,7 +17996,11 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 connection.commit()
 
             if attached_ok:
-                note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, latest_bill_id)
+                note_added, note_error = await _juksib_add_destination_invoice_note(
+                    destination_connection,
+                    latest_bill_id,
+                    extra_notes=history_extra_notes,
+                )
                 publish_result["published"] += 1
                 publish_result["rows"].append(
                     {
@@ -18039,7 +18050,11 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
                 note_added = False
                 note_error = ""
                 if existing_bill_id:
-                    note_added, note_error = await _juksib_add_destination_invoice_note(destination_connection, existing_bill_id)
+                    note_added, note_error = await _juksib_add_destination_invoice_note(
+                        destination_connection,
+                        existing_bill_id,
+                        extra_notes=history_extra_notes,
+                    )
                 publish_result["duplicates"] += 1
                 publish_result["rows"].append(
                     {
@@ -18185,7 +18200,7 @@ async def juksib_publish_batch(user: dict, batch_id: str, payload: dict | None =
             note_added, note_error = await _juksib_add_destination_invoice_note(
                 destination_connection,
                 created_invoice_id,
-                extra_notes=[no_vat_history_note] if no_vat_history_note else [],
+                extra_notes=history_extra_notes,
             )
 
         if created_invoice_id and not publish_error:
