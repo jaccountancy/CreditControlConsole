@@ -38299,8 +38299,11 @@
                 const summary = batch?.summary || {};
                 const published = Number(summary.published || 0);
                 const failed = Number(summary.failed || 0);
+                const skipped = Number(summary.skipped || 0);
                 if (published > 0 && failed === 0) return { key: "completed", label: "Completed" };
                 if (published > 0 && failed > 0) return { key: "completed", label: "Completed with issues" };
+                if (published === 0 && failed > 0) return { key: "completed", label: "Completed with failures" };
+                if (published === 0 && failed === 0 && skipped > 0) return { key: "completed", label: "Completed (skipped only)" };
                 return { key: "draft", label: "Draft / in progress" };
             }
 
@@ -40677,6 +40680,11 @@
                 if (publishExperienceSummary) {
                     if (progress.running) {
                         publishExperienceSummary.textContent = "Publish is running. Events stream below as each invoice is processed.";
+                    } else if (progress.total > 0) {
+                        const completionLine = `Run complete: ${Number(progress.published || 0).toLocaleString("en-GB")} published, ${Number(progress.failed || 0).toLocaleString("en-GB")} failed, ${Number(progress.skipped || 0).toLocaleString("en-GB")} skipped.`;
+                        publishExperienceSummary.textContent = Number(progress.failed || 0) > 0
+                            ? `${completionLine} Fix failed rows in Step 3 and retry publish for those invoices.`
+                            : completionLine;
                     } else if (isTestMode) {
                         publishExperienceSummary.textContent = "This batch is in test mode. Create a live batch in Step 1 when you are ready to publish to client Xero organisations.";
                     } else if (!publishableRows.length) {
