@@ -30001,6 +30001,14 @@
                                 <div class="juk-toolbar">
                                     <button class="primary-button" id="jukInvoicesStartPublishButton" type="button">Start publishing</button>
                                 </div>
+                                <section class="detail-panel" id="jukInvoicesPublishExperiencePanel">
+                                    <div class="juk-grid" id="jukInvoicesPublishExperienceCards"></div>
+                                    <p class="late-charge-summary" id="jukInvoicesPublishExperienceSummary">Publish readiness checks appear here.</p>
+                                    <div class="juk-toolbar">
+                                        <button class="ghost-button" id="jukInvoicesPublishBackToReviewButton" type="button">Back to bulk review</button>
+                                        <button class="ghost-button" id="jukInvoicesPublishBackToConfirmButton" type="button">Back to confirm</button>
+                                    </div>
+                                </section>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="JUK publish events">
                                         <thead>
@@ -37978,14 +37986,22 @@
                 const progressFill = document.getElementById("jukInvoicesProgressFill");
                 const progressSummary = document.getElementById("jukInvoicesProgressSummary");
                 const progressCards = document.getElementById("jukInvoicesProgressCards");
+                const publishExperienceCards = document.getElementById("jukInvoicesPublishExperienceCards");
+                const publishExperienceSummary = document.getElementById("jukInvoicesPublishExperienceSummary");
+                const publishBackToReviewButton = document.getElementById("jukInvoicesPublishBackToReviewButton");
+                const publishBackToConfirmButton = document.getElementById("jukInvoicesPublishBackToConfirmButton");
                 const startPublishButton = document.getElementById("jukInvoicesStartPublishButton");
                 const progress = jukInvoicesState.publish || JUK_DEFAULT_STATE.publish;
                 const percent = progress.total ? Math.round((progress.processed / progress.total) * 100) : 0;
+                const publishableRows = (batch.invoices || []).filter((invoice) => invoice.status === "approved" || invoice.status === "retry_pending");
+                const skippedRows = (batch.invoices || []).filter((invoice) => invoice.status === "skipped" || invoice.status === "manually_excluded");
+                const blockedRows = Math.max(0, Number(stats.totalImported || 0) - publishableRows.length - skippedRows.length - Number(stats.published || 0));
+                const isTestMode = String(batch.mode || "test").toLowerCase() !== "live";
                 if (progressFill) progressFill.style.width = `${percent}%`;
                 if (progressSummary) {
                     progressSummary.textContent = progress.running
                         ? `Publishing ${progress.current || "batch"} · ${progress.processed}/${progress.total} (${percent}%).`
-                        : (progress.total ? `Publish complete: ${progress.published} published, ${progress.failed} failed, ${progress.skipped} skipped.` : "Waiting to publish approved invoices.");
+                        : (progress.total ? `Publish complete: ${progress.published} published, ${progress.failed} failed, ${progress.skipped} skipped.` : "Publish is ready once at least one invoice is approved.");
                 }
                 if (progressCards) {
                     progressCards.innerHTML = [
@@ -37994,6 +38010,37 @@
                         ["Failed", progress.failed],
                         ["Skipped", progress.skipped],
                     ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+                }
+                if (publishExperienceCards) {
+                    publishExperienceCards.innerHTML = [
+                        ["Approved and ready", publishableRows.length],
+                        ["Still in review", blockedRows],
+                        ["Skipped", skippedRows.length],
+                        ["Batch mode", isTestMode ? "Test" : "Live"],
+                    ].map(([label, value]) => `<article><span>${escapeHTML(String(label))}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+                }
+                if (publishExperienceSummary) {
+                    if (progress.running) {
+                        publishExperienceSummary.textContent = "Publish is running. Events stream below as each invoice is processed.";
+                    } else if (isTestMode) {
+                        publishExperienceSummary.textContent = "This batch is in test mode. Create a live batch in Step 1 when you are ready to publish to client Xero organisations.";
+                    } else if (!publishableRows.length) {
+                        publishExperienceSummary.textContent = "No approved invoices yet. Approve rows in Step 3 or mark them skipped to finish this run cleanly.";
+                    } else {
+                        publishExperienceSummary.textContent = `${publishableRows.length.toLocaleString("en-GB")} approved invoice${publishableRows.length === 1 ? "" : "s"} ready to publish.`;
+                    }
+                }
+                if (publishBackToReviewButton) {
+                    publishBackToReviewButton.onclick = () => {
+                        jukSetStep(3);
+                        renderJukInvoicesScreen();
+                    };
+                }
+                if (publishBackToConfirmButton) {
+                    publishBackToConfirmButton.onclick = () => {
+                        jukSetStep(4);
+                        renderJukInvoicesScreen();
+                    };
                 }
                 const publishEventsBody = document.getElementById("jukInvoicesPublishEventsBody");
                 if (publishEventsBody) {
@@ -38011,12 +38058,18 @@
                         : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No events yet</p><h4>Publish events will appear here</h4><p>Start publishing to stream outcomes per invoice.</p></div></td></tr>';
                 }
                 if (startPublishButton) {
-                    const isTestMode = String(batch.mode || "test").toLowerCase() !== "live";
-                    startPublishButton.disabled = Boolean(progress.running) || isTestMode;
-                    startPublishButton.textContent = progress.running ? "Publishing..." : (isTestMode ? "Live mode required" : "Start publishing");
+                    const noApprovedRows = publishableRows.length === 0;
+                    startPublishButton.disabled = Boolean(progress.running) || isTestMode || noApprovedRows;
+                    startPublishButton.textContent = progress.running
+                        ? "Publishing..."
+                        : (isTestMode ? "Live mode required" : (noApprovedRows ? "No approved invoices" : `Start publishing (${publishableRows.length})`));
                     startPublishButton.onclick = async () => {
                         if (isTestMode) {
                             showToast("This batch is in test mode. Create a live batch to publish to Xero.", "info");
+                            return;
+                        }
+                        if (noApprovedRows) {
+                            showToast("Approve at least one invoice in Step 3 before publishing.", "info");
                             return;
                         }
                         await jukPublishApproved(batch);
