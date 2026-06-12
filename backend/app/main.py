@@ -293,25 +293,6 @@ background_job_executor = ThreadPoolExecutor(
     max_workers=BACKGROUND_JOB_MAX_WORKERS,
     thread_name_prefix="panel-bg",
 )
-_juksib_import_progress_by_user: dict[str, dict] = {}
-_juksib_import_progress_lock = threading.Lock()
-
-
-def _set_juksib_import_progress(user_id: str, patch: dict) -> dict:
-    key = str(user_id or "").strip()
-    current = {}
-    with _juksib_import_progress_lock:
-        if key:
-            current = dict(_juksib_import_progress_by_user.get(key) or {})
-            current.update(patch if isinstance(patch, dict) else {})
-            _juksib_import_progress_by_user[key] = current
-    return current
-
-
-def _get_juksib_import_progress(user_id: str) -> dict:
-    key = str(user_id or "").strip()
-    with _juksib_import_progress_lock:
-        return dict(_juksib_import_progress_by_user.get(key) or {})
 
 
 def _submit_background_job(name: str, target, *args, **kwargs) -> None:
@@ -2262,111 +2243,7 @@ async def api_juksib_import_batch(request: Request, user: dict = Depends(require
         payload = await request.json()
     except Exception:
         payload = {}
-    user_id = str(user.get("id") or "")
-    run_id = f"juksib-{int(datetime.now(timezone.utc).timestamp() * 1000)}"
-    _set_juksib_import_progress(
-        user_id,
-        {
-            "runId": run_id,
-            "running": True,
-            "stage": "starting",
-            "message": "Import request accepted.",
-            "processed": 0,
-            "total": 0,
-            "startedAt": datetime.now(timezone.utc).isoformat(),
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "error": "",
-        },
-    )
-
-    def _progress_hook(event: dict) -> None:
-        update = dict(event or {})
-        update["running"] = True
-        update["runId"] = run_id
-        update["updatedAt"] = datetime.now(timezone.utc).isoformat()
-        _set_juksib_import_progress(user_id, update)
-
-    body = payload if isinstance(payload, dict) else {}
-
-    async def _run_import_job() -> None:
-        job_payload = dict(body)
-        job_payload["_progressHook"] = _progress_hook
-        try:
-            result = await juksib_import_batch(user, job_payload)
-            batch = result.get("batch") if isinstance(result, dict) else {}
-            _set_juksib_import_progress(
-                user_id,
-                {
-                    "running": False,
-                    "stage": "completed",
-                    "message": "Import completed.",
-                    "updatedAt": datetime.now(timezone.utc).isoformat(),
-                    "finishedAt": datetime.now(timezone.utc).isoformat(),
-                    "batchId": str((batch or {}).get("id") or ""),
-                    "batchReference": str((batch or {}).get("batchReference") or ""),
-                    "error": "",
-                },
-            )
-        except HTTPException as exc:
-            if isinstance(exc.detail, str):
-                detail_text = exc.detail
-            else:
-                try:
-                    detail_text = json.dumps(exc.detail or {})
-                except Exception:
-                    detail_text = str(exc.detail or "")
-            _set_juksib_import_progress(
-                user_id,
-                {
-                    "running": False,
-                    "stage": "failed",
-                    "message": "Import failed.",
-                    "updatedAt": datetime.now(timezone.utc).isoformat(),
-                    "finishedAt": datetime.now(timezone.utc).isoformat(),
-                    "error": str(detail_text or "Import failed"),
-                },
-            )
-        except Exception as exc:
-            logger.exception("JUKSIB import failed unexpectedly")
-            _set_juksib_import_progress(
-                user_id,
-                {
-                    "running": False,
-                    "stage": "failed",
-                    "message": "Import failed unexpectedly.",
-                    "updatedAt": datetime.now(timezone.utc).isoformat(),
-                    "finishedAt": datetime.now(timezone.utc).isoformat(),
-                    "error": str(exc) or exc.__class__.__name__,
-                },
-            )
-
-    def _run_import_job_sync() -> None:
-        asyncio.run(_run_import_job())
-
-    _submit_background_job(f"juksib-import-{run_id}", _run_import_job_sync)
-    return JSONResponse(
-        status_code=status.HTTP_202_ACCEPTED,
-        content={
-            "status": "accepted",
-            "runId": run_id,
-            "progress": _get_juksib_import_progress(user_id),
-        },
-    )
-
-
-@app.get("/api/juksib/import-progress")
-def api_juksib_import_progress(user: dict = Depends(require_panel_user)):
-    progress = _get_juksib_import_progress(str(user.get("id") or ""))
-    if not progress:
-        progress = {
-            "running": False,
-            "stage": "idle",
-            "message": "No active import.",
-            "processed": 0,
-            "total": 0,
-            "error": "",
-        }
-    return {"status": "ok", "progress": progress}
+    return {"status": "ok", **await juksib_import_batch(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.get("/api/juksib/batches/{batch_id}")
