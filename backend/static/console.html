@@ -3,7 +3,7 @@
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Credit Control</title>
+                <title>Jenius Tools</title>
                 <link rel="preconnect" href="https://fonts.googleapis.com">
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
                 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -21189,6 +21189,52 @@
                 flex-wrap: wrap;
                 justify-content: flex-end;
             }
+            .ghost-button.is-developer-log-clearing {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                gap: 9px;
+                min-width: 164px;
+                border-color: rgba(220, 78, 78, 0.34);
+                background: linear-gradient(90deg, rgba(255, 243, 243, 0.9), rgba(255, 236, 236, 0.95), rgba(255, 243, 243, 0.9));
+                background-size: 220% 100%;
+                animation: developer-log-clear-sheen 1.5s linear infinite;
+            }
+            .ghost-button.is-developer-log-clearing::before {
+                content: "";
+                width: 14px;
+                height: 14px;
+                flex: 0 0 14px;
+                border: 2px solid rgba(178, 62, 62, 0.26);
+                border-top-color: #c14747;
+                border-radius: 999px;
+                animation: developer-log-clear-spin 0.82s linear infinite;
+            }
+            .ghost-button.is-developer-log-clearing .developer-log-clear-copy {
+                display: inline-flex;
+                align-items: baseline;
+                gap: 5px;
+                line-height: 1.1;
+            }
+            .ghost-button.is-developer-log-clearing .developer-log-clear-title {
+                color: #b23e3e;
+                font-size: 0.80rem;
+                font-weight: 860;
+            }
+            .ghost-button.is-developer-log-clearing .developer-log-clear-stage {
+                color: #7f5c5c;
+                font-size: 0.68rem;
+                font-weight: 780;
+                letter-spacing: 0.01em;
+                white-space: nowrap;
+            }
+            @keyframes developer-log-clear-spin {
+                to { transform: rotate(360deg); }
+            }
+            @keyframes developer-log-clear-sheen {
+                from { background-position: 0% 0%; }
+                to { background-position: 200% 0%; }
+            }
             .developer-log-filter {
                 display: inline-flex;
                 align-items: center;
@@ -31257,6 +31303,8 @@
             let developerLogDateFilter = "";
             let developerLogModeFilter = activeSettingsSection === "developer-log" ? "system" : "all";
             let developerLogSeverityFilter = activeSettingsSection === "developer-log" ? "error" : "all";
+            let developerLogClearBusyStartedAt = 0;
+            let developerLogClearBusyTick = null;
             let userActivityEntries = loadUserActivityLog();
             let lastUserActivitySignature = "";
             let lastUserActivityAt = 0;
@@ -80843,7 +80891,17 @@
             function setDeveloperLogClearBusy(isBusy) {
                 document.querySelectorAll("#clearDeveloperLogButton, #settingsClearDeveloperLogButton").forEach((button) => {
                     button.disabled = Boolean(isBusy);
-                    button.textContent = isBusy ? "Clearing..." : "Clear logs";
+                    if (isBusy) {
+                        const elapsed = Math.max(0, Math.floor((Date.now() - Number(developerLogClearBusyStartedAt || Date.now())) / 1000));
+                        let stage = "starting";
+                        if (elapsed >= 2) stage = "removing";
+                        if (elapsed >= 4) stage = "finalising";
+                        button.classList.add("is-developer-log-clearing");
+                        button.innerHTML = `<span class="developer-log-clear-copy"><span class="developer-log-clear-title">Clearing</span><span class="developer-log-clear-stage">${stage}</span></span>`;
+                    } else {
+                        button.classList.remove("is-developer-log-clearing");
+                        button.textContent = "Clear logs";
+                    }
                 });
             }
 
@@ -80875,7 +80933,10 @@
                 );
                 if (!confirmed) return;
 
+                developerLogClearBusyStartedAt = Date.now();
                 setDeveloperLogClearBusy(true);
+                window.clearInterval(developerLogClearBusyTick);
+                developerLogClearBusyTick = window.setInterval(() => setDeveloperLogClearBusy(true), 700);
                 try {
                     const payload = await requestJSON(api.endpoints.developerLogsClear, { method: "POST", body: JSON.stringify({}) });
                     const backendClearedCount = Number(payload?.logsCleared || 0);
@@ -80892,6 +80953,9 @@
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to clear developer logs", "error");
                 } finally {
+                    window.clearInterval(developerLogClearBusyTick);
+                    developerLogClearBusyTick = null;
+                    developerLogClearBusyStartedAt = 0;
                     setDeveloperLogClearBusy(false);
                 }
             }
