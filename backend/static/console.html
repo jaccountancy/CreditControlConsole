@@ -7559,6 +7559,34 @@
                 animation: insightsLoadingFadeIn 0.48s ease forwards;
                 animation-delay: 0.3s;
             }
+            .insights-loading-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                opacity: 0;
+                animation: insightsLoadingFadeIn 0.42s ease forwards;
+                animation-delay: 0.34s;
+            }
+            .insights-loading-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: rgba(255, 255, 255, 0.78);
+                color: #4a5d7d;
+                font-size: 0.71rem;
+                font-weight: 820;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                padding: 5px 9px;
+            }
+            .insights-loading-pill strong {
+                color: #1e3f8a;
+                letter-spacing: 0;
+                text-transform: none;
+            }
             .insights-loading-progress {
                 width: min(420px, 100%);
                 height: 10px;
@@ -7579,6 +7607,53 @@
                 border-radius: inherit;
                 background: linear-gradient(90deg, #1d67f2, #2f84dd 56%, #27b05f);
                 animation: insightsLoadingProgress 1.4s ease-in-out infinite;
+            }
+            .insights-loading-sections {
+                display: grid;
+                gap: 8px;
+                margin-top: 2px;
+                opacity: 0;
+                animation: insightsLoadingFadeIn 0.42s ease forwards;
+                animation-delay: 0.42s;
+            }
+            .insights-loading-section {
+                display: grid;
+                grid-template-columns: minmax(170px, auto) minmax(120px, 1fr) auto;
+                gap: 10px;
+                align-items: center;
+                color: #567091;
+                font-size: 0.8rem;
+                font-weight: 760;
+            }
+            .insights-loading-section i {
+                display: block;
+                width: 100%;
+                height: 7px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                background: rgba(255, 255, 255, 0.72);
+                overflow: hidden;
+            }
+            .insights-loading-section i span {
+                display: block;
+                width: var(--section-progress, 8%);
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #2f84dd 58%, #27b05f);
+                transition: width 0.45s ease;
+            }
+            .insights-loading-section .insights-loading-section-pct {
+                color: #385ea1;
+                font-weight: 820;
+                min-width: 34px;
+                text-align: right;
+            }
+            .insights-loading-section.is-active b {
+                color: #183f8a;
+            }
+            .insights-loading-section.is-done b,
+            .insights-loading-section.is-done .insights-loading-section-pct {
+                color: #1f8f6e;
             }
             .insights-loading-preview {
                 display: grid;
@@ -32163,6 +32238,9 @@
             let userActivityLoggingWired = false;
             let insightsData = null;
             let insightsLoading = false;
+            let insightsLoaderStartedAt = 0;
+            let insightsLoaderTickTimer = null;
+            let insightsLoaderMessageIndex = 0;
             let companyCalendarData = null;
             let companyCalendarLoading = false;
             let activeInsightsSection = persistedUIState.activeInsightsSection || "copilot";
@@ -37661,6 +37739,23 @@
                 jukInvoicesState.selectedInvoiceIds = [...selected];
             }
 
+            function jukSelectedInvoiceIdsFromReviewTable() {
+                const table = document.getElementById("jukInvoicesReviewTableBody");
+                if (!table) return [];
+                return [...table.querySelectorAll("[data-juk-select-row]:checked")]
+                    .map((checkbox) => jukInvoiceIdKey(checkbox.dataset.jukSelectRow))
+                    .filter(Boolean);
+            }
+
+            function jukNormalisedSelectedInvoiceIds(batch = null) {
+                const validIds = new Set(((batch?.invoices || []).map((invoice) => jukInvoiceIdKey(invoice.id))).filter(Boolean));
+                const fromState = (jukInvoicesState.selectedInvoiceIds || []).map((id) => jukInvoiceIdKey(id)).filter(Boolean);
+                const fromDom = jukSelectedInvoiceIdsFromReviewTable();
+                const merged = [...new Set([...fromDom, ...fromState])].filter((id) => !validIds.size || validIds.has(id));
+                jukInvoicesState.selectedInvoiceIds = merged;
+                return merged;
+            }
+
             function jukBulkUpdateStatus(batch, status) {
                 const selected = new Set(jukInvoicesState.selectedInvoiceIds || []);
                 batch.invoices = (batch.invoices || []).map((invoice) => {
@@ -38473,6 +38568,16 @@
                             renderJukInvoicesScreen();
                         });
                     });
+                    reviewTable.querySelectorAll("tr").forEach((row) => {
+                        row.addEventListener("click", (event) => {
+                            const interactive = event.target?.closest?.("button, a, select, input, label, textarea");
+                            if (interactive) return;
+                            const checkbox = row.querySelector("[data-juk-select-row]");
+                            if (!(checkbox instanceof HTMLInputElement)) return;
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                        });
+                    });
                     reviewTable.querySelectorAll("[data-juk-row-action]").forEach((button) => {
                         button.addEventListener("click", async () => {
                             const id = button.dataset.jukRowId;
@@ -38626,9 +38731,10 @@
                 const commandTotal = document.getElementById("jukInvoicesSelectedTotal");
                 const commandApprove = document.getElementById("jukInvoicesCommandApproveButton");
                 const commandSkip = document.getElementById("jukInvoicesCommandSkipButton");
-                const selectedCount = (jukInvoicesState.selectedInvoiceIds || []).length;
+                const selectedIds = jukNormalisedSelectedInvoiceIds(batch);
+                const selectedCount = selectedIds.length;
                 const selectedTotalValue = (batch.invoices || [])
-                    .filter((invoice) => (jukInvoicesState.selectedInvoiceIds || []).includes(jukInvoiceIdKey(invoice.id)))
+                    .filter((invoice) => selectedIds.includes(jukInvoiceIdKey(invoice.id)))
                     .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
                 if (commandCount) commandCount.textContent = `${selectedCount}`;
                 if (commandTotal) commandTotal.textContent = formatCurrency(selectedTotalValue);
@@ -38653,7 +38759,7 @@
                 }
                 if (approveSelectedButton) {
                     approveSelectedButton.onclick = async () => {
-                        const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
+                        const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
@@ -38669,7 +38775,7 @@
                 }
                 if (markNotConnectedSelectedButton) {
                     markNotConnectedSelectedButton.onclick = async () => {
-                        const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
+                        const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
@@ -38686,7 +38792,7 @@
                 }
                 if (skipSelectedButton) {
                     skipSelectedButton.onclick = async () => {
-                        const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
+                        const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
@@ -38702,7 +38808,7 @@
                 }
                 if (retrySelectedButton) {
                     retrySelectedButton.onclick = async () => {
-                        const invoiceIds = [...(jukInvoicesState.selectedInvoiceIds || [])];
+                        const invoiceIds = jukNormalisedSelectedInvoiceIds(batch);
                         if (!invoiceIds.length) return showToast("Select at least one invoice.", "info");
                         try {
                             const response = await requestJSON(api.endpoints.juksibBulkStatus, {
@@ -69506,8 +69612,83 @@
                 return "Jenius AI is analysing the Xero data";
             }
 
+            function insightsLoadingMessages() {
+                return [
+                    "Getting things ready. Hold on just a moment…",
+                    "Rearranging some of the widgets for maximum clarity.",
+                    "Getting the pixels in order and polishing the dashboard edges.",
+                    "Warming up Jenius neurons and checking key signals.",
+                    "Connecting the dots across credit control, banking and ME.",
+                    "Making it look effortless while doing a lot behind the scenes."
+                ];
+            }
+
+            function insightsLoadingSections() {
+                return [
+                    { id: "credit", label: "Credit Control", base: 6, span: 33, pace: 1.1 },
+                    { id: "banking", label: "Banking Data", base: 4, span: 31, pace: 1.2 },
+                    { id: "me", label: "ME Reporting", base: 3, span: 26, pace: 0.95 },
+                    { id: "ops", label: "Operational Status", base: 2, span: 22, pace: 0.85 },
+                ];
+            }
+
+            function stopInsightsLoaderSequence() {
+                if (insightsLoaderTickTimer) {
+                    window.clearInterval(insightsLoaderTickTimer);
+                    insightsLoaderTickTimer = null;
+                }
+            }
+
+            function updateInsightsLoaderStage(forceMessage = false) {
+                const root = document.getElementById("insightsLoadingStage");
+                if (!root || root.hidden) return;
+                const elapsedSeconds = Math.max(0, (Date.now() - insightsLoaderStartedAt) / 1000);
+                const progress = Math.min(97, Math.round(12 + elapsedSeconds * 5.8));
+                const etaSeconds = Math.max(6, Math.round((100 - progress) / 5.6));
+                const progressFill = document.getElementById("insightsLoadingProgressFill");
+                if (progressFill) progressFill.style.width = `${progress}%`;
+                const etaValue = document.getElementById("insightsLoadingEtaValue");
+                if (etaValue) etaValue.textContent = `${etaSeconds}s`;
+                const overallValue = document.getElementById("insightsLoadingOverallValue");
+                if (overallValue) overallValue.textContent = `${progress}%`;
+                if (forceMessage || elapsedSeconds % 3 < 1.2) {
+                    const messages = insightsLoadingMessages();
+                    const message = messages[insightsLoaderMessageIndex % messages.length];
+                    const target = document.getElementById("insightsLoadingFunnyMessage");
+                    if (target) target.textContent = message;
+                    insightsLoaderMessageIndex += 1;
+                }
+                const sections = insightsLoadingSections();
+                sections.forEach((section, index) => {
+                    const row = document.getElementById(`insightsLoadingSection-${section.id}`);
+                    const bar = document.getElementById(`insightsLoadingSectionBar-${section.id}`);
+                    const pct = document.getElementById(`insightsLoadingSectionPct-${section.id}`);
+                    if (!row || !bar || !pct) return;
+                    const sectionValue = Math.min(
+                        100,
+                        Math.round(section.base + Math.max(0, elapsedSeconds - index * 0.6) * (section.pace * 8.2))
+                    );
+                    bar.style.width = `${sectionValue}%`;
+                    pct.textContent = `${sectionValue}%`;
+                    row.classList.toggle("is-active", sectionValue < 100 && sectionValue >= 10);
+                    row.classList.toggle("is-done", sectionValue >= 100);
+                });
+            }
+
+            function startInsightsLoaderSequence() {
+                if (!insightsLoaderStartedAt) insightsLoaderStartedAt = Date.now();
+                updateInsightsLoaderStage(true);
+                if (insightsLoaderTickTimer) return;
+                insightsLoaderTickTimer = window.setInterval(() => updateInsightsLoaderStage(false), 1000);
+            }
+
             function setAiLoading(loading, detail = "Building the AI copilot briefing") {
                 insightsLoading = loading;
+                if (!loading) {
+                    insightsLoaderStartedAt = 0;
+                    insightsLoaderMessageIndex = 0;
+                    stopInsightsLoaderSequence();
+                }
                 const insightsHero = document.getElementById("insightsHeroCard");
                 if (insightsHero) insightsHero.classList.toggle("is-loading", Boolean(loading));
                 const banner = document.getElementById("aiInlineBanner");
@@ -70000,7 +70181,7 @@
                 const hero = document.getElementById("insightsHeroCard");
                 if (hero) hero.hidden = true;
                 if (insightsLoading && !insightsData) {
-                    target.innerHTML = `<section class="insights-loading-stage" aria-live="polite">
+                    target.innerHTML = `<section class="insights-loading-stage" id="insightsLoadingStage" aria-live="polite">
                         <div class="insights-loading-grid">
                             <div class="insights-loading-stage-inner">
                                 <div class="insights-loading-logo-shell">
@@ -70009,8 +70190,34 @@
                                 </div>
                                 <p class="insights-loading-kicker">System analysis in progress</p>
                                 <h3 class="insights-loading-title">Jenius AI is analysing the platform data</h3>
-                                <p class="insights-loading-copy">Building a whole-system briefing across credit control, banking, ME reporting and operational status.</p>
-                                <div class="insights-loading-progress" aria-hidden="true"><span></span></div>
+                                <p class="insights-loading-copy" id="insightsLoadingFunnyMessage">Getting things ready. Hold on just a moment…</p>
+                                <div class="insights-loading-meta">
+                                    <span class="insights-loading-pill">Overall progress <strong id="insightsLoadingOverallValue">12%</strong></span>
+                                    <span class="insights-loading-pill">ETA <strong id="insightsLoadingEtaValue">18s</strong></span>
+                                </div>
+                                <div class="insights-loading-progress" aria-hidden="true"><span id="insightsLoadingProgressFill"></span></div>
+                                <div class="insights-loading-sections" aria-hidden="true">
+                                    <div class="insights-loading-section" id="insightsLoadingSection-credit">
+                                        <b>Credit Control</b>
+                                        <i><span id="insightsLoadingSectionBar-credit"></span></i>
+                                        <span class="insights-loading-section-pct" id="insightsLoadingSectionPct-credit">8%</span>
+                                    </div>
+                                    <div class="insights-loading-section" id="insightsLoadingSection-banking">
+                                        <b>Banking Data</b>
+                                        <i><span id="insightsLoadingSectionBar-banking"></span></i>
+                                        <span class="insights-loading-section-pct" id="insightsLoadingSectionPct-banking">6%</span>
+                                    </div>
+                                    <div class="insights-loading-section" id="insightsLoadingSection-me">
+                                        <b>ME Reporting</b>
+                                        <i><span id="insightsLoadingSectionBar-me"></span></i>
+                                        <span class="insights-loading-section-pct" id="insightsLoadingSectionPct-me">5%</span>
+                                    </div>
+                                    <div class="insights-loading-section" id="insightsLoadingSection-ops">
+                                        <b>Operational Status</b>
+                                        <i><span id="insightsLoadingSectionBar-ops"></span></i>
+                                        <span class="insights-loading-section-pct" id="insightsLoadingSectionPct-ops">4%</span>
+                                    </div>
+                                </div>
                             </div>
                             <aside class="insights-loading-preview" aria-hidden="true">
                                 <article class="insights-loading-card is-delay-1">
@@ -70031,8 +70238,10 @@
                             </aside>
                         </div>
                     </section>`;
+                    startInsightsLoaderSequence();
                     return;
                 }
+                stopInsightsLoaderSequence();
                 target.innerHTML = aiCopilotHomeInsights(analytics, ai);
                 bindInsightsHomeInteractions(target);
             }
