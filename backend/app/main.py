@@ -226,6 +226,8 @@ from .services import (
     xero_vat_returns_payload,
     xero_vat_return_transactions_by_tenant,
     xero_scope_audit_payload,
+    xero_set_tenant_transactions_no_vat,
+    xero_vat_coded_transactions_by_tenant,
     bank_statement_payload,
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
@@ -3218,6 +3220,25 @@ async def api_xero_vat_return_transactions_by_tenant(
         period_start=periodStart or None,
         refresh=refresh,
     )
+
+
+@app.get("/api/xero/tenants/{tenant_id}/vat-coded-transactions")
+async def api_xero_vat_coded_transactions_by_tenant(
+    tenant_id: str,
+    refresh: bool = Query(default=False),
+    user: dict = Depends(require_panel_user),
+):
+    return await xero_vat_coded_transactions_by_tenant(user, tenant_id=tenant_id, refresh=refresh)
+
+
+@app.post("/api/xero/tenants/{tenant_id}/vat-coded-transactions/set-no-vat")
+async def api_xero_set_tenant_transactions_no_vat(
+    tenant_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return await xero_set_tenant_transactions_no_vat(user, tenant_id=tenant_id, payload=payload if isinstance(payload, dict) else {})
 
 
 @app.get("/api/customers/{customer_id}/vat-returns/{period_end}/transactions")

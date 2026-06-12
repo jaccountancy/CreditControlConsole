@@ -31354,10 +31354,10 @@ def bm_tasks_vat_saved_payload(user: dict) -> dict:
     }
 
 
-def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, period_end: date) -> list[dict]:
+def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date | None, period_end: date | None) -> list[dict]:
     rows: list[dict] = []
-    period_start_ordinal = period_start.toordinal()
-    period_end_ordinal = period_end.toordinal()
+    period_start_ordinal = period_start.toordinal() if isinstance(period_start, date) else None
+    period_end_ordinal = period_end.toordinal() if isinstance(period_end, date) else None
     for invoice in raw_invoices:
         if not isinstance(invoice, dict):
             continue
@@ -31365,7 +31365,9 @@ def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, 
         if not invoice_date:
             continue
         invoice_day = invoice_date.toordinal()
-        if invoice_day < period_start_ordinal or invoice_day > period_end_ordinal:
+        if period_start_ordinal is not None and invoice_day < period_start_ordinal:
+            continue
+        if period_end_ordinal is not None and invoice_day > period_end_ordinal:
             continue
         invoice_id = str(invoice.get("InvoiceID") or "").strip()
         invoice_updated_at = _parse_optional_iso_datetime(
@@ -31439,6 +31441,23 @@ def _normalise_vat_transaction_rows(rows: list[dict]) -> list[dict]:
             }
         )
     return normalised
+
+
+def _vat_period_end_for_date(value: date | None) -> date | None:
+    if value is None:
+        return None
+    quarter_end_month = ((value.month - 1) // 3 + 1) * 3
+    quarter_end_day = monthrange(value.year, quarter_end_month)[1]
+    return date(value.year, quarter_end_month, quarter_end_day)
+
+
+def _is_vat_coded_transaction_row(row: dict) -> bool:
+    if not isinstance(row, dict):
+        return False
+    tax_code = str(row.get("taxCode") or "").strip().lower()
+    if re.search(r"^(none|no vat|novat|exempt|outside scope|out of scope|zero|zero rated)$", tax_code):
+        return False
+    return abs(float(_money(row.get("taxAmount") or 0))) > 0.00001
 
 
 def _load_cached_vat_period_transactions(
@@ -32293,6 +32312,147 @@ async def xero_vat_return_transactions_by_tenant(
             "lastFetchedAt": _iso(utcnow()) or "",
             "latestXeroUpdatedAt": "",
         },
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
+async def xero_vat_coded_transactions_by_tenant(
+    user: dict,
+    *,
+    tenant_id: str,
+    refresh: bool = False,
+) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenantId is required.")
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+
+    raw_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
+        max_pages=60,
+    )
+    normalised_rows = _normalise_vat_transaction_rows(_invoice_lines_for_vat_period(raw_invoices, None, None))
+    vat_rows: list[dict] = []
+    period_end_values: set[str] = set()
+    for row in normalised_rows:
+        if not _is_vat_coded_transaction_row(row):
+            continue
+        tx_date = _parse_optional_iso_date(row.get("date"))
+        period_end = _vat_period_end_for_date(tx_date)
+        period_end_iso = period_end.isoformat() if period_end else ""
+        if period_end_iso:
+            period_end_values.add(period_end_iso)
+        vat_rows.append(
+            {
+                **row,
+                "periodEndISO": period_end_iso,
+                "periodStartISO": _vat_return_period_start_from_end(period_end).isoformat() if period_end else "",
+            }
+        )
+
+    vat_rows.sort(
+        key=lambda item: (
+            _parse_optional_iso_date(item.get("date")) or date.min,
+            str(item.get("reference") or ""),
+            int(item.get("lineIndex") or 0),
+        ),
+        reverse=True,
+    )
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "transactions": vat_rows,
+        "periodCount": len(period_end_values),
+        "count": len(vat_rows),
+        "cacheStatus": {
+            "source": "xero_tenant_all_dates",
+            "fetchedFromXero": True,
+            "incrementalRefresh": False,
+            "refreshRequested": bool(refresh),
+            "cachedRows": len(vat_rows),
+            "lastFetchedAt": _iso(utcnow()) or "",
+            "latestXeroUpdatedAt": "",
+        },
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
+async def xero_set_tenant_transactions_no_vat(
+    user: dict,
+    *,
+    tenant_id: str,
+    payload: dict | None = None,
+) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenantId is required.")
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+
+    body = payload if isinstance(payload, dict) else {}
+    transaction_ids = body.get("transactionIds") if isinstance(body.get("transactionIds"), list) else []
+    clean_ids = [str(value or "").strip() for value in transaction_ids if str(value or "").strip()]
+    if not clean_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one transactionId is required.")
+
+    invoice_line_indexes: dict[str, set[int]] = defaultdict(set)
+    skipped: list[dict] = []
+    for tx_id in clean_ids:
+        invoice_id, separator, line_index_text = tx_id.rpartition(":")
+        if not separator or not invoice_id:
+            skipped.append({"transactionId": tx_id, "reason": "Transaction id could not be mapped to an invoice line."})
+            continue
+        try:
+            line_index = int(line_index_text)
+        except ValueError:
+            skipped.append({"transactionId": tx_id, "reason": "Line index was invalid."})
+            continue
+        invoice_line_indexes[invoice_id].add(line_index)
+
+    if not invoice_line_indexes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid invoice line transaction ids were supplied.")
+
+    applied_count = 0
+    errors: list[dict] = []
+    for invoice_id, line_indexes in invoice_line_indexes.items():
+        try:
+            payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{invoice_id}")
+            invoice_rows = payload.get("Invoices") if isinstance(payload, dict) else []
+            raw_invoice = invoice_rows[0] if isinstance(invoice_rows, list) and invoice_rows else {}
+            line_items = raw_invoice.get("LineItems") if isinstance(raw_invoice.get("LineItems"), list) else []
+            if not line_items:
+                for index in sorted(line_indexes):
+                    skipped.append({"transactionId": f"{invoice_id}:{index}", "reason": "Invoice has no line items in Xero."})
+                continue
+            updated_any = False
+            for index in sorted(line_indexes):
+                if index < 0 or index >= len(line_items):
+                    skipped.append({"transactionId": f"{invoice_id}:{index}", "reason": "Line index is out of range for this invoice."})
+                    continue
+                line = line_items[index] if isinstance(line_items[index], dict) else {}
+                if str(line.get("TaxType") or "").strip().upper() == "NONE":
+                    skipped.append({"transactionId": f"{invoice_id}:{index}", "reason": "Line is already coded as NONE."})
+                    continue
+                line["TaxType"] = "NONE"
+                line_items[index] = line
+                applied_count += 1
+                updated_any = True
+            if updated_any:
+                await create_sales_invoice(connection_row, {"InvoiceID": invoice_id, "LineItems": line_items})
+        except Exception as exc:
+            errors.append({"invoiceId": invoice_id, "message": _sync_error_message(exc)})
+
+    return {
+        "status": "ok",
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "requestedCount": len(clean_ids),
+        "appliedCount": applied_count,
+        "errorCount": len(errors),
+        "errors": errors,
+        "skipped": skipped,
         "fetchedAt": _iso(utcnow()),
     }
 

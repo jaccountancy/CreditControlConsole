@@ -26649,6 +26649,47 @@
                 }
             }
 
+            .wizard-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+                margin-top: 8px;
+            }
+            .wizard-summary-item {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: #f8fbff;
+            }
+            .wizard-summary-item span {
+                display: block;
+                font-size: 0.77rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+            }
+            .wizard-summary-item strong {
+                display: block;
+                margin-top: 4px;
+                font-size: 1.15rem;
+                color: var(--ink);
+            }
+            .wizard-progress-track {
+                width: 100%;
+                height: 10px;
+                border-radius: 999px;
+                margin: 12px 0 6px;
+                background: #e7eef8;
+                border: 1px solid #d8e4ef;
+                overflow: hidden;
+            }
+            .wizard-progress-fill {
+                height: 100%;
+                width: 0%;
+                background: linear-gradient(90deg, #2f7cff 0%, #66a7ff 100%);
+                border-radius: inherit;
+                transition: width 0.2s ease;
+            }
                 </style>
             </head>
             <body>
@@ -30702,6 +30743,7 @@
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ghost-button" id="microAnalyzerWorkspaceBackButton" type="button">Back to tenants</button>
+                                        <button class="primary-button" id="microAnalyzerWorkspaceBulkNoVatButton" type="button">Update all to NO VAT</button>
                                         <button class="ghost-button" id="microAnalyzerWorkspaceRefreshButton" type="button">Refresh transactions</button>
                                     </div>
                                 </div>
@@ -30725,6 +30767,41 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="microAnalyzerNoVatWizardModal" hidden>
+                        <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="microAnalyzerNoVatWizardTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">VAT on Unregistered</p>
+                                    <h4 id="microAnalyzerNoVatWizardTitle">Update all to NO VAT</h4>
+                                    <p class="detail-meta" id="microAnalyzerNoVatWizardMeta">Prepare all VAT-coded transactions for NO VAT updates in this workspace.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="microAnalyzerNoVatWizardCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="wizard-summary-grid">
+                                <div class="wizard-summary-item">
+                                    <span>Total rows</span>
+                                    <strong id="microAnalyzerNoVatWizardTotal">0</strong>
+                                </div>
+                                <div class="wizard-summary-item">
+                                    <span>Updated</span>
+                                    <strong id="microAnalyzerNoVatWizardApplied">0</strong>
+                                </div>
+                                <div class="wizard-summary-item">
+                                    <span>Skipped/failed</span>
+                                    <strong id="microAnalyzerNoVatWizardSkipped">0</strong>
+                                </div>
+                            </div>
+                            <div class="wizard-progress-track" aria-hidden="true">
+                                <div class="wizard-progress-fill" id="microAnalyzerNoVatWizardProgressFill"></div>
+                            </div>
+                            <p class="detail-meta" id="microAnalyzerNoVatWizardStatus">Ready to start VAT recoding.</p>
+                            <div class="detail-actions">
+                                <button class="primary-button" id="microAnalyzerNoVatWizardStartButton" type="button">Start update</button>
+                            </div>
+                        </div>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="identityVerificationScreen" hidden>
                         <section class="detail-panel">
@@ -33586,6 +33663,17 @@
             let microAnalyzerWorkspaceSyncingHash = false;
             let microAnalyzerRunAllInFlight = false;
             let microAnalyzerBulkApplyInFlight = false;
+            let microAnalyzerNoVatWizardTimer = null;
+            let microAnalyzerNoVatWizardState = {
+                open: false,
+                running: false,
+                tenantId: "",
+                tenantName: "",
+                totalCount: 0,
+                appliedCount: 0,
+                skippedCount: 0,
+                status: "Ready to start VAT recoding.",
+            };
             const microAnalyzerResultsByCustomerId = {};
             const microAnalyzerWorkspaceResultsByTenantId = {};
             let vaultLoading = false;
@@ -34738,6 +34826,8 @@
                         vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
                         vatReturnTransactionsByTenant: config.endpoints?.vatReturnTransactionsByTenant || "/api/xero/vat-returns/:periodEnd/transactions",
+                        microAnalyzerVatTransactionsByTenant: config.endpoints?.microAnalyzerVatTransactionsByTenant || "/api/xero/tenants/:tenantId/vat-coded-transactions",
+                        microAnalyzerSetNoVat: config.endpoints?.microAnalyzerSetNoVat || "/api/xero/tenants/:tenantId/vat-coded-transactions/set-no-vat",
                         vatNoVatSuggestions: config.endpoints?.vatNoVatSuggestions || "/api/customers/:customerId/vat-returns/:periodEnd/no-vat-suggestions",
                         vatUnreconciledTransactions: config.endpoints?.vatUnreconciledTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/unreconciled",
                         vatApplyEdits: config.endpoints?.vatApplyEdits || "/api/customers/:customerId/vat-returns/:periodEnd/apply-edits",
@@ -83963,51 +84053,23 @@
                 microAnalyzerWorkspaceLoading = true;
                 renderMicroAnalyzerScreen();
                 try {
-                    const endpoint = `${api.endpoints.vatReturns}?tenantId=${encodeURIComponent(cleanTenantId)}`;
-                    const payload = await requestJSON(endpoint, { suppressFailurePanel: true });
-                    const sourceRows = (Array.isArray(payload?.rows) ? payload.rows : [])
-                        .filter((row) => String(row?.tenantId || "").trim() === cleanTenantId)
-                        .sort((left, right) => dateSortValue(String(right?.periodEndISO || "")) - dateSortValue(String(left?.periodEndISO || "")));
-                    const periodRows = sourceRows
-                        .map((row) => {
-                            const periodEndISO = String(row?.periodEndISO || "").trim();
-                            if (!periodEndISO) return null;
-                            const periodStartISO = String(row?.periodStartISO || "").trim() || vatPeriodStartISOFromPeriodEnd(periodEndISO);
-                            const deadlineISO = String(row?.deadlineISO || "").trim() || periodEndISO;
-                            return {
-                                key: `micro-tenant:${cleanTenantId}:${periodEndISO}`,
-                                clientId: String(row?.clientId || "").trim(),
-                                clientName: String(row?.clientName || row?.tenantName || "Xero organisation").trim(),
-                                periodStartISO,
-                                periodEndISO,
-                                deadlineISO,
-                                tenantId: cleanTenantId,
-                                tenantName: String(row?.tenantName || "").trim(),
-                            };
-                        })
-                        .filter((row) => row && row.periodEndISO);
+                    const tenantConnection = microAnalyzerConnectionByTenant(cleanTenantId);
+                    const tenantName = String(tenantConnection?.tenantName || cleanTenantId).trim();
+                    const requestPath = endpointURL(api.endpoints.microAnalyzerVatTransactionsByTenant, { tenantId: cleanTenantId });
+                    const query = new URLSearchParams();
+                    if (force) query.set("refresh", "true");
+                    const tenantEndpoint = query.toString() ? `${requestPath}?${query.toString()}` : requestPath;
+                    const payload = await requestJSON(tenantEndpoint, { suppressFailurePanel: true });
+                    const transactions = (Array.isArray(payload?.transactions) ? payload.transactions : []).map((row) => normaliseVatTransaction(row));
                     const vatRows = [];
-                    for (const entry of periodRows) {
-                        const requestPath = endpointURL(
-                            api.endpoints.vatReturnTransactionsByTenant,
-                            { periodEnd: entry.periodEndISO }
-                        );
-                        const query = new URLSearchParams();
-                        query.set("tenantId", cleanTenantId);
-                        if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
-                        if (force) query.set("refresh", "true");
-                        const tenantEndpoint = query.toString() ? `${requestPath}?${query.toString()}` : requestPath;
-                        const payload = await requestJSON(tenantEndpoint, { suppressFailurePanel: true });
-                        const transactions = (Array.isArray(payload?.transactions) ? payload.transactions : []).map((row) => normaliseVatTransaction(row));
-                        microAnalyzerVatRows(transactions).forEach((tx) => {
-                            vatRows.push({
-                                ...tx,
-                                periodEndISO: entry.periodEndISO,
-                                periodStartISO: entry.periodStartISO,
-                                clientName: entry.clientName,
-                            });
+                    microAnalyzerVatRows(transactions).forEach((tx) => {
+                        vatRows.push({
+                            ...tx,
+                            periodEndISO: String(tx?.periodEndISO || "").trim(),
+                            periodStartISO: String(tx?.periodStartISO || "").trim(),
+                            clientName: String(tx?.clientName || tenantName || "Xero organisation").trim(),
                         });
-                    }
+                    });
                     const uniqueRows = [];
                     const seen = new Set();
                     vatRows.forEach((row) => {
@@ -84018,7 +84080,7 @@
                     });
                     microAnalyzerWorkspaceResultsByTenantId[cleanTenantId] = {
                         tenantId: cleanTenantId,
-                        periodCount: periodRows.length,
+                        periodCount: Number(payload?.periodCount || 0),
                         vatRows: uniqueRows.sort((left, right) => dateSortValue(right?.date || "") - dateSortValue(left?.date || "")),
                         loadedAt: new Date().toISOString(),
                         error: "",
@@ -84272,6 +84334,139 @@
                 }
             }
 
+            function stopMicroAnalyzerNoVatWizardTimer() {
+                if (microAnalyzerNoVatWizardTimer) {
+                    window.clearInterval(microAnalyzerNoVatWizardTimer);
+                    microAnalyzerNoVatWizardTimer = null;
+                }
+            }
+
+            function renderMicroAnalyzerNoVatWizard() {
+                const modal = document.getElementById("microAnalyzerNoVatWizardModal");
+                const meta = document.getElementById("microAnalyzerNoVatWizardMeta");
+                const total = document.getElementById("microAnalyzerNoVatWizardTotal");
+                const applied = document.getElementById("microAnalyzerNoVatWizardApplied");
+                const skipped = document.getElementById("microAnalyzerNoVatWizardSkipped");
+                const status = document.getElementById("microAnalyzerNoVatWizardStatus");
+                const progressFill = document.getElementById("microAnalyzerNoVatWizardProgressFill");
+                const startButton = document.getElementById("microAnalyzerNoVatWizardStartButton");
+                if (!modal || !meta || !total || !applied || !skipped || !status || !progressFill || !startButton) return;
+                const state = microAnalyzerNoVatWizardState || {};
+                modal.hidden = !Boolean(state.open);
+                const tenantName = String(state.tenantName || "Xero organisation").trim();
+                meta.textContent = `Bulk update VAT-coded rows to NO VAT for ${tenantName}.`;
+                total.textContent = formatInteger(state.totalCount || 0);
+                applied.textContent = formatInteger(state.appliedCount || 0);
+                skipped.textContent = formatInteger(state.skippedCount || 0);
+                status.textContent = String(state.status || "Ready to start VAT recoding.");
+                const done = Number(state.appliedCount || 0) + Number(state.skippedCount || 0);
+                const percent = state.totalCount > 0 ? Math.min(100, Math.round((done / state.totalCount) * 100)) : 0;
+                progressFill.style.width = `${percent}%`;
+                startButton.disabled = Boolean(state.running) || Number(state.totalCount || 0) <= 0;
+                startButton.textContent = state.running ? "Updating..." : "Start update";
+            }
+
+            function closeMicroAnalyzerNoVatWizard() {
+                if (microAnalyzerNoVatWizardState.running) return;
+                stopMicroAnalyzerNoVatWizardTimer();
+                microAnalyzerNoVatWizardState = {
+                    open: false,
+                    running: false,
+                    tenantId: "",
+                    tenantName: "",
+                    totalCount: 0,
+                    appliedCount: 0,
+                    skippedCount: 0,
+                    status: "Ready to start VAT recoding.",
+                };
+                renderMicroAnalyzerNoVatWizard();
+            }
+
+            function openMicroAnalyzerNoVatWizard(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                const workspaceResult = microAnalyzerWorkspaceResultsByTenantId[cleanTenantId] || {};
+                const vatRows = Array.isArray(workspaceResult?.vatRows) ? workspaceResult.vatRows : [];
+                if (!vatRows.length) {
+                    showToast("No VAT-coded transactions are available in this workspace.", "info");
+                    return;
+                }
+                const activeConnection = microAnalyzerConnectionByTenant(cleanTenantId);
+                const tenantName = xeroWorkspaceLabel(activeConnection?.tenantName, cleanTenantId, "Xero organisation");
+                microAnalyzerNoVatWizardState = {
+                    open: true,
+                    running: false,
+                    tenantId: cleanTenantId,
+                    tenantName,
+                    totalCount: vatRows.length,
+                    appliedCount: 0,
+                    skippedCount: 0,
+                    status: "Ready to start VAT recoding.",
+                };
+                renderMicroAnalyzerNoVatWizard();
+            }
+
+            async function runMicroAnalyzerNoVatWizard() {
+                if (microAnalyzerNoVatWizardState.running) return;
+                const tenantId = String(microAnalyzerNoVatWizardState.tenantId || "").trim();
+                const workspaceResult = microAnalyzerWorkspaceResultsByTenantId[tenantId] || {};
+                const vatRows = Array.isArray(workspaceResult?.vatRows) ? workspaceResult.vatRows : [];
+                if (!tenantId || !vatRows.length) {
+                    showToast("No VAT-coded rows are available for update.", "info");
+                    return;
+                }
+                const transactionIds = vatRows
+                    .map((row) => String(row?.id || vatTransactionId(row)).trim())
+                    .filter(Boolean);
+                if (!transactionIds.length) {
+                    showToast("No valid transaction ids were available for update.", "info");
+                    return;
+                }
+
+                stopMicroAnalyzerNoVatWizardTimer();
+                microAnalyzerNoVatWizardState.running = true;
+                microAnalyzerNoVatWizardState.totalCount = transactionIds.length;
+                microAnalyzerNoVatWizardState.appliedCount = 0;
+                microAnalyzerNoVatWizardState.skippedCount = 0;
+                microAnalyzerNoVatWizardState.status = "Preparing updates...";
+                renderMicroAnalyzerNoVatWizard();
+
+                microAnalyzerNoVatWizardTimer = window.setInterval(() => {
+                    if (!microAnalyzerNoVatWizardState.running) return;
+                    const stagedTarget = Math.max(1, Math.floor(microAnalyzerNoVatWizardState.totalCount * 0.88));
+                    if (microAnalyzerNoVatWizardState.appliedCount >= stagedTarget) return;
+                    microAnalyzerNoVatWizardState.appliedCount = Math.min(
+                        stagedTarget,
+                        microAnalyzerNoVatWizardState.appliedCount + Math.max(1, Math.floor(microAnalyzerNoVatWizardState.totalCount * 0.03))
+                    );
+                    microAnalyzerNoVatWizardState.status = "Applying NO VAT coding...";
+                    renderMicroAnalyzerNoVatWizard();
+                }, 170);
+
+                try {
+                    const endpoint = endpointURL(api.endpoints.microAnalyzerSetNoVat, { tenantId });
+                    const payload = await requestJSON(endpoint, {
+                        method: "POST",
+                        body: JSON.stringify({ transactionIds }),
+                    });
+                    stopMicroAnalyzerNoVatWizardTimer();
+                    const appliedCount = Number(payload?.appliedCount || 0);
+                    const skippedCount = Number((Array.isArray(payload?.skipped) ? payload.skipped.length : 0) + Number(payload?.errorCount || 0));
+                    microAnalyzerNoVatWizardState.appliedCount = appliedCount;
+                    microAnalyzerNoVatWizardState.skippedCount = skippedCount;
+                    microAnalyzerNoVatWizardState.status = `Completed. Updated ${appliedCount.toLocaleString("en-GB")} row${appliedCount === 1 ? "" : "s"}.`;
+                    microAnalyzerNoVatWizardState.running = false;
+                    renderMicroAnalyzerNoVatWizard();
+                    await loadMicroAnalyzerTenantWorkspace(tenantId, true);
+                    showToast(`NO VAT update finished. ${appliedCount.toLocaleString("en-GB")} row${appliedCount === 1 ? "" : "s"} updated.`, "success");
+                } catch (error) {
+                    stopMicroAnalyzerNoVatWizardTimer();
+                    microAnalyzerNoVatWizardState.running = false;
+                    microAnalyzerNoVatWizardState.status = error?.message || "Unable to complete the NO VAT update.";
+                    renderMicroAnalyzerNoVatWizard();
+                    showToast(error?.message || "Unable to complete the NO VAT update.", "error");
+                }
+            }
+
             function renderMicroAnalyzerConnectionsTable(tableBody, connectionsSection = null) {
                 if (!tableBody) return 0;
                 const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
@@ -84330,8 +84525,11 @@
                 const workspaceMeta = document.getElementById("microAnalyzerWorkspaceMeta");
                 const workspaceBody = document.getElementById("microAnalyzerWorkspaceTransactionsBody");
                 const workspaceBackButton = document.getElementById("microAnalyzerWorkspaceBackButton");
+                const workspaceBulkNoVatButton = document.getElementById("microAnalyzerWorkspaceBulkNoVatButton");
                 const workspaceRefreshButton = document.getElementById("microAnalyzerWorkspaceRefreshButton");
-                if (!summary || !refreshButton || !workspaceSection || !workspaceTitle || !workspaceMeta || !workspaceBody || !workspaceBackButton || !workspaceRefreshButton) return;
+                const wizardCloseButton = document.getElementById("microAnalyzerNoVatWizardCloseButton");
+                const wizardStartButton = document.getElementById("microAnalyzerNoVatWizardStartButton");
+                if (!summary || !refreshButton || !workspaceSection || !workspaceTitle || !workspaceMeta || !workspaceBody || !workspaceBackButton || !workspaceBulkNoVatButton || !workspaceRefreshButton) return;
 
                 const connectedAccountCount = renderMicroAnalyzerConnectionsTable(connectionsTableBody, connectionsSection);
                 const connectedTenantCount = connectedAccountCount;
@@ -84387,10 +84585,10 @@
                     : "Xero organisation VAT transactions";
                 workspaceMeta.textContent = inWorkspaceMode
                     ? (microAnalyzerWorkspaceLoading
-                        ? "Loading VAT-coded rows from available VAT periods..."
+                        ? "Loading VAT-coded rows from Xero across all transaction dates..."
                         : workspaceResult?.error
                             ? workspaceResult.error
-                            : `${vatRows.length.toLocaleString("en-GB")} VAT-coded row${vatRows.length === 1 ? "" : "s"} across ${(workspaceResult?.periodCount || 0).toLocaleString("en-GB")} VAT period${(workspaceResult?.periodCount || 0) === 1 ? "" : "s"} · VAT total ${formatCurrency(vatTotal)}.`)
+                            : `${vatRows.length.toLocaleString("en-GB")} VAT-coded row${vatRows.length === 1 ? "" : "s"} across ${(workspaceResult?.periodCount || 0).toLocaleString("en-GB")} detected VAT period${(workspaceResult?.periodCount || 0) === 1 ? "" : "s"} · VAT total ${formatCurrency(vatTotal)}.`)
                     : "Loading VAT-coded transactions for this Xero organisation.";
 
                 if (workspaceBackButton.dataset.microWired !== "true") {
@@ -84401,15 +84599,29 @@
                     workspaceRefreshButton.dataset.microWired = "true";
                     workspaceRefreshButton.addEventListener("click", () => loadMicroAnalyzerTenantWorkspace(selectedMicroAnalyzerTenantId, true));
                 }
+                if (workspaceBulkNoVatButton.dataset.microWired !== "true") {
+                    workspaceBulkNoVatButton.dataset.microWired = "true";
+                    workspaceBulkNoVatButton.addEventListener("click", () => openMicroAnalyzerNoVatWizard(selectedMicroAnalyzerTenantId));
+                }
+                if (wizardCloseButton && wizardCloseButton.dataset.microWired !== "true") {
+                    wizardCloseButton.dataset.microWired = "true";
+                    wizardCloseButton.addEventListener("click", closeMicroAnalyzerNoVatWizard);
+                }
+                if (wizardStartButton && wizardStartButton.dataset.microWired !== "true") {
+                    wizardStartButton.dataset.microWired = "true";
+                    wizardStartButton.addEventListener("click", runMicroAnalyzerNoVatWizard);
+                }
                 workspaceRefreshButton.disabled = !inWorkspaceMode || microAnalyzerWorkspaceLoading;
                 workspaceRefreshButton.textContent = microAnalyzerWorkspaceLoading ? "Refreshing..." : "Refresh transactions";
+                workspaceBulkNoVatButton.disabled = !inWorkspaceMode || microAnalyzerWorkspaceLoading || !vatRows.length || Boolean(microAnalyzerNoVatWizardState.running);
+                renderMicroAnalyzerNoVatWizard();
 
                 if (!inWorkspaceMode) {
                     workspaceBody.innerHTML = "";
                     return;
                 }
                 if (microAnalyzerWorkspaceLoading && !vatRows.length) {
-                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT-coded transactions</h4><p>Checking all available VAT periods for this Xero organisation.</p></div></td></tr>';
+                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT-coded transactions</h4><p>Checking this Xero organisation across all available transaction dates.</p></div></td></tr>';
                     return;
                 }
                 if (workspaceResult?.error) {
@@ -84417,7 +84629,7 @@
                     return;
                 }
                 if (!vatRows.length) {
-                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No VAT rows</p><h4>No VAT-coded transactions found</h4><p>No VAT rows were detected in available VAT periods for this Xero organisation.</p></div></td></tr>';
+                    workspaceBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No VAT rows</p><h4>No VAT-coded transactions found</h4><p>No VAT rows were detected for this Xero organisation across available transaction history.</p></div></td></tr>';
                     return;
                 }
                 workspaceBody.innerHTML = vatRows.map((row) => `
