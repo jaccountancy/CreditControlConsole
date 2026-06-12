@@ -26436,6 +26436,7 @@
                             <article><span>Manager assignments</span><strong>0</strong></article>
                             <article><span>Month</span><strong>May</strong></article>
                         </div>
+                        <div class="practice-pack-topbar-summary pi-clearing-topbar-summary" id="piClearingTopbarSummary" aria-label="PI Clearing summary" role="status" aria-live="polite" hidden></div>
                         <div class="bank-continuity-topbar-pill" id="bankContinuityTopbarPill" role="status" aria-live="polite" hidden>
                             <span class="bank-continuity-mark" aria-hidden="true">OK</span>
                             <span class="bank-continuity-copy">
@@ -31026,7 +31027,6 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="piClearingAccountSummary">Loading PI Clearing Account workspace…</p>
-                            <div class="summary-grid pi-clearing-kpi-grid" id="piClearingKpiGrid"></div>
                             <section class="ch-companies-table-wrap pi-clearing-table-section">
                                 <div class="pi-clearing-table-head">
                                     <h4>Monthly runs</h4>
@@ -37251,6 +37251,8 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
+                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget && !isIgnitionView()) ignitionTopbarWidget.hidden = true;
                 document.body.classList.toggle("is-ignition-batch-ref-title", false);
@@ -40380,6 +40382,36 @@
                 return query ? `${base}${base.includes("?") ? "&" : "?"}${query}` : base;
             }
 
+            function piClearingTopbarCards() {
+                const run = currentPiClearingRun();
+                const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
+                const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const monthLabel = formatMonthKey(piClearingRunMonth(run) || piClearingSelectedMonth || currentMonthKey()) || "--";
+                return [
+                    { label: "Xero total", value: formatCurrency(summary?.xeroTotal || 0) },
+                    { label: "Ignition total", value: formatCurrency(summary?.ignitionTotal || 0) },
+                    { label: "Reversals", value: formatCurrency(summary?.ignitionReversalTotal || 0) },
+                    { label: "Existing CN", value: formatCurrency(summary?.existingCreditNoteTotal || 0) },
+                    { label: "Difference", value: formatCurrency(summary?.differenceTotal || 0), className: "is-pi-difference" },
+                    { label: "Rows", value: formatInteger(summary?.differenceCount || runRows.length || 0) },
+                    { label: "Month", value: monthLabel },
+                ];
+            }
+
+            function renderPiClearingTopbarSummary() {
+                const summary = document.getElementById("piClearingTopbarSummary");
+                if (!summary) return;
+                const isActive = activeView === "pi-clearing-account";
+                summary.hidden = !isActive;
+                if (!isActive) return;
+                summary.innerHTML = piClearingTopbarCards()
+                    .map((card) => {
+                        const classAttribute = card.className ? ` class="${card.className}"` : "";
+                        return `<article${classAttribute}><span>${escapeHTML(card.label)}</span><strong>${escapeHTML(card.value)}</strong></article>`;
+                    })
+                    .join("");
+            }
+
             async function loadPiClearingAccount(force = false) {
                 if (piClearingLoading && !force) return;
                 piClearingLoading = true;
@@ -40516,7 +40548,6 @@
                 const runsBody = document.getElementById("piClearingRunsBody");
                 const rowsBody = document.getElementById("piClearingRowsBody");
                 const emptyState = document.getElementById("piClearingEmptyState");
-                const kpiGrid = document.getElementById("piClearingKpiGrid");
                 const modal = document.getElementById("piClearingWizardModal");
                 const wizardMeta = document.getElementById("piClearingWizardMeta");
                 const wizardSummary = document.getElementById("piClearingWizardSummary");
@@ -40582,23 +40613,7 @@
                 if (wizardContextRows) {
                     wizardContextRows.textContent = `${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`;
                 }
-
-                const kpiItems = [
-                    { label: "Xero total", value: formatCurrency(summaryRows?.xeroTotal || 0) },
-                    { label: "Ignition total", value: formatCurrency(summaryRows?.ignitionTotal || 0) },
-                    { label: "Ignition reversals", value: formatCurrency(summaryRows?.ignitionReversalTotal || 0) },
-                    { label: "Existing credit notes", value: formatCurrency(summaryRows?.existingCreditNoteTotal || 0) },
-                    { label: "Difference", value: formatCurrency(differenceTotal) },
-                    { label: "Rows to review", value: formatInteger(summaryRows?.differenceCount || 0) },
-                ];
-                if (kpiGrid) {
-                    kpiGrid.innerHTML = kpiItems.map((item) => `
-                        <article class="pi-clearing-kpi">
-                            <strong>${escapeHTML(item.value)}</strong>
-                            <span>${escapeHTML(item.label)}</span>
-                        </article>
-                    `).join("");
-                }
+                renderPiClearingTopbarSummary();
 
                 if (runsBody) {
                     if (!piClearingRuns.length) {
@@ -70956,6 +70971,9 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
+                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
+                renderPiClearingTopbarSummary();
                 renderBankStatementContinuityTopbar();
                 const disconnectButton = document.getElementById("disconnectXeroButton");
                 if (disconnectButton) disconnectButton.hidden = !connected;
