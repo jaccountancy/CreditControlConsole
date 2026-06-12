@@ -29017,6 +29017,10 @@
                                     <select id="chAuthCodeRegisterSourceFilter" aria-label="Filter by source file">
                                         <option value="">All source files</option>
                                     </select>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterPrevPageButton">Prev</button>
+                                    <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterPageMeta">Page 1 of 1</span>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterNextPageButton">Next</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterLoadMoreButton">Load more</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterColumnsButton">Columns</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
@@ -39980,6 +39984,7 @@
                         const itemSummary = item.summary || {};
                         const lifecycle = jukBatchLifecycleStatus(item);
                         const statusClass = lifecycle.key === "completed" ? "is-completed" : "";
+                        const canDeleteBatch = lifecycle.key === "draft";
                         const windowLabel = `${item.invoiceDateFrom ? formatDate(item.invoiceDateFrom) : "--"} → ${item.invoiceDateTo ? formatDate(item.invoiceDateTo) : "--"}`;
                         return `
                             <tr>
@@ -39993,7 +39998,7 @@
                                 <td>${escapeHTML(String(itemSummary.published || 0))}</td>
                                 <td>
                                     <button class="ghost-button" type="button" data-juk-open-wizard-batch="${escapeHTML(item.id || "")}">Open wizard</button>
-                                    <button class="ghost-button" type="button" data-juk-delete-batch="${escapeHTML(item.id || "")}" data-juk-delete-batch-reference="${escapeHTML(item.batchReference || "")}">Delete</button>
+                                    <button class="ghost-button" type="button" data-juk-delete-batch="${escapeHTML(item.id || "")}" data-juk-delete-batch-reference="${escapeHTML(item.batchReference || "")}" data-juk-delete-allowed="${canDeleteBatch ? "true" : "false"}" ${canDeleteBatch ? "" : "disabled"} title="${canDeleteBatch ? "Delete this draft batch" : "Only draft batches can be deleted"}">Delete</button>
                                 </td>
                             </tr>
                         `;
@@ -40013,6 +40018,11 @@
                     });
                     mainBatchTableBody.querySelectorAll("[data-juk-delete-batch]").forEach((button) => {
                         button.addEventListener("click", async () => {
+                            const deleteAllowed = String(button.dataset.jukDeleteAllowed || "false").toLowerCase() === "true";
+                            if (!deleteAllowed) {
+                                showToast("Only draft batches can be deleted.", "info");
+                                return;
+                            }
                             const batchId = String(button.dataset.jukDeleteBatch || "").trim();
                             if (!batchId) return;
                             const batchReference = String(button.dataset.jukDeleteBatchReference || "").trim() || "this batch";
@@ -90960,6 +90970,8 @@
                 authRegisterPopulating: false,
                 authRegisterLoaded: false,
                 authRegisterRows: [],
+                authRegisterTotalCount: 0,
+                authRegisterLoadedLimit: 300,
                 authRegisterLookupByNumber: new Map(),
                 authRegisterTableState: {
                     searchTerm: "",
@@ -90967,6 +90979,7 @@
                     sourceFile: "",
                     sortKey: "uploadedAt",
                     sortDirection: "desc",
+                    page: 1,
                 },
                 authRegisterColumnState: {
                     order: [],
@@ -91369,6 +91382,8 @@
             }
 
             const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v1";
+            const AUTH_REGISTER_PAGE_SIZE = 25;
+            const AUTH_REGISTER_LOAD_MORE_STEP = 300;
             const AUTH_REGISTER_COLUMNS = [
                 { key: "displayName", label: "Company" },
                 { key: "clientType", label: "Client Type" },
@@ -91422,6 +91437,7 @@
                         sourceFile: "",
                         sortKey: "uploadedAt",
                         sortDirection: "desc",
+                        page: 1,
                     },
                     columnState: authRegisterDefaultColumnState(),
                 };
@@ -91433,6 +91449,7 @@
                         ? parsed.tableState.sortKey
                         : "uploadedAt";
                     const sortDirection = parsed?.tableState?.sortDirection === "asc" ? "asc" : "desc";
+                    const pageNumber = Math.max(1, Number(parsed?.tableState?.page || 1));
                     return {
                         tableState: {
                             searchTerm: String(parsed?.tableState?.searchTerm || ""),
@@ -91440,6 +91457,7 @@
                             sourceFile: String(parsed?.tableState?.sourceFile || ""),
                             sortKey,
                             sortDirection,
+                            page: Number.isFinite(pageNumber) ? pageNumber : 1,
                         },
                         columnState: normaliseAuthRegisterColumnState(parsed?.columnState || {}),
                     };
@@ -91548,7 +91566,7 @@
                         if (!key) return;
                         const state = companiesHouseSettings.authRegisterTableState || {};
                         const nextDirection = state.sortKey === key && state.sortDirection === "asc" ? "desc" : "asc";
-                        companiesHouseSettings.authRegisterTableState = { ...state, sortKey: key, sortDirection: nextDirection };
+                        companiesHouseSettings.authRegisterTableState = { ...state, sortKey: key, sortDirection: nextDirection, page: 1 };
                         saveAuthRegisterTablePreferences();
                         renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
                     });
@@ -91560,6 +91578,10 @@
                 const managerFilter = document.getElementById("chAuthCodeRegisterManagerFilter");
                 const sourceFilter = document.getElementById("chAuthCodeRegisterSourceFilter");
                 const searchInput = document.getElementById("chAuthCodeRegisterSearch");
+                const pageMeta = document.getElementById("chAuthCodeRegisterPageMeta");
+                const prevPageButton = document.getElementById("chAuthCodeRegisterPrevPageButton");
+                const nextPageButton = document.getElementById("chAuthCodeRegisterNextPageButton");
+                const loadMoreButton = document.getElementById("chAuthCodeRegisterLoadMoreButton");
                 const meta = document.getElementById("chAuthCodeRegisterTableMeta");
                 if (!body) return;
                 const list = Array.isArray(rows) ? rows : [];
@@ -91580,18 +91602,42 @@
                 }
                 const filteredRows = filteredAuthRegisterRows(list);
                 const visibleColumns = authRegisterVisibleColumns();
+                const totalPages = Math.max(1, Math.ceil(filteredRows.length / AUTH_REGISTER_PAGE_SIZE));
+                const requestedPage = Math.max(1, Number(tableState.page || 1));
+                const currentPage = Math.min(requestedPage, totalPages);
+                if (currentPage !== requestedPage) {
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...tableState,
+                        page: currentPage,
+                    };
+                    saveAuthRegisterTablePreferences();
+                }
+                const startIndex = (currentPage - 1) * AUTH_REGISTER_PAGE_SIZE;
+                const pageRows = filteredRows.slice(startIndex, startIndex + AUTH_REGISTER_PAGE_SIZE);
                 if (!filteredRows.length) {
                     body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
                     if (!list.length) setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 } else {
-                    body.innerHTML = filteredRows.map((row) => `<tr>${visibleColumns.map((column) => `<td>${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
+                    body.innerHTML = pageRows.map((row) => `<tr>${visibleColumns.map((column) => `<td>${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`).join("");
+                }
+                if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
+                if (prevPageButton) prevPageButton.disabled = currentPage <= 1;
+                if (nextPageButton) nextPageButton.disabled = currentPage >= totalPages;
+                if (loadMoreButton) {
+                    const loadedCount = list.length;
+                    const totalAvailable = Number(totalCount || list.length || 0);
+                    const hasMore = loadedCount < totalAvailable;
+                    loadMoreButton.disabled = !hasMore || companiesHouseSettings.authRegisterLoading;
+                    loadMoreButton.textContent = hasMore
+                        ? `Load more (${loadedCount.toLocaleString("en-GB")}/${totalAvailable.toLocaleString("en-GB")})`
+                        : "All rows loaded";
                 }
                 if (meta) {
-                    meta.textContent = `${filteredRows.length.toLocaleString("en-GB")} shown of ${Number(totalCount || list.length).toLocaleString("en-GB")}`;
+                    meta.textContent = `${pageRows.length.toLocaleString("en-GB")} shown · ${filteredRows.length.toLocaleString("en-GB")} matched of ${Number(totalCount || list.length).toLocaleString("en-GB")}`;
                 }
                 if (list.length) {
                     setAuthCodeRegisterStatus(
-                        `Loaded ${filteredRows.length.toLocaleString("en-GB")} rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
+                        `Loaded ${filteredRows.length.toLocaleString("en-GB")} matched rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
                         "muted"
                     );
                 }
@@ -91932,10 +91978,12 @@
                 companiesHouseSettings.authRegisterLoading = true;
                 setAuthCodeRegisterStatus("Loading auth code directory…", "muted");
                 try {
-                    const payload = await requestJSON("/api/companies-house/auth-code-register?limit=300");
+                    const limit = Math.max(100, Math.min(Number(companiesHouseSettings.authRegisterLoadedLimit || 300), 1000));
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register?limit=${limit}`);
                     const rows = payload?.rows || [];
                     const totalCount = Number(payload?.totalCount || rows.length || 0);
                     companiesHouseSettings.authRegisterRows = rows;
+                    companiesHouseSettings.authRegisterTotalCount = totalCount;
                     companiesHouseSettings.authRegisterLookupByNumber = new Map(
                         rows
                             .map((row) => [normaliseCompanyNumberInput(row?.companyNumber || ""), row])
@@ -92446,6 +92494,7 @@
                     sourceFile: "",
                     sortKey: "uploadedAt",
                     sortDirection: "desc",
+                    page: 1,
                 };
                 const search = document.getElementById("chAuthCodeRegisterSearch");
                 const manager = document.getElementById("chAuthCodeRegisterManagerFilter");
@@ -92499,6 +92548,7 @@
                     companiesHouseSettings.authRegisterTableState = {
                         ...companiesHouseSettings.authRegisterTableState,
                         searchTerm: String(event?.target?.value || ""),
+                        page: 1,
                     };
                     saveAuthRegisterTablePreferences();
                     renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
@@ -92507,6 +92557,7 @@
                     companiesHouseSettings.authRegisterTableState = {
                         ...companiesHouseSettings.authRegisterTableState,
                         manager: String(event?.target?.value || ""),
+                        page: 1,
                     };
                     saveAuthRegisterTablePreferences();
                     renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
@@ -92515,9 +92566,39 @@
                     companiesHouseSettings.authRegisterTableState = {
                         ...companiesHouseSettings.authRegisterTableState,
                         sourceFile: String(event?.target?.value || ""),
+                        page: 1,
                     };
                     saveAuthRegisterTablePreferences();
                     renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterPrevPageButton")?.addEventListener("click", () => {
+                    const current = Math.max(1, Number(companiesHouseSettings.authRegisterTableState?.page || 1));
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        page: Math.max(1, current - 1),
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterNextPageButton")?.addEventListener("click", () => {
+                    const current = Math.max(1, Number(companiesHouseSettings.authRegisterTableState?.page || 1));
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        page: current + 1,
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterLoadMoreButton")?.addEventListener("click", async () => {
+                    const loadedCount = Number(companiesHouseSettings.authRegisterRows?.length || 0);
+                    const totalCount = Number(companiesHouseSettings.authRegisterTotalCount || loadedCount);
+                    if (loadedCount >= totalCount) {
+                        showToast("All client register rows are already loaded.", "info");
+                        return;
+                    }
+                    companiesHouseSettings.authRegisterLoadedLimit = Math.min(1000, loadedCount + AUTH_REGISTER_LOAD_MORE_STEP);
+                    await loadAuthCodeRegisterDirectory(true);
+                    showToast("Loaded more client register rows.", "success");
                 });
                 document.getElementById("chAuthCodeRegisterColumnsButton")?.addEventListener("click", openAuthCodeRegisterColumnsDialog);
                 document.getElementById("chAuthCodeRegisterResetFiltersButton")?.addEventListener("click", resetAuthCodeRegisterFilters);

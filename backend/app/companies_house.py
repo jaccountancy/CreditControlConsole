@@ -3706,6 +3706,237 @@ def _ai_resolve_header_map(headers: list[str], current_map: dict[str, int]) -> d
         return current_map
 
 
+_UK_VAT_NUMBER_RE = re.compile(r"(?:GB)?\s*\d(?:[\s-]*\d){8}(?:[\s-]*\d{3})?", re.IGNORECASE)
+_UK_VAT_SPECIAL_RE = re.compile(r"(?:GB)?\s*(?:GD|HA)\s*\d{3}", re.IGNORECASE)
+
+
+def _normalise_vat_number(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    text = re.sub(r"^VAT(?:\s+NUMBER|\s+NO\.?|\s+REG(?:ISTRATION)?\.?\s*NO\.?)?\s*[:#-]?\s*", "", text)
+    compact = re.sub(r"[^A-Z0-9]+", "", text)
+    if not compact:
+        return ""
+
+    def _is_valid(candidate: str) -> bool:
+        if re.fullmatch(r"(?:GB)?\d{9}(?:\d{3})?", candidate):
+            return True
+        if re.fullmatch(r"(?:GB)?(?:GD|HA)\d{3}", candidate):
+            return True
+        return False
+
+    if _is_valid(compact):
+        return compact
+    if compact.startswith("GB") and _is_valid(compact[2:]):
+        return compact
+    return ""
+
+
+def _extract_vat_number_from_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    direct = _normalise_vat_number(text)
+    if direct:
+        return direct
+    for match in _UK_VAT_SPECIAL_RE.findall(text):
+        candidate = _normalise_vat_number(match)
+        if candidate:
+            return candidate
+    for match in _UK_VAT_NUMBER_RE.findall(text):
+        candidate = _normalise_vat_number(match)
+        if candidate:
+            return candidate
+    return ""
+
+
+def _extract_vat_number_from_row_cells(raw_row: list[object]) -> str:
+    for cell in raw_row or []:
+        candidate = _extract_vat_number_from_text(cell)
+        if candidate:
+            return candidate
+    return ""
+
+
+def _ai_resolve_missing_vat_numbers(
+    headers: list[str],
+    raw_rows: list[list[str]],
+    parsed_rows: list[dict],
+) -> dict[int, str]:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return {}
+
+    unresolved_rows = []
+    for row in parsed_rows:
+        if _normalise_vat_number(row.get("vatNumber")):
+            continue
+        line_number = int(row.get("lineNumber") or 0)
+        if line_number < 2:
+            continue
+        raw_index = line_number - 2
+        if raw_index < 0 or raw_index >= len(raw_rows):
+            continue
+        raw = raw_rows[raw_index]
+        cells = []
+        for idx, value in enumerate(raw):
+            clean_value = _coerce_text(value, 250)
+            if not clean_value:
+                continue
+            header = headers[idx] if idx < len(headers) else f"Column {idx + 1}"
+            cells.append({"header": header, "value": clean_value})
+            if len(cells) >= 36:
+                break
+        if not cells:
+            continue
+        unresolved_rows.append(
+            {
+                "lineNumber": line_number,
+                "companyNumber": _coerce_text(row.get("companyNumber"), 80),
+                "displayName": _coerce_text(row.get("displayName"), 250),
+                "clientId": _coerce_text(row.get("clientId"), 80),
+                "cells": cells,
+            }
+        )
+    if not unresolved_rows:
+        return {}
+
+    schema = {
+        "type": "object",
+        "required": ["rows"],
+        "additionalProperties": False,
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["lineNumber", "vatNumber", "confidence", "reason"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "lineNumber": {"type": "integer"},
+                        "vatNumber": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "reason": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+
+    resolved: dict[int, str] = {}
+    for start in range(0, len(unresolved_rows), 40):
+        batch = unresolved_rows[start:start + 40]
+        try:
+            started = time.monotonic()
+            request_body = {
+                "model": settings.openai_model or "gpt-4.1-mini",
+                "input": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Extract UK VAT registration numbers from CSV row data. "
+                            "Only return a VAT number if it is explicitly present in the row values. "
+                            "Do not infer or guess."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {
+                                "rows": batch,
+                                "rules": [
+                                    "Return strict JSON only.",
+                                    "Use lineNumber from input rows.",
+                                    "vatNumber must be empty string when not present.",
+                                    "Normalise vatNumber by removing spaces and punctuation.",
+                                ],
+                            }
+                        ),
+                    },
+                ],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "ch_vat_extraction",
+                        "schema": schema,
+                        "strict": True,
+                    }
+                },
+            }
+            with httpx.Client(timeout=22.0) as client:
+                response = client.post(
+                    "https://api.openai.com/v1/responses",
+                    headers={
+                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=request_body,
+                )
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            feature, page = infer_openai_feature_page("companies house vat extraction")
+            request_bytes = len(json.dumps(request_body))
+            response_bytes = len(response.content or b"")
+            if response.is_error:
+                record_usage_event(
+                    provider="openai",
+                    user_id=None,
+                    feature=feature,
+                    page=page,
+                    operation="companies house vat extraction",
+                    endpoint="/v1/responses",
+                    model=str(request_body.get("model") or settings.openai_model or ""),
+                    request_bytes=request_bytes,
+                    response_bytes=response_bytes,
+                    status_code=response.status_code,
+                    success=False,
+                    error_message=str(response.text or "")[:500],
+                    duration_ms=elapsed_ms,
+                )
+                continue
+            payload = response.json()
+            input_tokens, output_tokens, total_tokens = parse_openai_usage_tokens(payload)
+            record_usage_event(
+                provider="openai",
+                user_id=None,
+                feature=feature,
+                page=page,
+                operation="companies house vat extraction",
+                endpoint="/v1/responses",
+                model=str(request_body.get("model") or settings.openai_model or ""),
+                request_bytes=request_bytes,
+                response_bytes=response_bytes,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                estimated_cost_usd=estimate_openai_cost_usd(str(request_body.get("model") or settings.openai_model or ""), input_tokens, output_tokens),
+                status_code=response.status_code,
+                success=True,
+                duration_ms=elapsed_ms,
+            )
+            output_text = ""
+            for item in payload.get("output") or []:
+                for content in item.get("content") or []:
+                    text_value = content.get("text")
+                    if text_value:
+                        output_text += text_value
+            if not output_text.strip():
+                continue
+            parsed = json.loads(output_text)
+            for row in parsed.get("rows") or []:
+                try:
+                    line_number = int(row.get("lineNumber") or 0)
+                except (TypeError, ValueError):
+                    continue
+                confidence = float(row.get("confidence") or 0)
+                vat_number = _normalise_vat_number(row.get("vatNumber"))
+                if line_number >= 2 and vat_number and confidence >= 0.5:
+                    resolved[line_number] = vat_number
+        except Exception:
+            continue
+    return resolved
+
+
 def _parse_date_from_text(value: object) -> date | None:
     text = str(value or "").strip()
     if not text:
@@ -4381,6 +4612,9 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
         if not company_number and not normalised_name:
             errors.append({"lineNumber": idx, "reason": "Missing company number and name; cannot match this auth code."})
             continue
+        vat_number = _normalise_vat_number(row_payload.get("vat_number"))
+        if not vat_number:
+            vat_number = _extract_vat_number_from_row_cells(raw_row)
         output_rows.append(
             {
                 "lineNumber": idx,
@@ -4389,7 +4623,7 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "clientType": client_type,
                 "clientManager": _coerce_text(row_payload.get("manager_reference") or row_payload.get("assigned_staff"), 120),
                 "clientId": _coerce_text(row_payload.get("client_id"), 80),
-                "vatNumber": _coerce_text(row_payload.get("vat_number"), 120),
+                "vatNumber": _coerce_text(vat_number, 120),
                 "contactEmail": _coerce_text(row_payload.get("contact_email"), 250),
                 "contactPhone": _coerce_text(row_payload.get("contact_phone"), 120),
                 "clientAddress": _coerce_text(row_payload.get("client_address"), 1000),
@@ -4397,6 +4631,14 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "authCode": auth_code,
             }
         )
+    ai_vat_matches = _ai_resolve_missing_vat_numbers(headers, rows, output_rows)
+    if ai_vat_matches:
+        for row in output_rows:
+            if _normalise_vat_number(row.get("vatNumber")):
+                continue
+            line_number = int(row.get("lineNumber") or 0)
+            if line_number in ai_vat_matches:
+                row["vatNumber"] = ai_vat_matches[line_number]
     return output_rows, errors
 
 
