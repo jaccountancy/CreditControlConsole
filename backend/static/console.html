@@ -42559,6 +42559,7 @@
                 if (activeView === "identity-verification") renderIdentityVerificationScreen();
                 if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
+                if (activeView === "insights") renderInsightsScreen();
                 try {
                     const endpoint = `${api.endpoints.xeroLockDates}${force ? "?force=1" : ""}`;
                     const payload = await requestJSON(endpoint);
@@ -42579,6 +42580,7 @@
                     if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
+                    if (activeView === "insights") renderInsightsScreen();
                 } catch (error) {
                     console.error("Unable to load Xero lock-date overview", error);
                     if (activeView === "xero-lock-date") showToast(error.message || "Unable to load lock-date overview", "error");
@@ -42591,6 +42593,7 @@
                     if (activeView === "identity-verification") renderIdentityVerificationScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                     if (activeView === "settings" && activeSettingsSection === "xero-connection") renderSettingsXeroConnection();
+                    if (activeView === "insights") renderInsightsScreen();
                 }
             }
 
@@ -67715,6 +67718,9 @@
                 renderAll();
                 scrollConsoleToTop();
                 loadInsights();
+                if (state?.organisation?.xeroConnected) {
+                    loadXeroLockDateOverview();
+                }
             }
 
             function openNotificationsScreen() {
@@ -68225,11 +68231,17 @@
                     addTenantId(row?.tenantId || row?.xeroTenantId);
                 });
 
+                const auditedConnections = Array.isArray(xeroScopeAudit?.connections) ? xeroScopeAudit.connections : [];
+                (Array.isArray(auditedConnections) ? auditedConnections : []).forEach((row) => {
+                    addTenantId(row?.tenantId || row?.xeroTenantId);
+                });
+
                 addTenantId(meReportData?.xero?.tenantId);
                 if (state?.organisation?.xeroConnected) {
                     addTenantId(state?.organisation?.tenantId || state?.organisation?.xeroTenantId);
                 }
 
+                if (!tenantIds.size && state?.organisation?.xeroConnected) return 1;
                 return tenantIds.size;
             }
 
