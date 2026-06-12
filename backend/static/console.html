@@ -36000,7 +36000,7 @@
                 }, 860);
             }
 
-            async function jukFinishWizardActivity({ tone = "success", message = "", detail = "", stage = "", holdMs = 900 } = {}) {
+            async function jukFinishWizardActivity({ tone = "success", message = "", detail = "", stage = "", holdMs = 900, hideAfter = true } = {}) {
                 jukStopWizardActivityTicker();
                 jukSetWizardActivity({
                     active: true,
@@ -36010,8 +36010,34 @@
                     detail,
                     progress: 100,
                 });
+                if (!hideAfter) return;
                 await wait(holdMs);
                 jukSetWizardActivity({ active: false, progress: 0, message: "", detail: "", stage: "", tone: "info" });
+            }
+
+            function jukImportFailureSummary(error) {
+                const statusCode = Number(error?.statusCode || error?.details?.statusCode || 0);
+                const detailText = String(
+                    error?.details?.details?.message
+                    || error?.details?.details
+                    || error?.details?.message
+                    || error?.message
+                    || ""
+                ).trim();
+                const message = detailText || "Unable to import JUK invoices.";
+                const timeoutLike = statusCode === 502 || statusCode === 504 || /timeout|timed out|upstream error|gateway/i.test(message);
+                if (timeoutLike) {
+                    return {
+                        toast: "Import timed out before completion.",
+                        modalTitle: "Import timed out at the server gateway.",
+                        modalDetail: "The request ran too long. Reduce the date range and retry, or run with fewer invoices per batch.",
+                    };
+                }
+                return {
+                    toast: message,
+                    modalTitle: `Import failed${statusCode ? ` (HTTP ${statusCode})` : ""}.`,
+                    modalDetail: message,
+                };
             }
 
             function jukDateToISO(value) {
@@ -36858,13 +36884,14 @@
                                 holdMs: 880,
                             });
                         } catch (error) {
-                            showToast(error?.message || "Unable to import JUK invoices.", "error");
+                            const failure = jukImportFailureSummary(error);
+                            showToast(failure.toast || "Unable to import JUK invoices.", "error");
                             await jukFinishWizardActivity({
                                 tone: "error",
                                 stage: "import",
-                                message: "Import failed.",
-                                detail: String(error?.message || "Check connection and try again."),
-                                holdMs: 1400,
+                                message: failure.modalTitle || "Import failed.",
+                                detail: failure.modalDetail || "Check connection and try again.",
+                                hideAfter: false,
                             });
                         } finally {
                             createFormButton.disabled = false;

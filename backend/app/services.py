@@ -112,7 +112,8 @@ MASTER_XERO_TENANT_HINTS = ("jaccountancy",)
 JUKSIB_BATCH_PREFIX = "JUKSIB"
 JUKSIB_CONFIDENCE_HIGH = Decimal("0.90")
 JUKSIB_CONFIDENCE_MEDIUM = Decimal("0.70")
-JUKSIB_MAX_IMPORT_INVOICES = 1200
+JUKSIB_MAX_IMPORT_INVOICES = 400
+JUKSIB_OPENAI_MATCH_LIMIT = 80
 JUKSIB_DEFAULT_PURCHASE_ACCOUNT_CODE = "401"
 JUKSIB_DEFAULT_SUPPLIER_NAME = "Jaccountancy (UK) Ltd"
 JUKSIB_MATCH_RESPONSE_SCHEMA = {
@@ -14864,6 +14865,7 @@ async def _juksib_match_invoice(
     contact_name: str,
     rules: list[dict],
     candidates: list[dict],
+    allow_openai: bool = True,
 ) -> dict:
     rule = _juksib_rule_match(contact_name, rules)
     if rule:
@@ -14904,26 +14906,50 @@ async def _juksib_match_invoice(
         scored.append({**candidate, "score": score})
     scored.sort(key=lambda row: row["score"], reverse=True)
     top = scored[0] if scored else None
+    top_confidence = _juksib_decimal(top.get("score")) if top else Decimal("0")
 
-    openai_match = await _juksib_openai_match_contact(user=user, invoice_name=contact_name, candidates=active_candidates)
-    if openai_match:
-        suggested_id = str(openai_match.get("suggested_tenant_id") or "").strip()
-        suggested = next((row for row in active_candidates if str(row.get("tenant_id") or "").strip() == suggested_id), None)
-        confidence = Decimal(str(openai_match.get("confidence") or "0"))
-        if suggested and confidence > Decimal("0"):
-            status_value = "approved" if confidence >= JUKSIB_CONFIDENCE_HIGH else ("needs_review" if confidence >= JUKSIB_CONFIDENCE_MEDIUM else "unmatched")
-            return {
-                "status": status_value,
-                "duplicate_flag": False,
-                "matched_rule_id": "",
-                "matched_client_id": str(suggested.get("client_id") or ""),
-                "matched_xero_tenant_id": str(suggested.get("tenant_id") or ""),
-                "matched_xero_tenant_name": str(suggested.get("tenant_name") or ""),
-                "match_source": "openai",
-                "match_confidence": confidence,
-                "match_reason": str(openai_match.get("reason") or "OpenAI matched invoice contact to connected tenant."),
-                "alternatives": openai_match.get("alternatives") if isinstance(openai_match.get("alternatives"), list) else [],
-            }
+    if top and top_confidence >= Decimal("0.94"):
+        return {
+            "status": "approved",
+            "duplicate_flag": False,
+            "matched_rule_id": "",
+            "matched_client_id": str(top.get("client_id") or ""),
+            "matched_xero_tenant_id": str(top.get("tenant_id") or ""),
+            "matched_xero_tenant_name": str(top.get("tenant_name") or ""),
+            "match_source": "exact_tenant_match",
+            "match_confidence": top_confidence,
+            "match_reason": "Strong tenant name match against connected organisations.",
+            "alternatives": [
+                {
+                    "tenant_id": str(item.get("tenant_id") or ""),
+                    "tenant_name": str(item.get("tenant_name") or ""),
+                    "confidence": float(_juksib_decimal(item.get("score"))),
+                }
+                for item in scored[1:4]
+            ],
+        }
+
+    should_try_openai = bool(allow_openai) and (not top or top_confidence < JUKSIB_CONFIDENCE_HIGH)
+    if should_try_openai:
+        openai_match = await _juksib_openai_match_contact(user=user, invoice_name=contact_name, candidates=active_candidates)
+        if openai_match:
+            suggested_id = str(openai_match.get("suggested_tenant_id") or "").strip()
+            suggested = next((row for row in active_candidates if str(row.get("tenant_id") or "").strip() == suggested_id), None)
+            confidence = Decimal(str(openai_match.get("confidence") or "0"))
+            if suggested and confidence > Decimal("0"):
+                status_value = "approved" if confidence >= JUKSIB_CONFIDENCE_HIGH else ("needs_review" if confidence >= JUKSIB_CONFIDENCE_MEDIUM else "unmatched")
+                return {
+                    "status": status_value,
+                    "duplicate_flag": False,
+                    "matched_rule_id": "",
+                    "matched_client_id": str(suggested.get("client_id") or ""),
+                    "matched_xero_tenant_id": str(suggested.get("tenant_id") or ""),
+                    "matched_xero_tenant_name": str(suggested.get("tenant_name") or ""),
+                    "match_source": "openai",
+                    "match_confidence": confidence,
+                    "match_reason": str(openai_match.get("reason") or "OpenAI matched invoice contact to connected tenant."),
+                    "alternatives": openai_match.get("alternatives") if isinstance(openai_match.get("alternatives"), list) else [],
+                }
 
     if not top or _juksib_decimal(top.get("score")) < Decimal("0.55"):
         return {
@@ -14933,13 +14959,13 @@ async def _juksib_match_invoice(
             "matched_client_id": "",
             "matched_xero_tenant_id": "",
             "matched_xero_tenant_name": "",
-            "match_source": "openai",
+            "match_source": "heuristic",
             "match_confidence": Decimal("0"),
             "match_reason": "No connected tenant matched this invoice contact name.",
             "alternatives": [],
         }
 
-    confidence = _juksib_decimal(top.get("score"))
+    confidence = top_confidence
     status_value = "approved" if confidence >= JUKSIB_CONFIDENCE_HIGH else ("needs_review" if confidence >= JUKSIB_CONFIDENCE_MEDIUM else "unmatched")
     return {
         "status": status_value,
@@ -14948,7 +14974,7 @@ async def _juksib_match_invoice(
         "matched_client_id": str(top.get("client_id") or ""),
         "matched_xero_tenant_id": str(top.get("tenant_id") or ""),
         "matched_xero_tenant_name": str(top.get("tenant_name") or ""),
-        "match_source": "openai",
+        "match_source": "heuristic",
         "match_confidence": confidence,
         "match_reason": "Heuristic name matching used against connected tenant aliases.",
         "alternatives": [
@@ -15116,6 +15142,7 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
     batch_reference = _juksib_next_batch_reference(user["id"])
     batch_id = ""
     inserted_invoices = []
+    openai_match_remaining = min(JUKSIB_OPENAI_MATCH_LIMIT, len(source_rows))
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -15166,7 +15193,10 @@ async def juksib_import_batch(user: dict, payload: dict | None = None) -> dict:
                 contact_name=row.get("juk_contact_name"),
                 rules=rules,
                 candidates=candidates,
+                allow_openai=openai_match_remaining > 0,
             )
+            if str(match_row.get("match_source") or "") == "openai" and openai_match_remaining > 0:
+                openai_match_remaining -= 1
             duplicate_flag = False
             if match_row.get("matched_xero_tenant_id"):
                 with connection.cursor() as cursor:
