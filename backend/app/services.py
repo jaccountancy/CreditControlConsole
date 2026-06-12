@@ -16587,7 +16587,8 @@ async def juksib_delete_batch(user: dict, batch_id: str) -> dict:
     batch_reference = str(batch_row.get("batch_reference") or "").strip()
     _juksib_record_audit(
         user_id=user["id"],
-        batch_id=resolved_batch_id,
+        # Batch row is deleted above; keep audit record detached from FK-linked batch_id.
+        batch_id=None,
         entity_type="juksib_batch",
         entity_id=resolved_batch_id,
         action="batch_deleted",
