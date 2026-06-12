@@ -85651,9 +85651,23 @@
                 }
             }
 
-            function inferDomainLabel(hostname) {
+            function inferDnsZoneBase(publicHost) {
+                const host = normaliseDomainHost(publicHost);
+                if (!host) return "";
+                const parts = host.split(".");
+                if (parts.length <= 1) return "";
+                return parts.slice(1).join(".");
+            }
+
+            function inferDomainLabel(hostname, zoneBase = "") {
                 const host = normaliseDomainHost(hostname);
                 if (!host) return "";
+                const zone = normaliseDomainHost(zoneBase);
+                if (zone && host === zone) return "@";
+                if (zone && host.endsWith(`.${zone}`)) {
+                    const relative = host.slice(0, -(zone.length + 1)).trim();
+                    return relative || "@";
+                }
                 const parts = host.split(".");
                 if (parts.length <= 2) return parts[0] || host;
                 return parts.slice(0, Math.max(parts.length - 2, 1)).join(".");
@@ -85686,8 +85700,9 @@
                 const cnameValue = normaliseDomainHost(result?.expectedCname || domainHealthSettings?.expectedCname || "");
                 const txtHost = normaliseDomainHost(result?.txtHost || domainHealthSettings?.txtHost || "");
                 const txtValue = normaliseTxtAnswer(result?.expectedTxt || domainHealthSettings?.expectedTxt || "");
-                const domainLabel = inferDomainLabel(domainHost);
-                const txtLabel = inferDomainLabel(txtHost);
+                const zoneBase = inferDnsZoneBase(domainHost);
+                const domainLabel = inferDomainLabel(domainHost, zoneBase);
+                const txtLabel = inferDomainLabel(txtHost, zoneBase);
                 const actions = [];
                 if (domainLabel && cnameValue) {
                     actions.push(`In your DNS zone, confirm CNAME Name is "${domainLabel}" and target/value is "${cnameValue}" (no protocol, no extra spaces).`);
