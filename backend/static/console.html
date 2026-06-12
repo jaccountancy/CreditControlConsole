@@ -28807,6 +28807,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" type="button" id="contactArchiveReviewButton">Review clients</button>
+                                    <button class="ghost-button" type="button" id="contactArchiveSyncRegisterButton">Sync with Client Register</button>
                                     <button class="primary-button" type="button" id="contactArchiveBulkArchiveButton">Archive selected</button>
                                 </div>
                             </div>
@@ -28842,6 +28843,9 @@
                                                         </select>
                                                         <button class="ghost-button" type="button" id="contactArchiveSelectAllVisibleButton">Select visible</button>
                                                         <button class="ghost-button" type="button" id="contactArchiveClearSelectionButton">Clear selection</button>
+                                                        <button class="ghost-button" type="button" id="contactArchivePrevPageButton">Previous</button>
+                                                        <button class="ghost-button" type="button" id="contactArchiveNextPageButton">Next</button>
+                                                        <span class="ch-register-toolbar-meta" id="contactArchivePageMeta">Page 1</span>
                                                         <span class="ch-register-toolbar-meta" id="contactArchiveTableMeta">0 rows</span>
                                                     </div>
                                                 </th>
@@ -28875,6 +28879,42 @@
                             </section>
                         </section>
                     </section>
+
+                    <div class="company-secretarial-modal" id="contactArchiveRegisterSyncModal" hidden>
+                        <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="contactArchiveRegisterSyncTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Contact Archive wizard</p>
+                                    <h4 id="contactArchiveRegisterSyncTitle">Sync with Client Register</h4>
+                                    <p class="detail-meta" id="contactArchiveRegisterSyncMeta">Match master-Xero customer contacts against your Client Register and hide matched rows.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="contactArchiveRegisterSyncCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="ch-settings-card">
+                                <div class="detail-meta" id="contactArchiveRegisterSyncStepLabel">Step 1 of 3</div>
+                                <h5 id="contactArchiveRegisterSyncStepTitle">Prepare match run</h5>
+                                <p class="settings-help is-muted" id="contactArchiveRegisterSyncStepText">This scans cached contacts and applies high-confidence matches automatically.</p>
+                                <div class="ch-settings-actions">
+                                    <button class="primary-button" id="contactArchiveRegisterSyncRunButton" type="button">Start matching</button>
+                                    <button class="ghost-button" id="contactArchiveRegisterSyncReloadButton" type="button">Refresh review</button>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Contact register sync results">
+                                        <thead>
+                                            <tr>
+                                                <th>Contact</th>
+                                                <th>Result</th>
+                                                <th>Reason</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="contactArchiveRegisterSyncResultsBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="company-secretarial-modal" id="hmrc648CreateModal" hidden>
                         <div class="company-secretarial-modal-panel hmrc648-modal-panel" role="dialog" aria-modal="true" aria-labelledby="hmrc648CreateTitle">
@@ -33090,14 +33130,22 @@
             const contactArchiveState = {
                 loading: false,
                 archiving: false,
+                registerSyncRunning: false,
+                registerSyncOpen: false,
                 reviewedAt: "",
                 tenantName: "",
                 tenantId: "",
                 rows: [],
                 summary: { xeroCustomerContactCount: 0, clientRegisterCount: 0, flaggedCount: 0, reviewedCount: 0 },
+                cacheStatus: { syncMode: "", fetchedCount: 0, upsertedCount: 0, cachedCount: 0, lastSyncAt: "", latestXeroUpdatedAt: "" },
+                registerSyncSummary: { flaggedBeforeSync: 0, matchedBySync: 0, exactMatched: 0, fuzzyMatched: 0, stillUnmatched: 0 },
+                registerSyncMatchedRows: [],
+                registerSyncUnmatchedRows: [],
                 searchTerm: "",
                 filter: "flagged",
                 sort: "flagged",
+                pageSize: 25,
+                page: 1,
                 selectedIds: new Set(),
                 progress: { active: false, mode: "idle", completed: 0, total: 0, percent: 0, message: "", stage: "", etaSeconds: null, startedAt: 0, elapsedMs: 0 },
                 reviewFeedbackTimer: null,
@@ -34132,6 +34180,7 @@
                         supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
                         contactArchiveReview: config.endpoints?.contactArchiveReview || "/api/contact-archive/review",
                         contactArchiveArchive: config.endpoints?.contactArchiveArchive || "/api/contact-archive/archive",
+                        contactArchiveRegisterSync: config.endpoints?.contactArchiveRegisterSync || "/api/contact-archive/client-register-sync",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
@@ -50634,6 +50683,16 @@
                 });
             }
 
+            function contactArchivePagedRows(rows = []) {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                const pageSize = Math.max(1, Number(contactArchiveState.pageSize || 25));
+                const totalPages = Math.max(1, Math.ceil(safeRows.length / pageSize));
+                const currentPage = Math.min(totalPages, Math.max(1, Number(contactArchiveState.page || 1)));
+                const startIndex = (currentPage - 1) * pageSize;
+                const pageRows = safeRows.slice(startIndex, startIndex + pageSize);
+                return { pageRows, currentPage, totalPages, totalRows: safeRows.length, pageSize };
+            }
+
             function renderContactArchiveProgress() {
                 const wrap = document.getElementById("contactArchiveProgressWrap");
                 const text = document.getElementById("contactArchiveProgressText");
@@ -50662,23 +50721,149 @@
                 }
             }
 
+            function setContactArchiveRegisterSyncModalOpen(isOpen) {
+                contactArchiveState.registerSyncOpen = Boolean(isOpen);
+                const modal = document.getElementById("contactArchiveRegisterSyncModal");
+                if (modal) modal.hidden = !contactArchiveState.registerSyncOpen;
+                if (contactArchiveState.registerSyncOpen) renderContactArchiveRegisterSyncModal();
+            }
+
+            function renderContactArchiveRegisterSyncModal() {
+                const modal = document.getElementById("contactArchiveRegisterSyncModal");
+                if (!modal || modal.hidden) return;
+                const stepLabel = document.getElementById("contactArchiveRegisterSyncStepLabel");
+                const stepTitle = document.getElementById("contactArchiveRegisterSyncStepTitle");
+                const stepText = document.getElementById("contactArchiveRegisterSyncStepText");
+                const meta = document.getElementById("contactArchiveRegisterSyncMeta");
+                const runButton = document.getElementById("contactArchiveRegisterSyncRunButton");
+                const reloadButton = document.getElementById("contactArchiveRegisterSyncReloadButton");
+                const resultsBody = document.getElementById("contactArchiveRegisterSyncResultsBody");
+                const syncSummary = contactArchiveState.registerSyncSummary || {};
+                const matchedRows = Array.isArray(contactArchiveState.registerSyncMatchedRows) ? contactArchiveState.registerSyncMatchedRows : [];
+                const unmatchedRows = Array.isArray(contactArchiveState.registerSyncUnmatchedRows) ? contactArchiveState.registerSyncUnmatchedRows : [];
+                const running = Boolean(contactArchiveState.registerSyncRunning);
+                const hasResults = matchedRows.length > 0 || unmatchedRows.length > 0 || Number(syncSummary.matchedBySync || 0) > 0;
+
+                if (stepLabel) stepLabel.textContent = running ? "Step 2 of 3" : (hasResults ? "Step 3 of 3" : "Step 1 of 3");
+                if (stepTitle) {
+                    stepTitle.textContent = running
+                        ? "Matching contacts"
+                        : (hasResults ? "Review sync results" : "Prepare match run");
+                }
+                if (stepText) {
+                    stepText.textContent = running
+                        ? "Jenius AI is matching contact names against your Client Register."
+                        : (hasResults
+                            ? `${Number(syncSummary.matchedBySync || 0).toLocaleString("en-GB")} matched, ${Number(syncSummary.stillUnmatched || 0).toLocaleString("en-GB")} still unmatched.`
+                            : "This scans cached contacts and applies high-confidence matches automatically.");
+                }
+                if (meta) {
+                    const cache = contactArchiveState.cacheStatus || {};
+                    const syncModeLabel = String(cache.syncMode || "").trim() || "incremental";
+                    meta.textContent = `Cache mode: ${syncModeLabel} · Flagged contacts before sync: ${Number(syncSummary.flaggedBeforeSync || contactArchiveState.summary?.flaggedCount || 0).toLocaleString("en-GB")}.`;
+                }
+                if (runButton) {
+                    runButton.disabled = running;
+                    runButton.textContent = running ? "Matching..." : "Start matching";
+                }
+                if (reloadButton) reloadButton.disabled = running;
+                if (resultsBody) {
+                    const matchedDisplay = matchedRows.slice(0, 200).map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(String(row.contactId || ""))}</strong></td>
+                            <td><span class="ch-pill is-good">Matched</span></td>
+                            <td>${escapeHTML(String(row.matchReason || row.registerName || "Matched to register"))}</td>
+                        </tr>
+                    `).join("");
+                    const unmatchedDisplay = unmatchedRows.slice(0, 200).map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(String(row.contactName || row.contactId || ""))}</strong></td>
+                            <td><span class="ch-pill is-warn">Unmatched</span></td>
+                            <td>${escapeHTML(String(row.reason || "No confident match found."))}</td>
+                        </tr>
+                    `).join("");
+                    resultsBody.innerHTML = (matchedDisplay + unmatchedDisplay) || '<tr><td colspan="3" class="ch-empty-state">Run the wizard to generate match results.</td></tr>';
+                }
+            }
+
+            async function runContactArchiveRegisterSyncWizard() {
+                if (contactArchiveState.registerSyncRunning) return;
+                contactArchiveState.registerSyncRunning = true;
+                renderContactArchiveRegisterSyncModal();
+                try {
+                    const payload = await requestJSON(api.endpoints.contactArchiveRegisterSync, {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    const data = payload?.contactArchiveSync || payload || {};
+                    contactArchiveState.registerSyncSummary = data.summary && typeof data.summary === "object"
+                        ? data.summary
+                        : { flaggedBeforeSync: 0, matchedBySync: 0, exactMatched: 0, fuzzyMatched: 0, stillUnmatched: 0 };
+                    contactArchiveState.registerSyncMatchedRows = Array.isArray(data.matchedRows) ? data.matchedRows : [];
+                    contactArchiveState.registerSyncUnmatchedRows = Array.isArray(data.unmatchedRows) ? data.unmatchedRows : [];
+                    const review = data.review && typeof data.review === "object" ? data.review : null;
+                    if (review) {
+                        const rows = Array.isArray(review.rows) ? review.rows : [];
+                        contactArchiveState.tenantId = String(review.tenantId || "");
+                        contactArchiveState.tenantName = String(review.tenantName || "");
+                        contactArchiveState.reviewedAt = String(review.reviewedAt || "");
+                        contactArchiveState.cacheStatus = review.cacheStatus && typeof review.cacheStatus === "object"
+                            ? review.cacheStatus
+                            : contactArchiveState.cacheStatus;
+                        contactArchiveState.summary = review.summary && typeof review.summary === "object"
+                            ? review.summary
+                            : contactArchiveState.summary;
+                        contactArchiveState.rows = rows.map((row) => ({
+                            contactId: String(row.contactId || ""),
+                            contactName: String(row.contactName || ""),
+                            email: String(row.email || ""),
+                            contactStatus: String(row.contactStatus || "ACTIVE"),
+                            flagged: Boolean(row.flagged),
+                            archived: String(row.contactStatus || "").toUpperCase() === "ARCHIVED",
+                        }));
+                        contactArchiveState.selectedIds = new Set(
+                            Array.from(contactArchiveState.selectedIds || []).filter((id) => rows.some((row) => String(row.contactId || "") === id))
+                        );
+                    }
+                    const matchedCount = Number((contactArchiveState.registerSyncSummary || {}).matchedBySync || 0);
+                    showToast(`Client Register sync complete. ${matchedCount.toLocaleString("en-GB")} contact${matchedCount === 1 ? "" : "s"} matched and hidden.`, "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        return;
+                    }
+                    showToast(error?.message || "Unable to sync with client register.", "error");
+                } finally {
+                    contactArchiveState.registerSyncRunning = false;
+                    renderContactArchiveRegisterSyncModal();
+                    renderContactArchiveScreen();
+                }
+            }
+
             function renderContactArchiveScreen() {
                 const screen = document.getElementById("contactArchiveScreen");
                 if (!screen) return;
                 const tableBody = document.getElementById("contactArchiveTableBody");
                 if (!tableBody) return;
-                const rows = contactArchiveFilteredRows();
+                const filteredRows = contactArchiveFilteredRows();
+                const pagination = contactArchivePagedRows(filteredRows);
+                const rows = pagination.pageRows;
+                contactArchiveState.page = pagination.currentPage;
                 const selected = contactArchiveState.selectedIds || new Set();
                 const summary = contactArchiveState.summary || {};
                 const tenantLabel = document.getElementById("contactArchiveTenantLabel");
                 const reviewMeta = document.getElementById("contactArchiveReviewMeta");
                 const tableMeta = document.getElementById("contactArchiveTableMeta");
+                const pageMeta = document.getElementById("contactArchivePageMeta");
+                const prevPageButton = document.getElementById("contactArchivePrevPageButton");
+                const nextPageButton = document.getElementById("contactArchiveNextPageButton");
                 const reviewButton = document.getElementById("contactArchiveReviewButton");
                 const bulkButton = document.getElementById("contactArchiveBulkArchiveButton");
                 const selectVisibleButton = document.getElementById("contactArchiveSelectAllVisibleButton");
                 const clearSelectionButton = document.getElementById("contactArchiveClearSelectionButton");
                 const searchInput = document.getElementById("contactArchiveSearchInput");
                 const filterSelect = document.getElementById("contactArchiveFilterSelect");
+                const syncButton = document.getElementById("contactArchiveSyncRegisterButton");
 
                 if (searchInput && searchInput.value !== String(contactArchiveState.searchTerm || "")) {
                     searchInput.value = String(contactArchiveState.searchTerm || "");
@@ -50697,7 +50882,10 @@
                     const reviewedAt = contactArchiveState.reviewedAt
                         ? chFormatDateTime(contactArchiveState.reviewedAt)
                         : "Not reviewed yet";
-                    reviewMeta.textContent = `${Number(summary.flaggedCount || 0).toLocaleString("en-GB")} flagged of ${Number(summary.reviewedCount || 0).toLocaleString("en-GB")} customer contacts · Reviewed ${reviewedAt}.`;
+                    const cache = contactArchiveState.cacheStatus || {};
+                    const syncMode = String(cache.syncMode || "").trim();
+                    const syncMeta = syncMode ? ` · Sync ${syncMode}` : "";
+                    reviewMeta.textContent = `${Number(summary.flaggedCount || 0).toLocaleString("en-GB")} flagged of ${Number(summary.reviewedCount || 0).toLocaleString("en-GB")} customer contacts · Reviewed ${reviewedAt}${syncMeta}.`;
                 }
 
                 if (!rows.length) {
@@ -50725,9 +50913,13 @@
                 }
 
                 if (tableMeta) {
-                    tableMeta.textContent = `${rows.length.toLocaleString("en-GB")} shown · ${selected.size.toLocaleString("en-GB")} selected`;
+                    tableMeta.textContent = `${pagination.totalRows.toLocaleString("en-GB")} total · ${rows.length.toLocaleString("en-GB")} on page · ${selected.size.toLocaleString("en-GB")} selected`;
                 }
+                if (pageMeta) pageMeta.textContent = `Page ${pagination.currentPage.toLocaleString("en-GB")} of ${pagination.totalPages.toLocaleString("en-GB")}`;
+                if (prevPageButton) prevPageButton.disabled = contactArchiveState.archiving || pagination.currentPage <= 1;
+                if (nextPageButton) nextPageButton.disabled = contactArchiveState.archiving || pagination.currentPage >= pagination.totalPages;
                 if (reviewButton) reviewButton.disabled = contactArchiveState.loading || contactArchiveState.archiving;
+                if (syncButton) syncButton.disabled = contactArchiveState.loading || contactArchiveState.archiving || contactArchiveState.registerSyncRunning;
                 if (bulkButton) {
                     bulkButton.disabled = contactArchiveState.loading || contactArchiveState.archiving || selected.size === 0;
                     bulkButton.textContent = contactArchiveState.archiving
@@ -50772,6 +50964,9 @@
                     contactArchiveState.tenantId = String(data.tenantId || "");
                     contactArchiveState.tenantName = String(data.tenantName || "");
                     contactArchiveState.reviewedAt = String(data.reviewedAt || "");
+                    contactArchiveState.cacheStatus = data.cacheStatus && typeof data.cacheStatus === "object"
+                        ? data.cacheStatus
+                        : { syncMode: "", fetchedCount: 0, upsertedCount: 0, cachedCount: rows.length, lastSyncAt: "", latestXeroUpdatedAt: "" };
                     contactArchiveState.summary = data.summary && typeof data.summary === "object"
                         ? data.summary
                         : { xeroCustomerContactCount: rows.length, clientRegisterCount: 0, flaggedCount: rows.filter((row) => row.flagged).length, reviewedCount: rows.length };
@@ -50784,6 +50979,7 @@
                         archived: String(row.contactStatus || "").toUpperCase() === "ARCHIVED",
                     }));
                     contactArchiveState.selectedIds = nextSelected;
+                    contactArchiveState.page = 1;
                     setContactArchiveStatus(
                         `Review complete: ${Number(contactArchiveState.summary.flaggedCount || 0).toLocaleString("en-GB")} flagged contact${Number(contactArchiveState.summary.flaggedCount || 0) === 1 ? "" : "s"}.`,
                         "success"
@@ -50880,24 +51076,41 @@
             }
 
             function wireContactArchiveUI() {
-                document.getElementById("contactArchiveReviewButton")?.addEventListener("click", () => loadContactArchiveReview(true));
+                document.getElementById("contactArchiveReviewButton")?.addEventListener("click", () => loadContactArchiveReview(false));
                 document.getElementById("contactArchiveBulkArchiveButton")?.addEventListener("click", () => archiveContactArchiveContacts());
+                document.getElementById("contactArchiveSyncRegisterButton")?.addEventListener("click", () => setContactArchiveRegisterSyncModalOpen(true));
+                document.getElementById("contactArchiveRegisterSyncCloseButton")?.addEventListener("click", () => setContactArchiveRegisterSyncModalOpen(false));
+                document.getElementById("contactArchiveRegisterSyncRunButton")?.addEventListener("click", () => runContactArchiveRegisterSyncWizard());
+                document.getElementById("contactArchiveRegisterSyncReloadButton")?.addEventListener("click", async () => {
+                    await loadContactArchiveReview(false);
+                    renderContactArchiveRegisterSyncModal();
+                });
                 document.getElementById("contactArchiveSearchInput")?.addEventListener("input", (event) => {
                     contactArchiveState.searchTerm = String(event?.target?.value || "");
+                    contactArchiveState.page = 1;
                     renderContactArchiveScreen();
                 });
                 document.getElementById("contactArchiveFilterSelect")?.addEventListener("change", (event) => {
                     contactArchiveState.filter = String(event?.target?.value || "flagged");
+                    contactArchiveState.page = 1;
                     renderContactArchiveScreen();
                 });
                 document.getElementById("contactArchiveSelectAllVisibleButton")?.addEventListener("click", () => {
-                    contactArchiveFilteredRows()
+                    contactArchivePagedRows(contactArchiveFilteredRows()).pageRows
                         .filter((row) => !row.archived)
                         .forEach((row) => contactArchiveState.selectedIds.add(String(row.contactId || "")));
                     renderContactArchiveScreen();
                 });
                 document.getElementById("contactArchiveClearSelectionButton")?.addEventListener("click", () => {
                     contactArchiveState.selectedIds.clear();
+                    renderContactArchiveScreen();
+                });
+                document.getElementById("contactArchivePrevPageButton")?.addEventListener("click", () => {
+                    contactArchiveState.page = Math.max(1, Number(contactArchiveState.page || 1) - 1);
+                    renderContactArchiveScreen();
+                });
+                document.getElementById("contactArchiveNextPageButton")?.addEventListener("click", () => {
+                    contactArchiveState.page = Math.max(1, Number(contactArchiveState.page || 1) + 1);
                     renderContactArchiveScreen();
                 });
             }

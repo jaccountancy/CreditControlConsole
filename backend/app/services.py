@@ -28080,8 +28080,8 @@ def _supplier_reconciliation_connected_contact_ids(tenant_id: str) -> set[str]:
     return {str(row.get("xero_contact_id") or "").strip() for row in rows if str(row.get("xero_contact_id") or "").strip()}
 
 
-def _contact_archive_register_name_set() -> set[str]:
-    names: set[str] = set()
+def _contact_archive_register_rows() -> list[dict]:
+    rows_out: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -28093,43 +28093,257 @@ def _contact_archive_register_name_set() -> set[str]:
             rows = cursor.fetchall() or []
         connection.commit()
     for row in rows:
-        for raw in (
-            row.get("company_name"),
-            row.get("client_name"),
-            row.get("client_id"),
-            row.get("normalised_name"),
-        ):
+        seen_keys: set[str] = set()
+        for raw in (row.get("company_name"), row.get("client_name"), row.get("client_id"), row.get("normalised_name")):
             compact = _normalise_contact_match_name(str(raw or ""))
-            if compact:
-                names.add(compact)
-    return names
+            if compact and compact not in seen_keys:
+                rows_out.append(
+                    {
+                        "displayName": str(raw or "").strip() or compact,
+                        "matchKey": compact,
+                    }
+                )
+                seen_keys.add(compact)
+    return rows_out
 
 
-def _contact_archive_contact_rows(contacts: list[dict], register_names: set[str]) -> list[dict]:
+def _contact_archive_register_name_set() -> set[str]:
+    return {str(row.get("matchKey") or "").strip() for row in _contact_archive_register_rows() if str(row.get("matchKey") or "").strip()}
+
+
+def _contact_archive_load_cached_contacts(user_id: str, tenant_id: str) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT contact_id, contact_name, email, contact_status, is_customer, xero_updated_at, raw, updated_at
+                FROM contact_archive_contacts_cache
+                WHERE user_id = %s::uuid
+                  AND tenant_id = %s
+                ORDER BY contact_name ASC, contact_id ASC
+                """,
+                (user_id, tenant_id),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return rows
+
+
+def _contact_archive_latest_cached_xero_updated_at(user_id: str, tenant_id: str) -> datetime | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT MAX(xero_updated_at) AS latest_xero_updated_at
+                FROM contact_archive_contacts_cache
+                WHERE user_id = %s::uuid
+                  AND tenant_id = %s
+                """,
+                (user_id, tenant_id),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    value = row.get("latest_xero_updated_at")
+    return value if isinstance(value, datetime) else None
+
+
+def _contact_archive_upsert_cached_contacts(user_id: str, tenant_id: str, contacts: list[dict]) -> int:
+    upserted = 0
+    if not contacts:
+        return upserted
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for contact in contacts:
+                contact_id = _xero_contact_id(contact)
+                if not contact_id:
+                    continue
+                contact_name = _xero_contact_name(contact)
+                status_value = str(contact.get("ContactStatus") or "").strip().upper() or "ACTIVE"
+                is_customer = bool(contact.get("IsCustomer")) or bool(contact.get("Customer"))
+                email = str(contact.get("EmailAddress") or "").strip()
+                xero_updated_at = _parse_optional_iso_datetime(contact.get("UpdatedDateUTC") or contact.get("UpdatedDate") or contact.get("CreatedDateUTC"))
+                cursor.execute(
+                    """
+                    INSERT INTO contact_archive_contacts_cache (
+                        user_id, tenant_id, contact_id, contact_name, email, contact_status, is_customer,
+                        xero_updated_at, raw, last_seen_at, created_at, updated_at
+                    )
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW(), NOW(), NOW())
+                    ON CONFLICT (user_id, tenant_id, contact_id)
+                    DO UPDATE SET
+                        contact_name = EXCLUDED.contact_name,
+                        email = EXCLUDED.email,
+                        contact_status = EXCLUDED.contact_status,
+                        is_customer = EXCLUDED.is_customer,
+                        xero_updated_at = EXCLUDED.xero_updated_at,
+                        raw = EXCLUDED.raw,
+                        last_seen_at = NOW(),
+                        updated_at = NOW()
+                    """,
+                    (
+                        user_id,
+                        tenant_id,
+                        contact_id,
+                        contact_name,
+                        email,
+                        status_value,
+                        is_customer,
+                        xero_updated_at,
+                        json.dumps(contact),
+                    ),
+                )
+                upserted += 1
+        connection.commit()
+    return upserted
+
+
+def _contact_archive_active_manual_matches(user_id: str, tenant_id: str) -> dict[str, dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT contact_id, register_name, match_source, match_reason, confidence, matched_at
+                FROM contact_archive_register_matches
+                WHERE user_id = %s::uuid
+                  AND tenant_id = %s
+                  AND active = TRUE
+                """,
+                (user_id, tenant_id),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {
+        str(row.get("contact_id") or "").strip(): {
+            "registerName": str(row.get("register_name") or "").strip(),
+            "matchSource": str(row.get("match_source") or "").strip(),
+            "matchReason": str(row.get("match_reason") or "").strip(),
+            "confidence": float(row.get("confidence") or 0),
+            "matchedAt": _iso(row.get("matched_at")) or "",
+        }
+        for row in rows
+        if str(row.get("contact_id") or "").strip()
+    }
+
+
+def _contact_archive_upsert_register_matches(
+    user_id: str,
+    tenant_id: str,
+    matches: list[dict],
+) -> int:
+    if not matches:
+        return 0
+    applied = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for match in matches:
+                contact_id = str(match.get("contactId") or "").strip()
+                register_name = str(match.get("registerName") or "").strip()
+                if not contact_id or not register_name:
+                    continue
+                source_value = str(match.get("matchSource") or "jenius_ai").strip() or "jenius_ai"
+                reason_value = str(match.get("matchReason") or "").strip()
+                confidence_value = float(match.get("confidence") or 0)
+                cursor.execute(
+                    """
+                    INSERT INTO contact_archive_register_matches (
+                        user_id, tenant_id, contact_id, register_name, match_source, match_reason, confidence, active, matched_at, updated_at
+                    )
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+                    ON CONFLICT (user_id, tenant_id, contact_id)
+                    DO UPDATE SET
+                        register_name = EXCLUDED.register_name,
+                        match_source = EXCLUDED.match_source,
+                        match_reason = EXCLUDED.match_reason,
+                        confidence = EXCLUDED.confidence,
+                        active = TRUE,
+                        matched_at = NOW(),
+                        updated_at = NOW()
+                    """,
+                    (user_id, tenant_id, contact_id, register_name, source_value, reason_value, confidence_value),
+                )
+                applied += 1
+        connection.commit()
+    return applied
+
+
+async def _contact_archive_cached_contacts_for_user(
+    user: dict,
+    connection_row: dict,
+    *,
+    force_refresh: bool = False,
+) -> tuple[list[dict], dict]:
+    user_id = str(user.get("id") or "").strip()
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not user_id or not tenant_id:
+        return [], {"syncMode": "none", "fetchedCount": 0, "upsertedCount": 0, "lastSyncAt": _iso(utcnow()) or ""}
+    cached_rows = _contact_archive_load_cached_contacts(user_id, tenant_id)
+    sync_mode = "full" if force_refresh or not cached_rows else "incremental"
+    where_clause = ""
+    if sync_mode == "incremental":
+        latest_cached = _contact_archive_latest_cached_xero_updated_at(user_id, tenant_id)
+        if isinstance(latest_cached, datetime):
+            pivot_date = (latest_cached - timedelta(days=1)).date()
+            where_clause = f"UpdatedDateUTC>={_xero_datetime_where_literal(pivot_date)}"
+    fetch_params = {"order": "UpdatedDateUTC ASC"} if where_clause else {"order": "Name ASC"}
+    if where_clause:
+        fetch_params["where"] = where_clause
+    fetched_contacts = await fetch_paginated_collection(
+        connection_row,
+        CONTACTS_URL,
+        "Contacts",
+        max_pages=30,
+        params=fetch_params,
+    )
+    upserted = _contact_archive_upsert_cached_contacts(user_id, tenant_id, fetched_contacts if isinstance(fetched_contacts, list) else [])
+    cached_rows = _contact_archive_load_cached_contacts(user_id, tenant_id)
+    latest_cached = _contact_archive_latest_cached_xero_updated_at(user_id, tenant_id)
+    cache_status = {
+        "syncMode": sync_mode,
+        "fetchedCount": len(fetched_contacts) if isinstance(fetched_contacts, list) else 0,
+        "upsertedCount": upserted,
+        "cachedCount": len(cached_rows),
+        "lastSyncAt": _iso(utcnow()) or "",
+        "latestXeroUpdatedAt": _iso(latest_cached) or "",
+    }
+    return cached_rows, cache_status
+
+
+def _contact_archive_contact_rows(
+    contacts: list[dict],
+    register_names: set[str],
+    manual_matches: dict[str, dict] | None = None,
+) -> list[dict]:
+    manual_lookup = manual_matches if isinstance(manual_matches, dict) else {}
     rows: list[dict] = []
     for contact in contacts:
-        contact_id = _xero_contact_id(contact)
-        contact_name = _xero_contact_name(contact)
+        contact_id = str(contact.get("contact_id") or "")
+        contact_name = str(contact.get("contact_name") or "").strip()
         if not contact_id or not contact_name:
             continue
-        status_value = str(contact.get("ContactStatus") or "").strip().upper()
+        status_value = str(contact.get("contact_status") or "").strip().upper()
         if status_value == "ARCHIVED":
             continue
-        is_customer = bool(contact.get("IsCustomer")) or bool(contact.get("Customer"))
+        is_customer = bool(contact.get("is_customer"))
         if not is_customer:
             # Contacts with no customer role are out of scope for Credit Control archive review.
             continue
         match_key = _normalise_contact_match_name(contact_name)
-        in_register = bool(match_key and match_key in register_names)
+        direct_register_match = bool(match_key and match_key in register_names)
+        override_match = manual_lookup.get(contact_id) or {}
+        override_active = bool(override_match)
+        in_register = direct_register_match or override_active
         rows.append(
             {
                 "contactId": contact_id,
                 "contactName": contact_name,
-                "email": str(contact.get("EmailAddress") or "").strip(),
+                "email": str(contact.get("email") or "").strip(),
                 "contactStatus": status_value or "ACTIVE",
                 "isCustomer": is_customer,
                 "inJeniusClientRegister": in_register,
                 "flagged": not in_register,
+                "registerMatchSource": str(override_match.get("matchSource") or ("register_exact" if direct_register_match else "")).strip(),
+                "registerMatchReason": str(override_match.get("matchReason") or ("Exact name match in client register." if direct_register_match else "")).strip(),
+                "registerMatchName": str(override_match.get("registerName") or "").strip(),
             }
         )
     rows.sort(key=lambda item: (not item.get("flagged"), str(item.get("contactName") or "").lower()))
@@ -28137,22 +28351,17 @@ def _contact_archive_contact_rows(contacts: list[dict], register_names: set[str]
 
 
 async def contact_archive_review_payload(user: dict, force_refresh: bool = False) -> dict:
-    _ = force_refresh
     connection_row = get_master_xero_connection_for_user(user["id"])
-    contacts = await fetch_paginated_collection(
-        connection_row,
-        CONTACTS_URL,
-        "Contacts",
-        max_pages=30,
-        params={"order": "Name ASC"},
-    )
+    cached_contacts, cache_status = await _contact_archive_cached_contacts_for_user(user, connection_row, force_refresh=force_refresh)
     register_names = _contact_archive_register_name_set()
-    rows = _contact_archive_contact_rows(contacts, register_names)
+    manual_matches = _contact_archive_active_manual_matches(str(user.get("id") or ""), str(connection_row.get("tenant_id") or ""))
+    rows = _contact_archive_contact_rows(cached_contacts, register_names, manual_matches=manual_matches)
     flagged_rows = [row for row in rows if row.get("flagged")]
     return {
         "tenantId": str(connection_row.get("tenant_id") or ""),
         "tenantName": str(connection_row.get("tenant_name") or ""),
         "reviewedAt": _iso(utcnow()) or "",
+        "cacheStatus": cache_status,
         "summary": {
             "xeroCustomerContactCount": len(rows),
             "clientRegisterCount": len(register_names),
@@ -28165,7 +28374,7 @@ async def contact_archive_review_payload(user: dict, force_refresh: bool = False
 
 async def contact_archive_bulk_archive_payload(user: dict, payload: dict | None = None) -> dict:
     body = payload if isinstance(payload, dict) else {}
-    review = await contact_archive_review_payload(user, force_refresh=True)
+    review = await contact_archive_review_payload(user, force_refresh=False)
     rows = review.get("rows") or []
     row_lookup = {
         str(row.get("contactId") or "").strip(): row
@@ -28240,7 +28449,7 @@ async def contact_archive_bulk_archive_payload(user: dict, payload: dict | None 
                 }
             )
 
-    refreshed_review = await contact_archive_review_payload(user, force_refresh=True)
+    refreshed_review = await contact_archive_review_payload(user, force_refresh=False)
     return {
         "tenantId": str(connection_row.get("tenant_id") or ""),
         "tenantName": str(connection_row.get("tenant_name") or ""),
@@ -28248,6 +28457,117 @@ async def contact_archive_bulk_archive_payload(user: dict, payload: dict | None 
         "archivedCount": archived_count,
         "failedCount": failed_count,
         "results": results,
+        "review": refreshed_review,
+    }
+
+
+def _contact_archive_similarity_score(left: str, right: str) -> float:
+    left_value = _normalise_contact_match_name(left)
+    right_value = _normalise_contact_match_name(right)
+    if not left_value or not right_value:
+        return 0.0
+    if left_value == right_value:
+        return 1.0
+    ratio = difflib.SequenceMatcher(None, left_value, right_value).ratio()
+    left_tokens = {token for token in left_value.split(" ") if token}
+    right_tokens = {token for token in right_value.split(" ") if token}
+    token_score = 0.0
+    if left_tokens and right_tokens:
+        token_score = len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
+    return max(ratio, token_score)
+
+
+async def contact_archive_client_register_sync_payload(user: dict, payload: dict | None = None) -> dict:
+    _ = payload if isinstance(payload, dict) else {}
+    review = await contact_archive_review_payload(user, force_refresh=False)
+    tenant_id = str(review.get("tenantId") or "")
+    register_rows = _contact_archive_register_rows()
+    register_by_key: dict[str, str] = {}
+    register_candidates: list[dict] = []
+    for row in register_rows:
+        key = str(row.get("matchKey") or "").strip()
+        name = str(row.get("displayName") or "").strip()
+        if not key:
+            continue
+        if key not in register_by_key:
+            register_by_key[key] = name or key
+        register_candidates.append({"key": key, "displayName": name or key})
+
+    flagged_rows = [row for row in (review.get("rows") or []) if bool(row.get("flagged"))]
+    applied_matches: list[dict] = []
+    unresolved_rows: list[dict] = []
+    for row in flagged_rows:
+        contact_id = str(row.get("contactId") or "").strip()
+        contact_name = str(row.get("contactName") or "").strip()
+        if not contact_id or not contact_name:
+            continue
+        contact_key = _normalise_contact_match_name(contact_name)
+        if not contact_key:
+            unresolved_rows.append(
+                {
+                    "contactId": contact_id,
+                    "contactName": contact_name,
+                    "reason": "Contact name is empty after normalisation.",
+                    "score": 0,
+                }
+            )
+            continue
+        if contact_key in register_by_key:
+            applied_matches.append(
+                {
+                    "contactId": contact_id,
+                    "registerName": register_by_key.get(contact_key) or contact_name,
+                    "matchSource": "jenius_ai_exact",
+                    "matchReason": "Exact name match found in Client Register.",
+                    "confidence": 1.0,
+                }
+            )
+            continue
+        best_score = 0.0
+        best_name = ""
+        best_key = ""
+        for candidate in register_candidates:
+            candidate_key = str(candidate.get("key") or "")
+            score = _contact_archive_similarity_score(contact_key, candidate_key)
+            if score > best_score:
+                best_score = score
+                best_name = str(candidate.get("displayName") or "")
+                best_key = candidate_key
+        if best_score >= 0.9 and best_key:
+            applied_matches.append(
+                {
+                    "contactId": contact_id,
+                    "registerName": best_name or best_key,
+                    "matchSource": "jenius_ai_fuzzy",
+                    "matchReason": "High-confidence fuzzy name match in Client Register.",
+                    "confidence": round(best_score, 4),
+                }
+            )
+        else:
+            unresolved_rows.append(
+                {
+                    "contactId": contact_id,
+                    "contactName": contact_name,
+                    "reason": "No confident client register match found.",
+                    "score": round(best_score, 4),
+                }
+            )
+
+    applied_count = _contact_archive_upsert_register_matches(str(user.get("id") or ""), tenant_id, applied_matches)
+    refreshed_review = await contact_archive_review_payload(user, force_refresh=False)
+    return {
+        "tenantId": tenant_id,
+        "tenantName": str(review.get("tenantName") or ""),
+        "reviewedAt": _iso(utcnow()) or "",
+        "summary": {
+            "flaggedBeforeSync": len(flagged_rows),
+            "matchedBySync": applied_count,
+            "exactMatched": len([row for row in applied_matches if str(row.get("matchSource") or "") == "jenius_ai_exact"]),
+            "fuzzyMatched": len([row for row in applied_matches if str(row.get("matchSource") or "") == "jenius_ai_fuzzy"]),
+            "stillUnmatched": len(unresolved_rows),
+        },
+        "matchedRows": applied_matches[:400],
+        "unmatchedRows": unresolved_rows[:400],
         "review": refreshed_review,
     }
 

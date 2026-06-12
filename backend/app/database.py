@@ -1669,6 +1669,60 @@ ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_type TEXT NOT 
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);
 
+CREATE TABLE IF NOT EXISTS contact_archive_contacts_cache (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
+    contact_name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    contact_status TEXT NOT NULL DEFAULT 'ACTIVE',
+    is_customer BOOLEAN NOT NULL DEFAULT FALSE,
+    xero_updated_at TIMESTAMPTZ,
+    raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, tenant_id, contact_id)
+);
+
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT '';
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS contact_status TEXT NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS is_customer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS xero_updated_at TIMESTAMPTZ;
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS raw JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE contact_archive_contacts_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS contact_archive_contacts_cache_lookup_idx
+ON contact_archive_contacts_cache (user_id, tenant_id, contact_status, is_customer, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS contact_archive_register_matches (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
+    register_name TEXT NOT NULL DEFAULT '',
+    match_source TEXT NOT NULL DEFAULT 'jenius_ai',
+    match_reason TEXT NOT NULL DEFAULT '',
+    confidence NUMERIC(6, 4) NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    matched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, tenant_id, contact_id)
+);
+
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS register_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS match_source TEXT NOT NULL DEFAULT 'jenius_ai';
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS match_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS confidence NUMERIC(6, 4) NOT NULL DEFAULT 0;
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS matched_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE contact_archive_register_matches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS contact_archive_register_matches_lookup_idx
+ON contact_archive_register_matches (user_id, tenant_id, active, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS ch_bm_tasks_state (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     filename TEXT NOT NULL DEFAULT '',

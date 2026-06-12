@@ -190,6 +190,7 @@ from .services import (
     supplier_reconciliation_contact_options_payload,
     contact_archive_review_payload,
     contact_archive_bulk_archive_payload,
+    contact_archive_client_register_sync_payload,
     supplier_reconciliation_extract,
     supplier_reconciliation_payload,
     sync_customer_note_to_xero,
@@ -1339,6 +1340,12 @@ async def api_contact_archive_review(
 async def api_contact_archive_archive(request: Request, user: dict = Depends(require_panel_write_user)):
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {"status": "ok", "contactArchive": await contact_archive_bulk_archive_payload(user, payload)}
+
+
+@app.post("/api/contact-archive/client-register-sync")
+async def api_contact_archive_client_register_sync(request: Request, user: dict = Depends(require_panel_write_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", "contactArchiveSync": await contact_archive_client_register_sync_payload(user, payload)}
 
 
 @app.post("/api/xero/posting-settings")
