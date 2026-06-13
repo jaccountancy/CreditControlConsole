@@ -29768,25 +29768,8 @@
                                     </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="juk-invoices" hidden>
                                         <h4>JUK Invoices</h4>
-                                        <p class="detail-meta">Invoice workflow defaults and current position.</p>
-                                        <div class="ch-register-risk-grid">
-                                            <label>Billing cycle
-                                                <input id="chRegisterClientPageJukBillingCycle" type="text" placeholder="Monthly / Quarterly…">
-                                            </label>
-                                            <label>Default template
-                                                <input id="chRegisterClientPageJukTemplate" type="text" placeholder="Template name">
-                                            </label>
-                                            <label>Last invoice date
-                                                <input id="chRegisterClientPageJukLastInvoiceDate" type="date">
-                                            </label>
-                                            <label>Outstanding amount
-                                                <input id="chRegisterClientPageJukOutstandingAmount" type="text" placeholder="0.00">
-                                            </label>
-                                        </div>
-                                        <label>JUK invoice notes
-                                            <textarea id="chRegisterClientPageJukNotes" rows="4"></textarea>
-                                        </label>
-                                        <h5 style="margin: 14px 0 8px;">Invoices linked to this client</h5>
+                                        <p class="detail-meta">Invoices processed through JUK Invoices for this client.</p>
+                                        <h5 style="margin: 8px 0 8px;">Invoices linked to this client</h5>
                                         <div class="ch-companies-table-wrap">
                                             <table class="ch-table" aria-label="Client JUK invoices">
                                                 <thead>
@@ -94375,6 +94358,7 @@
                 const payload = clientPagePayload() || {};
                 const profile = payload.profile || {};
                 const currentRisk = profile.riskAssessment || {};
+                const currentJukInvoices = profile.jukInvoices || {};
                 const baseServices = profile.services || {};
                 const services = {};
                 Object.keys(baseServices).forEach((key) => { services[key] = !!baseServices[key]; });
@@ -94439,11 +94423,11 @@
                         },
                     },
                     jukInvoices: {
-                        billingCycle: String(document.getElementById("chRegisterClientPageJukBillingCycle")?.value || ""),
-                        defaultTemplate: String(document.getElementById("chRegisterClientPageJukTemplate")?.value || ""),
-                        lastInvoiceDate: String(document.getElementById("chRegisterClientPageJukLastInvoiceDate")?.value || ""),
-                        outstandingAmount: String(document.getElementById("chRegisterClientPageJukOutstandingAmount")?.value || ""),
-                        notes: String(document.getElementById("chRegisterClientPageJukNotes")?.value || ""),
+                        billingCycle: String(document.getElementById("chRegisterClientPageJukBillingCycle")?.value || currentJukInvoices.billingCycle || ""),
+                        defaultTemplate: String(document.getElementById("chRegisterClientPageJukTemplate")?.value || currentJukInvoices.defaultTemplate || ""),
+                        lastInvoiceDate: String(document.getElementById("chRegisterClientPageJukLastInvoiceDate")?.value || currentJukInvoices.lastInvoiceDate || ""),
+                        outstandingAmount: String(document.getElementById("chRegisterClientPageJukOutstandingAmount")?.value || currentJukInvoices.outstandingAmount || ""),
+                        notes: String(document.getElementById("chRegisterClientPageJukNotes")?.value || currentJukInvoices.notes || ""),
                     },
                 };
                 companiesHouseSettings.authRegisterClientPage = {
