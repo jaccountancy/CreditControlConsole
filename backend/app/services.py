@@ -1140,12 +1140,17 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     payruns = payruns if isinstance(payruns, list) else []
 
     if not employees and not payruns and errors:
+        reconnect_hint = (
+            "/auth/xero/start?force=1&include_payroll=1"
+            f"&xero_target=payroll-headcount&redirect_to=%2F%23credit-control-payroll-headcount"
+        )
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Unable to read Payroll data from Xero for this tenant.",
                 "errors": errors,
                 "hint": "Reconnect with Payroll scopes and confirm this tenant has Payroll enabled.",
+                "reconnectUrl": reconnect_hint,
             },
         )
 
@@ -29391,13 +29396,24 @@ def _contact_archive_register_rows() -> list[dict]:
     rows_out: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT company_name, client_name, client_id, normalised_name
-                FROM ch_auth_code_register
-                """
-            )
-            rows = cursor.fetchall() or []
+            try:
+                cursor.execute(
+                    """
+                    SELECT company_name, client_name, client_id, normalised_name
+                    FROM ch_auth_code_register
+                    """
+                )
+                rows = cursor.fetchall() or []
+            except Exception:
+                # Backward-compatible fallback for older databases that do not
+                # yet have the normalised_name column.
+                cursor.execute(
+                    """
+                    SELECT company_name, client_name, client_id, ''::text AS normalised_name
+                    FROM ch_auth_code_register
+                    """
+                )
+                rows = cursor.fetchall() or []
         connection.commit()
     for row in rows:
         seen_keys: set[str] = set()
@@ -31016,6 +31032,7 @@ def _serialise_xero_tax_return(
         "tenantName": tenant_name,
         "clientId": customer_id,
         "clientName": str(customer.get("name") or tenant_name or "Connected organisation").strip(),
+        "vatNumber": str(customer.get("vat_number") or "").strip(),
         "hasMappedClient": bool(customer_id),
     }
 
@@ -31057,7 +31074,7 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, name, tenant_id, xero_contact_id
+                    SELECT id, name, tenant_id, xero_contact_id, vat_number
                     FROM customers
                     WHERE tenant_id = ANY(%s)
                     ORDER BY
@@ -31101,6 +31118,7 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
                 "tenantType": str(connection_row.get("tenant_type") or "").strip(),
                 "clientId": str(customer.get("id") or "").strip(),
                 "clientName": str(customer.get("name") or connection_row.get("tenant_name") or row_tenant_id).strip(),
+                "vatNumber": str(customer.get("vat_number") or "").strip(),
                 "periodCount": len(workspace_rows),
                 "submittedCount": sum(1 for row in workspace_rows if row.get("submitted")),
                 "outstandingCount": sum(1 for row in workspace_rows if not row.get("submitted")),
@@ -32728,7 +32746,17 @@ async def xero_set_tenant_transactions_no_vat(
             invoice_line_indexes[invoice_id].add(line_index)
 
     if not invoice_line_indexes and not credit_note_line_indexes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid invoice line transaction ids were supplied.")
+        return {
+            "status": "ok",
+            "tenantId": str(connection_row.get("tenant_id") or ""),
+            "tenantName": str(connection_row.get("tenant_name") or ""),
+            "requestedCount": len(clean_ids),
+            "appliedCount": 0,
+            "errorCount": 0,
+            "errors": [],
+            "skipped": skipped or [{"reason": "No valid invoice line transaction ids were supplied."}],
+            "fetchedAt": _iso(utcnow()),
+        }
 
     applied_count = 0
     errors: list[dict] = []

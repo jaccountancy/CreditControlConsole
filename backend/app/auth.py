@@ -93,12 +93,8 @@ LEGACY_XERO_SCOPE_REPLACEMENTS = {
     "accounting.reports.read": (
         "accounting.reports.aged.read",
         "accounting.reports.balancesheet.read",
-        "accounting.reports.banksummary.read",
-        "accounting.reports.budgetsummary.read",
-        "accounting.reports.executivesummary.read",
         "accounting.reports.profitandloss.read",
         "accounting.reports.trialbalance.read",
-        "accounting.reports.taxreports.read",
     ),
 }
 XERO_SCOPE_NORMALISATIONS = {
@@ -106,9 +102,14 @@ XERO_SCOPE_NORMALISATIONS = {
     "accounting.transaction.read": "accounting.transactions.read",
     "accounting.report.read": "accounting.reports.read",
     "payroll.employee": "payroll.employees",
-    "payroll.employee.read": "payroll.employees.read",
+    "payroll.employee.read": "payroll.employees",
     "payroll.payrun": "payroll.payruns",
-    "payroll.payrun.read": "payroll.payruns.read",
+    "payroll.payrun.read": "payroll.payruns",
+    "payroll.employees.read": "payroll.employees",
+    "payroll.payruns.read": "payroll.payruns",
+    "payroll.payslip.read": "payroll.payslip",
+    "payroll.timesheets.read": "payroll.timesheets",
+    "payroll.settings.read": "payroll.settings",
 }
 
 
@@ -135,8 +136,8 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
             if scope and scope not in scopes:
                 scopes.append(scope)
 
-    if not include_payroll_scopes:
-        scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
+    # Canonicalise payroll scopes to avoid invalid_scope from stale/deprecated variants.
+    scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
 
     for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:

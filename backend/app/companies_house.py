@@ -96,6 +96,13 @@ CLIENT_IMPORT_HEADER_ALIASES = {
         "contact phone",
         "phone",
         "telephone",
+        "telephone number",
+        "contact number",
+        "tel",
+        "tel no",
+        "tel number",
+        "mobile",
+        "mobile number",
         "phone number",
         "client telephone",
         "client telephone number",
@@ -104,6 +111,22 @@ CLIENT_IMPORT_HEADER_ALIASES = {
     },
     "client_address": {"client address", "address", "postal address", "client postal address"},
     "vat_number": {"vat number", "vat no", "vat no.", "vat registration number", "vat registration no", "vat reg number", "vat reg no", "vat"},
+    "company_utr": {
+        "company utr",
+        "corporation tax utr",
+        "corporation tax unique taxpayer reference",
+        "ct utr",
+        "company tax utr",
+        "corporation tax reference",
+    },
+    "personal_utr": {
+        "personal utr",
+        "self assessment utr",
+        "sa utr",
+        "individual utr",
+        "personal tax utr",
+        "personal tax reference",
+    },
     "assigned_staff": {"assigned staff", "assigned staff member", "staff", "owner", "manager", "account manager"},
     "notes": {"notes", "note", "internal notes", "comment"},
     "company_type": {"company type", "type", "legal type", "entity type"},
@@ -3781,6 +3804,86 @@ def _extract_vat_number_from_row_cells(raw_row: list[object]) -> str:
     return ""
 
 
+def _normalise_phone_number(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or "@" in text:
+        return ""
+    text = re.sub(r"^(?:tel(?:ephone)?|phone|mobile|contact(?:\s+number)?)\s*[:#-]?\s*", "", text, flags=re.IGNORECASE)
+    digits = re.sub(r"\D+", "", text)
+    if len(digits) < 10 or len(digits) > 15:
+        return ""
+    if len(digits) == 10 and not digits.startswith("0"):
+        return ""
+    if re.fullmatch(r"\d+", text) and len(text) <= 10 and not text.startswith("0"):
+        return ""
+    cleaned = re.sub(r"\s+", " ", text).strip(" -")
+    return _coerce_text(cleaned, 120)
+
+
+def _extract_phone_from_row_cells(headers: list[str], raw_row: list[object]) -> str:
+    for idx, cell in enumerate(raw_row or []):
+        header = _normalise_header(headers[idx] if idx < len(headers) else "")
+        if not header:
+            continue
+        if any(token in header for token in ("phone", "telephone", "mobile", "tel")):
+            candidate = _normalise_phone_number(cell)
+            if candidate:
+                return candidate
+    for cell in raw_row or []:
+        candidate = _normalise_phone_number(cell)
+        if candidate:
+            return candidate
+    return ""
+
+
+def _normalise_utr(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    text = re.sub(r"^(?:COMPANY|PERSONAL|SA|SELF\s*ASSESSMENT|CORPORATION\s*TAX)?\s*UTR\s*[:#-]?\s*", "", text, flags=re.IGNORECASE)
+    digits = re.sub(r"\D+", "", text)
+    if len(digits) != 10:
+        return ""
+    return digits
+
+
+def _extract_utr_from_row_cells(
+    headers: list[str],
+    raw_row: list[object],
+    *,
+    target_kind: str,
+    client_type: str = "",
+) -> str:
+    specific_candidates: list[str] = []
+    generic_candidates: list[str] = []
+    for idx, cell in enumerate(raw_row or []):
+        candidate = _normalise_utr(cell)
+        if not candidate:
+            continue
+        header = _normalise_header(headers[idx] if idx < len(headers) else "")
+        if "utr" not in header and "tax reference" not in header:
+            continue
+        is_company = any(token in header for token in ("company", "corporation", "ct"))
+        is_personal = any(token in header for token in ("personal", "self assessment", "sa", "individual", "sole trader"))
+        if target_kind == "company" and is_company:
+            specific_candidates.append(candidate)
+            continue
+        if target_kind == "personal" and is_personal:
+            specific_candidates.append(candidate)
+            continue
+        if not is_company and not is_personal:
+            generic_candidates.append(candidate)
+    if specific_candidates:
+        return specific_candidates[0]
+    if generic_candidates:
+        type_text = str(client_type or "").strip().lower()
+        if target_kind == "company" and "individual" not in type_text:
+            return generic_candidates[0]
+        if target_kind == "personal" and "individual" in type_text:
+            return generic_candidates[0]
+    return ""
+
+
 def _ai_resolve_missing_vat_numbers(
     headers: list[str],
     raw_rows: list[list[str]],
@@ -4426,6 +4529,11 @@ def _upsert_auth_code_register_row(
     client_manager: str,
     client_id: str,
     vat_number: str,
+    contact_email: str,
+    contact_phone: str,
+    client_address: str,
+    company_utr: str,
+    personal_utr: str,
     normalised_name: str,
     auth_code: str,
     filename: str,
@@ -4445,6 +4553,11 @@ def _upsert_auth_code_register_row(
                 client_manager = COALESCE(NULLIF(%s, ''), client_manager),
                 client_id = COALESCE(NULLIF(%s, ''), client_id),
                 vat_number = COALESCE(NULLIF(%s, ''), vat_number),
+                contact_email = COALESCE(NULLIF(%s, ''), contact_email),
+                contact_phone = COALESCE(NULLIF(%s, ''), contact_phone),
+                client_address = COALESCE(NULLIF(%s, ''), client_address),
+                company_utr = COALESCE(NULLIF(%s, ''), company_utr),
+                personal_utr = COALESCE(NULLIF(%s, ''), personal_utr),
                 normalised_name = %s,
                 code_encrypted = %s,
                 code_hint = %s,
@@ -4462,6 +4575,11 @@ def _upsert_auth_code_register_row(
                 client_manager,
                 client_id,
                 vat_number,
+                contact_email,
+                contact_phone,
+                client_address,
+                company_utr,
+                personal_utr,
                 normalised_name,
                 encrypted,
                 hint,
@@ -4481,6 +4599,11 @@ def _upsert_auth_code_register_row(
                 client_manager = COALESCE(NULLIF(%s, ''), client_manager),
                 client_id = COALESCE(NULLIF(%s, ''), client_id),
                 vat_number = COALESCE(NULLIF(%s, ''), vat_number),
+                contact_email = COALESCE(NULLIF(%s, ''), contact_email),
+                contact_phone = COALESCE(NULLIF(%s, ''), contact_phone),
+                client_address = COALESCE(NULLIF(%s, ''), client_address),
+                company_utr = COALESCE(NULLIF(%s, ''), company_utr),
+                personal_utr = COALESCE(NULLIF(%s, ''), personal_utr),
                 code_encrypted = %s,
                 code_hint = %s,
                 source_filename = %s,
@@ -4498,6 +4621,11 @@ def _upsert_auth_code_register_row(
                 client_manager,
                 client_id,
                 vat_number,
+                contact_email,
+                contact_phone,
+                client_address,
+                company_utr,
+                personal_utr,
                 encrypted,
                 hint,
                 filename,
@@ -4518,6 +4646,11 @@ def _upsert_auth_code_register_row(
             client_manager,
             client_id,
             vat_number,
+            contact_email,
+            contact_phone,
+            client_address,
+            company_utr,
+            personal_utr,
             normalised_name,
             code_encrypted,
             code_hint,
@@ -4526,7 +4659,7 @@ def _upsert_auth_code_register_row(
             uploaded_at,
             updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
         """,
         (
@@ -4537,6 +4670,11 @@ def _upsert_auth_code_register_row(
             client_manager,
             client_id,
             vat_number,
+            contact_email,
+            contact_phone,
+            client_address,
+            company_utr,
+            personal_utr,
             normalised_name,
             encrypted,
             hint,
@@ -4637,6 +4775,15 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
         vat_number = _normalise_vat_number(row_payload.get("vat_number"))
         if not vat_number:
             vat_number = _extract_vat_number_from_row_cells(raw_row)
+        contact_phone = _normalise_phone_number(row_payload.get("contact_phone"))
+        if not contact_phone:
+            contact_phone = _extract_phone_from_row_cells(headers, raw_row)
+        company_utr = _normalise_utr(row_payload.get("company_utr"))
+        personal_utr = _normalise_utr(row_payload.get("personal_utr"))
+        if not company_utr:
+            company_utr = _extract_utr_from_row_cells(headers, raw_row, target_kind="company", client_type=client_type)
+        if not personal_utr:
+            personal_utr = _extract_utr_from_row_cells(headers, raw_row, target_kind="personal", client_type=client_type)
         output_rows.append(
             {
                 "lineNumber": idx,
@@ -4647,8 +4794,10 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "clientId": _coerce_text(row_payload.get("client_id"), 80),
                 "vatNumber": _coerce_text(vat_number, 120),
                 "contactEmail": _coerce_text(row_payload.get("contact_email"), 250),
-                "contactPhone": _coerce_text(row_payload.get("contact_phone"), 120),
+                "contactPhone": _coerce_text(contact_phone, 120),
                 "clientAddress": _coerce_text(row_payload.get("client_address"), 1000),
+                "companyUtr": _coerce_text(company_utr, 20),
+                "personalUtr": _coerce_text(personal_utr, 20),
                 "normalisedName": normalised_name,
                 "authCode": auth_code,
             }
@@ -4685,6 +4834,11 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
                     client_manager=row.get("clientManager") or "",
                     client_id=row.get("clientId") or "",
                     vat_number=row.get("vatNumber") or "",
+                    contact_email=row.get("contactEmail") or "",
+                    contact_phone=row.get("contactPhone") or "",
+                    client_address=row.get("clientAddress") or "",
+                    company_utr=row.get("companyUtr") or "",
+                    personal_utr=row.get("personalUtr") or "",
                     normalised_name=row["normalisedName"],
                     auth_code=row["authCode"],
                     filename=_coerce_text(filename, 250),
@@ -4912,6 +5066,11 @@ def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes
                     client_manager=_coerce_text(row.get("clientManager"), 120),
                     client_id=_coerce_text(row.get("clientId"), 80),
                     vat_number=_coerce_text(row.get("vatNumber"), 120),
+                    contact_email=_coerce_text(row.get("contactEmail"), 250),
+                    contact_phone=_coerce_text(row.get("contactPhone"), 120),
+                    client_address=_coerce_text(row.get("clientAddress"), 1000),
+                    company_utr=_coerce_text(row.get("companyUtr"), 20),
+                    personal_utr=_coerce_text(row.get("personalUtr"), 20),
                     normalised_name=_coerce_text(row.get("normalisedName"), 250),
                     auth_code=_coerce_text(row.get("authCode"), 80),
                     filename=filename,
@@ -5075,6 +5234,8 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "clientManager": row.get("client_manager") or "",
         "clientId": row.get("client_id") or "",
         "vatNumber": row.get("vat_number") or "",
+        "companyUtr": row.get("company_utr") or "",
+        "personalUtr": row.get("personal_utr") or "",
         "clientEmail": row.get("contact_email") or "",
         "clientPhone": row.get("contact_phone") or "",
         "clientAddress": row.get("client_address") or "",
@@ -5098,10 +5259,12 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.client_manager,
                        r.client_id,
                        r.vat_number,
+                       r.company_utr,
+                       r.personal_utr,
                        c.id AS company_id,
-                       c.contact_email,
-                       c.contact_phone,
-                       c.client_address,
+                       COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
+                       COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
+                       COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
                        r.code_hint,
                        r.source_filename,
                        r.uploaded_at,
@@ -5142,8 +5305,10 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
     client_manager = _coerce_text(payload.get("clientManager"), 120)
     client_id = _coerce_text(payload.get("clientId"), 80)
     vat_number = _coerce_text(payload.get("vatNumber"), 120)
+    company_utr = _coerce_text(_normalise_utr(payload.get("companyUtr")), 20)
+    personal_utr = _coerce_text(_normalise_utr(payload.get("personalUtr")), 20)
     contact_email = _coerce_text(payload.get("clientEmail"), 250)
-    contact_phone = _coerce_text(payload.get("clientPhone"), 120)
+    contact_phone = _coerce_text(_normalise_phone_number(payload.get("clientPhone")), 120)
     client_address = _coerce_text(payload.get("clientAddress"), 1000)
     source_filename = _coerce_text(payload.get("sourceFilename"), 250) or "manual-edit"
     auth_code = _coerce_text(payload.get("authCode"), 80)
@@ -5183,6 +5348,11 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
                     client_manager = %s,
                     client_id = %s,
                     vat_number = %s,
+                    contact_email = %s,
+                    contact_phone = %s,
+                    client_address = %s,
+                    company_utr = %s,
+                    personal_utr = %s,
                     normalised_name = %s,
                     code_encrypted = %s,
                     code_hint = %s,
@@ -5200,6 +5370,11 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
                     client_manager,
                     client_id,
                     vat_number,
+                    contact_email,
+                    contact_phone,
+                    client_address,
+                    company_utr,
+                    personal_utr,
                     normalised_name,
                     code_encrypted,
                     code_hint,
@@ -5236,6 +5411,8 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
                             "clientManager": client_manager,
                             "clientId": client_id,
                             "vatNumber": vat_number,
+                            "companyUtr": company_utr,
+                            "personalUtr": personal_utr,
                             "sourceFilename": source_filename,
                             "authCodeUpdated": bool(auth_code),
                         }
@@ -5253,9 +5430,11 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
                        r.client_manager,
                        r.client_id,
                        r.vat_number,
-                       c.contact_email,
-                       c.contact_phone,
-                       c.client_address,
+                       r.company_utr,
+                       r.personal_utr,
+                       COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
+                       COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
+                       COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
                        r.code_hint,
                        r.source_filename,
                        r.uploaded_at
@@ -5284,10 +5463,12 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                r.client_manager,
                r.client_id,
                r.vat_number,
+               r.company_utr,
+               r.personal_utr,
                c.id AS company_id,
-               c.contact_email,
-               c.contact_phone,
-               c.client_address,
+               COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
+               COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
+               COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
                r.code_hint,
                r.source_filename,
                r.uploaded_at,

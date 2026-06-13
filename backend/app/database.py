@@ -1666,6 +1666,11 @@ ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_manager TEXT N
 ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_type TEXT NOT NULL DEFAULT '';
 ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS vat_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS company_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS personal_utr TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);

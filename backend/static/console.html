@@ -8918,6 +8918,89 @@
                 border-color: rgba(21, 128, 61, 0.32);
                 color: #166534;
             }
+            #vatReturnPrepareScreen .vat-return-table-toolbar-cell {
+                padding: 10px 12px;
+                background: linear-gradient(180deg, rgba(243, 247, 255, 0.88), rgba(236, 242, 251, 0.7));
+            }
+            #vatReturnPrepareScreen .vat-return-table-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+            }
+            #vatReturnPrepareScreen .vat-return-table-tabs {
+                display: inline-flex;
+                gap: 6px;
+                margin-right: auto;
+            }
+            #vatReturnPrepareScreen .vat-return-table-tab {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: #fff;
+                color: var(--muted);
+                font-weight: 800;
+                padding: 7px 12px;
+                cursor: pointer;
+            }
+            #vatReturnPrepareScreen .vat-return-table-tab.is-active {
+                border-color: rgba(29, 103, 242, 0.44);
+                background: rgba(29, 103, 242, 0.12);
+                color: #1a4fb5;
+            }
+            #vatReturnPrepareScreen .vat-return-table-search {
+                min-width: 230px;
+                flex: 1 1 260px;
+            }
+            #vatReturnPrepareScreen .vat-return-table-inline-select {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 0.75rem;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #vatReturnPrepareScreen .vat-return-table-inline-select select {
+                min-width: 0;
+                border-radius: 10px;
+                border: 1px solid var(--line);
+                background: #fff;
+                color: var(--ink);
+                padding: 8px 10px;
+                font-weight: 700;
+            }
+            #vatReturnPrepareScreen #vatReturnQueueWrap table th:first-child,
+            #vatReturnPrepareScreen #vatReturnQueueWrap table td:first-child {
+                width: 33%;
+                max-width: 420px;
+            }
+            #vatReturnPrepareScreen #vatReturnQueueWrap table td:first-child small {
+                display: block;
+                font-size: 0.74rem;
+                line-height: 1.35;
+                white-space: normal;
+            }
+            #vatReturnPrepareScreen .vat-return-batch-heading td {
+                background: rgba(229, 236, 248, 0.7);
+                color: #29406a;
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                border-top: 1px solid rgba(153, 170, 199, 0.35);
+            }
+            #vatReturnPrepareScreen .lock-status-pill.is-open,
+            #vatReturnPrepareScreen .lock-status-pill.is-approved {
+                border-color: rgba(22, 163, 74, 0.3);
+                background: rgba(236, 253, 245, 0.95);
+                color: #166534;
+            }
+            #vatReturnPrepareScreen .lock-status-pill.is-overdue {
+                border-color: rgba(220, 38, 38, 0.32);
+                background: rgba(254, 242, 242, 0.95);
+                color: #991b1b;
+            }
             .status-badge {
                 padding: 12px 14px;
                 border-radius: 999px;
@@ -29550,7 +29633,6 @@
                                 </div>
                                 <div class="page-pills" id="chRegisterDataTabs" style="margin: 8px 0 2px;">
                                     <button class="page-pill is-active" type="button" data-ch-register-tab="clients">Client table</button>
-                                    <button class="page-pill" type="button" data-ch-register-tab="tasks">Outstanding tasks table</button>
                                     <span class="page-pills-meta" id="chAuthCodeRegisterLoadedMeta"></span>
                                 </div>
                                 <div class="ch-register-toolbar">
@@ -31050,6 +31132,40 @@
                             <section class="ch-companies-table-wrap" id="vatReturnQueueWrap">
                                 <table class="ch-table" aria-label="VAT return queue">
                                     <thead>
+                                        <tr>
+                                            <th colspan="5" class="vat-return-table-toolbar-cell">
+                                                <div class="vat-return-table-toolbar">
+                                                    <div class="vat-return-table-tabs">
+                                                        <button class="vat-return-table-tab is-active" id="vatReturnQueueUnregisteredTab" type="button">VAT Unregistered</button>
+                                                        <button class="vat-return-table-tab" id="vatReturnQueueRegisteredTab" type="button">VAT Registered</button>
+                                                    </div>
+                                                    <label class="search-wrap vat-return-table-search">
+                                                        <span class="search-icon">⌕</span>
+                                                        <input id="vatReturnQueueSearchInput" type="search" placeholder="Search client, tenant, client ID, VAT number">
+                                                    </label>
+                                                    <label class="vat-return-table-inline-select">
+                                                        <span>Filter</span>
+                                                        <select id="vatReturnQueueFilterSelect">
+                                                            <option value="all">All statuses</option>
+                                                            <option value="outstanding">Outstanding</option>
+                                                            <option value="approved">Approved / Submitted</option>
+                                                            <option value="overdue">Overdue</option>
+                                                        </select>
+                                                    </label>
+                                                    <label class="vat-return-table-inline-select">
+                                                        <span>Sort</span>
+                                                        <select id="vatReturnQueueSortSelect">
+                                                            <option value="client-id-desc">Client ID (high-low)</option>
+                                                            <option value="client-id-asc">Client ID (low-high)</option>
+                                                            <option value="client-name-asc">Client name (A-Z)</option>
+                                                            <option value="deadline-asc">Deadline (soonest)</option>
+                                                            <option value="deadline-desc">Deadline (latest)</option>
+                                                            <option value="period-end-desc">Period end (latest)</option>
+                                                        </select>
+                                                    </label>
+                                                </div>
+                                            </th>
+                                        </tr>
                                         <tr>
                                             <th>Client workspace</th>
                                             <th>Period end</th>
@@ -34224,6 +34340,10 @@
             let vatReturnQueueError = "";
             let vatReturnSelectedWorkspaceTenantId = "";
             let vatReturnDetailTab = "transactions";
+            let vatReturnQueueSearch = "";
+            let vatReturnQueueFilter = "all";
+            let vatReturnQueueSort = "client-id-desc";
+            let vatReturnQueueTab = "unregistered";
             const microAnalyzerWorkspaceStorageKey = `${STORAGE_KEY}:vat-on-unregistered-workspaces:v1`;
             const microAnalyzerHiddenClientStorageKey = `${STORAGE_KEY}:vat-on-unregistered-hidden-clients:v1`;
             let microAnalyzerWorkspaces = loadMicroAnalyzerWorkspaces();
@@ -36796,12 +36916,13 @@
                 if (!base) return "";
                 const target = String(targetSection || "").trim();
                 const separator = base.includes("?") ? "&" : "?";
+                const payrollParam = target === "payroll-headcount" ? "&include_payroll=1" : "";
                 if (!target) {
                     const redirectURL = xeroConnectionReturnURL();
-                    return `${base}${separator}force=1&redirect_to=${encodeURIComponent(redirectURL)}`;
+                    return `${base}${separator}force=1${payrollParam}&redirect_to=${encodeURIComponent(redirectURL)}`;
                 }
                 const redirectURL = xeroConnectionReturnURL(target);
-                return `${base}${separator}force=1&xero_target=${encodeURIComponent(target)}&redirect_to=${encodeURIComponent(redirectURL)}`;
+                return `${base}${separator}force=1${payrollParam}&xero_target=${encodeURIComponent(target)}&redirect_to=${encodeURIComponent(redirectURL)}`;
             }
 
             function xeroConnectionReturnURL(targetSection = "") {
@@ -77665,7 +77786,7 @@
                 const base = vatReturnStatusForDeadline(entry?.deadlineISO || "");
                 const workflow = vatWorkflowForEntry(entry?.key || "");
                 if (vatEntryIsViewOnly(entry)) {
-                    return { label: "Submitted · Task list closed", className: "is-open" };
+                    return { label: "Submitted · Task list closed", className: "is-approved" };
                 }
                 if (entry?.lockedByTaskClosure && vatEntryIsTestEditEnabled(entry)) {
                     return { label: "Submitted · Test edit mode", className: "is-due" };
@@ -77677,7 +77798,7 @@
                     return { label: "Awaiting Client Approval", className: "is-open" };
                 }
                 if (entry?.submitted) {
-                    return { label: "Submitted", className: "is-open" };
+                    return { label: "Submitted", className: "is-approved" };
                 }
                 if (String(entry?.status || "").trim()) {
                     return { label: `Outstanding · ${String(entry.status)}`, className: "is-due" };
@@ -77720,6 +77841,7 @@
                     const mappedCustomer = customerByTenant.get(tenantId) || null;
                     const mappedClientId = String(mappedCustomer?.id || "").trim();
                     const mappedClientName = String(mappedCustomer?.name || "").trim();
+                    const mappedVatNumber = String(mappedCustomer?.vatNumber || "").trim();
                     const tenantName = String(xeroMatch?.tenantName || taskRow?.clientName || tenantId).trim();
                     const clientName = mappedClientName || String(taskRow?.clientName || tenantName || tenantId).trim();
                     const taskIdentifier = String(taskRow?.taskId || taskRow?.id || index + 1).trim();
@@ -77745,6 +77867,7 @@
                         tenantName,
                         clientId: mappedClientId,
                         clientName,
+                        vatNumber: mappedVatNumber,
                         hasMappedClient: Boolean(mappedClientId),
                         lockedByTaskClosure: Boolean(archivedRecord),
                         lockMessage: archivedRecord?.lockReason || "",
@@ -77760,6 +77883,7 @@
                             tenantType: "ORGANISATION",
                             clientId: mappedClientId,
                             clientName,
+                            vatNumber: mappedVatNumber,
                             periodCount: 0,
                             submittedCount: 0,
                             outstandingCount: 0,
@@ -77792,6 +77916,7 @@
                         tenantName: String(archivedRecord?.tenantName || tenantId).trim(),
                         clientId: String(archivedRecord?.clientId || "").trim(),
                         clientName: String(archivedRecord?.clientName || archivedRecord?.tenantName || tenantId).trim(),
+                        vatNumber: String(archivedRecord?.vatNumber || "").trim(),
                         hasMappedClient: Boolean(String(archivedRecord?.clientId || "").trim()),
                         lockedByTaskClosure: true,
                         lockMessage: String(archivedRecord?.lockReason || "Marked as submitted because this VAT period is no longer present in the latest task CSV.").trim(),
@@ -77803,6 +77928,7 @@
                             tenantType: "ORGANISATION",
                             clientId: String(archivedRecord?.clientId || "").trim(),
                             clientName: String(archivedRecord?.clientName || archivedRecord?.tenantName || tenantId).trim(),
+                            vatNumber: String(archivedRecord?.vatNumber || "").trim(),
                             periodCount: 0,
                             submittedCount: 0,
                             outstandingCount: 0,
@@ -77890,6 +78016,8 @@
                         const periodEnd = parseDateValue(row?.periodEndISO || "");
                         const deadline = parseDateValue(row?.deadlineISO || "");
                         const key = String(row?.key || `${row?.tenantId || "tenant"}:${row?.periodEndISO || index + 1}`);
+                        const mappedCustomer = findCustomerById(String(row?.clientId || "").trim());
+                        const vatNumber = String(row?.vatNumber || mappedCustomer?.vatNumber || "").trim();
                         return {
                             key,
                             taxReturnId: String(row?.taxReturnId || ""),
@@ -77899,6 +78027,7 @@
                             clientName: String(row?.clientName || row?.tenantName || row?.tenantId || "Connected organisation"),
                             tenantName: String(row?.tenantName || "").trim(),
                             tenantId: String(row?.tenantId || "").trim(),
+                            vatNumber,
                             hasMappedClient: Boolean(row?.hasMappedClient),
                             periodStart,
                             periodEnd,
@@ -77921,6 +78050,7 @@
                         .map((row) => ({
                             tenantId: String(row?.tenantId || "").trim(),
                             tenantName: String(row?.tenantName || row?.tenantId || "").trim(),
+                            vatNumber: String(row?.vatNumber || "").trim(),
                             periodCount: Number(row?.periodCount || 0),
                             submittedCount: Number(row?.submittedCount || 0),
                             outstandingCount: Number(row?.outstandingCount || 0),
@@ -77937,6 +78067,7 @@
                         rowsByTenant.set(tenantId, {
                             tenantId,
                             tenantName: String(row?.tenantName || tenantId).trim(),
+                            vatNumber: String(row?.vatNumber || "").trim(),
                             periodCount: 0,
                             submittedCount: 0,
                             outstandingCount: 0,
@@ -77959,6 +78090,51 @@
                     ? rows.filter((row) => String(row?.tenantId || "").trim() === selectedTenantId)
                     : rows;
                 return scopedRows.filter((row) => String(row?.tenantId || "").trim());
+            }
+
+            function vatRowIsRegistered(row = {}) {
+                return Boolean(String(row?.vatNumber || "").trim());
+            }
+
+            function vatReturnListRows(rows = []) {
+                const queueRows = Array.isArray(rows) ? rows : [];
+                const targetRows = queueRows.filter((row) => (
+                    vatReturnQueueTab === "registered" ? vatRowIsRegistered(row) : !vatRowIsRegistered(row)
+                ));
+                const search = String(vatReturnQueueSearch || "").trim().toLowerCase();
+                const filtered = targetRows.filter((row) => {
+                    if (vatReturnQueueFilter === "outstanding" && row?.submitted) return false;
+                    if (vatReturnQueueFilter === "approved" && !row?.submitted) return false;
+                    if (vatReturnQueueFilter === "overdue") {
+                        const status = vatReturnStatusForDeadline(row?.deadlineISO || "");
+                        if (status.className !== "is-overdue") return false;
+                    }
+                    if (!search) return true;
+                    const haystack = [
+                        row?.clientName,
+                        row?.tenantName,
+                        row?.tenantId,
+                        row?.clientId,
+                        row?.vatNumber,
+                        row?.status,
+                    ]
+                        .map((value) => String(value || "").toLowerCase())
+                        .join(" ");
+                    return haystack.includes(search);
+                });
+                const byClientId = (value = "") => {
+                    const text = String(value || "").trim().toUpperCase();
+                    const numeric = Number(text.replace(/[^0-9]/g, ""));
+                    return Number.isFinite(numeric) ? numeric : -1;
+                };
+                return filtered.sort((left, right) => {
+                    if (vatReturnQueueSort === "client-id-asc") return byClientId(left?.clientId) - byClientId(right?.clientId);
+                    if (vatReturnQueueSort === "client-id-desc") return byClientId(right?.clientId) - byClientId(left?.clientId);
+                    if (vatReturnQueueSort === "client-name-asc") return String(left?.clientName || "").localeCompare(String(right?.clientName || ""));
+                    if (vatReturnQueueSort === "deadline-asc") return dateSortValue(left?.deadlineISO || "") - dateSortValue(right?.deadlineISO || "");
+                    if (vatReturnQueueSort === "deadline-desc") return dateSortValue(right?.deadlineISO || "") - dateSortValue(left?.deadlineISO || "");
+                    return dateSortValue(right?.periodEndISO || "") - dateSortValue(left?.periodEndISO || "");
+                });
             }
 
             function vatWorkspaceErrorLabel(message = "") {
@@ -78724,7 +78900,7 @@
             }
 
             async function ensureVatReturnTransactions(entry, force = false, options = {}) {
-                if (!entry?.key || !entry?.clientId) return;
+                if (!entry?.key || (!entry?.clientId && !entry?.tenantId)) return;
                 if (vatEntryIsViewOnly(entry)) force = false;
                 if (!force && vatReturnTransactionCache.has(entry.key)) return;
                 if (vatReturnTransactionLoading.has(entry.key)) return;
@@ -78736,10 +78912,9 @@
                 }
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
-                    const requestPath = endpointURL(
-                        api.endpoints.vatReturnTransactions,
-                        { customerId: entry.clientId, periodEnd: entry.periodEndISO }
-                    );
+                    const requestPath = String(entry?.clientId || "").trim()
+                        ? endpointURL(api.endpoints.vatReturnTransactions, { customerId: entry.clientId, periodEnd: entry.periodEndISO })
+                        : endpointURL(api.endpoints.vatReturnTransactionsByTenant, { periodEnd: entry.periodEndISO });
                     const query = new URLSearchParams();
                     if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
                     if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
@@ -78852,28 +79027,47 @@
                 const refreshButton = document.getElementById("vatReturnRefreshButton");
                 const loadTransactionsButton = document.getElementById("vatReturnLoadTransactionsButton");
                 const connectXeroButton = document.getElementById("vatReturnConnectXeroButton");
+                const queueSearchInput = document.getElementById("vatReturnQueueSearchInput");
+                const queueFilterSelect = document.getElementById("vatReturnQueueFilterSelect");
+                const queueSortSelect = document.getElementById("vatReturnQueueSortSelect");
+                const queueUnregisteredTab = document.getElementById("vatReturnQueueUnregisteredTab");
+                const queueRegisteredTab = document.getElementById("vatReturnQueueRegisteredTab");
                 const testEditButton = document.getElementById("vatReturnTestEditButton");
                 const aiReviewButton = document.getElementById("vatReturnAiReviewButton");
                 const finaliseButton = document.getElementById("vatReturnFinaliseButton");
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
-                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !loadTransactionsButton || !connectXeroButton || !testEditButton || !aiReviewButton || !finaliseButton || !exportButton) return;
+                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !loadTransactionsButton || !connectXeroButton || !queueSearchInput || !queueFilterSelect || !queueSortSelect || !queueUnregisteredTab || !queueRegisteredTab || !testEditButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
                 const allRows = vatReturnAllQueueRows();
                 const workspaceRows = vatReturnWorkspaceRows();
                 const queueLoading = vatReturnQueueLoading;
                 const queueError = vatReturnQueueError;
-                if (vatReturnSelectedWorkspaceTenantId && !workspaceRows.some((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())) {
+                const workspaceRowsForTab = workspaceRows.filter((row) => (
+                    vatReturnQueueTab === "registered" ? vatRowIsRegistered(row) : !vatRowIsRegistered(row)
+                ));
+                if (vatReturnSelectedWorkspaceTenantId && !workspaceRowsForTab.some((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())) {
                     vatReturnSelectedWorkspaceTenantId = "";
                     selectedVatReturnKey = "";
                 }
                 const rows = vatReturnQueueRows();
+                const listRows = vatReturnListRows(rows);
                 const selectedWorkspace = vatReturnSelectedWorkspaceTenantId
-                    ? workspaceRows.find((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())
+                    ? workspaceRowsForTab.find((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())
                     : null;
                 const selectedWorkspaceError = String(selectedWorkspace?.error || "").trim();
                 const activeEntry = selectedVatReturnEntry(rows);
                 const inDetail = Boolean(activeEntry);
-                const workspacePickerRequired = !String(vatReturnSelectedWorkspaceTenantId || "").trim() && workspaceRows.length > 1;
+                const workspacePickerRequired = !String(vatReturnSelectedWorkspaceTenantId || "").trim() && workspaceRowsForTab.length > 1;
+                queueUnregisteredTab.classList.toggle("is-active", vatReturnQueueTab !== "registered");
+                queueRegisteredTab.classList.toggle("is-active", vatReturnQueueTab === "registered");
+                queueSearchInput.value = String(vatReturnQueueSearch || "");
+                queueFilterSelect.value = String(vatReturnQueueFilter || "all");
+                queueSortSelect.value = String(vatReturnQueueSort || "client-id-desc");
+                queueSearchInput.disabled = inDetail;
+                queueFilterSelect.disabled = inDetail;
+                queueSortSelect.disabled = inDetail;
+                queueUnregisteredTab.disabled = inDetail;
+                queueRegisteredTab.disabled = inDetail;
                 if (!inDetail) {
                     if (vatAiReviewModalOpen) closeVatAiReviewModal();
                     if (vatFinaliseModalOpen) closeVatFinaliseModal();
@@ -78940,13 +79134,8 @@
                                 if (entry?.key) selectedVatReturnKey = String(entry.key);
                             }
                             if (entry) {
-                                if (String(entry?.clientId || "").trim()) {
-                                    await ensureVatReturnTransactions(entry, true);
-                                    showToast("VAT period data pulled from Xero", "success");
-                                } else {
-                                    renderVatReturnPrepareScreen();
-                                    showToast("Xero sync finished, but this VAT period is not mapped to a client yet. Add tenant-to-client mapping, then refresh again.", "info");
-                                }
+                                await ensureVatReturnTransactions(entry, true);
+                                showToast("VAT period data pulled from Xero", "success");
                             } else {
                                 renderVatReturnPrepareScreen();
                                 showToast("Xero sync finished. This VAT period is no longer available in the current queue.", "info");
@@ -78964,10 +79153,6 @@
                         if (!entry) return;
                         if (vatEntryIsViewOnly(entry)) {
                             showToast("This VAT period is view-only because it has been marked submitted from task closure.", "info");
-                            return;
-                        }
-                        if (!String(entry?.clientId || "").trim()) {
-                            showToast("This VAT period is not mapped to a client yet. Add tenant-to-client mapping first.", "info");
                             return;
                         }
                         loadTransactionsButton.disabled = true;
@@ -79005,6 +79190,43 @@
                     connectXeroButton.dataset.vatWired = "true";
                     connectXeroButton.addEventListener("click", () => {
                         openSettingsScreen("xero-connection", "settings");
+                    });
+                }
+                if (queueSearchInput.dataset.vatWired !== "true") {
+                    queueSearchInput.dataset.vatWired = "true";
+                    queueSearchInput.addEventListener("input", () => {
+                        vatReturnQueueSearch = String(queueSearchInput.value || "").trim();
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (queueFilterSelect.dataset.vatWired !== "true") {
+                    queueFilterSelect.dataset.vatWired = "true";
+                    queueFilterSelect.addEventListener("change", () => {
+                        vatReturnQueueFilter = String(queueFilterSelect.value || "all");
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (queueSortSelect.dataset.vatWired !== "true") {
+                    queueSortSelect.dataset.vatWired = "true";
+                    queueSortSelect.addEventListener("change", () => {
+                        vatReturnQueueSort = String(queueSortSelect.value || "client-id-desc");
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (queueUnregisteredTab.dataset.vatWired !== "true") {
+                    queueUnregisteredTab.dataset.vatWired = "true";
+                    queueUnregisteredTab.addEventListener("click", () => {
+                        vatReturnQueueTab = "unregistered";
+                        selectedVatReturnKey = "";
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (queueRegisteredTab.dataset.vatWired !== "true") {
+                    queueRegisteredTab.dataset.vatWired = "true";
+                    queueRegisteredTab.addEventListener("click", () => {
+                        vatReturnQueueTab = "registered";
+                        selectedVatReturnKey = "";
+                        renderVatReturnPrepareScreen();
                     });
                 }
                 if (tabsWrap.dataset.vatWired !== "true") {
@@ -79098,8 +79320,8 @@
                 }
 
                 if (workspacePickerRequired && !inDetail) {
-                    summary.textContent = `${workspaceRows.length.toLocaleString("en-GB")} Xero client workspace${workspaceRows.length === 1 ? "" : "s"} available. Select one to open VAT return preparation.`;
-                    queueBody.innerHTML = workspaceRows.map((row) => {
+                    summary.textContent = `${workspaceRowsForTab.length.toLocaleString("en-GB")} Xero client workspace${workspaceRowsForTab.length === 1 ? "" : "s"} available. Select one to open VAT return preparation.`;
+                    queueBody.innerHTML = workspaceRowsForTab.map((row) => {
                         const tenantRows = allRows.filter((item) => String(item?.tenantId || "").trim() === String(row?.tenantId || "").trim());
                         const nextDue = tenantRows[0]?.deadlineISO || "";
                         const workspaceLabel = Number(row?.periodCount || tenantRows.length || 0);
@@ -79159,35 +79381,66 @@
                     return;
                 }
 
+                if (!inDetail && !listRows.length) {
+                    const queueLabel = vatReturnQueueTab === "registered" ? "VAT registered" : "VAT unregistered";
+                    summary.textContent = `No ${queueLabel} rows match the current search/filter options.`;
+                    queueBody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No matches</p><h4>Try adjusting search, filter, or tab</h4><p>Your current view did not return matching VAT rows.</p></div></td></tr>`;
+                    metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
+                    noVatBody.innerHTML = "";
+                    warningsBody.innerHTML = "";
+                    exportButton.disabled = true;
+                    refreshButton.disabled = false;
+                    closeVatAiReviewModal();
+                    closeVatFinaliseModal();
+                    closeVatClientApprovalModal();
+                    return;
+                }
+
                 if (!inDetail) {
-                    const overdueCount = rows.filter((row) => vatReturnStatusForDeadline(row.deadlineISO).className === "is-overdue").length;
-                    const awaitingReviewCount = rows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-review").length;
-                    const awaitingClientCount = rows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-client-approval").length;
-                    summary.textContent = `${rows.length.toLocaleString("en-GB")} VAT return${rows.length === 1 ? "" : "s"} ready or due${overdueCount ? ` · ${overdueCount.toLocaleString("en-GB")} overdue` : ""}${awaitingReviewCount ? ` · ${awaitingReviewCount.toLocaleString("en-GB")} awaiting review` : ""}${awaitingClientCount ? ` · ${awaitingClientCount.toLocaleString("en-GB")} awaiting client approval` : ""}.`;
-                    queueBody.innerHTML = rows.map((row) => {
+                    const overdueCount = listRows.filter((row) => vatReturnStatusForDeadline(row.deadlineISO).className === "is-overdue").length;
+                    const approvedCount = listRows.filter((row) => row.submitted).length;
+                    const draftCount = Math.max(listRows.length - approvedCount, 0);
+                    const awaitingReviewCount = listRows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-review").length;
+                    const awaitingClientCount = listRows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-client-approval").length;
+                    summary.textContent = `${listRows.length.toLocaleString("en-GB")} VAT return${listRows.length === 1 ? "" : "s"} in view · ${draftCount.toLocaleString("en-GB")} draft batch${draftCount === 1 ? "" : "es"} · ${approvedCount.toLocaleString("en-GB")} completed batch${approvedCount === 1 ? "" : "es"}${overdueCount ? ` · ${overdueCount.toLocaleString("en-GB")} overdue` : ""}${awaitingReviewCount ? ` · ${awaitingReviewCount.toLocaleString("en-GB")} awaiting review` : ""}${awaitingClientCount ? ` · ${awaitingClientCount.toLocaleString("en-GB")} awaiting client approval` : ""}.`;
+                    const rowMarkup = (row) => {
                         const status = vatEffectiveStatus(row);
-                        const workspace = xeroWorkspaceLabel(row.tenantName || "", row.tenantId || "", "Xero workspace");
-                        const clientNameKey = String(row.clientName || "").trim().toLowerCase();
-                        const workspaceKey = String(workspace || "").trim().toLowerCase();
-                        const showWorkspaceMetaName = workspaceKey && workspaceKey !== clientNameKey;
                         const workspaceMeta = [
-                            showWorkspaceMetaName ? workspace : "",
-                            row.xeroContactId || ""
+                            row.clientId ? `Client ID ${row.clientId}` : "",
+                            row.tenantId || "",
+                            row.vatNumber ? `VAT ${row.vatNumber}` : "Not VAT registered",
                         ].filter(Boolean).join(" · ");
                         const actionLabel = row.lockedByTaskClosure ? "View workspace" : "Open return";
+                        const statusClass = row.submitted ? "is-approved" : status.className;
+                        const statusLabel = row.submitted && !String(status.label || "").toLowerCase().includes("submitted")
+                            ? "Approved / Submitted"
+                            : status.label;
                         return `
                             <tr>
                                 <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(workspaceMeta || "Xero workspace")}</small></td>
                                 <td>${escapeHTML(formatDate(row.periodEndISO))}</td>
                                 <td>${escapeHTML(formatDate(row.deadlineISO))}</td>
-                                <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
+                                <td><span class="lock-status-pill ${escapeHTML(statusClass)}">${escapeHTML(statusLabel)}</span></td>
                                 <td><button class="primary-button" type="button" data-vat-return-open="${escapeHTML(row.key)}">${escapeHTML(actionLabel)}</button></td>
                             </tr>
                         `;
-                    }).join("");
+                    };
+                    const draftRows = listRows.filter((row) => !row.submitted);
+                    const completedRows = listRows.filter((row) => row.submitted);
+                    const sections = [];
+                    if (draftRows.length) {
+                        sections.push(`<tr class="vat-return-batch-heading"><td colspan="5">Draft batches (${draftRows.length})</td></tr>`);
+                        sections.push(draftRows.map((row) => rowMarkup(row)).join(""));
+                    }
+                    if (completedRows.length) {
+                        sections.push(`<tr class="vat-return-batch-heading"><td colspan="5">Previously completed batches (${completedRows.length})</td></tr>`);
+                        sections.push(completedRows.map((row) => rowMarkup(row)).join(""));
+                    }
+                    queueBody.innerHTML = sections.join("");
                     queueBody.querySelectorAll("[data-vat-return-open]").forEach((button) => {
                         button.addEventListener("click", () => {
-                            const entry = rows.find((row) => row.key === button.dataset.vatReturnOpen);
+                            const entry = listRows.find((row) => row.key === button.dataset.vatReturnOpen);
                             if (entry) openVatReturnEntry(entry);
                         });
                     });
@@ -79229,16 +79482,6 @@
                 refreshButton.disabled = isLockedWorkspace;
                 aiReviewButton.disabled = isLockedWorkspace;
                 finaliseButton.disabled = isLockedWorkspace;
-
-                if (!String(activeEntry?.clientId || "").trim()) {
-                    exportButton.disabled = true;
-                    transactionsBody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Client mapping required</p><h4>Transactions cannot be loaded for this VAT period yet</h4><p>Tenant: <strong>${escapeHTML(activeEntry.tenantName || activeEntry.clientName || "Xero workspace")}</strong>. Add or refresh the tenant-to-client mapping in workspace setup, then click Refresh.</p></div></td></tr>`;
-                    noVatBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No VAT report unavailable</p><h4>No-VAT follow-up list is waiting for transaction data</h4><p>Once mapping is resolved and transactions load, this tab will list no-VAT lines for export.</p></div></td></tr>';
-                    warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">VAT checks pending</p><h4>Warning checks run after transactions are loaded</h4><p>Resolve mapping and refresh this period to enable AI VAT warning checks.</p></div></td></tr>';
-                    renderVatAiReviewModal(activeEntry, []);
-                    renderVatClientApprovalModal(activeEntry, []);
-                    return;
-                }
 
                 exportButton.disabled = isLoading || !noVatRows.length;
                 if (exportButton.dataset.vatWired !== "true") {
@@ -93175,16 +93418,10 @@
                 return "is-open";
             }
 
-            function setClientRegisterDataTab(tab) {
-                const nextTab = tab === "tasks" ? "tasks" : "clients";
+            function setClientRegisterDataTab(_tab) {
+                const nextTab = "clients";
                 companiesHouseSettings.registerDataTab = nextTab;
-                const isTasks = nextTab === "tasks";
-                if (isTasks && companiesHouseSettings.authRegisterClientPage?.open) {
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        open: false,
-                    };
-                }
+                const isTasks = false;
                 const isClientPageOpen = !!companiesHouseSettings.authRegisterClientPage?.open;
                 const clientToolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
                 const clientTableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -95279,7 +95516,7 @@
                     companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || new Date().toISOString());
                     companiesHouseSettings.bmTasksSummary = payload?.summary || {};
                     renderBmTasksTable();
-                    setClientRegisterDataTab("tasks");
+                    setClientRegisterDataTab("clients");
                     const summary = companiesHouseSettings.bmTasksSummary || {};
                     setBmTasksStatus(
                         `${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0).toLocaleString("en-GB")} outstanding VAT task row${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0) === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "BM tasks CSV"}.`,
