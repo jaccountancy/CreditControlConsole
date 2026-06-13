@@ -5268,6 +5268,11 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
 
 
 def _auth_register_timeline_label(event_type: str) -> str:
+    kind = str(event_type or "").strip().lower()
+    if kind == "client_profile_updated":
+        return "Client profile updated"
+    if kind == "client_note_added":
+        return "Client note added"
     text = str(event_type or "").strip().replace("_", " ")
     return text.title() if text else "Updated"
 
@@ -5275,6 +5280,23 @@ def _auth_register_timeline_label(event_type: str) -> str:
 def _auth_register_timeline_body(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""
+    note_text = str(payload.get("note") or "").strip()
+    if note_text:
+        return note_text[:500]
+    change_rows = payload.get("changes")
+    if isinstance(change_rows, list) and change_rows:
+        parts: list[str] = []
+        for item in change_rows[:8]:
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field") or "").strip()
+            before = str(item.get("before") or "—").strip() or "—"
+            after = str(item.get("after") or "—").strip() or "—"
+            if not field:
+                continue
+            parts.append(f"{field}: {before} -> {after}")
+        if parts:
+            return " | ".join(parts)
     parts: list[str] = []
     for key, value in list(payload.items())[:4]:
         if isinstance(value, bool):
@@ -5289,6 +5311,74 @@ def _auth_register_timeline_body(payload: object) -> str:
             continue
         parts.append(f"{key}: {text[:120]}")
     return " | ".join(parts)
+
+
+def _auth_register_stringify_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "Enabled" if value else "Disabled"
+    if value is None:
+        return "—"
+    text = str(value).strip()
+    return text if text else "—"
+
+
+def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[dict]:
+    changes: list[dict] = []
+
+    def add_change(field: str, before_value: object, after_value: object) -> None:
+        before_text = _auth_register_stringify_value(before_value)
+        after_text = _auth_register_stringify_value(after_value)
+        if before_text == after_text:
+            return
+        changes.append({
+            "field": field,
+            "before": before_text,
+            "after": after_text,
+        })
+
+    before_services = before.get("services") if isinstance(before.get("services"), dict) else {}
+    after_services = after.get("services") if isinstance(after.get("services"), dict) else {}
+    service_labels = {item.get("key"): item.get("label") for item in AUTH_REGISTER_SERVICE_DEFINITIONS}
+    for service_key in sorted(set(before_services.keys()) | set(after_services.keys())):
+        label = service_labels.get(service_key) or service_key
+        add_change(f"Service: {label}", before_services.get(service_key), after_services.get(service_key))
+
+    before_risk = before.get("riskAssessment") if isinstance(before.get("riskAssessment"), dict) else {}
+    after_risk = after.get("riskAssessment") if isinstance(after.get("riskAssessment"), dict) else {}
+    risk_fields = {
+        "level": "Risk level",
+        "score": "Risk score",
+        "lastReviewedAt": "Risk last reviewed",
+        "summary": "Risk summary",
+    }
+    for key, label in risk_fields.items():
+        add_change(label, before_risk.get(key), after_risk.get(key))
+
+    before_ch = before.get("companiesHouse") if isinstance(before.get("companiesHouse"), dict) else {}
+    after_ch = after.get("companiesHouse") if isinstance(after.get("companiesHouse"), dict) else {}
+    ch_fields = {
+        "status": "Companies House status",
+        "nextConfirmationDate": "Next confirmation date",
+        "lastFiledDate": "Last filed date",
+        "authCodeStatus": "Auth code status",
+        "notes": "Companies House notes",
+    }
+    for key, label in ch_fields.items():
+        add_change(label, before_ch.get(key), after_ch.get(key))
+
+    before_juk = before.get("jukInvoices") if isinstance(before.get("jukInvoices"), dict) else {}
+    after_juk = after.get("jukInvoices") if isinstance(after.get("jukInvoices"), dict) else {}
+    juk_fields = {
+        "billingCycle": "JUK billing cycle",
+        "defaultTemplate": "JUK default template",
+        "lastInvoiceDate": "JUK last invoice date",
+        "outstandingAmount": "JUK outstanding amount",
+        "notes": "JUK notes",
+    }
+    for key, label in juk_fields.items():
+        add_change(label, before_juk.get(key), after_juk.get(key))
+
+    return changes
 
 
 def get_auth_register_client_page(row_id: str) -> dict:
@@ -5394,6 +5484,10 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 (safe_row_id,),
             )
             existing = cursor.fetchone() or {}
+            previous_services = _normalise_auth_register_services(existing.get("services"))
+            previous_risk_assessment = _normalise_auth_register_risk_assessment(existing.get("risk_assessment"))
+            previous_companies_house = _normalise_auth_register_companies_house(existing.get("companies_house"))
+            previous_juk_invoices = _normalise_auth_register_juk_invoices(existing.get("juk_invoices"))
             services = _normalise_auth_register_services(
                 payload.get("services") if "services" in payload else existing.get("services")
             )
@@ -5445,7 +5539,25 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 """,
                 (
                     safe_row_id,
-                    json.dumps({"sections": touched}),
+                    json.dumps(
+                        {
+                            "sections": touched,
+                            "changes": _auth_register_collect_profile_changes(
+                                {
+                                    "services": previous_services,
+                                    "riskAssessment": previous_risk_assessment,
+                                    "companiesHouse": previous_companies_house,
+                                    "jukInvoices": previous_juk_invoices,
+                                },
+                                {
+                                    "services": services,
+                                    "riskAssessment": risk_assessment,
+                                    "companiesHouse": companies_house,
+                                    "jukInvoices": juk_invoices,
+                                },
+                            ),
+                        }
+                    ),
                     user_id,
                 ),
             )
@@ -5493,7 +5605,7 @@ def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None 
                 """,
                 (
                     safe_row_id,
-                    json.dumps({"notePreview": note[:200]}),
+                    json.dumps({"note": note, "notePreview": note[:200]}),
                     user_id,
                 ),
             )
