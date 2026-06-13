@@ -31040,6 +31040,7 @@
                                     <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
                                     <button class="ghost-button" id="vatReturnLoadTransactionsButton" type="button" hidden>Load period transactions</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Pull VAT return data from Xero</button>
+                                    <button class="ghost-button" id="vatReturnTestEditButton" type="button" hidden>Edit (Test)</button>
                                     <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>Jenius AI</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
                                     <button class="primary-button" id="vatReturnExportNoVatButton" type="button" hidden>Export No VAT Report</button>
@@ -34366,6 +34367,7 @@
             const vatReturnUnreconciledByKey = {};
             const vatReturnUnreconciledLoading = new Set();
             const vatReturnWorkflowByKey = {};
+            const vatReturnTestEditModeByKey = {};
             const vatClientApprovalDraftByKey = {};
             let vatArchivedPeriodsByKey = loadVatArchivedPeriods();
             let activeNavSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
@@ -77649,11 +77651,24 @@
                 return vatReturnWorkflowByKey[entryKey];
             }
 
+            function vatEntryIsTestEditEnabled(entry) {
+                const entryKey = String(entry?.key || "").trim();
+                if (!entryKey) return false;
+                return Boolean(vatReturnTestEditModeByKey[entryKey]);
+            }
+
+            function vatEntryIsViewOnly(entry) {
+                return Boolean(entry?.lockedByTaskClosure) && !vatEntryIsTestEditEnabled(entry);
+            }
+
             function vatEffectiveStatus(entry) {
                 const base = vatReturnStatusForDeadline(entry?.deadlineISO || "");
                 const workflow = vatWorkflowForEntry(entry?.key || "");
-                if (entry?.lockedByTaskClosure) {
+                if (vatEntryIsViewOnly(entry)) {
                     return { label: "Submitted · Task list closed", className: "is-open" };
+                }
+                if (entry?.lockedByTaskClosure && vatEntryIsTestEditEnabled(entry)) {
+                    return { label: "Submitted · Test edit mode", className: "is-due" };
                 }
                 if (workflow.stage === "awaiting-review") {
                     return { label: "Awaiting Internal Review", className: "is-due" };
@@ -78710,7 +78725,7 @@
 
             async function ensureVatReturnTransactions(entry, force = false, options = {}) {
                 if (!entry?.key || !entry?.clientId) return;
-                if (entry?.lockedByTaskClosure) force = false;
+                if (vatEntryIsViewOnly(entry)) force = false;
                 if (!force && vatReturnTransactionCache.has(entry.key)) return;
                 if (vatReturnTransactionLoading.has(entry.key)) return;
                 vatReturnTransactionLoading.add(entry.key);
@@ -78775,7 +78790,7 @@
                 vatFinaliseModalOpen = false;
                 vatClientApprovalModalOpen = false;
                 renderVatReturnPrepareScreen();
-                if (!entry.lockedByTaskClosure) ensureVatReturnTransactions(entry, false, { silent: true });
+                if (!vatEntryIsViewOnly(entry)) ensureVatReturnTransactions(entry, false, { silent: true });
             }
 
             function closeVatReturnEntry() {
@@ -78837,10 +78852,11 @@
                 const refreshButton = document.getElementById("vatReturnRefreshButton");
                 const loadTransactionsButton = document.getElementById("vatReturnLoadTransactionsButton");
                 const connectXeroButton = document.getElementById("vatReturnConnectXeroButton");
+                const testEditButton = document.getElementById("vatReturnTestEditButton");
                 const aiReviewButton = document.getElementById("vatReturnAiReviewButton");
                 const finaliseButton = document.getElementById("vatReturnFinaliseButton");
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
-                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !loadTransactionsButton || !connectXeroButton || !aiReviewButton || !finaliseButton || !exportButton) return;
+                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !loadTransactionsButton || !connectXeroButton || !testEditButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
                 const allRows = vatReturnAllQueueRows();
                 const workspaceRows = vatReturnWorkspaceRows();
@@ -78871,9 +78887,17 @@
                 connectXeroButton.hidden = inDetail;
                 loadTransactionsButton.hidden = !inDetail;
                 refreshButton.hidden = !inDetail;
+                testEditButton.hidden = !inDetail;
                 aiReviewButton.hidden = !inDetail;
                 finaliseButton.hidden = !inDetail;
                 exportButton.hidden = !inDetail;
+                if (inDetail) {
+                    const editEnabled = vatEntryIsTestEditEnabled(activeEntry);
+                    testEditButton.textContent = editEnabled ? "Disable edit (Test)" : "Enable edit (Test)";
+                    if (!activeEntry?.lockedByTaskClosure && !editEnabled) {
+                        testEditButton.hidden = true;
+                    }
+                }
                 transactionsTabButton.classList.toggle("is-active", vatReturnDetailTab === "transactions");
                 noVatTabButton.classList.toggle("is-active", vatReturnDetailTab === "no-vat");
                 warningsTabButton.classList.toggle("is-active", vatReturnDetailTab === "warnings");
@@ -78896,7 +78920,7 @@
                     refreshButton.dataset.vatWired = "true";
                     refreshButton.addEventListener("click", async () => {
                         const entryBeforeRefresh = selectedVatReturnEntry(vatReturnQueueRows());
-                        if (entryBeforeRefresh?.lockedByTaskClosure) {
+                        if (vatEntryIsViewOnly(entryBeforeRefresh)) {
                             showToast("This VAT period is marked submitted from task list closure and is view-only.", "info");
                             return;
                         }
@@ -78938,7 +78962,7 @@
                     loadTransactionsButton.addEventListener("click", async () => {
                         const entry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!entry) return;
-                        if (entry?.lockedByTaskClosure) {
+                        if (vatEntryIsViewOnly(entry)) {
                             showToast("This VAT period is view-only because it has been marked submitted from task closure.", "info");
                             return;
                         }
@@ -78962,6 +78986,21 @@
                         }
                     });
                 }
+                if (testEditButton.dataset.vatWired !== "true") {
+                    testEditButton.dataset.vatWired = "true";
+                    testEditButton.addEventListener("click", () => {
+                        const entry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!entry?.key) return;
+                        const currentlyEnabled = vatEntryIsTestEditEnabled(entry);
+                        vatReturnTestEditModeByKey[entry.key] = !currentlyEnabled;
+                        if (!currentlyEnabled) {
+                            showToast("Test edit mode enabled for this VAT period.", "info");
+                        } else {
+                            showToast("Test edit mode disabled.", "info");
+                        }
+                        renderVatReturnPrepareScreen();
+                    });
+                }
                 if (connectXeroButton.dataset.vatWired !== "true") {
                     connectXeroButton.dataset.vatWired = "true";
                     connectXeroButton.addEventListener("click", () => {
@@ -78982,7 +79021,7 @@
                     aiReviewButton.addEventListener("click", async () => {
                         const entry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!entry) return;
-                        if (entry.lockedByTaskClosure) {
+                        if (vatEntryIsViewOnly(entry)) {
                             showToast("This VAT period is view-only because it has been marked submitted from task closure.", "info");
                             return;
                         }
@@ -79010,7 +79049,7 @@
                     finaliseButton.addEventListener("click", () => {
                         const entry = selectedVatReturnEntry(vatReturnQueueRows());
                         if (!entry) return;
-                        if (entry.lockedByTaskClosure) {
+                        if (vatEntryIsViewOnly(entry)) {
                             showToast("This VAT period is view-only and cannot be finalised again.", "info");
                             return;
                         }
@@ -79167,7 +79206,7 @@
                 const cache = vatReturnTransactionCache.get(activeEntry.key) || null;
                 const isLoading = vatReturnTransactionLoading.has(activeEntry.key);
                 const status = vatEffectiveStatus(activeEntry);
-                const isLockedWorkspace = Boolean(activeEntry?.lockedByTaskClosure);
+                const isLockedWorkspace = vatEntryIsViewOnly(activeEntry);
                 const rawTransactions = Array.isArray(cache?.transactions) ? cache.transactions : [];
                 const transactions = vatTransactionsWithEdits(activeEntry, rawTransactions);
                 const noVatRows = vatNoVatTransactions(transactions);

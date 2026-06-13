@@ -1314,6 +1314,8 @@ def _fetch_ch_company_snapshot(
             else:
                 raise
     confirmation = company_payload.get("confirmation_statement") or {}
+    accounts = company_payload.get("accounts") if isinstance(company_payload.get("accounts"), dict) else {}
+    next_accounts = accounts.get("next_accounts") if isinstance(accounts.get("next_accounts"), dict) else {}
     filing_history = _normalise_ch_filing_history(filing_payload)
     share_capital = _extract_shareholder_signals(company_payload, filing_history)
     return {
@@ -1331,6 +1333,8 @@ def _fetch_ch_company_snapshot(
         "nextDueDate": _parse_date_from_text(confirmation.get("next_due")),
         "lastFiledDate": _latest_confirmation_statement_filed_date(filing_history)
         or _parse_date_from_text(confirmation.get("last_made_up_to")),
+        "accountsNextDueDate": _parse_date_from_text(next_accounts.get("due_on") or accounts.get("next_due")),
+        "companyYearEnd": _parse_date_from_text(next_accounts.get("period_end_on")),
         "filingHistory": filing_history,
     }
 
@@ -5504,6 +5508,24 @@ def get_auth_register_client_page(row_id: str) -> dict:
         confirmation_statement["statementDueDate"] = companies_house_profile.get("nextConfirmationDate") or ""
     if not confirmation_statement.get("statementDate"):
         confirmation_statement["statementDate"] = companies_house_profile.get("lastFiledDate") or ""
+
+    # Keep Accounts/CT details aligned with the currently open Companies House accounts period.
+    company_number = normalise_company_number(row.get("company_number") or "")
+    if company_number and _is_valid_company_number(company_number):
+        try:
+            live_snapshot = _fetch_ch_company_snapshot(company_number, prefer_cache=False)
+        except Exception:
+            live_snapshot = {}
+        year_end_value = live_snapshot.get("companyYearEnd")
+        next_due_value = live_snapshot.get("accountsNextDueDate")
+        if isinstance(year_end_value, date):
+            accounts_returns["companyYearEnd"] = year_end_value.isoformat()
+        elif isinstance(year_end_value, str) and year_end_value.strip():
+            accounts_returns["companyYearEnd"] = year_end_value.strip()
+        if isinstance(next_due_value, date):
+            accounts_returns["accountsNextDueDate"] = next_due_value.isoformat()
+        elif isinstance(next_due_value, str) and next_due_value.strip():
+            accounts_returns["accountsNextDueDate"] = next_due_value.strip()
     if not vat.get("vatNumber"):
         vat["vatNumber"] = _coerce_text(row.get("vat_number"), 120)
     if not vat.get("vatAddress"):
