@@ -38533,12 +38533,7 @@
                 if (!pageState.open) return "";
                 const row = pageState.payload?.row || null;
                 if (!row || typeof row !== "object") return "";
-                const clientId = String(row.clientId || "").trim();
-                const name = String(row.displayName || "").trim();
-                if (clientId && name) return `${clientId} · ${name}`;
-                if (name) return name;
-                if (clientId) return clientId;
-                return "";
+                return clientRegisterClientTypeLabel(row.clientType);
             }
 
             function activeTopbarTitle(topbarClient = null) {
@@ -93560,6 +93555,29 @@
                 return (payload && typeof payload === "object") ? payload : null;
             }
 
+            function clientRegisterClientTypeLabel(value) {
+                const raw = String(value || "").trim();
+                const normalised = raw.toLowerCase();
+                if (!normalised) return "Client profile";
+                if (
+                    normalised.includes("individual")
+                    || normalised.includes("self assessment")
+                    || normalised === "sa"
+                    || normalised.includes("sole trader")
+                ) {
+                    return "Self Assessment Individual";
+                }
+                if (
+                    normalised.includes("company")
+                    || normalised.includes("limited")
+                    || normalised === "ltd"
+                    || normalised === "plc"
+                ) {
+                    return "Private Limited Company";
+                }
+                return raw;
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -93581,9 +93599,7 @@
                 const meta = document.getElementById("chRegisterClientPageMeta");
                 const saveButton = document.getElementById("chRegisterClientPageSaveButton");
                 if (title) {
-                    const clientId = String(row?.clientId || "").trim();
-                    const name = String(row?.displayName || "Client").trim();
-                    title.innerHTML = `<strong>${escapeHTML(clientId || "No client ID")}</strong> · ${escapeHTML(name)}`;
+                    title.innerHTML = `<strong>${escapeHTML(clientRegisterClientTypeLabel(row?.clientType))}</strong>`;
                 }
                 if (meta) {
                     const manager = String(row?.clientManager || "").trim();
