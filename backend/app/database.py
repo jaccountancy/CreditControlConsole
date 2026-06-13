@@ -1670,6 +1670,50 @@ ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS vat_number TEXT NOT N
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);
 
+CREATE TABLE IF NOT EXISTS ch_auth_register_client_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    register_row_id UUID NOT NULL UNIQUE REFERENCES ch_auth_code_register(id) ON DELETE CASCADE,
+    services JSONB NOT NULL DEFAULT '{}'::jsonb,
+    risk_assessment JSONB NOT NULL DEFAULT '{}'::jsonb,
+    companies_house JSONB NOT NULL DEFAULT '{}'::jsonb,
+    juk_invoices JSONB NOT NULL DEFAULT '{}'::jsonb,
+    timeline_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS services JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS risk_assessment JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS companies_house JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS juk_invoices JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS timeline_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_auth_register_client_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ch_auth_register_client_profiles_row_idx
+ON ch_auth_register_client_profiles (register_row_id);
+
+CREATE TABLE IF NOT EXISTS ch_auth_register_client_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    register_row_id UUID NOT NULL REFERENCES ch_auth_code_register(id) ON DELETE CASCADE,
+    note TEXT NOT NULL DEFAULT '',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by_name TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ch_auth_register_client_notes ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_notes ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE ch_auth_register_client_notes ADD COLUMN IF NOT EXISTS created_by_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS ch_auth_register_client_notes_row_idx
+ON ch_auth_register_client_notes (register_row_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS contact_archive_contacts_cache (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id TEXT NOT NULL,

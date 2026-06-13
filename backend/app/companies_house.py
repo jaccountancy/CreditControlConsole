@@ -58,6 +58,24 @@ CH_WORKFLOW_REVIEW_SECTIONS = (
     "capital",
     "authority",
 )
+AUTH_REGISTER_SERVICE_DEFINITIONS = (
+    {"key": "accounts", "label": "Accounts"},
+    {"key": "ct600Return", "label": "CT600 Return"},
+    {"key": "payroll", "label": "Payroll"},
+    {"key": "vatReturns", "label": "VAT Returns"},
+    {"key": "managementAccounts", "label": "Management Accounts"},
+    {"key": "confirmationStatement", "label": "Confirmation Statement"},
+    {"key": "cis", "label": "CIS"},
+    {"key": "p11d", "label": "P11D"},
+    {"key": "feeProtectionService", "label": "Fee Protection Service"},
+    {"key": "registeredAddress", "label": "Registered Address"},
+    {"key": "machineGamesDuty", "label": "Machine Games Duty"},
+    {"key": "capitalGainsReturn", "label": "Capital Gains Return"},
+    {"key": "nonResidentLandlordsScheme", "label": "Non-Resident Landlords Scheme"},
+    {"key": "riskAssessment", "label": "Risk Assessment"},
+    {"key": "monthlyBookkeeping", "label": "Monthly Bookkeeping"},
+)
+AUTH_REGISTER_SERVICE_KEYS = tuple(item["key"] for item in AUTH_REGISTER_SERVICE_DEFINITIONS)
 
 CLIENT_IMPORT_HEADER_ALIASES = {
     "client_name": {"client name", "client", "customer", "customer name"},
@@ -4950,6 +4968,82 @@ def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes
     }
 
 
+def _auth_register_default_services() -> dict[str, bool]:
+    return {key: False for key in AUTH_REGISTER_SERVICE_KEYS}
+
+
+def _normalise_auth_register_services(value: object) -> dict[str, bool]:
+    base = _auth_register_default_services()
+    source = value if isinstance(value, dict) else {}
+    for key in AUTH_REGISTER_SERVICE_KEYS:
+        if key not in source:
+            continue
+        base[key] = bool(source.get(key))
+    return base
+
+
+def _normalise_auth_register_risk_assessment(value: object) -> dict:
+    source = value if isinstance(value, dict) else {}
+    level = _coerce_text(source.get("level"), 20).lower() or "low"
+    if level not in {"low", "medium", "high"}:
+        level = "low"
+    score_raw = source.get("score")
+    try:
+        score = max(0, min(100, int(float(score_raw)))) if score_raw not in (None, "") else 0
+    except Exception:
+        score = 0
+    return {
+        "level": level,
+        "score": score,
+        "summary": _coerce_text(source.get("summary"), 3000),
+        "lastReviewedAt": _coerce_text(source.get("lastReviewedAt"), 80),
+    }
+
+
+def _normalise_auth_register_companies_house(value: object) -> dict:
+    source = value if isinstance(value, dict) else {}
+    return {
+        "status": _coerce_text(source.get("status"), 80),
+        "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
+        "lastFiledDate": _coerce_text(source.get("lastFiledDate"), 80),
+        "authCodeStatus": _coerce_text(source.get("authCodeStatus"), 80),
+        "notes": _coerce_text(source.get("notes"), 3000),
+    }
+
+
+def _normalise_auth_register_juk_invoices(value: object) -> dict:
+    source = value if isinstance(value, dict) else {}
+    return {
+        "billingCycle": _coerce_text(source.get("billingCycle"), 80),
+        "defaultTemplate": _coerce_text(source.get("defaultTemplate"), 120),
+        "lastInvoiceDate": _coerce_text(source.get("lastInvoiceDate"), 80),
+        "outstandingAmount": _coerce_text(source.get("outstandingAmount"), 80),
+        "notes": _coerce_text(source.get("notes"), 3000),
+    }
+
+
+def _serialise_auth_register_row(row: dict | None) -> dict:
+    row = row or {}
+    services = _normalise_auth_register_services(row.get("services") if isinstance(row.get("services"), dict) else {})
+    return {
+        "id": str(row.get("id") or ""),
+        "companyId": str(row.get("company_id") or ""),
+        "companyNumber": row.get("company_number") or "",
+        "displayName": row.get("display_name") or "",
+        "clientType": row.get("client_type") or "",
+        "clientManager": row.get("client_manager") or "",
+        "clientId": row.get("client_id") or "",
+        "vatNumber": row.get("vat_number") or "",
+        "clientEmail": row.get("contact_email") or "",
+        "clientPhone": row.get("contact_phone") or "",
+        "clientAddress": row.get("client_address") or "",
+        "authCodeHint": row.get("code_hint") or "",
+        "sourceFilename": row.get("source_filename") or "",
+        "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+        "services": services,
+    }
+
+
 def list_auth_code_register(limit: int = 300) -> dict:
     safe_limit = max(20, min(int(limit or 300), 1000))
     with get_connection() as connection:
@@ -4963,15 +5057,19 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.client_manager,
                        r.client_id,
                        r.vat_number,
+                       c.id AS company_id,
                        c.contact_email,
                        c.contact_phone,
                        c.client_address,
                        r.code_hint,
                        r.source_filename,
-                       r.uploaded_at
+                       r.uploaded_at,
+                       p.services
                 FROM ch_auth_code_register r
                 LEFT JOIN ch_companies c
                   ON c.company_number = r.company_number
+                LEFT JOIN ch_auth_register_client_profiles p
+                  ON p.register_row_id = r.id
                 ORDER BY r.uploaded_at DESC
                 LIMIT %s
                 """,
@@ -4983,24 +5081,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
         connection.commit()
     return {
         "totalCount": int(total_row.get("total") or 0),
-        "rows": [
-            {
-                "id": str(row.get("id") or ""),
-                "companyNumber": row.get("company_number") or "",
-                "displayName": row.get("display_name") or "",
-                "clientType": row.get("client_type") or "",
-                "clientManager": row.get("client_manager") or "",
-                "clientId": row.get("client_id") or "",
-                "vatNumber": row.get("vat_number") or "",
-                "clientEmail": row.get("contact_email") or "",
-                "clientPhone": row.get("contact_phone") or "",
-                "clientAddress": row.get("client_address") or "",
-                "authCodeHint": row.get("code_hint") or "",
-                "sourceFilename": row.get("source_filename") or "",
-                "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
-            }
-            for row in rows
-        ],
+        "rows": [_serialise_auth_register_row(row) for row in rows],
     }
 
 
@@ -5148,20 +5229,281 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
         connection.commit()
 
     return {
-        "row": {
-            "id": str(row.get("id") or ""),
-            "companyNumber": row.get("company_number") or "",
-            "displayName": row.get("display_name") or "",
-            "clientType": row.get("client_type") or "",
-            "clientManager": row.get("client_manager") or "",
-            "clientId": row.get("client_id") or "",
-            "vatNumber": row.get("vat_number") or "",
-            "clientEmail": row.get("contact_email") or "",
-            "clientPhone": row.get("contact_phone") or "",
-            "clientAddress": row.get("client_address") or "",
-            "authCodeHint": row.get("code_hint") or "",
-            "sourceFilename": row.get("source_filename") or "",
-            "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+        "row": _serialise_auth_register_row(row),
+    }
+
+
+def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
+    cursor.execute(
+        """
+        SELECT r.id,
+               r.company_number,
+               COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
+               r.client_type,
+               r.client_manager,
+               r.client_id,
+               r.vat_number,
+               c.id AS company_id,
+               c.contact_email,
+               c.contact_phone,
+               c.client_address,
+               r.code_hint,
+               r.source_filename,
+               r.uploaded_at,
+               p.services,
+               p.risk_assessment,
+               p.companies_house,
+               p.juk_invoices
+        FROM ch_auth_code_register r
+        LEFT JOIN ch_companies c
+          ON c.company_number = r.company_number
+        LEFT JOIN ch_auth_register_client_profiles p
+          ON p.register_row_id = r.id
+        WHERE r.id = %s
+        LIMIT 1
+        """,
+        (row_id,),
+    )
+    return cursor.fetchone() or None
+
+
+def _auth_register_timeline_label(event_type: str) -> str:
+    text = str(event_type or "").strip().replace("_", " ")
+    return text.title() if text else "Updated"
+
+
+def _auth_register_timeline_body(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    parts: list[str] = []
+    for key, value in list(payload.items())[:4]:
+        if isinstance(value, bool):
+            text = "Yes" if value else "No"
+        elif isinstance(value, (int, float)):
+            text = str(value)
+        elif isinstance(value, str):
+            text = value.strip()
+        else:
+            continue
+        if not text:
+            continue
+        parts.append(f"{key}: {text[:120]}")
+    return " | ".join(parts)
+
+
+def get_auth_register_client_page(row_id: str) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _auth_register_client_page_row(cursor, safe_row_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            cursor.execute(
+                """
+                SELECT n.id,
+                       n.note,
+                       n.created_by_name,
+                       n.created_at
+                FROM ch_auth_register_client_notes n
+                WHERE n.register_row_id = %s
+                ORDER BY n.created_at DESC
+                LIMIT 250
+                """,
+                (safe_row_id,),
+            )
+            notes_rows = cursor.fetchall() or []
+            company_id = str(row.get("company_id") or "").strip()
+            if company_id:
+                cursor.execute(
+                    """
+                    SELECT created_at, event_type, payload
+                    FROM audit_events
+                    WHERE (entity_type = 'ch_auth_code_register' AND entity_id = %s)
+                       OR (entity_type IN ('ch_company', 'ch_auth_code') AND entity_id = %s)
+                    ORDER BY created_at DESC
+                    LIMIT 250
+                    """,
+                    (safe_row_id, company_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT created_at, event_type, payload
+                    FROM audit_events
+                    WHERE entity_type = 'ch_auth_code_register'
+                      AND entity_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 250
+                    """,
+                    (safe_row_id,),
+                )
+            audit_rows = cursor.fetchall() or []
+        connection.commit()
+
+    return {
+        "row": _serialise_auth_register_row(row),
+        "profile": {
+            "services": _normalise_auth_register_services(row.get("services")),
+            "riskAssessment": _normalise_auth_register_risk_assessment(row.get("risk_assessment")),
+            "companiesHouse": _normalise_auth_register_companies_house(row.get("companies_house")),
+            "jukInvoices": _normalise_auth_register_juk_invoices(row.get("juk_invoices")),
+            "serviceDefinitions": list(AUTH_REGISTER_SERVICE_DEFINITIONS),
+        },
+        "notes": [
+            {
+                "id": str(note_row.get("id") or ""),
+                "note": note_row.get("note") or "",
+                "createdByName": note_row.get("created_by_name") or "",
+                "createdAt": note_row.get("created_at").isoformat() if note_row.get("created_at") else None,
+            }
+            for note_row in notes_rows
+        ],
+        "timeline": [
+            {
+                "at": item.get("created_at").isoformat() if item.get("created_at") else None,
+                "title": _auth_register_timeline_label(item.get("event_type") or ""),
+                "body": _auth_register_timeline_body(item.get("payload")),
+            }
+            for item in audit_rows
+        ],
+    }
+
+
+def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    payload = payload or {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload.")
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM ch_auth_code_register WHERE id = %s", (safe_row_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            cursor.execute(
+                """
+                SELECT services, risk_assessment, companies_house, juk_invoices
+                FROM ch_auth_register_client_profiles
+                WHERE register_row_id = %s
+                LIMIT 1
+                """,
+                (safe_row_id,),
+            )
+            existing = cursor.fetchone() or {}
+            services = _normalise_auth_register_services(
+                payload.get("services") if "services" in payload else existing.get("services")
+            )
+            risk_assessment = _normalise_auth_register_risk_assessment(
+                payload.get("riskAssessment") if "riskAssessment" in payload else existing.get("risk_assessment")
+            )
+            companies_house = _normalise_auth_register_companies_house(
+                payload.get("companiesHouse") if "companiesHouse" in payload else existing.get("companies_house")
+            )
+            juk_invoices = _normalise_auth_register_juk_invoices(
+                payload.get("jukInvoices") if "jukInvoices" in payload else existing.get("juk_invoices")
+            )
+            cursor.execute(
+                """
+                INSERT INTO ch_auth_register_client_profiles (
+                    register_row_id,
+                    services,
+                    risk_assessment,
+                    companies_house,
+                    juk_invoices,
+                    updated_by_user_id,
+                    created_by_user_id,
+                    updated_at
+                )
+                VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
+                ON CONFLICT (register_row_id) DO UPDATE
+                SET services = EXCLUDED.services,
+                    risk_assessment = EXCLUDED.risk_assessment,
+                    companies_house = EXCLUDED.companies_house,
+                    juk_invoices = EXCLUDED.juk_invoices,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = NOW()
+                """,
+                (
+                    safe_row_id,
+                    json.dumps(services),
+                    json.dumps(risk_assessment),
+                    json.dumps(companies_house),
+                    json.dumps(juk_invoices),
+                    user_id,
+                    user_id,
+                ),
+            )
+            touched = [key for key in ("services", "riskAssessment", "companiesHouse", "jukInvoices") if key in payload]
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, 'client_profile_updated', %s::jsonb, %s)
+                """,
+                (
+                    safe_row_id,
+                    json.dumps({"sections": touched}),
+                    user_id,
+                ),
+            )
+        connection.commit()
+    return get_auth_register_client_page(safe_row_id)
+
+
+def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    payload = payload or {}
+    note = _coerce_text(payload.get("note"), 5000)
+    if not note:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note is required.")
+    user_id = user.get("id") if isinstance(user, dict) else None
+    user_name = _coerce_text(
+        user.get("fullName") or user.get("full_name") or user.get("name") or user.get("email"),
+        250,
+    ) if isinstance(user, dict) else ""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM ch_auth_code_register WHERE id = %s", (safe_row_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            cursor.execute(
+                """
+                INSERT INTO ch_auth_register_client_notes (
+                    register_row_id,
+                    note,
+                    created_by_user_id,
+                    created_by_name,
+                    created_at
+                )
+                VALUES (%s, %s, %s, %s, NOW())
+                RETURNING id, note, created_by_name, created_at
+                """,
+                (safe_row_id, note, user_id, user_name),
+            )
+            created = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, 'client_note_added', %s::jsonb, %s)
+                """,
+                (
+                    safe_row_id,
+                    json.dumps({"notePreview": note[:200]}),
+                    user_id,
+                ),
+            )
+        connection.commit()
+    return {
+        "note": {
+            "id": str(created.get("id") or ""),
+            "note": created.get("note") or "",
+            "createdByName": created.get("created_by_name") or "",
+            "createdAt": created.get("created_at").isoformat() if created.get("created_at") else None,
         }
     }
 

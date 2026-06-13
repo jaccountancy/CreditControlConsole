@@ -44,12 +44,14 @@ from .companies_house import (
     complete_company_secretarial_filing,
     commit_clients_import,
     create_company_secretarial_filing,
+    add_auth_register_client_note,
     dashboard_summary as companies_house_dashboard_summary,
     delete_company,
     export_companies_house_support_report,
     export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
+    get_auth_register_client_page,
     get_submission_raw_response,
     list_dead_letters,
     list_company_secretarial_filings,
@@ -67,6 +69,7 @@ from .companies_house import (
     save_companies_house_settings,
     submit_company_secretarial_filing,
     sync_xero_lock_date_company_records,
+    save_auth_register_client_page,
     submission_reconciliation_report,
     start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
@@ -1831,6 +1834,34 @@ async def api_companies_house_auth_code_register_update(
     payload = await request.json()
     result = update_auth_code_register_row(user, row_id, payload)
     return {"status": "ok", **result}
+
+
+@app.get("/api/companies-house/auth-code-register/{row_id}/client-page")
+def api_companies_house_auth_code_register_client_page(
+    row_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **get_auth_register_client_page(row_id)}
+
+
+@app.patch("/api/companies-house/auth-code-register/{row_id}/client-page")
+async def api_companies_house_auth_code_register_client_page_save(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **save_auth_register_client_page(user, row_id, payload)}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}/client-page/notes")
+async def api_companies_house_auth_code_register_client_page_add_note(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **add_auth_register_client_note(user, row_id, payload)}
 
 
 @app.post("/api/code-breaker/workspace-snapshot")
