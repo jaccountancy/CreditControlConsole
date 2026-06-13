@@ -29536,7 +29536,7 @@
                                 <section class="ch-register-client-page" id="chRegisterClientPage" hidden>
                                     <article class="ch-register-client-page-topbar">
                                         <div>
-                                            <p class="eyebrow">Client profile</p>
+                                            <p class="eyebrow" id="chRegisterClientPageEyebrow">Client ID</p>
                                             <h3 id="chRegisterClientPageTitle">Client profile</h3>
                                             <p class="detail-meta" id="chRegisterClientPageMeta">Loading client details…</p>
                                         </div>
@@ -93757,10 +93757,15 @@
                 const chMeta = profile?.companiesHouse || {};
                 const juk = profile?.jukInvoices || {};
                 const title = document.getElementById("chRegisterClientPageTitle");
+                const eyebrow = document.getElementById("chRegisterClientPageEyebrow");
                 const meta = document.getElementById("chRegisterClientPageMeta");
                 const saveButton = document.getElementById("chRegisterClientPageSaveButton");
                 if (title) {
                     title.innerHTML = `<strong>${escapeHTML(clientRegisterClientDisplayName(row))}</strong>`;
+                }
+                if (eyebrow) {
+                    const clientId = String(row?.clientId || "").trim();
+                    eyebrow.textContent = clientId ? `Client ID: ${clientId}` : "Client ID";
                 }
                 if (meta) {
                     const manager = String(row?.clientManager || "").trim();
