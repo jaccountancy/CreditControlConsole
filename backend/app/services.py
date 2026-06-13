@@ -31443,6 +31443,121 @@ def _normalise_vat_transaction_rows(rows: list[dict]) -> list[dict]:
     return normalised
 
 
+def _credit_note_lines_for_vat_scan(raw_credit_notes: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for credit_note in raw_credit_notes or []:
+        if not isinstance(credit_note, dict):
+            continue
+        note_date = _parse_optional_iso_date(credit_note.get("DateString") or credit_note.get("Date"))
+        if note_date is None:
+            continue
+        credit_note_id = str(credit_note.get("CreditNoteID") or "").strip()
+        if not credit_note_id:
+            continue
+        updated_at = _parse_optional_iso_datetime(
+            credit_note.get("UpdatedDateUTC")
+            or credit_note.get("UpdatedDate")
+            or credit_note.get("LastUpdated")
+            or credit_note.get("ModifiedDate")
+        )
+        line_items = credit_note.get("LineItems") if isinstance(credit_note.get("LineItems"), list) else []
+        if not line_items:
+            line_items = [
+                {
+                    "Description": str(credit_note.get("Reference") or credit_note.get("CreditNoteNumber") or "Credit note"),
+                    "LineAmount": credit_note.get("SubTotal") or credit_note.get("Total") or 0,
+                    "TaxAmount": credit_note.get("TotalTax") or 0,
+                    "TaxType": str(credit_note.get("TaxType") or "").strip(),
+                    "AccountCode": "",
+                }
+            ]
+        reference = str(credit_note.get("CreditNoteNumber") or credit_note.get("Reference") or credit_note_id).strip()
+        for index, line in enumerate(line_items):
+            if not isinstance(line, dict):
+                continue
+            line_amount = _money(line.get("LineAmount") or 0)
+            line_tax = _money(line.get("TaxAmount") or 0)
+            line_total = _money(line_amount + line_tax)
+            rows.append(
+                {
+                    "id": f"cn:{credit_note_id}:{index}",
+                    "date": note_date.isoformat(),
+                    "reference": reference,
+                    "description": str(line.get("Description") or credit_note.get("Reference") or "Credit note line").strip(),
+                    "netAmount": float(line_amount),
+                    "taxAmount": float(line_tax),
+                    "grossAmount": float(line_total),
+                    "taxCode": str(line.get("TaxType") or "").strip(),
+                    "accountCode": str(line.get("AccountCode") or "").strip(),
+                    "sourceType": "xero-credit-note-line",
+                    "transactionType": str(credit_note.get("Type") or "").strip(),
+                    "documentType": "credit_note",
+                    "xeroInvoiceId": credit_note_id,
+                    "lineIndex": index,
+                    "xeroUpdatedAt": _iso(updated_at),
+                }
+            )
+    return rows
+
+
+def _bank_transaction_lines_for_vat_scan(raw_transactions: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for transaction in raw_transactions or []:
+        if not isinstance(transaction, dict):
+            continue
+        tx_date = _parse_optional_iso_date(transaction.get("DateString") or transaction.get("Date"))
+        if tx_date is None:
+            continue
+        tx_id = str(transaction.get("BankTransactionID") or "").strip()
+        if not tx_id:
+            continue
+        updated_at = _parse_optional_iso_datetime(
+            transaction.get("UpdatedDateUTC")
+            or transaction.get("UpdatedDate")
+            or transaction.get("LastUpdated")
+            or transaction.get("ModifiedDate")
+        )
+        line_items = transaction.get("LineItems") if isinstance(transaction.get("LineItems"), list) else []
+        if not line_items:
+            line_items = [
+                {
+                    "Description": str(transaction.get("Reference") or transaction.get("Type") or "Bank transaction"),
+                    "LineAmount": transaction.get("SubTotal") or transaction.get("Total") or 0,
+                    "TaxAmount": transaction.get("TotalTax") or 0,
+                    "TaxType": str(transaction.get("TaxType") or "").strip(),
+                    "AccountCode": "",
+                }
+            ]
+        reference = str(transaction.get("Reference") or tx_id).strip()
+        tx_type = str(transaction.get("Type") or "").strip()
+        for index, line in enumerate(line_items):
+            if not isinstance(line, dict):
+                continue
+            line_amount = _money(line.get("LineAmount") or 0)
+            line_tax = _money(line.get("TaxAmount") or 0)
+            line_total = _money(line_amount + line_tax)
+            rows.append(
+                {
+                    "id": f"bt:{tx_id}:{index}",
+                    "date": tx_date.isoformat(),
+                    "reference": reference,
+                    "description": str(line.get("Description") or tx_type or "Bank transaction line").strip(),
+                    "netAmount": float(line_amount),
+                    "taxAmount": float(line_tax),
+                    "grossAmount": float(line_total),
+                    "taxCode": str(line.get("TaxType") or "").strip(),
+                    "accountCode": str(line.get("AccountCode") or "").strip(),
+                    "sourceType": "xero-bank-transaction-line",
+                    "transactionType": tx_type,
+                    "documentType": "bank_transaction",
+                    "xeroInvoiceId": tx_id,
+                    "lineIndex": index,
+                    "xeroUpdatedAt": _iso(updated_at),
+                }
+            )
+    return rows
+
+
 def _vat_period_end_for_date(value: date | None) -> date | None:
     if value is None:
         return None
@@ -32333,7 +32448,24 @@ async def xero_vat_coded_transactions_by_tenant(
         "Invoices",
         params={"where": 'Status!="DELETED"', "order": "Date DESC"},
     )
-    normalised_rows = _normalise_vat_transaction_rows(_invoice_lines_for_vat_period(raw_invoices, None, None))
+    raw_credit_notes = await fetch_paginated_collection(
+        connection_row,
+        CREDIT_NOTES_URL,
+        "CreditNotes",
+        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
+    )
+    raw_bank_transactions = await fetch_paginated_collection(
+        connection_row,
+        BANK_TRANSACTIONS_URL,
+        "BankTransactions",
+        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
+    )
+    combined_rows = (
+        _invoice_lines_for_vat_period(raw_invoices, None, None)
+        + _credit_note_lines_for_vat_scan(raw_credit_notes)
+        + _bank_transaction_lines_for_vat_scan(raw_bank_transactions)
+    )
+    normalised_rows = _normalise_vat_transaction_rows(combined_rows)
     vat_rows: list[dict] = []
     period_end_values: set[str] = set()
     for row in normalised_rows:
@@ -32397,9 +32529,21 @@ async def xero_set_tenant_transactions_no_vat(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one transactionId is required.")
 
     invoice_line_indexes: dict[str, set[int]] = defaultdict(set)
+    credit_note_line_indexes: dict[str, set[int]] = defaultdict(set)
     skipped: list[dict] = []
     for tx_id in clean_ids:
-        invoice_id, separator, line_index_text = tx_id.rpartition(":")
+        tx_type = "invoice"
+        source = tx_id
+        if tx_id.startswith("cn:"):
+            tx_type = "credit_note"
+            source = tx_id[3:]
+        elif tx_id.startswith("bt:"):
+            skipped.append({"transactionId": tx_id, "reason": "Bank transactions cannot be recoded in bulk via this action."})
+            continue
+        elif tx_id.startswith("inv:"):
+            source = tx_id[4:]
+
+        invoice_id, separator, line_index_text = source.rpartition(":")
         if not separator or not invoice_id:
             skipped.append({"transactionId": tx_id, "reason": "Transaction id could not be mapped to an invoice line."})
             continue
@@ -32408,9 +32552,12 @@ async def xero_set_tenant_transactions_no_vat(
         except ValueError:
             skipped.append({"transactionId": tx_id, "reason": "Line index was invalid."})
             continue
-        invoice_line_indexes[invoice_id].add(line_index)
+        if tx_type == "credit_note":
+            credit_note_line_indexes[invoice_id].add(line_index)
+        else:
+            invoice_line_indexes[invoice_id].add(line_index)
 
-    if not invoice_line_indexes:
+    if not invoice_line_indexes and not credit_note_line_indexes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid invoice line transaction ids were supplied.")
 
     applied_count = 0
@@ -32442,6 +32589,34 @@ async def xero_set_tenant_transactions_no_vat(
                 await create_sales_invoice(connection_row, {"InvoiceID": invoice_id, "LineItems": line_items})
         except Exception as exc:
             errors.append({"invoiceId": invoice_id, "message": _sync_error_message(exc)})
+
+    for credit_note_id, line_indexes in credit_note_line_indexes.items():
+        try:
+            payload = await xero_api_get(connection_row, f"{CREDIT_NOTES_URL}/{credit_note_id}")
+            credit_note_rows = payload.get("CreditNotes") if isinstance(payload, dict) else []
+            raw_credit_note = credit_note_rows[0] if isinstance(credit_note_rows, list) and credit_note_rows else {}
+            line_items = raw_credit_note.get("LineItems") if isinstance(raw_credit_note.get("LineItems"), list) else []
+            if not line_items:
+                for index in sorted(line_indexes):
+                    skipped.append({"transactionId": f"cn:{credit_note_id}:{index}", "reason": "Credit note has no line items in Xero."})
+                continue
+            updated_any = False
+            for index in sorted(line_indexes):
+                if index < 0 or index >= len(line_items):
+                    skipped.append({"transactionId": f"cn:{credit_note_id}:{index}", "reason": "Line index is out of range for this credit note."})
+                    continue
+                line = line_items[index] if isinstance(line_items[index], dict) else {}
+                if str(line.get("TaxType") or "").strip().upper() == "NONE":
+                    skipped.append({"transactionId": f"cn:{credit_note_id}:{index}", "reason": "Line is already coded as NONE."})
+                    continue
+                line["TaxType"] = "NONE"
+                line_items[index] = line
+                applied_count += 1
+                updated_any = True
+            if updated_any:
+                await create_credit_note(connection_row, {"CreditNoteID": credit_note_id, "LineItems": line_items})
+        except Exception as exc:
+            errors.append({"creditNoteId": credit_note_id, "message": _sync_error_message(exc)})
 
     return {
         "status": "ok",
