@@ -38687,7 +38687,7 @@
                 if (!pageState.open) return "";
                 const row = pageState.payload?.row || null;
                 if (!row || typeof row !== "object") return "";
-                return clientRegisterClientTypeLabel(row.clientType);
+                return clientRegisterClientDisplayName(row);
             }
 
             function activeTopbarTitle(topbarClient = null) {
@@ -93732,6 +93732,13 @@
                 return raw;
             }
 
+            function clientRegisterClientDisplayName(row) {
+                const displayName = String(row?.displayName || row?.companyName || "").trim();
+                if (displayName) return displayName;
+                const fallbackId = String(row?.clientId || "").trim();
+                return fallbackId || "Client profile";
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -93753,7 +93760,7 @@
                 const meta = document.getElementById("chRegisterClientPageMeta");
                 const saveButton = document.getElementById("chRegisterClientPageSaveButton");
                 if (title) {
-                    title.innerHTML = `<strong>${escapeHTML(clientRegisterClientTypeLabel(row?.clientType))}</strong>`;
+                    title.innerHTML = `<strong>${escapeHTML(clientRegisterClientDisplayName(row))}</strong>`;
                 }
                 if (meta) {
                     const manager = String(row?.clientManager || "").trim();
