@@ -38816,7 +38816,15 @@
                 if (ignitionTopbarWidget && !isIgnitionView()) ignitionTopbarWidget.hidden = true;
                 document.body.classList.toggle("is-ignition-batch-ref-title", false);
                 updateTopbarInlineStatusState();
-                if (activeView !== "settings") closeSettingsSidebar();
+                if (activeView !== "settings") {
+                    closeSettingsSidebar();
+                    if (settingsUsageInspectorModalOpen || document.body.classList.contains("usage-inspector-modal-open")) {
+                        setSettingsUsageInspectorModalOpen(false);
+                    }
+                    if (domainHealthTroubleshooterModalOpen) {
+                        setDomainTroubleshooterModalOpen(false);
+                    }
+                }
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
                     const active = button.dataset.appNav === activeNav;
