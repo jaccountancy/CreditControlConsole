@@ -6462,11 +6462,13 @@
             body.is-tool-page .detail-card {
                 min-height: calc(100vh - 92px);
             }
+            body.is-tool-page .late-charges-screen.detail-card {
+                max-height: none;
+                overflow: visible;
+            }
             #clientAuthRegisterScreen.detail-card {
-                max-height: calc(100vh - 92px);
-                overflow-y: auto;
-                overflow-x: hidden;
-                -webkit-overflow-scrolling: touch;
+                max-height: none;
+                overflow: visible;
             }
             .settings-layout {
                 display: grid;
@@ -29586,13 +29588,47 @@
                                         </div>
                                     </article>
                                     <div class="page-pills ch-register-client-page-tabs" id="chRegisterClientPageTabs">
-                                        <button class="page-pill is-active" type="button" data-client-page-tab="services"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg></span><span>Services Required</span></button>
+                                        <button class="page-pill is-active" type="button" data-client-page-tab="client-info"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"></path></svg></span><span>Client Info</span></button>
+                                        <button class="page-pill" type="button" data-client-page-tab="services"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg></span><span>Services Required</span></button>
                                         <button class="page-pill" type="button" data-client-page-tab="timeline"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg></span><span>Timeline</span></button>
                                         <button class="page-pill" type="button" data-client-page-tab="notes"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v12H8l-3 3V4z"></path><path d="M9 8h6"></path><path d="M9 11h6"></path></svg></span><span>Notes</span></button>
                                         <button class="page-pill" type="button" data-client-page-tab="risk"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.6-7 10-3.8-1.4-7-5-7-10V6l7-3z"></path><path d="M9 12h6"></path></svg></span><span>Risk Assessment</span></button>
                                         <button class="page-pill" type="button" data-client-page-tab="companies-house"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg></span><span>Companies House</span></button>
                                         <button class="page-pill" type="button" data-client-page-tab="juk-invoices"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg></span><span>JUK Invoices</span></button>
                                     </div>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="client-info">
+                                        <h4>Client Info</h4>
+                                        <p class="detail-meta">Core details for the selected client profile.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>Client name
+                                                <input id="chRegisterClientPageInfoName" type="text" readonly>
+                                            </label>
+                                            <label>Client manager
+                                                <input id="chRegisterClientPageInfoManager" type="text" readonly>
+                                            </label>
+                                            <label>Client ID
+                                                <input id="chRegisterClientPageInfoId" type="text" readonly>
+                                            </label>
+                                            <label>Client type
+                                                <input id="chRegisterClientPageInfoType" type="text" readonly>
+                                            </label>
+                                            <label>Company number
+                                                <input id="chRegisterClientPageInfoCompanyNumber" type="text" readonly>
+                                            </label>
+                                            <label>VAT number
+                                                <input id="chRegisterClientPageInfoVatNumber" type="text" readonly>
+                                            </label>
+                                            <label>Email
+                                                <input id="chRegisterClientPageInfoEmail" type="text" readonly>
+                                            </label>
+                                            <label>Phone
+                                                <input id="chRegisterClientPageInfoPhone" type="text" readonly>
+                                            </label>
+                                        </div>
+                                        <label>Address
+                                            <textarea id="chRegisterClientPageInfoAddress" rows="3" readonly></textarea>
+                                        </label>
+                                    </section>
                                     <section class="ch-settings-card ch-register-service-card ch-register-client-page-panel" data-client-page-panel="services" hidden>
                                         <div class="ch-settings-head">
                                             <div>
@@ -29721,6 +29757,8 @@
                                         <label>Assessment summary
                                             <textarea id="chRegisterClientPageRiskSummary" rows="4"></textarea>
                                         </label>
+                                        <h5 style="margin: 14px 0 8px;">Assessment history for this client</h5>
+                                        <div class="mini-timeline" id="chRegisterClientPageRiskAssessmentsList"></div>
                                     </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="companies-house" hidden>
                                         <h4>Companies House</h4>
@@ -29763,6 +29801,23 @@
                                         <label>JUK invoice notes
                                             <textarea id="chRegisterClientPageJukNotes" rows="4"></textarea>
                                         </label>
+                                        <h5 style="margin: 14px 0 8px;">Invoices linked to this client</h5>
+                                        <div class="ch-companies-table-wrap">
+                                            <table class="ch-table" aria-label="Client JUK invoices">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Invoice</th>
+                                                        <th>Date</th>
+                                                        <th>Due</th>
+                                                        <th>Total</th>
+                                                        <th>Amount due</th>
+                                                        <th>Payment</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="chRegisterClientPageJukInvoicesBody"></tbody>
+                                            </table>
+                                        </div>
                                     </section>
                                 </section>
                                 <div class="ch-register-toolbar" id="chBmTasksToolbar" hidden>
@@ -39096,6 +39151,13 @@
                 if (clientRegisterTopbarActions) clientRegisterTopbarActions.hidden = activeView !== "client-auth-register";
                 const jukInvoicesTopbarActions = document.getElementById("jukInvoicesTopbarActions");
                 if (jukInvoicesTopbarActions) jukInvoicesTopbarActions.hidden = activeView !== "juk-invoices";
+                if (activeView !== "juk-invoices") {
+                    if (jukInvoicesState?.batchModalOpen) {
+                        jukInvoicesState.batchModalOpen = false;
+                        persistJukInvoicesState();
+                    }
+                    document.body.classList.remove("juk-batch-modal-open");
+                }
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
@@ -92868,7 +92930,7 @@
                     loading: false,
                     saving: false,
                     rowId: "",
-                    activeTab: "services",
+                    activeTab: "client-info",
                     payload: null,
                 },
             };
@@ -93794,7 +93856,7 @@
                 const availableTabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState: true });
                 const availableIds = new Set(availableTabs.map((item) => String(item?.id || "")));
                 const requested = String(tab || "").trim();
-                const next = availableIds.has(requested) ? requested : "services";
+                const next = availableIds.has(requested) ? requested : "client-info";
                 companiesHouseSettings.authRegisterClientPage = {
                     ...companiesHouseSettings.authRegisterClientPage,
                     activeTab: next,
@@ -93823,7 +93885,7 @@
                     saving: false,
                     rowId: "",
                     payload: null,
-                    activeTab: "services",
+                    activeTab: "client-info",
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -93831,7 +93893,7 @@
                 if (panel) panel.hidden = true;
                 if (tableWrap) tableWrap.hidden = false;
                 if (toolbar) toolbar.hidden = false;
-                setClientRegisterClientPageTab("services");
+                setClientRegisterClientPageTab("client-info");
                 renderTopbarIdentity();
             }
 
@@ -93874,6 +93936,48 @@
                 return `service-${String(serviceKey || "").trim()}`;
             }
 
+            function clientRegisterClientMatchKey(row = {}) {
+                const displayName = clientRegisterClientDisplayName(row);
+                return normalisePracticePackClientMatchName(displayName);
+            }
+
+            function clientRegisterJukInvoicesForRow(row = {}) {
+                const targetNameKey = clientRegisterClientMatchKey(row);
+                if (!targetNameKey) return [];
+                const batches = Array.isArray(jukInvoicesState?.batches) ? jukInvoicesState.batches : [];
+                const rows = [];
+                batches.forEach((batch) => {
+                    const batchId = String(batch?.id || "").trim();
+                    const invoices = Array.isArray(batch?.invoices) ? batch.invoices : [];
+                    invoices.forEach((invoice) => {
+                        const clientName = String(invoice?.jukContactName || invoice?.clientName || "").trim();
+                        const invoiceNameKey = normalisePracticePackClientMatchName(clientName);
+                        if (!invoiceNameKey || invoiceNameKey !== targetNameKey) return;
+                        const total = Number(invoice?.total || 0) || 0;
+                        const amountDue = Number(invoice?.amountDue || invoice?.amount_due || 0) || 0;
+                        const paymentStatus = amountDue <= 0.01
+                            ? "Paid"
+                            : (total > 0.01 && amountDue >= (total - 0.01) ? "Unpaid" : "Part paid");
+                        rows.push({
+                            id: String(invoice?.id || invoice?.jukXeroInvoiceId || "").trim(),
+                            invoiceNumber: String(invoice?.jukInvoiceNumber || invoice?.invoiceNumber || invoice?.jukXeroInvoiceId || "").trim(),
+                            invoiceDate: String(invoice?.invoiceDate || "").trim(),
+                            dueDate: String(invoice?.dueDate || "").trim(),
+                            total,
+                            amountDue,
+                            paymentStatus,
+                            status: String(invoice?.status || "").trim() || "imported",
+                            batchId,
+                        });
+                    });
+                });
+                return rows.sort((left, right) => {
+                    const leftMs = new Date(left.invoiceDate || 0).getTime() || 0;
+                    const rightMs = new Date(right.invoiceDate || 0).getTime() || 0;
+                    return rightMs - leftMs;
+                });
+            }
+
             function clientRegisterApplyLinkedServiceRules(servicesState = {}) {
                 const next = { ...(servicesState || {}) };
                 const accountsEnabled = !!next.accounts;
@@ -93905,6 +94009,7 @@
                 const profileServices = profile?.services || {};
                 const servicesState = clientRegisterServiceState(profileServices, includeDraftServiceState);
                 const baseTabs = [
+                    { id: "client-info", label: "Client Info", icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"></path></svg>` },
                     { id: "services", label: "Services Required", icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>` },
                     { id: "timeline", label: "Timeline", icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>` },
                     { id: "notes", label: "Notes", icon: `<svg viewBox="0 0 24 24"><path d="M5 4h14v12H8l-3 3V4z"></path><path d="M9 8h6"></path><path d="M9 11h6"></path></svg>` },
@@ -93952,7 +94057,7 @@
                 const tabsWrap = document.getElementById("chRegisterClientPageTabs");
                 if (!tabsWrap) return;
                 const tabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState });
-                const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "services");
+                const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "client-info");
                 tabsWrap.innerHTML = tabs.map((tab) => `
                     <button class="page-pill ${tab.id === activeTab ? "is-active" : ""}" type="button" data-client-page-tab="${escapeHTML(tab.id)}">
                         <span class="tab-icon" aria-hidden="true">${tab.icon || ""}</span>
@@ -94028,6 +94133,20 @@
                         : "Client Manager: Unassigned";
                 }
                 if (saveButton) saveButton.disabled = !!pageState.saving || !!pageState.loading;
+                const assignReadOnly = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (!node) return;
+                    node.value = value == null ? "" : String(value);
+                };
+                assignReadOnly("chRegisterClientPageInfoName", clientRegisterClientDisplayName(row));
+                assignReadOnly("chRegisterClientPageInfoManager", String(row?.clientManager || "").trim() || "Unassigned");
+                assignReadOnly("chRegisterClientPageInfoId", String(row?.clientId || "").trim());
+                assignReadOnly("chRegisterClientPageInfoType", clientRegisterClientTypeLabel(row?.clientType || ""));
+                assignReadOnly("chRegisterClientPageInfoCompanyNumber", String(row?.companyNumber || "").trim());
+                assignReadOnly("chRegisterClientPageInfoVatNumber", String(row?.vatNumber || "").trim());
+                assignReadOnly("chRegisterClientPageInfoEmail", String(row?.clientEmail || "").trim());
+                assignReadOnly("chRegisterClientPageInfoPhone", String(row?.clientPhone || "").trim());
+                assignReadOnly("chRegisterClientPageInfoAddress", String(row?.clientAddress || "").trim());
                 const servicesWrap = document.getElementById("chRegisterClientPageServicesList");
                 const serviceDefinitions = Array.isArray(profile?.serviceDefinitions) && profile.serviceDefinitions.length
                     ? profile.serviceDefinitions
@@ -94101,6 +94220,21 @@
                         `).join("")
                         : `<article class="timeline-item"><div class="timeline-body">No notes added yet.</div></article>`;
                 }
+                const riskAssessmentsWrap = document.getElementById("chRegisterClientPageRiskAssessmentsList");
+                if (riskAssessmentsWrap) {
+                    const clientRiskRows = riskAssessmentsForClient(clientRegisterClientMatchKey(row));
+                    riskAssessmentsWrap.innerHTML = clientRiskRows.length
+                        ? clientRiskRows.slice(0, 50).map((record) => `
+                            <article class="timeline-item">
+                                <div class="timeline-head">
+                                    <span class="timeline-title">${escapeHTML(String(record?.riskLevel || "Moderate"))} · ${escapeHTML(String(record?.riskScore || 0))}/100</span>
+                                    <span class="timeline-stamp">${escapeHTML(record?.generatedAt ? chFormatDateTime(record.generatedAt) : "—")}</span>
+                                </div>
+                                <div class="timeline-body">${escapeHTML(String(record?.commentary || record?.evaluation || "Risk assessment recorded.").trim() || "Risk assessment recorded.")}</div>
+                            </article>
+                        `).join("")
+                        : `<article class="timeline-item"><div class="timeline-body">No risk assessments found for this client yet.</div></article>`;
+                }
                 const assign = (id, value) => {
                     const node = document.getElementById(id);
                     if (!node) return;
@@ -94136,7 +94270,24 @@
                 assign("chRegisterClientPageJukLastInvoiceDate", juk.lastInvoiceDate || "");
                 assign("chRegisterClientPageJukOutstandingAmount", juk.outstandingAmount || "");
                 assign("chRegisterClientPageJukNotes", juk.notes || "");
-                setClientRegisterClientPageTab(pageState.activeTab || "services");
+                const jukInvoicesBody = document.getElementById("chRegisterClientPageJukInvoicesBody");
+                if (jukInvoicesBody) {
+                    const clientInvoices = clientRegisterJukInvoicesForRow(row);
+                    jukInvoicesBody.innerHTML = clientInvoices.length
+                        ? clientInvoices.slice(0, 300).map((invoice) => `
+                            <tr>
+                                <td>${escapeHTML(invoice.invoiceNumber || invoice.id || "—")}</td>
+                                <td>${escapeHTML(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : "—")}</td>
+                                <td>${escapeHTML(invoice.dueDate ? formatDate(invoice.dueDate) : "—")}</td>
+                                <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
+                                <td>${escapeHTML(formatCurrency(invoice.amountDue || 0))}</td>
+                                <td>${escapeHTML(invoice.paymentStatus || "—")}</td>
+                                <td>${escapeHTML(invoice.status || "imported")}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="7" class="ch-empty-state">No JUK invoices linked to this client yet.</td></tr>`;
+                }
+                setClientRegisterClientPageTab(pageState.activeTab || "client-info");
                 renderTopbarIdentity();
             }
 
@@ -94148,6 +94299,7 @@
                     open: true,
                     loading: true,
                     rowId: safeRowId,
+                    activeTab: "client-info",
                     payload: null,
                 };
                 renderClientRegisterClientPage();
@@ -95243,7 +95395,7 @@
                         }
                     }
                     renderClientRegisterClientPageTabs({ includeDraftServiceState: true });
-                    const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "services");
+                    const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "client-info");
                     setClientRegisterClientPageTab(activeTab);
                 });
                 document.getElementById("chRegisterClientPageVatNumber")?.addEventListener("blur", (event) => {
