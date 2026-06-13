@@ -92901,7 +92901,7 @@
                     searchTerm: "",
                     manager: "",
                     sourceFile: "",
-                    sortKey: "uploadedAt",
+                    sortKey: "clientId",
                     sortDirection: "desc",
                     page: 1,
                 },
@@ -93519,7 +93519,7 @@
                 showToast("Raw XML exported.", "success");
             }
 
-            const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v2";
+            const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v3";
             const AUTH_REGISTER_PAGE_SIZE = 25;
             const AUTH_REGISTER_LOAD_MORE_STEP = 300;
             const AUTH_REGISTER_HIDE_SVG_ROWS_BY_DEFAULT = true;
@@ -93556,6 +93556,10 @@
                 ...AUTH_REGISTER_SERVICE_COLUMNS,
             ];
             const AUTH_REGISTER_DEFAULT_HIDDEN_COLUMNS = [
+                "companyNumber",
+                "authCodeHint",
+                "vatNumber",
+                "clientAddress",
                 "sourceFilename",
                 "uploadedAt",
                 ...AUTH_REGISTER_SERVICE_COLUMNS.map((column) => column.key),
@@ -93597,7 +93601,7 @@
                         searchTerm: "",
                         manager: "",
                         sourceFile: "",
-                        sortKey: "uploadedAt",
+                        sortKey: "clientId",
                         sortDirection: "desc",
                         page: 1,
                     },
@@ -93609,7 +93613,7 @@
                     const parsed = JSON.parse(raw);
                     const sortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === parsed?.tableState?.sortKey)
                         ? parsed.tableState.sortKey
-                        : "uploadedAt";
+                        : "clientId";
                     const sortDirection = parsed?.tableState?.sortDirection === "asc" ? "asc" : "desc";
                     const pageNumber = Math.max(1, Number(parsed?.tableState?.page || 1));
                     return {
@@ -93723,13 +93727,22 @@
                     ];
                     return searchValues.some((value) => String(value || "").toLowerCase().includes(search));
                 });
-                const sortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === tableState.sortKey) ? tableState.sortKey : "uploadedAt";
+                const sortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === tableState.sortKey) ? tableState.sortKey : "clientId";
                 const sortDirection = tableState.sortDirection === "asc" ? "asc" : "desc";
                 return list.sort((left, right) => {
                     const leftValue = authRegisterSortValue(left, sortKey);
                     const rightValue = authRegisterSortValue(right, sortKey);
-                    if (leftValue < rightValue) return sortDirection === "asc" ? -1 : 1;
-                    if (leftValue > rightValue) return sortDirection === "asc" ? 1 : -1;
+                    let comparison = 0;
+                    if (typeof leftValue === "number" && typeof rightValue === "number") {
+                        comparison = leftValue - rightValue;
+                    } else {
+                        comparison = String(leftValue || "").localeCompare(String(rightValue || ""), undefined, {
+                            numeric: true,
+                            sensitivity: "base",
+                        });
+                    }
+                    if (comparison < 0) return sortDirection === "asc" ? -1 : 1;
+                    if (comparison > 0) return sortDirection === "asc" ? 1 : -1;
                     return 0;
                 });
             }
@@ -93749,7 +93762,7 @@
                 const head = document.getElementById("chAuthCodeRegisterTableHead");
                 if (!head) return;
                 const tableState = companiesHouseSettings.authRegisterTableState || {};
-                const sortKey = tableState.sortKey || "uploadedAt";
+                const sortKey = tableState.sortKey || "clientId";
                 const sortDirection = tableState.sortDirection === "asc" ? "asc" : "desc";
                 const columns = authRegisterVisibleColumns();
                 head.innerHTML = `<tr>${columns.map((column) => {
@@ -95306,7 +95319,7 @@
                     searchTerm: "",
                     manager: "",
                     sourceFile: "",
-                    sortKey: "uploadedAt",
+                    sortKey: "clientId",
                     sortDirection: "desc",
                     page: 1,
                 };
