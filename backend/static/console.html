@@ -29608,6 +29608,84 @@
                                         <p class="detail-meta" id="chRegisterClientPageDynamicServiceMeta">Service details.</p>
                                         <p id="chRegisterClientPageDynamicServiceBody">This service is enabled for this client.</p>
                                     </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-accounts-returns" hidden>
+                                        <h4>Accounts &amp; Corporation Tax Return</h4>
+                                        <p class="detail-meta">Companies House dates and accounts/return tracking.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>Company year end
+                                                <input id="chRegisterClientPageAccountsYearEnd" type="date">
+                                            </label>
+                                            <label>Companies House accounts next due date
+                                                <input id="chRegisterClientPageAccountsNextDueDate" type="date">
+                                            </label>
+                                        </div>
+                                    </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-confirmation-statement" hidden>
+                                        <h4>Confirmation Statement</h4>
+                                        <p class="detail-meta">Confirmation statement schedule.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>Confirmation statement date
+                                                <input id="chRegisterClientPageConfirmationStatementDate" type="date">
+                                            </label>
+                                            <label>Confirmation statement due date
+                                                <input id="chRegisterClientPageConfirmationStatementDueDate" type="date">
+                                            </label>
+                                        </div>
+                                    </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-vat" hidden>
+                                        <h4>VAT</h4>
+                                        <p class="detail-meta">VAT service profile and filing details.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>VAT frequency
+                                                <input id="chRegisterClientPageVatFrequency" type="text" placeholder="Monthly / Quarterly">
+                                            </label>
+                                            <label>VAT period end
+                                                <input id="chRegisterClientPageVatPeriodEnd" type="date">
+                                            </label>
+                                            <label>VAT next return due date
+                                                <input id="chRegisterClientPageVatNextDueDate" type="date">
+                                            </label>
+                                            <label>VAT member state
+                                                <input id="chRegisterClientPageVatMemberState" type="text" placeholder="GB">
+                                            </label>
+                                            <label>VAT number
+                                                <input id="chRegisterClientPageVatNumber" type="text" placeholder="GB123456789">
+                                            </label>
+                                        </div>
+                                        <label>VAT address
+                                            <textarea id="chRegisterClientPageVatAddress" rows="3"></textarea>
+                                        </label>
+                                    </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-payroll" hidden>
+                                        <h4>Payroll</h4>
+                                        <p class="detail-meta">Payroll service references and deadlines.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>Employer’s PAYE reference
+                                                <input id="chRegisterClientPagePayrollPayeReference" type="text">
+                                            </label>
+                                            <label>Accounts Office reference
+                                                <input id="chRegisterClientPagePayrollAccountsOfficeReference" type="text">
+                                            </label>
+                                            <label>First payday
+                                                <input id="chRegisterClientPagePayrollFirstPayday" type="date">
+                                            </label>
+                                            <label>RTI deadline
+                                                <input id="chRegisterClientPagePayrollRtiDeadline" type="date">
+                                            </label>
+                                        </div>
+                                    </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-p11d" hidden>
+                                        <h4>P11D</h4>
+                                        <p class="detail-meta">P11D submission dates.</p>
+                                        <div class="ch-register-risk-grid">
+                                            <label>Next P11D return due date
+                                                <input id="chRegisterClientPageP11dNextDueDate" type="date">
+                                            </label>
+                                            <label>Latest P11D submitted date
+                                                <input id="chRegisterClientPageP11dLatestSubmittedDate" type="date">
+                                            </label>
+                                        </div>
+                                    </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="timeline">
                                         <h4>Timeline</h4>
                                         <p class="detail-meta">All tracked changes for this client.</p>
@@ -93728,7 +93806,8 @@
                 document.querySelectorAll("#chRegisterClientPage [data-client-page-panel]").forEach((panel) => {
                     const panelKey = String(panel.getAttribute("data-client-page-panel") || "");
                     if (panelKey === "service-dynamic") {
-                        panel.hidden = !next.startsWith("service-");
+                        const hasDedicatedPanel = !!document.querySelector(`#chRegisterClientPage [data-client-page-panel="${next}"]`);
+                        panel.hidden = !next.startsWith("service-") || hasDedicatedPanel;
                         return;
                     }
                     panel.hidden = panelKey !== next;
@@ -93795,6 +93874,16 @@
                 return `service-${String(serviceKey || "").trim()}`;
             }
 
+            function clientRegisterApplyLinkedServiceRules(servicesState = {}) {
+                const next = { ...(servicesState || {}) };
+                const accountsEnabled = !!next.accounts;
+                const ct600Enabled = !!next.ct600Return;
+                const linkedEnabled = accountsEnabled || ct600Enabled;
+                next.accounts = linkedEnabled;
+                next.ct600Return = linkedEnabled;
+                return next;
+            }
+
             function clientRegisterServiceState(profileServices = {}, includeDraftServiceState = false) {
                 const next = {};
                 Object.entries(profileServices || {}).forEach(([key, value]) => {
@@ -93807,7 +93896,7 @@
                         next[key] = !!checkbox.checked;
                     });
                 }
-                return next;
+                return clientRegisterApplyLinkedServiceRules(next);
             }
 
             function clientRegisterClientPageTabDefinitions({ includeDraftServiceState = false } = {}) {
@@ -93823,11 +93912,29 @@
                     { id: "companies-house", label: "Companies House", icon: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg>` },
                     { id: "juk-invoices", label: "JUK Invoices", icon: `<svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg>` },
                 ];
+                const compositeServiceTabs = [
+                    { id: "service-accounts-returns", label: "Accounts & CT Return", keys: ["accounts", "ct600Return"] },
+                    { id: "service-confirmation-statement", label: "Confirmation Statement", keys: ["confirmationStatement"] },
+                    { id: "service-vat", label: "VAT", keys: ["vatReturns"] },
+                    { id: "service-payroll", label: "Payroll", keys: ["payroll"] },
+                    { id: "service-p11d", label: "P11D", keys: ["p11d"] },
+                ];
+                const coveredServiceKeys = new Set(compositeServiceTabs.flatMap((item) => item.keys));
+                const compositeTabs = compositeServiceTabs
+                    .filter((item) => item.keys.some((key) => !!servicesState[String(key || "")]))
+                    .map((item) => ({
+                        id: item.id,
+                        label: item.label,
+                        icon: `<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 9h8"></path><path d="M8 13h5"></path></svg>`,
+                    }));
                 const serviceDefinitions = Array.isArray(profile?.serviceDefinitions) && profile.serviceDefinitions.length
                     ? profile.serviceDefinitions
                     : AUTH_REGISTER_SERVICE_COLUMNS.map((column) => ({ key: column.serviceKey, label: column.label.replace(/^Svc:\s*/, "") }));
                 const dynamicServiceTabs = serviceDefinitions
-                    .filter((service) => !!servicesState[String(service?.key || "")])
+                    .filter((service) => {
+                        const key = String(service?.key || "");
+                        return !!servicesState[key] && !coveredServiceKeys.has(key);
+                    })
                     .map((service) => {
                         const serviceKey = String(service?.key || "").trim();
                         const serviceLabel = String(service?.label || serviceKey || "Service").trim() || "Service";
@@ -93838,7 +93945,7 @@
                             serviceKey,
                         };
                     });
-                return [...baseTabs, ...dynamicServiceTabs];
+                return [...baseTabs, ...compositeTabs, ...dynamicServiceTabs];
             }
 
             function renderClientRegisterClientPageTabs({ includeDraftServiceState = false } = {}) {
@@ -93866,22 +93973,42 @@
                 if (bodyNode) bodyNode.textContent = `${label} is enabled for this client.`;
             }
 
+            function clientRegisterNormaliseVatNumber(value) {
+                return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+            }
+
+            function clientRegisterVatNumberIsValid(value) {
+                const normalised = clientRegisterNormaliseVatNumber(value);
+                if (!normalised) return true;
+                return /^(GB)?\d{9}(\d{3})?$/.test(normalised);
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
                 const toolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
+                const dataTabs = document.getElementById("chRegisterDataTabs");
+                const settingsActions = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-settings-actions");
                 if (!panel || !tableWrap || !toolbar) return;
                 panel.hidden = !pageState.open;
                 tableWrap.hidden = !!pageState.open;
                 toolbar.hidden = !!pageState.open;
+                if (dataTabs) dataTabs.hidden = !!pageState.open;
+                if (settingsActions) settingsActions.hidden = !!pageState.open;
                 if (!pageState.open) return;
                 const row = payload?.row || {};
                 const profile = payload?.profile || {};
-                const services = profile?.services || {};
+                const services = clientRegisterApplyLinkedServiceRules(profile?.services || {});
                 const risk = profile?.riskAssessment || {};
                 const chMeta = profile?.companiesHouse || {};
+                const serviceDetails = chMeta?.serviceDetails || {};
+                const accountsReturns = serviceDetails?.accountsReturns || {};
+                const confirmationStatement = serviceDetails?.confirmationStatement || {};
+                const vatDetails = serviceDetails?.vat || {};
+                const payrollDetails = serviceDetails?.payroll || {};
+                const p11dDetails = serviceDetails?.p11d || {};
                 const juk = profile?.jukInvoices || {};
                 const title = document.getElementById("chRegisterClientPageTitle");
                 const eyebrow = document.getElementById("chRegisterClientPageEyebrow");
@@ -93988,6 +94115,22 @@
                 assign("chRegisterClientPageChLastFiledDate", chMeta.lastFiledDate || "");
                 assign("chRegisterClientPageChAuthStatus", chMeta.authCodeStatus || "");
                 assign("chRegisterClientPageChNotes", chMeta.notes || "");
+                assign("chRegisterClientPageAccountsYearEnd", accountsReturns.companyYearEnd || "");
+                assign("chRegisterClientPageAccountsNextDueDate", accountsReturns.accountsNextDueDate || "");
+                assign("chRegisterClientPageConfirmationStatementDate", confirmationStatement.statementDate || "");
+                assign("chRegisterClientPageConfirmationStatementDueDate", confirmationStatement.statementDueDate || "");
+                assign("chRegisterClientPageVatFrequency", vatDetails.frequency || "");
+                assign("chRegisterClientPageVatPeriodEnd", vatDetails.periodEnd || "");
+                assign("chRegisterClientPageVatNextDueDate", vatDetails.nextReturnDueDate || "");
+                assign("chRegisterClientPageVatMemberState", vatDetails.memberState || "");
+                assign("chRegisterClientPageVatNumber", vatDetails.vatNumber || "");
+                assign("chRegisterClientPageVatAddress", vatDetails.vatAddress || "");
+                assign("chRegisterClientPagePayrollPayeReference", payrollDetails.employersPayeReference || "");
+                assign("chRegisterClientPagePayrollAccountsOfficeReference", payrollDetails.accountsOfficeReference || "");
+                assign("chRegisterClientPagePayrollFirstPayday", payrollDetails.firstPayday || "");
+                assign("chRegisterClientPagePayrollRtiDeadline", payrollDetails.rtiDeadline || "");
+                assign("chRegisterClientPageP11dNextDueDate", p11dDetails.nextReturnDueDate || "");
+                assign("chRegisterClientPageP11dLatestSubmittedDate", p11dDetails.latestSubmittedDate || "");
                 assign("chRegisterClientPageJukBillingCycle", juk.billingCycle || "");
                 assign("chRegisterClientPageJukTemplate", juk.defaultTemplate || "");
                 assign("chRegisterClientPageJukLastInvoiceDate", juk.lastInvoiceDate || "");
@@ -94040,8 +94183,20 @@
                     if (!key) return;
                     services[key] = !!checkbox.checked;
                 });
+                const linkedServices = clientRegisterApplyLinkedServiceRules(services);
+                const vatNumberInput = document.getElementById("chRegisterClientPageVatNumber");
+                const vatMemberStateInput = document.getElementById("chRegisterClientPageVatMemberState");
+                const normalisedVatNumber = clientRegisterNormaliseVatNumber(vatNumberInput?.value || "");
+                if (!clientRegisterVatNumberIsValid(normalisedVatNumber)) {
+                    showToast("Enter a valid VAT number (for example GB123456789).", "error");
+                    if (vatNumberInput?.focus) vatNumberInput.focus();
+                    return;
+                }
+                if (normalisedVatNumber && vatMemberStateInput && !String(vatMemberStateInput.value || "").trim()) {
+                    vatMemberStateInput.value = "GB";
+                }
                 const outbound = {
-                    services,
+                    services: linkedServices,
                     riskAssessment: {
                         level: String(document.getElementById("chRegisterClientPageRiskLevel")?.value || "low"),
                         score: Number(document.getElementById("chRegisterClientPageRiskScore")?.value || 0),
@@ -94054,6 +94209,34 @@
                         lastFiledDate: String(document.getElementById("chRegisterClientPageChLastFiledDate")?.value || ""),
                         authCodeStatus: String(document.getElementById("chRegisterClientPageChAuthStatus")?.value || ""),
                         notes: String(document.getElementById("chRegisterClientPageChNotes")?.value || ""),
+                        serviceDetails: {
+                            accountsReturns: {
+                                companyYearEnd: String(document.getElementById("chRegisterClientPageAccountsYearEnd")?.value || ""),
+                                accountsNextDueDate: String(document.getElementById("chRegisterClientPageAccountsNextDueDate")?.value || ""),
+                            },
+                            confirmationStatement: {
+                                statementDate: String(document.getElementById("chRegisterClientPageConfirmationStatementDate")?.value || ""),
+                                statementDueDate: String(document.getElementById("chRegisterClientPageConfirmationStatementDueDate")?.value || ""),
+                            },
+                            vat: {
+                                frequency: String(document.getElementById("chRegisterClientPageVatFrequency")?.value || ""),
+                                periodEnd: String(document.getElementById("chRegisterClientPageVatPeriodEnd")?.value || ""),
+                                nextReturnDueDate: String(document.getElementById("chRegisterClientPageVatNextDueDate")?.value || ""),
+                                memberState: String(document.getElementById("chRegisterClientPageVatMemberState")?.value || ""),
+                                vatNumber: normalisedVatNumber,
+                                vatAddress: String(document.getElementById("chRegisterClientPageVatAddress")?.value || ""),
+                            },
+                            payroll: {
+                                employersPayeReference: String(document.getElementById("chRegisterClientPagePayrollPayeReference")?.value || ""),
+                                accountsOfficeReference: String(document.getElementById("chRegisterClientPagePayrollAccountsOfficeReference")?.value || ""),
+                                firstPayday: String(document.getElementById("chRegisterClientPagePayrollFirstPayday")?.value || ""),
+                                rtiDeadline: String(document.getElementById("chRegisterClientPagePayrollRtiDeadline")?.value || ""),
+                            },
+                            p11d: {
+                                nextReturnDueDate: String(document.getElementById("chRegisterClientPageP11dNextDueDate")?.value || ""),
+                                latestSubmittedDate: String(document.getElementById("chRegisterClientPageP11dLatestSubmittedDate")?.value || ""),
+                            },
+                        },
                     },
                     jukInvoices: {
                         billingCycle: String(document.getElementById("chRegisterClientPageJukBillingCycle")?.value || ""),
@@ -95045,9 +95228,36 @@
                     setClientRegisterClientPageTab(tab);
                 });
                 document.getElementById("chRegisterClientPageServicesList")?.addEventListener("change", () => {
+                    const accountsToggle = document.querySelector('[data-client-page-service="accounts"]');
+                    const ct600Toggle = document.querySelector('[data-client-page-service="ct600Return"]');
+                    if (accountsToggle && ct600Toggle) {
+                        const activeToggle = document.activeElement;
+                        if (activeToggle === accountsToggle) {
+                            ct600Toggle.checked = !!accountsToggle.checked;
+                        } else if (activeToggle === ct600Toggle) {
+                            accountsToggle.checked = !!ct600Toggle.checked;
+                        } else {
+                            const linkedEnabled = !!accountsToggle.checked || !!ct600Toggle.checked;
+                            accountsToggle.checked = linkedEnabled;
+                            ct600Toggle.checked = linkedEnabled;
+                        }
+                    }
                     renderClientRegisterClientPageTabs({ includeDraftServiceState: true });
                     const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "services");
                     setClientRegisterClientPageTab(activeTab);
+                });
+                document.getElementById("chRegisterClientPageVatNumber")?.addEventListener("blur", (event) => {
+                    const input = event?.target;
+                    const normalised = clientRegisterNormaliseVatNumber(input?.value || "");
+                    if (input) input.value = normalised;
+                    if (!clientRegisterVatNumberIsValid(normalised)) {
+                        showToast("VAT number format looks invalid.", "info");
+                        return;
+                    }
+                    const memberStateInput = document.getElementById("chRegisterClientPageVatMemberState");
+                    if (normalised && memberStateInput && !String(memberStateInput.value || "").trim()) {
+                        memberStateInput.value = "GB";
+                    }
                 });
                 document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
                     const input = event?.target;

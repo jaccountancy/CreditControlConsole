@@ -2256,6 +2256,7 @@ CREATE TABLE IF NOT EXISTS juksib_batch_invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     batch_id UUID NOT NULL REFERENCES juksib_batches(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    register_row_id UUID REFERENCES ch_auth_code_register(id) ON DELETE SET NULL,
     juk_xero_invoice_id TEXT NOT NULL,
     juk_invoice_number TEXT NOT NULL DEFAULT '',
     juk_contact_id TEXT NOT NULL DEFAULT '',
@@ -2291,6 +2292,7 @@ CREATE TABLE IF NOT EXISTS juksib_batch_invoices (
 );
 
 ALTER TABLE juksib_batch_invoices ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE juksib_batch_invoices ADD COLUMN IF NOT EXISTS register_row_id UUID REFERENCES ch_auth_code_register(id) ON DELETE SET NULL;
 ALTER TABLE juksib_batch_invoices ADD COLUMN IF NOT EXISTS juk_contact_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE juksib_batch_invoices ADD COLUMN IF NOT EXISTS juk_contact_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE juksib_batch_invoices ADD COLUMN IF NOT EXISTS amount_due NUMERIC(14, 2) NOT NULL DEFAULT 0;
@@ -2319,6 +2321,9 @@ ON juksib_batch_invoices (batch_id, status, created_at);
 
 CREATE INDEX IF NOT EXISTS juksib_batch_invoices_user_invoice_idx
 ON juksib_batch_invoices (user_id, juk_xero_invoice_id);
+
+CREATE INDEX IF NOT EXISTS juksib_batch_invoices_register_row_idx
+ON juksib_batch_invoices (register_row_id, invoice_date DESC);
 
 CREATE TABLE IF NOT EXISTS juksib_match_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2380,6 +2385,53 @@ ALTER TABLE juksib_sync_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ 
 
 CREATE INDEX IF NOT EXISTS juksib_sync_records_user_created_idx
 ON juksib_sync_records (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ch_auth_register_client_juk_invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    register_row_id UUID NOT NULL REFERENCES ch_auth_code_register(id) ON DELETE CASCADE,
+    batch_id UUID REFERENCES juksib_batches(id) ON DELETE SET NULL,
+    juk_xero_invoice_id TEXT NOT NULL,
+    juk_invoice_number TEXT NOT NULL DEFAULT '',
+    juk_contact_name TEXT NOT NULL DEFAULT '',
+    invoice_date DATE,
+    due_date DATE,
+    total NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    amount_due NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'GBP',
+    payment_status TEXT NOT NULL DEFAULT 'unpaid',
+    source_status TEXT NOT NULL DEFAULT 'imported',
+    sync_status TEXT NOT NULL DEFAULT 'pending',
+    destination_tenant_id TEXT NOT NULL DEFAULT '',
+    destination_tenant_name TEXT NOT NULL DEFAULT '',
+    destination_bill_id TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    source_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (register_row_id, juk_xero_invoice_id)
+);
+
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES juksib_batches(id) ON DELETE SET NULL;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS juk_invoice_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS juk_contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS invoice_date DATE;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS total NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS amount_due NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'GBP';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS source_status TEXT NOT NULL DEFAULT 'imported';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS destination_tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS destination_tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS destination_bill_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS source_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_auth_register_client_juk_invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS ch_auth_register_client_juk_invoices_row_idx
+ON ch_auth_register_client_juk_invoices (register_row_id, invoice_date DESC, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS juksib_vat_lookup_cache (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

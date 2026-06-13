@@ -4979,6 +4979,9 @@ def _normalise_auth_register_services(value: object) -> dict[str, bool]:
         if key not in source:
             continue
         base[key] = bool(source.get(key))
+    linked_accounts_enabled = bool(base.get("accounts")) or bool(base.get("ct600Return"))
+    base["accounts"] = linked_accounts_enabled
+    base["ct600Return"] = linked_accounts_enabled
     return base
 
 
@@ -5002,12 +5005,46 @@ def _normalise_auth_register_risk_assessment(value: object) -> dict:
 
 def _normalise_auth_register_companies_house(value: object) -> dict:
     source = value if isinstance(value, dict) else {}
+    service_details = source.get("serviceDetails") if isinstance(source.get("serviceDetails"), dict) else {}
+    accounts_returns = service_details.get("accountsReturns") if isinstance(service_details.get("accountsReturns"), dict) else {}
+    confirmation_statement = service_details.get("confirmationStatement") if isinstance(service_details.get("confirmationStatement"), dict) else {}
+    vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
+    payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
+    p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
         "lastFiledDate": _coerce_text(source.get("lastFiledDate"), 80),
         "authCodeStatus": _coerce_text(source.get("authCodeStatus"), 80),
         "notes": _coerce_text(source.get("notes"), 3000),
+        "serviceDetails": {
+            "accountsReturns": {
+                "companyYearEnd": _coerce_text(accounts_returns.get("companyYearEnd"), 80),
+                "accountsNextDueDate": _coerce_text(accounts_returns.get("accountsNextDueDate"), 80),
+            },
+            "confirmationStatement": {
+                "statementDate": _coerce_text(confirmation_statement.get("statementDate"), 80),
+                "statementDueDate": _coerce_text(confirmation_statement.get("statementDueDate"), 80),
+            },
+            "vat": {
+                "frequency": _coerce_text(vat.get("frequency"), 80),
+                "periodEnd": _coerce_text(vat.get("periodEnd"), 80),
+                "nextReturnDueDate": _coerce_text(vat.get("nextReturnDueDate"), 80),
+                "memberState": _coerce_text(vat.get("memberState"), 40),
+                "vatNumber": _coerce_text(vat.get("vatNumber"), 120),
+                "vatAddress": _coerce_text(vat.get("vatAddress"), 1000),
+            },
+            "payroll": {
+                "employersPayeReference": _coerce_text(payroll.get("employersPayeReference"), 120),
+                "accountsOfficeReference": _coerce_text(payroll.get("accountsOfficeReference"), 120),
+                "firstPayday": _coerce_text(payroll.get("firstPayday"), 80),
+                "rtiDeadline": _coerce_text(payroll.get("rtiDeadline"), 80),
+            },
+            "p11d": {
+                "nextReturnDueDate": _coerce_text(p11d.get("nextReturnDueDate"), 80),
+                "latestSubmittedDate": _coerce_text(p11d.get("latestSubmittedDate"), 80),
+            },
+        },
     }
 
 
@@ -5365,6 +5402,30 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
     }
     for key, label in ch_fields.items():
         add_change(label, before_ch.get(key), after_ch.get(key))
+    before_service_details = before_ch.get("serviceDetails") if isinstance(before_ch.get("serviceDetails"), dict) else {}
+    after_service_details = after_ch.get("serviceDetails") if isinstance(after_ch.get("serviceDetails"), dict) else {}
+    service_detail_fields = {
+        ("accountsReturns", "companyYearEnd"): "Company year end",
+        ("accountsReturns", "accountsNextDueDate"): "Accounts next due date",
+        ("confirmationStatement", "statementDate"): "Confirmation statement date",
+        ("confirmationStatement", "statementDueDate"): "Confirmation statement due date",
+        ("vat", "frequency"): "VAT frequency",
+        ("vat", "periodEnd"): "VAT period end",
+        ("vat", "nextReturnDueDate"): "VAT next return due date",
+        ("vat", "memberState"): "VAT member state",
+        ("vat", "vatNumber"): "VAT number",
+        ("vat", "vatAddress"): "VAT address",
+        ("payroll", "employersPayeReference"): "Employer PAYE reference",
+        ("payroll", "accountsOfficeReference"): "Accounts Office reference",
+        ("payroll", "firstPayday"): "First payday",
+        ("payroll", "rtiDeadline"): "RTI deadline",
+        ("p11d", "nextReturnDueDate"): "Next P11D due date",
+        ("p11d", "latestSubmittedDate"): "Latest P11D submitted date",
+    }
+    for (section_key, field_key), label in service_detail_fields.items():
+        before_section = before_service_details.get(section_key) if isinstance(before_service_details.get(section_key), dict) else {}
+        after_section = after_service_details.get(section_key) if isinstance(after_service_details.get(section_key), dict) else {}
+        add_change(label, before_section.get(field_key), after_section.get(field_key))
 
     before_juk = before.get("jukInvoices") if isinstance(before.get("jukInvoices"), dict) else {}
     after_juk = after.get("jukInvoices") if isinstance(after.get("jukInvoices"), dict) else {}
@@ -5432,12 +5493,37 @@ def get_auth_register_client_page(row_id: str) -> dict:
             audit_rows = cursor.fetchall() or []
         connection.commit()
 
+    companies_house_profile = _normalise_auth_register_companies_house(row.get("companies_house"))
+    service_details = companies_house_profile.get("serviceDetails") if isinstance(companies_house_profile.get("serviceDetails"), dict) else {}
+    accounts_returns = service_details.get("accountsReturns") if isinstance(service_details.get("accountsReturns"), dict) else {}
+    confirmation_statement = service_details.get("confirmationStatement") if isinstance(service_details.get("confirmationStatement"), dict) else {}
+    vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
+    payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
+    p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
+    if not confirmation_statement.get("statementDueDate"):
+        confirmation_statement["statementDueDate"] = companies_house_profile.get("nextConfirmationDate") or ""
+    if not confirmation_statement.get("statementDate"):
+        confirmation_statement["statementDate"] = companies_house_profile.get("lastFiledDate") or ""
+    if not vat.get("vatNumber"):
+        vat["vatNumber"] = _coerce_text(row.get("vat_number"), 120)
+    if not vat.get("vatAddress"):
+        vat["vatAddress"] = _coerce_text(row.get("client_address"), 1000)
+    if vat.get("vatNumber") and not vat.get("memberState"):
+        vat["memberState"] = "GB"
+    companies_house_profile["serviceDetails"] = {
+        "accountsReturns": accounts_returns,
+        "confirmationStatement": confirmation_statement,
+        "vat": vat,
+        "payroll": payroll,
+        "p11d": p11d,
+    }
+
     return {
         "row": _serialise_auth_register_row(row),
         "profile": {
             "services": _normalise_auth_register_services(row.get("services")),
             "riskAssessment": _normalise_auth_register_risk_assessment(row.get("risk_assessment")),
-            "companiesHouse": _normalise_auth_register_companies_house(row.get("companies_house")),
+            "companiesHouse": companies_house_profile,
             "jukInvoices": _normalise_auth_register_juk_invoices(row.get("juk_invoices")),
             "serviceDefinitions": list(AUTH_REGISTER_SERVICE_DEFINITIONS),
         },

@@ -17754,6 +17754,160 @@ def _juksib_build_vat_register_index(register_rows: list[dict]) -> dict:
     return {"rows": register_rows, "byClientId": by_client_id, "byName": by_name, "byId": by_id}
 
 
+def _juksib_find_register_row_for_invoice(
+    *,
+    contact_name: str,
+    matched_client_id: str,
+    register_index: dict,
+) -> dict | None:
+    register_rows = register_index.get("rows") if isinstance(register_index.get("rows"), list) else []
+    by_client_id = register_index.get("byClientId") if isinstance(register_index.get("byClientId"), dict) else {}
+    by_name = register_index.get("byName") if isinstance(register_index.get("byName"), dict) else {}
+
+    matched_client_id_key = str(matched_client_id or "").strip().lower()
+    if matched_client_id_key and matched_client_id_key in by_client_id:
+        return by_client_id.get(matched_client_id_key)
+
+    contact_name_key = _bm_tasks_normalise_name_key(contact_name)
+    if contact_name_key and contact_name_key in by_name:
+        return by_name.get(contact_name_key)
+
+    if not contact_name or not register_rows:
+        return None
+    scored_rows = sorted(
+        (
+            {
+                "row": row,
+                "score": _juksib_similarity(contact_name, _juksib_register_display_name(row)),
+            }
+            for row in register_rows
+            if _juksib_register_display_name(row)
+        ),
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    if not scored_rows:
+        return None
+    top = scored_rows[0]
+    second = scored_rows[1] if len(scored_rows) > 1 else {"score": Decimal("0")}
+    if top["score"] >= Decimal("0.82") and (top["score"] - second["score"]) >= Decimal("0.12"):
+        return top["row"]
+    return None
+
+
+def _juksib_payment_status_from_amounts(total_value: object, amount_due_value: object) -> str:
+    total = _juksib_decimal(total_value)
+    amount_due = _juksib_decimal(amount_due_value)
+    if amount_due <= Decimal("0.01"):
+        return "paid"
+    if total > Decimal("0.01") and amount_due >= (total - Decimal("0.01")):
+        return "unpaid"
+    return "part_paid"
+
+
+def _juksib_upsert_client_page_invoice_copy(
+    *,
+    register_row_id: str,
+    batch_id: str,
+    row_payload: dict,
+    source_status: str,
+    sync_status: str,
+    destination_tenant_id: str = "",
+    destination_tenant_name: str = "",
+    destination_bill_id: str = "",
+    last_error: str = "",
+) -> None:
+    safe_register_row_id = str(register_row_id or "").strip()
+    if not safe_register_row_id:
+        return
+    source_invoice_id = str(row_payload.get("juk_xero_invoice_id") or row_payload.get("jukXeroInvoiceId") or "").strip()
+    if not source_invoice_id:
+        return
+    invoice_number = str(row_payload.get("juk_invoice_number") or row_payload.get("jukInvoiceNumber") or "").strip()
+    contact_name = str(row_payload.get("juk_contact_name") or row_payload.get("jukContactName") or "").strip()
+    invoice_date = row_payload.get("invoice_date") or row_payload.get("invoiceDate")
+    due_date = row_payload.get("due_date") or row_payload.get("dueDate")
+    total = _juksib_decimal(row_payload.get("total"))
+    amount_due = _juksib_decimal(row_payload.get("amount_due") or row_payload.get("amountDue"))
+    currency = str(row_payload.get("currency") or row_payload.get("currencyCode") or "GBP").strip() or "GBP"
+    payment_status = _juksib_payment_status_from_amounts(total, amount_due)
+    source_payload = row_payload.get("raw_xero_payload") if isinstance(row_payload.get("raw_xero_payload"), dict) else (
+        row_payload.get("rawPayload") if isinstance(row_payload.get("rawPayload"), dict) else {}
+    )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ch_auth_register_client_juk_invoices (
+                    register_row_id,
+                    batch_id,
+                    juk_xero_invoice_id,
+                    juk_invoice_number,
+                    juk_contact_name,
+                    invoice_date,
+                    due_date,
+                    total,
+                    amount_due,
+                    currency,
+                    payment_status,
+                    source_status,
+                    sync_status,
+                    destination_tenant_id,
+                    destination_tenant_name,
+                    destination_bill_id,
+                    last_error,
+                    source_payload,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    %s::uuid, NULLIF(%s, '')::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW(), NOW()
+                )
+                ON CONFLICT (register_row_id, juk_xero_invoice_id)
+                DO UPDATE SET
+                    batch_id = EXCLUDED.batch_id,
+                    juk_invoice_number = EXCLUDED.juk_invoice_number,
+                    juk_contact_name = EXCLUDED.juk_contact_name,
+                    invoice_date = EXCLUDED.invoice_date,
+                    due_date = EXCLUDED.due_date,
+                    total = EXCLUDED.total,
+                    amount_due = EXCLUDED.amount_due,
+                    currency = EXCLUDED.currency,
+                    payment_status = EXCLUDED.payment_status,
+                    source_status = EXCLUDED.source_status,
+                    sync_status = EXCLUDED.sync_status,
+                    destination_tenant_id = EXCLUDED.destination_tenant_id,
+                    destination_tenant_name = EXCLUDED.destination_tenant_name,
+                    destination_bill_id = EXCLUDED.destination_bill_id,
+                    last_error = EXCLUDED.last_error,
+                    source_payload = EXCLUDED.source_payload,
+                    updated_at = NOW()
+                """,
+                (
+                    safe_register_row_id,
+                    str(batch_id or ""),
+                    source_invoice_id,
+                    invoice_number,
+                    contact_name,
+                    invoice_date,
+                    due_date,
+                    total,
+                    amount_due,
+                    currency,
+                    payment_status,
+                    str(source_status or "imported").strip() or "imported",
+                    str(sync_status or "pending").strip() or "pending",
+                    str(destination_tenant_id or "").strip(),
+                    str(destination_tenant_name or "").strip(),
+                    str(destination_bill_id or "").strip(),
+                    str(last_error or "").strip()[:2000],
+                    json.dumps(source_payload, default=_json_default),
+                ),
+            )
+        connection.commit()
+
+
 def _juksib_cached_vat_profile(user_id: str, normalised_client_name: str) -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
