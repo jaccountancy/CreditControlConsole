@@ -29738,25 +29738,10 @@
                                     </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="risk" hidden>
                                         <h4>Risk Assessment</h4>
-                                        <p class="detail-meta">Track risk score, level and rationale.</p>
-                                        <div class="ch-register-risk-grid">
-                                            <label>Risk level
-                                                <select id="chRegisterClientPageRiskLevel">
-                                                    <option value="low">Low</option>
-                                                    <option value="medium">Medium</option>
-                                                    <option value="high">High</option>
-                                                </select>
-                                            </label>
-                                            <label>Risk score (0-100)
-                                                <input id="chRegisterClientPageRiskScore" type="number" min="0" max="100" step="1">
-                                            </label>
-                                            <label>Last reviewed
-                                                <input id="chRegisterClientPageRiskReviewedAt" type="date">
-                                            </label>
+                                        <p class="detail-meta">History for this client, plus a shortcut into the risk assessment workflow.</p>
+                                        <div class="detail-actions" style="margin: 8px 0 12px;">
+                                            <button class="primary-button" type="button" id="chRegisterClientPageRiskWorkflowButton">Start risk assessment workflow</button>
                                         </div>
-                                        <label>Assessment summary
-                                            <textarea id="chRegisterClientPageRiskSummary" rows="4"></textarea>
-                                        </label>
                                         <h5 style="margin: 14px 0 8px;">Assessment history for this client</h5>
                                         <div class="mini-timeline" id="chRegisterClientPageRiskAssessmentsList"></div>
                                     </section>
@@ -93954,6 +93939,55 @@
                 return normalisePracticePackClientMatchName(displayName);
             }
 
+            function openRiskAssessmentWorkflowFromClientRegisterPage() {
+                const payload = clientPagePayload() || {};
+                const row = payload?.row || {};
+                const profile = payload?.profile || {};
+                const clientName = clientRegisterClientDisplayName(row);
+                const matchKey = clientRegisterClientMatchKey(row);
+                if (!clientName || !matchKey) {
+                    showToast("Unable to prefill risk assessment for this client.", "error");
+                    return;
+                }
+                const latest = riskAssessmentLastForMatchKey(matchKey);
+                const serviceDefinitions = Array.isArray(profile?.serviceDefinitions) && profile.serviceDefinitions.length
+                    ? profile.serviceDefinitions
+                    : AUTH_REGISTER_SERVICE_COLUMNS.map((column) => ({ key: column.serviceKey, label: column.label.replace(/^Svc:\s*/, "") }));
+                const servicesState = clientRegisterApplyLinkedServiceRules(profile?.services || {});
+                const enabledServices = serviceDefinitions
+                    .filter((service) => !!servicesState[String(service?.key || "")])
+                    .map((service) => String(service?.label || service?.key || "").trim())
+                    .filter(Boolean);
+                const clientDraft = {
+                    clientName,
+                    matchKey,
+                    lastAssessmentAt: String(latest?.generatedAt || ""),
+                    companyName: clientName,
+                    companyNumber: String(row?.companyNumber || "").trim(),
+                    registeredOfficeAddress: String(row?.clientAddress || "").trim(),
+                    industrySector: clientRegisterClientTypeLabel(row?.clientType || ""),
+                    servicesProvided: enabledServices,
+                    contactEmails: String(row?.clientEmail || "").trim() ? [String(row.clientEmail).trim()] : [],
+                    contactTelephone: String(row?.clientPhone || "").trim(),
+                    contactAddress: String(row?.clientAddress || "").trim(),
+                };
+                riskAssessmentDraftClients = [clientDraft];
+                riskAssessmentSelectedClientKeys = new Set([matchKey]);
+                riskAssessmentLastCsvFileName = "Client Register";
+                riskAssessmentClientSearchQuery = "";
+                riskAssessmentClientFilter = "all";
+                riskAssessmentBuilderOpen = true;
+                riskAssessmentActiveClientKey = "";
+                riskAssessmentSelectedRecordIds.clear();
+                activeView = "risk-assessments";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+                showToast(`Risk workflow prefilled for ${clientName}. Press "Create selected (1)".`, "success");
+            }
+
             function clientRegisterJukInvoicesForRow(row = {}) {
                 const targetNameKey = clientRegisterClientMatchKey(row);
                 if (!targetNameKey) return [];
@@ -94340,6 +94374,7 @@
                 if (!rowId || pageState.saving) return;
                 const payload = clientPagePayload() || {};
                 const profile = payload.profile || {};
+                const currentRisk = profile.riskAssessment || {};
                 const baseServices = profile.services || {};
                 const services = {};
                 Object.keys(baseServices).forEach((key) => { services[key] = !!baseServices[key]; });
@@ -94363,10 +94398,10 @@
                 const outbound = {
                     services: linkedServices,
                     riskAssessment: {
-                        level: String(document.getElementById("chRegisterClientPageRiskLevel")?.value || "low"),
-                        score: Number(document.getElementById("chRegisterClientPageRiskScore")?.value || 0),
-                        lastReviewedAt: String(document.getElementById("chRegisterClientPageRiskReviewedAt")?.value || ""),
-                        summary: String(document.getElementById("chRegisterClientPageRiskSummary")?.value || ""),
+                        level: String(document.getElementById("chRegisterClientPageRiskLevel")?.value || currentRisk.level || "low"),
+                        score: Number(document.getElementById("chRegisterClientPageRiskScore")?.value || currentRisk.score || 0),
+                        lastReviewedAt: String(document.getElementById("chRegisterClientPageRiskReviewedAt")?.value || currentRisk.lastReviewedAt || ""),
+                        summary: String(document.getElementById("chRegisterClientPageRiskSummary")?.value || currentRisk.summary || ""),
                     },
                     companiesHouse: {
                         status: String(document.getElementById("chRegisterClientPageChStatus")?.value || ""),
@@ -95385,6 +95420,7 @@
                 });
                 document.getElementById("chRegisterClientPageSaveButton")?.addEventListener("click", saveClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageAddNoteButton")?.addEventListener("click", addNoteToClientRegisterClientPage);
+                document.getElementById("chRegisterClientPageRiskWorkflowButton")?.addEventListener("click", openRiskAssessmentWorkflowFromClientRegisterPage);
                 document.getElementById("chRegisterClientPageTabs")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-tab]");
                     if (!button) return;
