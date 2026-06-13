@@ -29552,22 +29552,38 @@ def _contact_archive_upsert_register_matches(
                 confidence_value = float(match.get("confidence") or 0)
                 cursor.execute(
                     """
-                    INSERT INTO contact_archive_register_matches (
-                        user_id, tenant_id, contact_id, register_name, match_source, match_reason, confidence, active, matched_at, updated_at
-                    )
-                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
-                    ON CONFLICT (user_id, tenant_id, contact_id)
-                    DO UPDATE SET
-                        register_name = EXCLUDED.register_name,
-                        match_source = EXCLUDED.match_source,
-                        match_reason = EXCLUDED.match_reason,
-                        confidence = EXCLUDED.confidence,
+                    UPDATE contact_archive_register_matches
+                    SET register_name = %s,
+                        match_source = %s,
+                        match_reason = %s,
+                        confidence = %s,
                         active = TRUE,
                         matched_at = NOW(),
                         updated_at = NOW()
+                    WHERE user_id = %s::uuid
+                      AND tenant_id = %s
+                      AND contact_id = %s
                     """,
-                    (user_id, tenant_id, contact_id, register_name, source_value, reason_value, confidence_value),
+                    (
+                        register_name,
+                        source_value,
+                        reason_value,
+                        confidence_value,
+                        user_id,
+                        tenant_id,
+                        contact_id,
+                    ),
                 )
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        """
+                        INSERT INTO contact_archive_register_matches (
+                            user_id, tenant_id, contact_id, register_name, match_source, match_reason, confidence, active, matched_at, updated_at
+                        )
+                        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+                        """,
+                        (user_id, tenant_id, contact_id, register_name, source_value, reason_value, confidence_value),
+                    )
                 applied += 1
         connection.commit()
     return applied
