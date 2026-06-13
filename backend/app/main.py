@@ -264,6 +264,7 @@ from .services import (
     juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
     start_juksib_automation_worker,
     update_juksib_automation_settings,
+    sync_auth_register_client_juk_invoices,
     vault_analyze_files,
     vault_delete_file,
     vault_file_content,
@@ -1865,6 +1866,14 @@ async def api_companies_house_auth_code_register_client_page_add_note(
 ):
     payload = await request.json()
     return {"status": "ok", **add_auth_register_client_note(user, row_id, payload)}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}/client-page/juk-invoices/sync")
+async def api_companies_house_auth_code_register_client_page_sync_juk_invoices(
+    row_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await sync_auth_register_client_juk_invoices(user, row_id)}
 
 
 @app.post("/api/code-breaker/workspace-snapshot")

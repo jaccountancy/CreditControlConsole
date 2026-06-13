@@ -16723,6 +16723,291 @@ async def juksib_get_batch(user: dict, batch_id: str) -> dict:
     return {"batch": _juksib_serialise_batch_row(batch_row, serialised_invoices)}
 
 
+def _juksib_serialise_client_page_invoice_copy(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "registerRowId": str(row.get("register_row_id") or ""),
+        "batchId": str(row.get("batch_id") or ""),
+        "jukXeroInvoiceId": str(row.get("juk_xero_invoice_id") or ""),
+        "invoiceNumber": str(row.get("juk_invoice_number") or ""),
+        "contactName": str(row.get("juk_contact_name") or ""),
+        "invoiceDate": _iso(row.get("invoice_date")) or "",
+        "dueDate": _iso(row.get("due_date")) or "",
+        "total": float(_juksib_decimal(row.get("total"))),
+        "amountDue": float(_juksib_decimal(row.get("amount_due"))),
+        "currency": str(row.get("currency") or "GBP"),
+        "paymentStatus": str(row.get("payment_status") or "unpaid"),
+        "sourceStatus": str(row.get("source_status") or "imported"),
+        "syncStatus": str(row.get("sync_status") or "pending"),
+        "destinationTenantId": str(row.get("destination_tenant_id") or ""),
+        "destinationTenantName": str(row.get("destination_tenant_name") or ""),
+        "destinationBillId": str(row.get("destination_bill_id") or ""),
+        "lastError": str(row.get("last_error") or ""),
+        "updatedAt": _iso(row.get("updated_at")) or "",
+    }
+
+
+async def sync_auth_register_client_juk_invoices(user: dict, row_id: str) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    try:
+        UUID(safe_row_id)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is invalid.") from exc
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       client_id,
+                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name
+                FROM ch_auth_code_register
+                WHERE id = %s::uuid
+                LIMIT 1
+                """,
+                (safe_row_id,),
+            )
+            register_row = cursor.fetchone() or {}
+        connection.commit()
+    if not register_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+
+    target_client_id = str(register_row.get("client_id") or "").strip()
+    target_client_id_key = target_client_id.lower()
+    target_name_key = _juksib_normalise_name(str(register_row.get("display_name") or ""))
+    target_name_keys = {value for value in [target_name_key] if value}
+
+    rules: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM juksib_match_rules
+                WHERE user_id = %s
+                  AND active = TRUE
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (user["id"],),
+            )
+            rules = cursor.fetchall() or []
+        connection.commit()
+
+    mappings_by_tenant: dict[str, dict] = {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM xero_tenant_company_mappings")
+            for mapping in (cursor.fetchall() or []):
+                tenant_key = str(mapping.get("tenant_id") or "").strip()
+                if tenant_key:
+                    mappings_by_tenant[tenant_key] = mapping
+        connection.commit()
+
+    try:
+        _, sub_connections = _juksib_master_and_sub_connections(user)
+    except Exception:
+        sub_connections = []
+    candidates = []
+    for row in sub_connections:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
+            continue
+        tenant_name = str(row.get("tenant_name") or "").strip()
+        mapping = mappings_by_tenant.get(tenant_id, {})
+        company_name = str(mapping.get("company_name") or "").strip()
+        client_name = str(mapping.get("client_name") or "").strip()
+        aliases = [alias for alias in [tenant_name, company_name, client_name] if alias]
+        active_state = str(row.get("status") or "").strip().lower() not in {"disconnected", "inactive"}
+        candidates.append(
+            {
+                "tenant_id": tenant_id,
+                "tenant_name": tenant_name,
+                "client_id": str(row.get("client_id") or tenant_id).strip() or tenant_id,
+                "aliases": aliases,
+                "active": active_state,
+            }
+        )
+
+    register_index = _juksib_build_vat_register_index(_juksib_fetch_client_register_rows_for_vat())
+    match_cache: dict[str, dict] = {}
+    openai_match_remaining = min(JUKSIB_OPENAI_MATCH_LIMIT * 2, 80)
+    openai_deadline_monotonic = time.monotonic() + max(JUKSIB_OPENAI_MATCH_BUDGET_SECONDS * 2, 45)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM ch_auth_register_client_juk_invoices
+                WHERE register_row_id = %s::uuid
+                """,
+                (safe_row_id,),
+            )
+            cursor.execute(
+                """
+                SELECT i.*
+                FROM juksib_batch_invoices i
+                JOIN juksib_batches b
+                  ON b.id = i.batch_id
+                WHERE i.user_id = %s
+                  AND b.user_id = %s
+                ORDER BY i.invoice_date DESC NULLS LAST, i.created_at DESC
+                LIMIT 6000
+                """,
+                (user["id"], user["id"]),
+            )
+            invoice_rows = cursor.fetchall() or []
+        connection.commit()
+
+    relinked_count = 0
+    rematched_count = 0
+    for row in invoice_rows:
+        row_id_value = str(row.get("id") or "").strip()
+        if not row_id_value:
+            continue
+        contact_name = str(row.get("juk_contact_name") or "").strip()
+        cache_key = _juksib_normalise_name(contact_name) or contact_name.lower()
+        matched_client_id = str(row.get("matched_client_id") or "").strip()
+        matched_tenant_id = str(row.get("matched_xero_tenant_id") or "").strip()
+        matched_tenant_name = str(row.get("matched_xero_tenant_name") or "").strip()
+        match_source = str(row.get("match_source") or "").strip()
+        match_confidence = _juksib_decimal(row.get("match_confidence"))
+        match_reason = str(row.get("match_reason") or "").strip()
+        alternatives = row.get("alternatives") if isinstance(row.get("alternatives"), list) else []
+        status_value = str(row.get("status") or "imported").strip() or "imported"
+        register_row_id = str(row.get("register_row_id") or "").strip()
+
+        requires_match = not matched_client_id or not register_row_id
+        if requires_match and contact_name:
+            if cache_key and cache_key in match_cache:
+                match_row = dict(match_cache[cache_key])
+            else:
+                match_row = await _juksib_match_invoice(
+                    user=user,
+                    contact_name=contact_name,
+                    rules=rules,
+                    candidates=candidates,
+                    allow_openai=(openai_match_remaining > 0 and time.monotonic() < openai_deadline_monotonic),
+                )
+                if cache_key:
+                    match_cache[cache_key] = dict(match_row)
+                if str(match_row.get("match_source") or "") == "openai" and openai_match_remaining > 0:
+                    openai_match_remaining -= 1
+            matched_client_id = str(match_row.get("matched_client_id") or "").strip()
+            matched_tenant_id = str(match_row.get("matched_xero_tenant_id") or "").strip()
+            matched_tenant_name = str(match_row.get("matched_xero_tenant_name") or "").strip()
+            match_source = str(match_row.get("match_source") or "heuristic").strip()
+            match_confidence = _juksib_decimal(match_row.get("match_confidence"))
+            match_reason = str(match_row.get("match_reason") or "").strip()
+            alternatives = match_row.get("alternatives") if isinstance(match_row.get("alternatives"), list) else []
+            if status_value in {"imported", "unmatched", "needs_review", "approved"}:
+                status_value = str(match_row.get("status") or status_value).strip() or status_value
+            rematched_count += 1
+
+        register_match_row = _juksib_find_register_row_for_invoice(
+            matched_client_id=matched_client_id,
+            client_name=contact_name,
+            register_index=register_index,
+        )
+        resolved_register_row_id = str(register_match_row.get("id") or "").strip() if isinstance(register_match_row, dict) else ""
+        if not resolved_register_row_id and target_client_id_key and matched_client_id.lower() == target_client_id_key:
+            resolved_register_row_id = safe_row_id
+        if not resolved_register_row_id:
+            contact_name_key = _juksib_normalise_name(contact_name)
+            if contact_name_key and contact_name_key in target_name_keys:
+                resolved_register_row_id = safe_row_id
+
+        row_changed = (
+            resolved_register_row_id != register_row_id
+            or matched_client_id != str(row.get("matched_client_id") or "").strip()
+            or matched_tenant_id != str(row.get("matched_xero_tenant_id") or "").strip()
+            or matched_tenant_name != str(row.get("matched_xero_tenant_name") or "").strip()
+            or match_source != str(row.get("match_source") or "").strip()
+            or match_confidence != _juksib_decimal(row.get("match_confidence"))
+            or match_reason != str(row.get("match_reason") or "").strip()
+            or status_value != str(row.get("status") or "").strip()
+        )
+        if row_changed:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE juksib_batch_invoices
+                        SET register_row_id = NULLIF(%s, '')::uuid,
+                            matched_client_id = %s,
+                            matched_xero_tenant_id = %s,
+                            matched_xero_tenant_name = %s,
+                            match_source = %s,
+                            match_confidence = %s,
+                            match_reason = %s,
+                            alternatives = %s::jsonb,
+                            status = %s,
+                            updated_at = NOW()
+                        WHERE id = %s::uuid
+                        """,
+                        (
+                            resolved_register_row_id,
+                            matched_client_id,
+                            matched_tenant_id,
+                            matched_tenant_name,
+                            match_source,
+                            match_confidence,
+                            match_reason,
+                            json.dumps(alternatives, default=_json_default),
+                            status_value,
+                            row_id_value,
+                        ),
+                    )
+                connection.commit()
+
+        if resolved_register_row_id != safe_row_id:
+            continue
+        relinked_count += 1
+        row_payload = dict(row)
+        row_payload["matched_client_id"] = matched_client_id
+        row_payload["matched_xero_tenant_id"] = matched_tenant_id
+        row_payload["matched_xero_tenant_name"] = matched_tenant_name
+        row_payload["status"] = status_value
+        sync_state = "published" if status_value == "published" else ("failed" if status_value in {"failed", "duplicate"} else "pending")
+        _juksib_upsert_client_page_invoice_copy(
+            register_row_id=safe_row_id,
+            batch_id=str(row.get("batch_id") or ""),
+            row_payload=row_payload,
+            source_status=status_value,
+            sync_status=sync_state,
+            destination_tenant_id=matched_tenant_id,
+            destination_tenant_name=matched_tenant_name,
+            destination_bill_id=str(row.get("published_bill_id") or "").strip(),
+            last_error=str(row.get("error_message") or "").strip(),
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ch_auth_register_client_juk_invoices
+                WHERE register_row_id = %s::uuid
+                ORDER BY invoice_date DESC NULLS LAST, updated_at DESC
+                LIMIT 1500
+                """,
+                (safe_row_id,),
+            )
+            linked_rows = cursor.fetchall() or []
+        connection.commit()
+
+    return {
+        "rowId": safe_row_id,
+        "summary": {
+            "relinkedCount": relinked_count,
+            "rematchedCount": rematched_count,
+            "linkedInvoiceCount": len(linked_rows),
+        },
+        "invoices": [_juksib_serialise_client_page_invoice_copy(item) for item in linked_rows],
+    }
+
+
 async def juksib_list_batches(user: dict, limit: int = 30) -> dict:
     batch_rows: list[dict] = []
     rules: list[dict] = []
