@@ -29392,13 +29392,14 @@
                                         </div>
                                     </article>
                                     <div class="page-pills ch-register-client-page-tabs" id="chRegisterClientPageTabs">
-                                        <button class="page-pill is-active" type="button" data-client-page-tab="timeline">Timeline</button>
+                                        <button class="page-pill is-active" type="button" data-client-page-tab="services">Services Required</button>
+                                        <button class="page-pill" type="button" data-client-page-tab="timeline">Timeline</button>
                                         <button class="page-pill" type="button" data-client-page-tab="notes">Notes</button>
                                         <button class="page-pill" type="button" data-client-page-tab="risk">Risk Assessment</button>
                                         <button class="page-pill" type="button" data-client-page-tab="companies-house">Companies House</button>
                                         <button class="page-pill" type="button" data-client-page-tab="juk-invoices">JUK Invoices</button>
                                     </div>
-                                    <section class="ch-settings-card ch-register-service-card">
+                                    <section class="ch-settings-card ch-register-service-card ch-register-client-page-panel" data-client-page-panel="services">
                                         <div class="ch-settings-head">
                                             <div>
                                                 <p class="eyebrow">Services Required</p>
@@ -38526,12 +38527,28 @@
                 return xeroWorkspaceLabel(tenantRow?.tenantName, selectedTenantId, "Xero tenant");
             }
 
+            function activeClientRegisterProfileTitle() {
+                if (activeView !== "client-auth-register") return "";
+                const pageState = companiesHouseSettings?.authRegisterClientPage || {};
+                if (!pageState.open) return "";
+                const row = pageState.payload?.row || null;
+                if (!row || typeof row !== "object") return "";
+                const clientId = String(row.clientId || "").trim();
+                const name = String(row.displayName || "").trim();
+                if (clientId && name) return `${clientId} · ${name}`;
+                if (name) return name;
+                if (clientId) return clientId;
+                return "";
+            }
+
             function activeTopbarTitle(topbarClient = null) {
                 if (activeView === "insights") return insightsTopbarTitle();
                 if (activeView === "client") {
                     const client = topbarClient || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                     return client?.name || "Client";
                 }
+                const clientRegisterProfileTitle = activeClientRegisterProfileTitle();
+                if (clientRegisterProfileTitle) return clientRegisterProfileTitle;
                 const identityVerificationClientLabel = activeIdentityVerificationClientLabel();
                 if (identityVerificationClientLabel) return identityVerificationClientLabel;
                 if (activeView === "ignition" && ignitionRenewalsWorkspaceStage === "pricing") {
@@ -92579,7 +92596,7 @@
                     loading: false,
                     saving: false,
                     rowId: "",
-                    activeTab: "timeline",
+                    activeTab: "services",
                     payload: null,
                 },
             };
@@ -93502,9 +93519,9 @@
             }
 
             function setClientRegisterClientPageTab(tab) {
-                const next = ["timeline", "notes", "risk", "companies-house", "juk-invoices"].includes(String(tab || ""))
+                const next = ["services", "timeline", "notes", "risk", "companies-house", "juk-invoices"].includes(String(tab || ""))
                     ? String(tab)
-                    : "timeline";
+                    : "services";
                 companiesHouseSettings.authRegisterClientPage = {
                     ...companiesHouseSettings.authRegisterClientPage,
                     activeTab: next,
@@ -93526,7 +93543,7 @@
                     saving: false,
                     rowId: "",
                     payload: null,
-                    activeTab: "timeline",
+                    activeTab: "services",
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -93534,7 +93551,8 @@
                 if (panel) panel.hidden = true;
                 if (tableWrap) tableWrap.hidden = false;
                 if (toolbar) toolbar.hidden = false;
-                setClientRegisterClientPageTab("timeline");
+                setClientRegisterClientPageTab("services");
+                renderTopbarIdentity();
             }
 
             function clientPagePayload() {
@@ -93628,7 +93646,8 @@
                 assign("chRegisterClientPageJukLastInvoiceDate", juk.lastInvoiceDate || "");
                 assign("chRegisterClientPageJukOutstandingAmount", juk.outstandingAmount || "");
                 assign("chRegisterClientPageJukNotes", juk.notes || "");
-                setClientRegisterClientPageTab(pageState.activeTab || "timeline");
+                setClientRegisterClientPageTab(pageState.activeTab || "services");
+                renderTopbarIdentity();
             }
 
             async function openClientRegisterClientPage(rowId) {
