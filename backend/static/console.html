@@ -93163,6 +93163,7 @@
             const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v1";
             const AUTH_REGISTER_PAGE_SIZE = 25;
             const AUTH_REGISTER_LOAD_MORE_STEP = 300;
+            const AUTH_REGISTER_HIDE_SVG_ROWS_BY_DEFAULT = true;
             const AUTH_REGISTER_SERVICE_COLUMNS = [
                 { key: "service_accounts", label: "Svc: Accounts", serviceKey: "accounts" },
                 { key: "service_ct600Return", label: "Svc: CT600", serviceKey: "ct600Return" },
@@ -93303,12 +93304,39 @@
                 return String(row?.[key] || "").toLowerCase();
             }
 
+            function authRegisterRowContainsSvgMarkup(row) {
+                if (!row || typeof row !== "object") return false;
+                const directFields = [
+                    row.displayName,
+                    row.clientType,
+                    row.clientId,
+                    row.companyNumber,
+                    row.authCodeHint,
+                    row.clientManager,
+                    row.vatNumber,
+                    row.clientEmail,
+                    row.clientPhone,
+                    row.clientAddress,
+                    row.sourceFilename,
+                    row.uploadedAt,
+                ];
+                const serviceValues = row.services && typeof row.services === "object"
+                    ? Object.values(row.services)
+                    : [];
+                const allValues = [...directFields, ...serviceValues];
+                return allValues.some((value) => {
+                    const text = String(value || "").toLowerCase();
+                    return text.includes("<svg") || text.includes("</svg>") || text.includes("data:image/svg");
+                });
+            }
+
             function filteredAuthRegisterRows(rows) {
                 const tableState = companiesHouseSettings.authRegisterTableState || {};
                 const search = String(tableState.searchTerm || "").trim().toLowerCase();
                 const manager = String(tableState.manager || "").trim().toLowerCase();
                 const sourceFile = String(tableState.sourceFile || "").trim().toLowerCase();
                 const list = (Array.isArray(rows) ? rows : []).filter((row) => {
+                    if (AUTH_REGISTER_HIDE_SVG_ROWS_BY_DEFAULT && authRegisterRowContainsSvgMarkup(row)) return false;
                     if (manager && String(row?.clientManager || "").trim().toLowerCase() !== manager) return false;
                     if (sourceFile && String(row?.sourceFilename || "").trim().toLowerCase() !== sourceFile) return false;
                     if (!search) return true;
@@ -93431,7 +93459,7 @@
                     body.innerHTML = pageRows.map((row) => {
                         const rowId = String(row?.id || "");
                         const isSelected = rowId && rowId === String(companiesHouseSettings.authRegisterSelectedRowId || "");
-                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
+                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: break-word; word-break: normal; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
                     }).join("");
                 }
                 if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
