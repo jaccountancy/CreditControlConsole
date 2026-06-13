@@ -79128,7 +79128,13 @@
                     queueBody.innerHTML = rows.map((row) => {
                         const status = vatEffectiveStatus(row);
                         const workspace = xeroWorkspaceLabel(row.tenantName || "", row.tenantId || "", "Xero workspace");
-                        const workspaceMeta = [workspace, row.xeroContactId || ""].filter(Boolean).join(" · ");
+                        const clientNameKey = String(row.clientName || "").trim().toLowerCase();
+                        const workspaceKey = String(workspace || "").trim().toLowerCase();
+                        const showWorkspaceMetaName = workspaceKey && workspaceKey !== clientNameKey;
+                        const workspaceMeta = [
+                            showWorkspaceMetaName ? workspace : "",
+                            row.xeroContactId || ""
+                        ].filter(Boolean).join(" · ");
                         const actionLabel = row.lockedByTaskClosure ? "View workspace" : "Open return";
                         return `
                             <tr>
