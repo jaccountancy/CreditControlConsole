@@ -93168,7 +93168,7 @@
                 showToast("Raw XML exported.", "success");
             }
 
-            const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v1";
+            const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v2";
             const AUTH_REGISTER_PAGE_SIZE = 25;
             const AUTH_REGISTER_LOAD_MORE_STEP = 300;
             const AUTH_REGISTER_HIDE_SVG_ROWS_BY_DEFAULT = true;
@@ -93204,11 +93204,16 @@
                 { key: "uploadedAt", label: "Uploaded" },
                 ...AUTH_REGISTER_SERVICE_COLUMNS,
             ];
+            const AUTH_REGISTER_DEFAULT_HIDDEN_COLUMNS = [
+                "sourceFilename",
+                "uploadedAt",
+                ...AUTH_REGISTER_SERVICE_COLUMNS.map((column) => column.key),
+            ];
 
             function authRegisterDefaultColumnState() {
                 return {
                     order: AUTH_REGISTER_COLUMNS.map((column) => column.key),
-                    hidden: [],
+                    hidden: [...AUTH_REGISTER_DEFAULT_HIDDEN_COLUMNS],
                 };
             }
 
@@ -93467,7 +93472,7 @@
                     body.innerHTML = pageRows.map((row) => {
                         const rowId = String(row?.id || "");
                         const isSelected = rowId && rowId === String(companiesHouseSettings.authRegisterSelectedRowId || "");
-                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: break-word; word-break: normal; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
+                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
                     }).join("");
                 }
                 if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
