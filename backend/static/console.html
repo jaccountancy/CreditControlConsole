@@ -29599,6 +29599,11 @@
                                         </div>
                                         <div class="ch-register-services-grid" id="chRegisterClientPageServicesList"></div>
                                     </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-dynamic" hidden>
+                                        <h4 id="chRegisterClientPageDynamicServiceTitle">Service</h4>
+                                        <p class="detail-meta" id="chRegisterClientPageDynamicServiceMeta">Service details.</p>
+                                        <p id="chRegisterClientPageDynamicServiceBody">This service is enabled for this client.</p>
+                                    </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="timeline">
                                         <h4>Timeline</h4>
                                         <p class="detail-meta">All tracked changes for this client.</p>
@@ -93704,9 +93709,10 @@
             }
 
             function setClientRegisterClientPageTab(tab) {
-                const next = ["services", "timeline", "notes", "risk", "companies-house", "juk-invoices"].includes(String(tab || ""))
-                    ? String(tab)
-                    : "services";
+                const availableTabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState: true });
+                const availableIds = new Set(availableTabs.map((item) => String(item?.id || "")));
+                const requested = String(tab || "").trim();
+                const next = availableIds.has(requested) ? requested : "services";
                 companiesHouseSettings.authRegisterClientPage = {
                     ...companiesHouseSettings.authRegisterClientPage,
                     activeTab: next,
@@ -93716,8 +93722,14 @@
                     button.classList.toggle("is-active", isActive);
                 });
                 document.querySelectorAll("#chRegisterClientPage [data-client-page-panel]").forEach((panel) => {
-                    panel.hidden = String(panel.getAttribute("data-client-page-panel") || "") !== next;
+                    const panelKey = String(panel.getAttribute("data-client-page-panel") || "");
+                    if (panelKey === "service-dynamic") {
+                        panel.hidden = !next.startsWith("service-");
+                        return;
+                    }
+                    panel.hidden = panelKey !== next;
                 });
+                renderClientRegisterDynamicServicePanel(next, availableTabs);
             }
 
             function closeClientRegisterClientPage() {
@@ -93775,6 +93787,81 @@
                 return fallbackId || "Client profile";
             }
 
+            function clientRegisterServiceTabId(serviceKey) {
+                return `service-${String(serviceKey || "").trim()}`;
+            }
+
+            function clientRegisterServiceState(profileServices = {}, includeDraftServiceState = false) {
+                const next = {};
+                Object.entries(profileServices || {}).forEach(([key, value]) => {
+                    next[String(key || "")] = !!value;
+                });
+                if (includeDraftServiceState) {
+                    document.querySelectorAll("[data-client-page-service]").forEach((checkbox) => {
+                        const key = String(checkbox.getAttribute("data-client-page-service") || "").trim();
+                        if (!key) return;
+                        next[key] = !!checkbox.checked;
+                    });
+                }
+                return next;
+            }
+
+            function clientRegisterClientPageTabDefinitions({ includeDraftServiceState = false } = {}) {
+                const payload = clientPagePayload() || {};
+                const profile = payload.profile || {};
+                const profileServices = profile?.services || {};
+                const servicesState = clientRegisterServiceState(profileServices, includeDraftServiceState);
+                const baseTabs = [
+                    { id: "services", label: "Services Required", icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>` },
+                    { id: "timeline", label: "Timeline", icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>` },
+                    { id: "notes", label: "Notes", icon: `<svg viewBox="0 0 24 24"><path d="M5 4h14v12H8l-3 3V4z"></path><path d="M9 8h6"></path><path d="M9 11h6"></path></svg>` },
+                    { id: "risk", label: "Risk Assessment", icon: `<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.6-7 10-3.8-1.4-7-5-7-10V6l7-3z"></path><path d="M9 12h6"></path></svg>` },
+                    { id: "companies-house", label: "Companies House", icon: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg>` },
+                    { id: "juk-invoices", label: "JUK Invoices", icon: `<svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg>` },
+                ];
+                const serviceDefinitions = Array.isArray(profile?.serviceDefinitions) && profile.serviceDefinitions.length
+                    ? profile.serviceDefinitions
+                    : AUTH_REGISTER_SERVICE_COLUMNS.map((column) => ({ key: column.serviceKey, label: column.label.replace(/^Svc:\s*/, "") }));
+                const dynamicServiceTabs = serviceDefinitions
+                    .filter((service) => !!servicesState[String(service?.key || "")])
+                    .map((service) => {
+                        const serviceKey = String(service?.key || "").trim();
+                        const serviceLabel = String(service?.label || serviceKey || "Service").trim() || "Service";
+                        return {
+                            id: clientRegisterServiceTabId(serviceKey),
+                            label: serviceLabel,
+                            icon: `<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 9h8"></path><path d="M8 13h5"></path></svg>`,
+                            serviceKey,
+                        };
+                    });
+                return [...baseTabs, ...dynamicServiceTabs];
+            }
+
+            function renderClientRegisterClientPageTabs({ includeDraftServiceState = false } = {}) {
+                const tabsWrap = document.getElementById("chRegisterClientPageTabs");
+                if (!tabsWrap) return;
+                const tabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState });
+                const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "services");
+                tabsWrap.innerHTML = tabs.map((tab) => `
+                    <button class="page-pill ${tab.id === activeTab ? "is-active" : ""}" type="button" data-client-page-tab="${escapeHTML(tab.id)}">
+                        <span class="tab-icon" aria-hidden="true">${tab.icon || ""}</span>
+                        <span>${escapeHTML(tab.label || "Tab")}</span>
+                    </button>
+                `).join("");
+            }
+
+            function renderClientRegisterDynamicServicePanel(activeTab, tabs) {
+                if (!String(activeTab || "").startsWith("service-")) return;
+                const tab = (Array.isArray(tabs) ? tabs : []).find((item) => String(item?.id || "") === String(activeTab || ""));
+                const titleNode = document.getElementById("chRegisterClientPageDynamicServiceTitle");
+                const metaNode = document.getElementById("chRegisterClientPageDynamicServiceMeta");
+                const bodyNode = document.getElementById("chRegisterClientPageDynamicServiceBody");
+                const label = String(tab?.label || "Service").trim() || "Service";
+                if (titleNode) titleNode.textContent = label;
+                if (metaNode) metaNode.textContent = "Enabled service";
+                if (bodyNode) bodyNode.textContent = `${label} is enabled for this client.`;
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -93822,6 +93909,7 @@
                         </div>
                     `).join("");
                 }
+                renderClientRegisterClientPageTabs();
                 const timelineWrap = document.getElementById("chRegisterClientPageTimeline");
                 if (timelineWrap) {
                     const rows = Array.isArray(payload?.timeline) ? payload.timeline : [];
@@ -94945,11 +95033,17 @@
                 });
                 document.getElementById("chRegisterClientPageSaveButton")?.addEventListener("click", saveClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageAddNoteButton")?.addEventListener("click", addNoteToClientRegisterClientPage);
-                document.querySelectorAll("#chRegisterClientPageTabs [data-client-page-tab]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        const tab = String(button.getAttribute("data-client-page-tab") || "");
-                        setClientRegisterClientPageTab(tab);
-                    });
+                document.getElementById("chRegisterClientPageTabs")?.addEventListener("click", (event) => {
+                    const button = event.target?.closest?.("[data-client-page-tab]");
+                    if (!button) return;
+                    const tab = String(button.getAttribute("data-client-page-tab") || "");
+                    if (!tab) return;
+                    setClientRegisterClientPageTab(tab);
+                });
+                document.getElementById("chRegisterClientPageServicesList")?.addEventListener("change", () => {
+                    renderClientRegisterClientPageTabs({ includeDraftServiceState: true });
+                    const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "services");
+                    setClientRegisterClientPageTab(activeTab);
                 });
                 document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
                     const input = event?.target;
