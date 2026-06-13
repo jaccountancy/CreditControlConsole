@@ -94138,15 +94138,6 @@
                     panel.hidden = panelKey !== next;
                 });
                 renderClientRegisterDynamicServicePanel(next, availableTabs);
-                if (next === "juk-invoices") {
-                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
-                    const activeRowId = String(pageState.rowId || "").trim();
-                    const syncedForRowId = String(pageState.jukInvoicesSyncedForRow || "").trim();
-                    const alreadySynced = !!activeRowId && activeRowId === syncedForRowId;
-                    if (!alreadySynced && !pageState.jukSyncing) {
-                        syncClientRegisterJukInvoicesForActiveRow();
-                    }
-                }
             }
 
             function closeClientRegisterClientPage() {
@@ -94158,9 +94149,6 @@
                     rowId: "",
                     payload: null,
                     activeTab: "client-info",
-                    jukInvoicesRows: [],
-                    jukSyncing: false,
-                    jukInvoicesSyncedForRow: "",
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -94175,42 +94163,6 @@
             function clientPagePayload() {
                 const payload = companiesHouseSettings.authRegisterClientPage?.payload;
                 return (payload && typeof payload === "object") ? payload : null;
-            }
-
-            async function syncClientRegisterJukInvoicesForActiveRow(options = {}) {
-                const pageState = companiesHouseSettings.authRegisterClientPage || {};
-                const rowId = String(pageState.rowId || "").trim();
-                if (!rowId || pageState.jukSyncing) return;
-                const silent = !!options?.silent;
-                companiesHouseSettings.authRegisterClientPage = {
-                    ...companiesHouseSettings.authRegisterClientPage,
-                    jukSyncing: true,
-                };
-                renderClientRegisterClientPage();
-                try {
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page/juk-invoices/sync`, {
-                        method: "POST",
-                    });
-                    const syncedRows = Array.isArray(payload?.invoices) ? payload.invoices : [];
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        jukSyncing: false,
-                        jukInvoicesRows: syncedRows,
-                        jukInvoicesSyncedForRow: rowId,
-                    };
-                    renderClientRegisterClientPage();
-                    if (!silent) {
-                        const linkedCount = Number(payload?.summary?.linkedInvoiceCount || syncedRows.length || 0);
-                        showToast(`JUK invoices synced (${linkedCount.toLocaleString("en-GB")} linked).`, "success");
-                    }
-                } catch (error) {
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        jukSyncing: false,
-                    };
-                    renderClientRegisterClientPage();
-                    if (!silent) showToast(error?.message || "Unable to sync JUK invoices for this client.", "error");
-                }
             }
 
             function clientRegisterClientTypeLabel(value) {
@@ -94632,22 +94584,17 @@
                 assign("chRegisterClientPageJukNotes", juk.notes || "");
                 const jukInvoicesBody = document.getElementById("chRegisterClientPageJukInvoicesBody");
                 if (jukInvoicesBody) {
-                    const syncedInvoices = Array.isArray(pageState?.jukInvoicesRows) ? pageState.jukInvoicesRows : [];
-                    const fallbackInvoices = clientRegisterJukInvoicesForRow(row);
-                    const clientInvoices = syncedInvoices.length ? syncedInvoices : fallbackInvoices;
-                    const isSyncing = !!pageState?.jukSyncing;
-                    jukInvoicesBody.innerHTML = isSyncing
-                        ? `<tr><td colspan="7" class="ch-empty-state">Syncing all JUK invoices for this client…</td></tr>`
-                        : clientInvoices.length
-                        ? clientInvoices.slice(0, 500).map((invoice) => `
+                    const clientInvoices = clientRegisterJukInvoicesForRow(row);
+                    jukInvoicesBody.innerHTML = clientInvoices.length
+                        ? clientInvoices.slice(0, 300).map((invoice) => `
                             <tr>
-                                <td>${escapeHTML(invoice.invoiceNumber || invoice.jukInvoiceNumber || invoice.id || "—")}</td>
+                                <td>${escapeHTML(invoice.invoiceNumber || invoice.id || "—")}</td>
                                 <td>${escapeHTML(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : "—")}</td>
                                 <td>${escapeHTML(invoice.dueDate ? formatDate(invoice.dueDate) : "—")}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(invoice.amountDue ?? invoice.amount_due || 0))}</td>
-                                <td>${escapeHTML(invoice.paymentStatus || invoice.payment_status || "—")}</td>
-                                <td>${escapeHTML(invoice.sourceStatus || invoice.status || "imported")}</td>
+                                <td>${escapeHTML(formatCurrency(invoice.amountDue || 0))}</td>
+                                <td>${escapeHTML(invoice.paymentStatus || "—")}</td>
+                                <td>${escapeHTML(invoice.status || "imported")}</td>
                             </tr>
                         `).join("")
                         : `<tr><td colspan="7" class="ch-empty-state">No JUK invoices linked to this client yet.</td></tr>`;
@@ -94666,9 +94613,6 @@
                     rowId: safeRowId,
                     activeTab: "client-info",
                     payload: null,
-                    jukInvoicesRows: [],
-                    jukSyncing: false,
-                    jukInvoicesSyncedForRow: "",
                 };
                 renderClientRegisterClientPage();
                 try {
