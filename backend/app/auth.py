@@ -19,19 +19,6 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "email",
     "offline_access",
 )
-DEFAULT_XERO_ACCOUNTING_SCOPES = (
-    "accounting.invoices",
-    "accounting.payments",
-    "accounting.banktransactions",
-    "accounting.manualjournals",
-    "accounting.journals.read",
-    "accounting.contacts",
-    "accounting.settings",
-    "accounting.attachments",
-    "accounting.reports.balancesheet.read",
-    "accounting.reports.profitandloss.read",
-    "accounting.reports.trialbalance.read",
-)
 XERO_PAYROLL_SCOPES = (
     "payroll.employees",
     "payroll.payruns",
@@ -102,14 +89,9 @@ XERO_SCOPE_NORMALISATIONS = {
     "accounting.transaction.read": "accounting.transactions.read",
     "accounting.report.read": "accounting.reports.read",
     "payroll.employee": "payroll.employees",
-    "payroll.employee.read": "payroll.employees",
+    "payroll.employee.read": "payroll.employees.read",
     "payroll.payrun": "payroll.payruns",
-    "payroll.payrun.read": "payroll.payruns",
-    "payroll.employees.read": "payroll.employees",
-    "payroll.payruns.read": "payroll.payruns",
-    "payroll.payslip.read": "payroll.payslip",
-    "payroll.timesheets.read": "payroll.timesheets",
-    "payroll.settings.read": "payroll.settings",
+    "payroll.payrun.read": "payroll.payruns.read",
 }
 
 
@@ -137,19 +119,12 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
             if scope and scope not in scopes:
                 scopes.append(scope)
 
-    # Canonicalise payroll scopes to avoid invalid_scope from stale/deprecated variants.
-    scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
+    if not include_payroll_scopes:
+        scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
 
-    for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
+    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
         if required_scope not in scopes:
             scopes.append(required_scope)
-    # Only request Payroll scopes when Payroll scopes are explicitly configured.
-    # This prevents OAuth invalid_scope failures for apps/tenants without Payroll API access.
-    payroll_scopes_configured = any(scope.startswith("payroll.") for scope in configured_scope_tokens)
-    if include_payroll_scopes and payroll_scopes_configured:
-        for payroll_scope in XERO_PAYROLL_SCOPES:
-            if payroll_scope not in scopes:
-                scopes.append(payroll_scope)
     return " ".join(scopes)
 
 
