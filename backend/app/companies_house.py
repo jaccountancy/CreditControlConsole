@@ -5772,80 +5772,98 @@ def get_auth_register_client_page(row_id: str) -> dict:
                     (safe_row_id,),
                 )
                 notes_rows = cursor.fetchall() or []
-            company_id = str(row.get("company_id") or "").strip()
-            if company_id:
-                cursor.execute(
-                    """
-                    SELECT created_at, event_type, payload
-                    FROM audit_events
-                    WHERE (entity_type = 'ch_auth_code_register' AND entity_id = %s)
-                       OR (entity_type IN ('ch_company', 'ch_auth_code') AND entity_id = %s)
-                    ORDER BY created_at DESC
-                    LIMIT 250
-                    """,
-                    (safe_row_id, company_id),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT created_at, event_type, payload
-                    FROM audit_events
-                    WHERE entity_type = 'ch_auth_code_register'
-                      AND entity_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT 250
-                    """,
-                    (safe_row_id,),
-                )
-            audit_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'audit_events'
+                ) AS present
+                """
+            )
+            audit_rows = []
+            audit_present = bool((cursor.fetchone() or {}).get("present"))
+            if audit_present:
+                company_id = str(row.get("company_id") or "").strip()
+                if company_id:
+                    cursor.execute(
+                        """
+                        SELECT created_at, event_type, payload
+                        FROM audit_events
+                        WHERE (entity_type = 'ch_auth_code_register' AND entity_id = %s)
+                           OR (entity_type IN ('ch_company', 'ch_auth_code') AND entity_id = %s)
+                        ORDER BY created_at DESC
+                        LIMIT 250
+                        """,
+                        (safe_row_id, company_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT created_at, event_type, payload
+                        FROM audit_events
+                        WHERE entity_type = 'ch_auth_code_register'
+                          AND entity_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 250
+                        """,
+                        (safe_row_id,),
+                    )
+                audit_rows = cursor.fetchall() or []
         connection.commit()
 
-    companies_house_profile = _normalise_auth_register_companies_house(row.get("companies_house"))
-    service_details = companies_house_profile.get("serviceDetails") if isinstance(companies_house_profile.get("serviceDetails"), dict) else {}
-    accounts_returns = service_details.get("accountsReturns") if isinstance(service_details.get("accountsReturns"), dict) else {}
-    confirmation_statement = service_details.get("confirmationStatement") if isinstance(service_details.get("confirmationStatement"), dict) else {}
-    vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
-    payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
-    p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
-    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
-    if not confirmation_statement.get("statementDueDate"):
-        confirmation_statement["statementDueDate"] = companies_house_profile.get("nextConfirmationDate") or ""
-    if not confirmation_statement.get("statementDate"):
-        confirmation_statement["statementDate"] = companies_house_profile.get("lastFiledDate") or ""
+    try:
+        companies_house_profile = _normalise_auth_register_companies_house(row.get("companies_house"))
+        service_details = companies_house_profile.get("serviceDetails") if isinstance(companies_house_profile.get("serviceDetails"), dict) else {}
+        accounts_returns = service_details.get("accountsReturns") if isinstance(service_details.get("accountsReturns"), dict) else {}
+        confirmation_statement = service_details.get("confirmationStatement") if isinstance(service_details.get("confirmationStatement"), dict) else {}
+        vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
+        payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
+        p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
+        self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
+        if not confirmation_statement.get("statementDueDate"):
+            confirmation_statement["statementDueDate"] = companies_house_profile.get("nextConfirmationDate") or ""
+        if not confirmation_statement.get("statementDate"):
+            confirmation_statement["statementDate"] = companies_house_profile.get("lastFiledDate") or ""
 
-    # Keep Accounts/CT details aligned with the currently open Companies House accounts period.
-    company_number = normalise_company_number(row.get("company_number") or "")
-    if company_number and _is_valid_company_number(company_number):
-        try:
-            live_snapshot = _fetch_ch_company_snapshot(company_number, prefer_cache=False)
-        except Exception:
-            live_snapshot = {}
-        year_end_value = live_snapshot.get("companyYearEnd")
-        next_due_value = live_snapshot.get("accountsNextDueDate")
-        if isinstance(year_end_value, date):
-            accounts_returns["companyYearEnd"] = year_end_value.isoformat()
-        elif isinstance(year_end_value, str) and year_end_value.strip():
-            accounts_returns["companyYearEnd"] = year_end_value.strip()
-        if isinstance(next_due_value, date):
-            accounts_returns["accountsNextDueDate"] = next_due_value.isoformat()
-        elif isinstance(next_due_value, str) and next_due_value.strip():
-            accounts_returns["accountsNextDueDate"] = next_due_value.strip()
-    if not vat.get("vatNumber"):
-        vat["vatNumber"] = _coerce_text(row.get("vat_number"), 120)
-    if not vat.get("vatAddress"):
-        vat["vatAddress"] = _coerce_text(row.get("client_address"), 1000)
-    if vat.get("vatNumber") and not vat.get("memberState"):
-        vat["memberState"] = "GB"
-    if not self_assessment.get("utr"):
-        self_assessment["utr"] = _coerce_text(row.get("personal_utr"), 20)
-    companies_house_profile["serviceDetails"] = {
-        "accountsReturns": accounts_returns,
-        "confirmationStatement": confirmation_statement,
-        "vat": vat,
-        "payroll": payroll,
-        "p11d": p11d,
-        "selfAssessment": self_assessment,
-    }
+        # Keep Accounts/CT details aligned where possible, without making client-page loading depend on a live CH call.
+        needs_accounts_sync = not accounts_returns.get("companyYearEnd") or not accounts_returns.get("accountsNextDueDate")
+        company_number = normalise_company_number(row.get("company_number") or "")
+        if needs_accounts_sync and company_number and _is_valid_company_number(company_number):
+            try:
+                live_snapshot = _fetch_ch_company_snapshot(company_number, prefer_cache=True)
+            except Exception:
+                live_snapshot = {}
+            year_end_value = live_snapshot.get("companyYearEnd")
+            next_due_value = live_snapshot.get("accountsNextDueDate")
+            if isinstance(year_end_value, date):
+                accounts_returns["companyYearEnd"] = year_end_value.isoformat()
+            elif isinstance(year_end_value, str) and year_end_value.strip():
+                accounts_returns["companyYearEnd"] = year_end_value.strip()
+            if isinstance(next_due_value, date):
+                accounts_returns["accountsNextDueDate"] = next_due_value.isoformat()
+            elif isinstance(next_due_value, str) and next_due_value.strip():
+                accounts_returns["accountsNextDueDate"] = next_due_value.strip()
+        if not vat.get("vatNumber"):
+            vat["vatNumber"] = _coerce_text(row.get("vat_number"), 120)
+        if not vat.get("vatAddress"):
+            vat["vatAddress"] = _coerce_text(row.get("client_address"), 1000)
+        if vat.get("vatNumber") and not vat.get("memberState"):
+            vat["memberState"] = "GB"
+        if not self_assessment.get("utr"):
+            self_assessment["utr"] = _coerce_text(row.get("personal_utr"), 20)
+        companies_house_profile["serviceDetails"] = {
+            "accountsReturns": accounts_returns,
+            "confirmationStatement": confirmation_statement,
+            "vat": vat,
+            "payroll": payroll,
+            "p11d": p11d,
+            "selfAssessment": self_assessment,
+        }
+    except Exception:
+        logger.exception("Unable to enrich client register companies-house profile for row %s", safe_row_id)
+        companies_house_profile = _normalise_auth_register_companies_house(row.get("companies_house"))
 
     return {
         "row": _serialise_auth_register_row(row),
