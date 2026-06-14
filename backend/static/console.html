@@ -89308,7 +89308,10 @@
                             <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
                             <td><strong>${escapeHTML(countLabel)}</strong></td>
                             <td>${workspaceLabel}</td>
-                            <td><button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${row.workspace ? "Open" : "Set up"}</button></td>
+                            <td>
+                                <button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${row.workspace ? "Open" : "Set up"}</button>
+                                ${row.workspace ? `<button class="ghost-button danger-button" type="button" data-micro-analyzer-delete-workspace="${escapeHTML(row.tenantId || "")}">Delete</button>` : ""}
+                            </td>
                         </tr>
                     `;
                     }).join("");
@@ -89377,6 +89380,11 @@
                 tableBody.querySelectorAll("[data-micro-analyzer-open-tenant]").forEach((button) => {
                     button.addEventListener("click", () => {
                         openMicroAnalyzerTenantWorkspace(button.dataset.microAnalyzerOpenTenant || "");
+                    });
+                });
+                tableBody.querySelectorAll("[data-micro-analyzer-delete-workspace]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        deleteMicroAnalyzerWorkspace(button.dataset.microAnalyzerDeleteWorkspace || "");
                     });
                 });
                 return rows.length;
@@ -89954,6 +89962,28 @@
                     if (!silent) showToast("VAT on Unregistered workspace created.", "success");
                 }
                 persistMicroAnalyzerWorkspaces();
+                renderMicroAnalyzerScreen();
+            }
+
+            function deleteMicroAnalyzerWorkspace(tenantId = "", options = {}) {
+                const cleanTenantId = String(tenantId || "").trim();
+                const silent = Boolean(options?.silent);
+                if (!cleanTenantId) return;
+                const workspace = microAnalyzerWorkspaceByTenant(cleanTenantId);
+                if (!workspace) return;
+                if (!silent) {
+                    const workspaceName = String(workspace.workspaceName || workspace.tenantName || cleanTenantId).trim();
+                    const confirmed = window.confirm(`Delete workspace ${workspaceName}?`);
+                    if (!confirmed) return;
+                }
+                microAnalyzerWorkspaces = (microAnalyzerWorkspaces || []).filter(
+                    (row) => String(row?.tenantId || "").trim() !== cleanTenantId
+                );
+                if (String(selectedMicroAnalyzerTenantId || "").trim() === cleanTenantId) {
+                    closeMicroAnalyzerWorkspace();
+                }
+                persistMicroAnalyzerWorkspaces();
+                if (!silent) showToast("Workspace deleted.", "success");
                 renderMicroAnalyzerScreen();
             }
 
