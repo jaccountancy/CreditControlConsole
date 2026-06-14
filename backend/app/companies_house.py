@@ -5176,8 +5176,6 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
-    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
-    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
@@ -5809,6 +5807,7 @@ def get_auth_register_client_page(row_id: str) -> dict:
     vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
     payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
+    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     if not confirmation_statement.get("statementDueDate"):
         confirmation_statement["statementDueDate"] = companies_house_profile.get("nextConfirmationDate") or ""
     if not confirmation_statement.get("statementDate"):
