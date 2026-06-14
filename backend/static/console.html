@@ -33187,6 +33187,7 @@
                                                 <th><input id="microAnalyzerWorkspaceSelectAllRows" type="checkbox" aria-label="Select all transactions"></th>
                                                 <th>Date</th>
                                                 <th>Reference</th>
+                                                <th>Contact</th>
                                                 <th>Description</th>
                                                 <th>Net</th>
                                                 <th>VAT</th>
@@ -81525,6 +81526,7 @@
                     date,
                     reference: row.reference || row.invoiceNumber || row.transactionNumber || row.id || "",
                     description: row.description || row.name || row.memo || row.narrative || "Transaction",
+                    contactName: row.contactName || row.contact || row.customerName || row.clientName || "",
                     netAmount: net,
                     taxAmount: tax,
                     grossAmount: gross,
@@ -81533,9 +81535,25 @@
                     sourceType: row.sourceType || fallback.sourceType || "",
                     transactionType: row.transactionType || row.type || row.documentType || row.kind || "",
                     documentType: row.documentType || row.sourceDocumentType || row.type || "",
+                    xeroUrl: String(row?.xeroUrl || row?.url || ""),
+                    invoiceId: String(row?.invoiceId || row?.xeroInvoiceId || ""),
+                    creditNoteId: String(row?.creditNoteId || ""),
+                    bankTransactionId: String(row?.bankTransactionId || row?.transactionId || ""),
                 };
                 normalised.id = preservedTransactionId || vatTransactionId(normalised);
                 return normalised;
+            }
+
+            function microAnalyzerTransactionXeroURL(row = {}) {
+                const directUrl = String(row?.xeroUrl || "").trim();
+                if (directUrl) return directUrl;
+                const invoiceId = String(row?.invoiceId || "").trim();
+                if (invoiceId) return `https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=${encodeURIComponent(invoiceId)}`;
+                const creditNoteId = String(row?.creditNoteId || "").trim();
+                if (creditNoteId) return `https://go.xero.com/AccountsReceivable/ViewCreditNote.aspx?creditNoteID=${encodeURIComponent(creditNoteId)}`;
+                const bankTransactionId = String(row?.bankTransactionId || "").trim();
+                if (bankTransactionId) return `https://go.xero.com/Bank/ViewTransaction.aspx?bankTransactionID=${encodeURIComponent(bankTransactionId)}`;
+                return "";
             }
 
             function vatTransactionsFromCustomerFallback(entry) {
@@ -89653,21 +89671,21 @@
                     workspaceSelectAllRowsInput.checked = false;
                     workspaceSelectAllRowsInput.indeterminate = false;
                     workspaceSelectAllRowsInput.disabled = true;
-                    workspaceBody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT-coded transactions</h4><p>Checking this Xero organisation across all available transaction dates.</p></div></td></tr>';
+                    workspaceBody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT-coded transactions</h4><p>Checking this Xero organisation across all available transaction dates.</p></div></td></tr>';
                     return;
                 }
                 if (workspaceResult?.error) {
                     workspaceSelectAllRowsInput.checked = false;
                     workspaceSelectAllRowsInput.indeterminate = false;
                     workspaceSelectAllRowsInput.disabled = true;
-                    workspaceBody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not read VAT-coded transactions</h4><p>${escapeHTML(String(workspaceResult.error || ""))}</p></div></td></tr>`;
+                    workspaceBody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not read VAT-coded transactions</h4><p>${escapeHTML(String(workspaceResult.error || ""))}</p></div></td></tr>`;
                     return;
                 }
                 if (!vatRowsWithLock.length) {
                     workspaceSelectAllRowsInput.checked = false;
                     workspaceSelectAllRowsInput.indeterminate = false;
                     workspaceSelectAllRowsInput.disabled = true;
-                    workspaceBody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No VAT rows</p><h4>No VAT-coded transactions found</h4><p>No VAT rows were detected for this Xero organisation across available transaction history.</p></div></td></tr>';
+                    workspaceBody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">No VAT rows</p><h4>No VAT-coded transactions found</h4><p>No VAT rows were detected for this Xero organisation across available transaction history.</p></div></td></tr>';
                     return;
                 }
                 workspaceSelectAllRowsInput.disabled = false;
@@ -89693,14 +89711,18 @@
                         renderMicroAnalyzerScreen();
                     });
                 }
-                workspaceBody.innerHTML = vatRowsWithLock.map((row) => `
-                    <tr>
+                workspaceBody.innerHTML = vatRowsWithLock.map((row) => {
+                    const transactionUrl = microAnalyzerTransactionXeroURL(row);
+                    const hasLink = Boolean(transactionUrl);
+                    return `
+                    <tr ${hasLink ? `class="micro-analyzer-xero-row" data-micro-analyzer-open-xero="${escapeHTML(transactionUrl)}" tabindex="0" role="link" aria-label="Open transaction in Xero"` : ""}>
                         <td>
                             <input type="checkbox" data-micro-analyzer-select-row="${escapeHTML(String(row?.id || vatTransactionId(row)).trim())}" ${selectionSet.has(String(row?.id || vatTransactionId(row)).trim()) ? "checked" : ""} ${row?.lockedByLockDate ? "disabled" : ""} aria-label="Select transaction">
                             ${row?.lockedByLockDate ? `<button class="ghost-button" type="button" data-micro-analyzer-lock-info="${escapeHTML(String(row?.id || "").trim())}" title="Locked by Xero period lock date">🔒</button>` : ""}
                         </td>
                         <td>${escapeHTML(row?.date ? formatDate(row.date) : "—")}</td>
-                        <td><strong>${escapeHTML(String(row?.reference || "—"))}</strong></td>
+                        <td>${hasLink ? `<a href="${escapeHTML(transactionUrl)}" target="_blank" rel="noopener"><strong>${escapeHTML(String(row?.reference || "—"))}</strong></a>` : `<strong>${escapeHTML(String(row?.reference || "—"))}</strong>`}</td>
+                        <td>${escapeHTML(String(row?.contactName || "—"))}</td>
                         <td title="${escapeHTML(String(row?.description || ""))}">${escapeHTML(codeBreakerCondenseWords(String(row?.description || ""), 14) || "Transaction")}</td>
                         <td>${escapeHTML(formatCurrency(Number(row?.netAmount || 0)))}</td>
                         <td>${escapeHTML(formatCurrency(Number(row?.taxAmount || 0)))}</td>
@@ -89708,7 +89730,8 @@
                         <td>${escapeHTML(String(row?.taxCode || "—"))}</td>
                         <td>${escapeHTML(row?.periodEndISO ? formatDate(row.periodEndISO) : "—")}</td>
                     </tr>
-                `).join("");
+                `;
+                }).join("");
                 workspaceBody.querySelectorAll("[data-micro-analyzer-select-row]").forEach((input) => {
                     input.addEventListener("change", () => {
                         const tenantId = String(selectedMicroAnalyzerTenantId || "").trim();
@@ -89730,6 +89753,22 @@
                             lockedCount: lockedRows.length,
                         };
                         renderMicroAnalyzerLockInfoModal();
+                    });
+                });
+                workspaceBody.querySelectorAll("[data-micro-analyzer-open-xero]").forEach((row) => {
+                    const openXero = () => {
+                        const url = String(row.getAttribute("data-micro-analyzer-open-xero") || "").trim();
+                        if (url) window.open(url, "_blank", "noopener");
+                    };
+                    row.addEventListener("click", (event) => {
+                        if (event.target.closest("input, button, a, label")) return;
+                        openXero();
+                    });
+                    row.addEventListener("keydown", (event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        if (event.target.closest("input, button, a, label")) return;
+                        event.preventDefault();
+                        openXero();
                     });
                 });
             }
