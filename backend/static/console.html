@@ -98881,14 +98881,21 @@
                             actionIcon = "▶";
                         }
                     }
-                    if (!isCompleted && (workflowType === "vat" || workflowType === "bookkeeping")) {
+                    if (!isCompleted && workflowType === "vat") {
+                        const xeroConnected = isXeroConnected();
                         const hasXeroTenantConnection = Boolean(xeroResolved?.matched && String(xeroResolved?.tenantId || "").trim());
-                        if (!hasXeroTenantConnection && actionKind !== "complete") {
+                        if (!xeroConnected && actionKind !== "complete") {
                             actionKind = "connect_xero";
                             actionLabel = "Connect Xero";
                             actionClass = "";
                             actionDisabled = true;
                             actionIcon = "•";
+                        } else if (!hasXeroTenantConnection && actionKind !== "complete") {
+                            actionKind = "open_vat_queue";
+                            actionLabel = "Match Xero workspace";
+                            actionClass = "is-start";
+                            actionDisabled = false;
+                            actionIcon = "↗";
                         }
                     }
                     if (mode === "completed") {
@@ -99027,6 +99034,11 @@
                             saveBmTaskLocalState();
                             showToast("Task restored to outstanding.", "success");
                             renderTaskSubpages();
+                            return;
+                        }
+                        if (actionKind === "open_vat_queue") {
+                            openVatReturnPrepareScreen();
+                            showToast("Select the matching Xero workspace before starting VAT prep for this task.", "info");
                             return;
                         }
                         if (actionKind === "awaiting_review") return;
