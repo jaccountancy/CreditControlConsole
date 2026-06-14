@@ -24234,11 +24234,23 @@
                 font-weight: 800;
                 color: #456080;
                 background: #edf3fb;
+                cursor: pointer;
             }
             .task-bookkeeping-workflow-step.is-active {
                 border-color: #7ea8ec;
                 color: #0f448a;
                 background: #deebff;
+            }
+            .task-bookkeeping-workflow-step.is-complete {
+                border-color: rgba(22, 138, 69, 0.35);
+                color: #116337;
+                background: rgba(224, 247, 234, 0.9);
+            }
+            .task-bookkeeping-workflow-stage {
+                margin-top: 10px;
+            }
+            .task-bookkeeping-workflow-stage[hidden] {
+                display: none !important;
             }
             .task-bookkeeping-workflow-grid {
                 display: grid;
@@ -24350,6 +24362,7 @@
                 font-size: 12px;
             }
             .task-bookkeeping-workflow-card select,
+            .task-bookkeeping-workflow-card input,
             .task-bookkeeping-workflow-card textarea {
                 width: 100%;
                 border: 1px solid var(--line);
@@ -24366,6 +24379,11 @@
                 align-items: center;
                 justify-content: space-between;
                 gap: 10px;
+            }
+            .task-bookkeeping-workflow-footer .detail-actions {
+                display: inline-flex;
+                gap: 8px;
+                flex-wrap: wrap;
             }
             @media (max-width: 980px) {
                 .task-bookkeeping-workflow-grid {
@@ -31732,93 +31750,147 @@
                                                 </div>
                                                 <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCloseButton">Close</button>
                                             </div>
-                                            <div class="task-bookkeeping-workflow-steps">
-                                                <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepChecks">1. Month analysis</span>
-                                                <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepReviewer">2. Reviewer</span>
-                                                <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepSubmit">3. Submit</span>
-                                            </div>
-                                            <article class="task-bookkeeping-workflow-card" style="margin-top: 10px;">
-                                                <h5>Monthly bookkeeping checks</h5>
-                                                <p class="task-bookkeeping-review-summary" id="taskBookkeepingReviewSummary">Reviewing monthly transactions and core controls.</p>
-                                                <ul class="task-bookkeeping-blockers" id="taskBookkeepingBlockingList" hidden></ul>
-                                                <div class="task-bookkeeping-review-checks" id="taskBookkeepingReviewChecks"></div>
-                                                <h5 style="margin-top: 4px;">Unreconciled transactions</h5>
-                                                <div class="task-bookkeeping-unreconciled-table-wrap">
-                                                    <table class="task-bookkeeping-unreconciled-table" aria-label="Unreconciled transactions for month">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Date</th>
-                                                                <th>Description</th>
-                                                                <th>Amount</th>
-                                                                <th>Action</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody id="taskBookkeepingUnreconciledBody">
-                                                            <tr><td colspan="4">No unreconciled transactions detected for this period.</td></tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </article>
-                                            <div class="task-bookkeeping-workflow-grid">
+                                            <div class="task-bookkeeping-workflow-steps" id="taskBookkeepingWizardSteps"></div>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="data_pull">
                                                 <article class="task-bookkeeping-workflow-card">
-                                                    <h5>ME-style quality checks</h5>
-                                                    <div class="task-bookkeeping-checklist">
-                                                        <label><input type="checkbox" id="taskBookkeepingCheckDividends"> Check dividends</label>
-                                                        <label><input type="checkbox" id="taskBookkeepingCheckCorpTax"> Check corporation tax</label>
-                                                        <label><input type="checkbox" id="taskBookkeepingCheckMerges"> Suggest contacts to be merged</label>
-                                                        <label><input type="checkbox" id="taskBookkeepingCheckDuplicates"> Highlight potential duplicate transactions</label>
-                                                    </div>
-                                                    <div class="detail-actions">
-                                                        <button class="ghost-button" type="button" id="taskBookkeepingOpenMeButton">Open ME workspace</button>
-                                                    </div>
+                                                    <h5>Stage 1 · Data Pull & Scope</h5>
+                                                    <p class="task-bookkeeping-review-summary" id="taskBookkeepingReviewSummary">Pulling month data and validating the scope for this task.</p>
+                                                    <ul class="task-bookkeeping-blockers" id="taskBookkeepingBlockingList" hidden></ul>
+                                                    <div class="task-bookkeeping-review-checks" id="taskBookkeepingReviewChecks"></div>
+                                                    <label class="detail-meta" for="taskBookkeepingMissingNotesInput">Missing/inferred data notes</label>
+                                                    <textarea id="taskBookkeepingMissingNotesInput" rows="3" placeholder="Record what was inferred and what was explicitly confirmed with the client/reviewer..."></textarea>
+                                                    <label style="margin-top: 8px; display: block;"><input type="checkbox" id="taskBookkeepingMissingConfirmed"> I have confirmed any missing or inferred items with the user/client.</label>
                                                 </article>
+                                                <article class="task-bookkeeping-workflow-card" style="margin-top: 10px;">
+                                                    <h5>Jenius AI Suggestions</h5>
+                                                    <ul class="task-bookkeeping-blockers" id="taskBookkeepingAiSuggestions"></ul>
+                                                </article>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="month_checks" hidden>
+                                                <div class="task-bookkeeping-workflow-grid">
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>Stage 2 · Quality Checks</h5>
+                                                        <div class="task-bookkeeping-checklist">
+                                                            <label><input type="checkbox" id="taskBookkeepingCheckDividends"> Dividend posting review completed</label>
+                                                            <label><input type="checkbox" id="taskBookkeepingCheckCorpTax"> Corporation tax postings reviewed</label>
+                                                            <label><input type="checkbox" id="taskBookkeepingCheckMerges"> Contact merge opportunities reviewed</label>
+                                                            <label><input type="checkbox" id="taskBookkeepingCheckDuplicates"> Duplicate transaction risks reviewed</label>
+                                                        </div>
+                                                    </article>
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>Stage 2 Feedback</h5>
+                                                        <label class="detail-meta" for="taskBookkeepingChecksFeedbackInput">Reviewer-ready notes</label>
+                                                        <textarea id="taskBookkeepingChecksFeedbackInput" rows="5" placeholder="What did the checker find, clear, or defer?"></textarea>
+                                                    </article>
+                                                </div>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="reconciliations" hidden>
                                                 <article class="task-bookkeeping-workflow-card">
-                                                    <h5>Review handoff</h5>
+                                                    <h5>Stage 3 · Reconciliations & Exceptions</h5>
+                                                    <h5 style="margin-top: 4px;">Unreconciled transactions</h5>
+                                                    <div class="task-bookkeeping-unreconciled-table-wrap">
+                                                        <table class="task-bookkeeping-unreconciled-table" aria-label="Unreconciled transactions for month">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Date</th>
+                                                                    <th>Description</th>
+                                                                    <th>Amount</th>
+                                                                    <th>Action</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="taskBookkeepingUnreconciledBody">
+                                                                <tr><td colspan="4">No unreconciled transactions detected for this period.</td></tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <label style="margin-top: 10px; display: block;"><input type="checkbox" id="taskBookkeepingReconciliationsConfirmed"> I confirm unreconciled exceptions have been actioned or documented.</label>
+                                                </article>
+                                                <div class="task-bookkeeping-workflow-grid" style="margin-top: 10px;">
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>YTD Profit and Loss (month columns)</h5>
+                                                        <div class="task-bookkeeping-unreconciled-table-wrap">
+                                                            <table class="task-bookkeeping-unreconciled-table" aria-label="Year to date profit and loss">
+                                                                <thead id="taskBookkeepingProfitLossHead"></thead>
+                                                                <tbody id="taskBookkeepingProfitLossBody">
+                                                                    <tr><td colspan="2">No profit and loss rows extracted for this period.</td></tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        <p class="detail-meta">Click any figure to drill into source transactions.</p>
+                                                    </article>
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>Balance Sheet</h5>
+                                                        <div class="task-bookkeeping-unreconciled-table-wrap">
+                                                            <table class="task-bookkeeping-unreconciled-table" aria-label="Balance sheet review">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Code</th>
+                                                                        <th>Account</th>
+                                                                        <th>Amount</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody id="taskBookkeepingBalanceSheetBody">
+                                                                    <tr><td colspan="3">No balance sheet rows extracted for this period.</td></tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        <p class="detail-meta">Click any amount to drill into source transactions.</p>
+                                                    </article>
+                                                </div>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="tax_dividends" hidden>
+                                                <div class="task-bookkeeping-workflow-grid">
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>Stage 4 · Corporation Tax Estimate</h5>
+                                                        <label class="detail-meta" for="taskBookkeepingTaxEstimateInput">CT estimate (£)</label>
+                                                        <input id="taskBookkeepingTaxEstimateInput" type="number" step="0.01" placeholder="0.00">
+                                                        <p class="detail-meta" id="taskBookkeepingTaxEstimateSource">Auto-calculating from available bookkeeping data.</p>
+                                                        <label><input type="checkbox" id="taskBookkeepingTaxEstimateConfirm"> Confirm CT estimate is correct for this workflow.</label>
+                                                    </article>
+                                                    <article class="task-bookkeeping-workflow-card">
+                                                        <h5>Stage 4 · Dividend Availability</h5>
+                                                        <label class="detail-meta" for="taskBookkeepingDividendInput">Dividend availability (£)</label>
+                                                        <input id="taskBookkeepingDividendInput" type="number" step="0.01" placeholder="0.00">
+                                                        <p class="detail-meta" id="taskBookkeepingDividendSource">Auto-calculating from reserves and post-tax earnings.</p>
+                                                        <label><input type="checkbox" id="taskBookkeepingDividendConfirm"> Confirm dividend availability is correct for this workflow.</label>
+                                                    </article>
+                                                </div>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="reviewer" hidden>
+                                                <article class="task-bookkeeping-workflow-card">
+                                                    <h5>Stage 5 · Review Handoff</h5>
                                                     <label class="detail-meta" for="taskBookkeepingReviewerSelect">Reviewer</label>
                                                     <select id="taskBookkeepingReviewerSelect" aria-label="Bookkeeping reviewer"></select>
                                                     <label class="detail-meta" for="taskBookkeepingNotesInput" style="margin-top: 8px;">Workflow notes</label>
-                                                    <textarea id="taskBookkeepingNotesInput" rows="4" placeholder="Add notes for the reviewer..."></textarea>
+                                                    <textarea id="taskBookkeepingNotesInput" rows="4" placeholder="Add reviewer notes and context..."></textarea>
                                                 </article>
-                                            </div>
-                                            <div class="task-bookkeeping-workflow-grid" style="margin-top: 10px;">
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="client_feedback" hidden>
                                                 <article class="task-bookkeeping-workflow-card">
-                                                    <h5>YTD Profit and Loss (month columns)</h5>
-                                                    <div class="task-bookkeeping-unreconciled-table-wrap">
-                                                        <table class="task-bookkeeping-unreconciled-table" aria-label="Year to date profit and loss">
-                                                            <thead id="taskBookkeepingProfitLossHead"></thead>
-                                                            <tbody id="taskBookkeepingProfitLossBody">
-                                                                <tr><td colspan="2">No profit and loss rows extracted for this period.</td></tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <p class="detail-meta">Click any figure to drill into source transactions.</p>
+                                                    <h5>Stage 6 · Feedback Capture</h5>
+                                                    <label class="detail-meta" for="taskBookkeepingClientFeedbackSelect">Client feedback status</label>
+                                                    <select id="taskBookkeepingClientFeedbackSelect">
+                                                        <option value="">Choose status</option>
+                                                        <option value="confirmed">Confirmed by client</option>
+                                                        <option value="pending">Pending client confirmation</option>
+                                                        <option value="not_required">No client confirmation required</option>
+                                                    </select>
+                                                    <label class="detail-meta" for="taskBookkeepingClientFeedbackNotes" style="margin-top: 8px;">Feedback notes</label>
+                                                    <textarea id="taskBookkeepingClientFeedbackNotes" rows="4" placeholder="Capture what was asked/confirmed and any open points."></textarea>
                                                 </article>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="submit" hidden>
                                                 <article class="task-bookkeeping-workflow-card">
-                                                    <h5>Balance Sheet</h5>
-                                                    <div class="task-bookkeeping-unreconciled-table-wrap">
-                                                        <table class="task-bookkeeping-unreconciled-table" aria-label="Balance sheet review">
-                                                            <thead>
-                                                                <tr>
-                                                                    <th>Code</th>
-                                                                    <th>Account</th>
-                                                                    <th>Amount</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody id="taskBookkeepingBalanceSheetBody">
-                                                                <tr><td colspan="3">No balance sheet rows extracted for this period.</td></tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <p class="detail-meta">Click any amount to drill into source transactions.</p>
+                                                    <h5>Stage 7 · Final Review</h5>
+                                                    <p class="task-bookkeeping-review-summary" id="taskBookkeepingFinalSummary">Confirm all stages are complete, then submit for reviewer approval.</p>
+                                                    <ul class="task-bookkeeping-blockers" id="taskBookkeepingFinalBlockingList" hidden></ul>
                                                 </article>
-                                            </div>
-                                            <article class="task-bookkeeping-workflow-card" style="margin-top: 10px;">
-                                                <h5>Jenius AI Suggestions</h5>
-                                                <ul class="task-bookkeeping-blockers" id="taskBookkeepingAiSuggestions"></ul>
-                                            </article>
+                                            </section>
                                             <div class="task-bookkeeping-workflow-footer">
                                                 <p class="detail-meta" id="taskBookkeepingWorkflowProgressMeta">Complete checks, select reviewer, then submit.</p>
                                                 <div class="detail-actions">
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowBackButton">Back</button>
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowNextButton">Next</button>
                                                     <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCancelButton">Cancel</button>
                                                     <button class="primary-button" type="button" id="taskBookkeepingWorkflowSubmitButton">Submit task for review</button>
                                                 </div>
@@ -97445,6 +97517,7 @@
                 bmTaskBookkeepingWorkflow: {
                     open: false,
                     rowId: "",
+                    stage: "data_pull",
                     checklist: {
                         dividends: true,
                         corporationTax: true,
@@ -97453,6 +97526,18 @@
                     },
                     reviewer: "",
                     notes: "",
+                    feedback: {
+                        missingConfirmed: false,
+                        missingNotes: "",
+                        checksFeedback: "",
+                        reconciliationsConfirmed: false,
+                        ctEstimate: "",
+                        ctConfirmed: false,
+                        dividendCapacity: "",
+                        dividendConfirmed: false,
+                        clientFeedbackStatus: "",
+                        clientFeedbackNotes: "",
+                    },
                 },
                 authRegisterEdit: {
                     rowId: "",
@@ -98445,6 +98530,7 @@
                 companiesHouseSettings.bmTaskBookkeepingWorkflow = {
                     open: false,
                     rowId: "",
+                    stage: "data_pull",
                     checklist: {
                         dividends: true,
                         corporationTax: true,
@@ -98453,6 +98539,18 @@
                     },
                     reviewer: "",
                     notes: "",
+                    feedback: {
+                        missingConfirmed: false,
+                        missingNotes: "",
+                        checksFeedback: "",
+                        reconciliationsConfirmed: false,
+                        ctEstimate: "",
+                        ctConfirmed: false,
+                        dividendCapacity: "",
+                        dividendConfirmed: false,
+                        clientFeedbackStatus: "",
+                        clientFeedbackNotes: "",
+                    },
                 };
             }
 
@@ -98613,10 +98711,16 @@
                 };
             }
 
-            function taskBookkeepingReviewState(row = {}) {
+            function taskBookkeepingReviewState(row = {}, workflow = {}) {
                 const periodConfig = taskBookkeepingWorkflowPeriodConfig(row);
                 const meClient = taskBookkeepingFindMeReportClient(row);
                 const summary = meClient ? meReportAdjustedSummary(meClient, meReportBaseSummaryForClient(meClient)) : {};
+                const taxDividend = taskBookkeepingComputedTaxAndDividend(summary);
+                const manualCt = taskBookkeepingNumberOrNull(workflow?.feedback?.ctEstimate);
+                const manualDividend = taskBookkeepingNumberOrNull(workflow?.feedback?.dividendCapacity);
+                const effectiveCt = manualCt ?? taxDividend.estimatedCt;
+                const effectiveDividend = manualDividend ?? taxDividend.dividendCapacity;
+                const hasTenant = Boolean(String(bmTaskResolvedXeroMatch(row)?.tenantId || row?.xeroMatch?.tenantId || "").trim());
                 const monthSummary = taskBookkeepingMonthlyTransactionSummary(summary, periodConfig);
                 const unreconciledRows = taskBookkeepingFilterTransactionsForPeriod(meReportUnreconciledTransactionRows(summary), periodConfig);
                 const unreconciledBankCount = Math.max(Number(meReportUnreconciledBankCount(summary) || 0), unreconciledRows.length);
@@ -98634,10 +98738,12 @@
                     {
                         key: "month_analysis",
                         label: "1. Analyse bookkeeping transactions for task month",
-                        pass: Boolean(meClient),
+                        pass: Boolean(meClient || hasTenant),
                         detail: meClient
                             ? `${monthSummary.count.toLocaleString("en-GB")} transaction row${monthSummary.count === 1 ? "" : "s"} identified for ${periodConfig.monthLabel}. Net ${formatCurrency(monthSummary.total)}.`
-                            : "No matching ME flow was found for this client/month. Refresh monthly flow data before review.",
+                            : hasTenant
+                                ? "No extracted monthly flow was matched. Workflow is using connected Xero workspace data and task metadata."
+                                : "No Xero workspace mapped for this task, so month analysis cannot run.",
                         blocking: true,
                     },
                     {
@@ -98679,18 +98785,18 @@
                     {
                         key: "ct",
                         label: "6. Corporation tax estimate and walkthrough",
-                        pass: Number.isFinite(Number(summary.estimatedCorporationTax)),
-                        detail: Number.isFinite(Number(summary.estimatedCorporationTax))
-                            ? `Estimated CT: ${formatCurrency(summary.estimatedCorporationTax || 0)}.`
+                        pass: Number.isFinite(Number(effectiveCt)),
+                        detail: Number.isFinite(Number(effectiveCt))
+                            ? `Estimated CT: ${formatCurrency(effectiveCt || 0)}${manualCt !== null ? " (user confirmed)." : ` (${taxDividend.ctSource})`}`
                             : "Corporation tax estimate is missing.",
                         blocking: true,
                     },
                     {
                         key: "dividend",
                         label: "7. Dividend availability",
-                        pass: Number.isFinite(Number(summary.dividendCapacity)),
-                        detail: Number.isFinite(Number(summary.dividendCapacity))
-                            ? `Dividend capacity: ${formatCurrency(summary.dividendCapacity || 0)}.`
+                        pass: Number.isFinite(Number(effectiveDividend)),
+                        detail: Number.isFinite(Number(effectiveDividend))
+                            ? `Dividend capacity: ${formatCurrency(effectiveDividend || 0)}${manualDividend !== null ? " (user confirmed)." : ` (${taxDividend.dividendSource})`}`
                             : "Dividend capacity is missing.",
                         blocking: true,
                     },
@@ -98714,6 +98820,7 @@
                 return {
                     meClient,
                     summary,
+                    taxDividend,
                     checks,
                     blockingChecks: checks.filter((item) => item.blocking && !item.pass),
                     unreconciledRows,
@@ -98725,7 +98832,7 @@
                 const suggestions = [];
                 const summary = reviewState?.summary || {};
                 if (!reviewState?.meClient) {
-                    suggestions.push("No matching ME monthly flow was found for this task period. Refresh monthly flow data and confirm Xero contact mapping.");
+                    suggestions.push("No monthly extraction flow was matched for this period. Continue with task/Xero-backed checks and record confirmations in the wizard.");
                 }
                 meReportReviewerInsights(reviewState?.meClient || {}, summary).slice(0, 8).forEach((item) => suggestions.push(item));
                 const duplicateRisks = meReportObjectRows(summary.duplicateTransactionRisks);
@@ -98864,6 +98971,105 @@
                 return checks.filter(Boolean).length;
             }
 
+            function taskBookkeepingWizardStages() {
+                return [
+                    { id: "data_pull", label: "1. Data pull" },
+                    { id: "month_checks", label: "2. Checks" },
+                    { id: "reconciliations", label: "3. Reconciliations" },
+                    { id: "tax_dividends", label: "4. Tax & dividends" },
+                    { id: "reviewer", label: "5. Reviewer" },
+                    { id: "client_feedback", label: "6. Feedback" },
+                    { id: "submit", label: "7. Submit" },
+                ];
+            }
+
+            function taskBookkeepingNumberOrNull(value) {
+                if (value === null || value === undefined || value === "") return null;
+                const number = Number(value);
+                return Number.isFinite(number) ? number : null;
+            }
+
+            function taskBookkeepingComputedTaxAndDividend(summary = {}) {
+                const ytdProfit = taskBookkeepingNumberOrNull(summary.estimatedTaxableProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.yearToDateProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.accountingProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.profitBeforeTax)
+                    ?? 0;
+                const openingReserves = taskBookkeepingNumberOrNull(summary.openingRetainedReserves)
+                    ?? taskBookkeepingNumberOrNull(summary.retainedEarningsOpening)
+                    ?? 0;
+                const dividendsTaken = taskBookkeepingNumberOrNull(summary.dividendsTaken)
+                    ?? taskBookkeepingNumberOrNull(summary.dividendsDeclaredYTD)
+                    ?? taskBookkeepingNumberOrNull(summary.dividendsPaid)
+                    ?? 0;
+                const hasProvidedCt = taskBookkeepingNumberOrNull(summary.estimatedCorporationTax) !== null;
+                const estimatedCt = hasProvidedCt
+                    ? Number(summary.estimatedCorporationTax || 0)
+                    : Math.max(0, ytdProfit * 0.25);
+                const hasProvidedDividend = taskBookkeepingNumberOrNull(summary.dividendCapacity) !== null;
+                const periodEndReserves = taskBookkeepingNumberOrNull(summary.periodEndDistributableReserves)
+                    ?? (openingReserves + (ytdProfit - estimatedCt) - Math.abs(dividendsTaken));
+                const dividendCapacity = hasProvidedDividend
+                    ? Number(summary.dividendCapacity || 0)
+                    : Math.max(0, periodEndReserves);
+                return {
+                    ytdProfit,
+                    openingReserves,
+                    dividendsTaken,
+                    estimatedCt,
+                    dividendCapacity,
+                    ctSource: hasProvidedCt ? "From extracted bookkeeping data." : "Calculated at 25% of estimated taxable/YTD profit.",
+                    dividendSource: hasProvidedDividend ? "From extracted bookkeeping data." : "Calculated from opening reserves + post-tax earnings - dividends taken.",
+                };
+            }
+
+            function taskBookkeepingEnsureWorkflowFeedback(workflow = {}, reviewState = {}) {
+                const current = workflow.feedback || {};
+                const calc = reviewState?.taxDividend || taskBookkeepingComputedTaxAndDividend(reviewState?.summary || {});
+                return {
+                    missingConfirmed: !!current.missingConfirmed,
+                    missingNotes: String(current.missingNotes || ""),
+                    checksFeedback: String(current.checksFeedback || ""),
+                    reconciliationsConfirmed: !!current.reconciliationsConfirmed,
+                    ctEstimate: current.ctEstimate === "" || current.ctEstimate === undefined || current.ctEstimate === null
+                        ? String(Number(calc.estimatedCt || 0).toFixed(2))
+                        : String(current.ctEstimate),
+                    ctConfirmed: !!current.ctConfirmed,
+                    dividendCapacity: current.dividendCapacity === "" || current.dividendCapacity === undefined || current.dividendCapacity === null
+                        ? String(Number(calc.dividendCapacity || 0).toFixed(2))
+                        : String(current.dividendCapacity),
+                    dividendConfirmed: !!current.dividendConfirmed,
+                    clientFeedbackStatus: String(current.clientFeedbackStatus || ""),
+                    clientFeedbackNotes: String(current.clientFeedbackNotes || ""),
+                };
+            }
+
+            function taskBookkeepingStageCanAdvance(stageId = "", workflow = {}, reviewState = {}) {
+                const checklist = workflow.checklist || {};
+                const feedback = workflow.feedback || {};
+                if (stageId === "data_pull") {
+                    return !!feedback.missingConfirmed;
+                }
+                if (stageId === "month_checks") {
+                    return taskBookkeepingChecklistProgress(checklist) === 4;
+                }
+                if (stageId === "reconciliations") {
+                    return reviewState.unreconciledRows.length === 0 && !!feedback.reconciliationsConfirmed;
+                }
+                if (stageId === "tax_dividends") {
+                    const ct = taskBookkeepingNumberOrNull(feedback.ctEstimate);
+                    const dividend = taskBookkeepingNumberOrNull(feedback.dividendCapacity);
+                    return ct !== null && dividend !== null && !!feedback.ctConfirmed && !!feedback.dividendConfirmed;
+                }
+                if (stageId === "reviewer") {
+                    return String(workflow.reviewer || "").trim().length > 0 && String(workflow.notes || "").trim().length >= 5;
+                }
+                if (stageId === "client_feedback") {
+                    return String(feedback.clientFeedbackStatus || "").trim().length > 0;
+                }
+                return true;
+            }
+
             function renderTaskBookkeepingWorkflowPanel(allRows = []) {
                 const modal = document.getElementById("taskBookkeepingWorkflowModal");
                 const panel = document.getElementById("taskBookkeepingWorkflowPanel");
@@ -98883,55 +99089,129 @@
                 const defaultReviewer = String(workflow.reviewer || row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
                 if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
                 if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
-                const checklist = workflow.checklist || {};
+                const stages = taskBookkeepingWizardStages();
+                const stageIndexById = new Map(stages.map((item, index) => [item.id, index]));
+                const resolvedStage = stageIndexById.has(String(workflow.stage || "")) ? String(workflow.stage) : stages[0].id;
+                const reviewState = taskBookkeepingReviewState(row, workflow);
+                const feedback = taskBookkeepingEnsureWorkflowFeedback(workflow, reviewState);
+                const hydratedWorkflow = {
+                    ...workflow,
+                    stage: resolvedStage,
+                    checklist: workflow.checklist || {},
+                    feedback,
+                };
+                companiesHouseSettings.bmTaskBookkeepingWorkflow = hydratedWorkflow;
+                const checklist = hydratedWorkflow.checklist || {};
                 const checksCompleted = taskBookkeepingChecklistProgress(checklist);
-                const allChecksCompleted = checksCompleted === 4;
-                const reviewState = taskBookkeepingReviewState(row);
                 const blockingCount = reviewState.blockingChecks.length;
-                const canSubmit = allChecksCompleted && blockingCount === 0;
+                const stageIndex = Number(stageIndexById.get(resolvedStage) || 0);
+                const allPriorStagesPass = stages
+                    .slice(0, Math.max(0, stages.length - 1))
+                    .every((stage) => taskBookkeepingStageCanAdvance(stage.id, hydratedWorkflow, reviewState));
+                const canSubmit = allPriorStagesPass && blockingCount === 0;
 
                 const title = document.getElementById("taskBookkeepingWorkflowTitle");
                 const meta = document.getElementById("taskBookkeepingWorkflowMeta");
                 const progressMeta = document.getElementById("taskBookkeepingWorkflowProgressMeta");
-                const stepChecks = document.getElementById("taskBookkeepingStepChecks");
-                const stepReviewer = document.getElementById("taskBookkeepingStepReviewer");
-                const stepSubmit = document.getElementById("taskBookkeepingStepSubmit");
+                const stepsWrap = document.getElementById("taskBookkeepingWizardSteps");
                 const submitButton = document.getElementById("taskBookkeepingWorkflowSubmitButton");
+                const backButton = document.getElementById("taskBookkeepingWorkflowBackButton");
+                const nextButton = document.getElementById("taskBookkeepingWorkflowNextButton");
                 const reviewerSelect = document.getElementById("taskBookkeepingReviewerSelect");
                 const notesInput = document.getElementById("taskBookkeepingNotesInput");
                 const checkDividends = document.getElementById("taskBookkeepingCheckDividends");
                 const checkCorpTax = document.getElementById("taskBookkeepingCheckCorpTax");
                 const checkMerges = document.getElementById("taskBookkeepingCheckMerges");
                 const checkDuplicates = document.getElementById("taskBookkeepingCheckDuplicates");
+                const checksFeedbackInput = document.getElementById("taskBookkeepingChecksFeedbackInput");
                 const reviewSummary = document.getElementById("taskBookkeepingReviewSummary");
                 const reviewChecks = document.getElementById("taskBookkeepingReviewChecks");
                 const blockingList = document.getElementById("taskBookkeepingBlockingList");
                 const unreconciledBody = document.getElementById("taskBookkeepingUnreconciledBody");
+                const missingNotesInput = document.getElementById("taskBookkeepingMissingNotesInput");
+                const missingConfirmed = document.getElementById("taskBookkeepingMissingConfirmed");
+                const reconConfirmed = document.getElementById("taskBookkeepingReconciliationsConfirmed");
+                const taxEstimateInput = document.getElementById("taskBookkeepingTaxEstimateInput");
+                const taxEstimateSource = document.getElementById("taskBookkeepingTaxEstimateSource");
+                const taxEstimateConfirm = document.getElementById("taskBookkeepingTaxEstimateConfirm");
+                const dividendInput = document.getElementById("taskBookkeepingDividendInput");
+                const dividendSource = document.getElementById("taskBookkeepingDividendSource");
+                const dividendConfirm = document.getElementById("taskBookkeepingDividendConfirm");
+                const clientFeedbackSelect = document.getElementById("taskBookkeepingClientFeedbackSelect");
+                const clientFeedbackNotes = document.getElementById("taskBookkeepingClientFeedbackNotes");
+                const finalSummary = document.getElementById("taskBookkeepingFinalSummary");
+                const finalBlockingList = document.getElementById("taskBookkeepingFinalBlockingList");
 
                 if (title) title.textContent = `${bmTaskClientDisplayName(row?.clientName)} · ${bmTaskDisplayName(row)}`;
                 if (meta) meta.textContent = `Period end ${bmTaskEffectivePeriodEndISO(row) || "—"} · Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`;
                 if (progressMeta) {
                     progressMeta.textContent = canSubmit
-                        ? "Ready to submit for review."
-                        : `${checksCompleted}/4 checklist acknowledgements complete${blockingCount ? ` · ${blockingCount} flow blocker${blockingCount === 1 ? "" : "s"}` : ""}.`;
+                        ? "All workflow stages complete. Ready to submit for review."
+                        : `Stage ${stageIndex + 1}/${stages.length} · ${checksCompleted}/4 quality checks ticked${blockingCount ? ` · ${blockingCount} blocker${blockingCount === 1 ? "" : "s"}` : ""}.`;
                 }
-                if (stepChecks) stepChecks.classList.toggle("is-active", true);
-                if (stepReviewer) stepReviewer.classList.toggle("is-active", allChecksCompleted);
-                if (stepSubmit) stepSubmit.classList.toggle("is-active", canSubmit);
-                if (submitButton) submitButton.disabled = !canSubmit;
+                if (stepsWrap) {
+                    stepsWrap.innerHTML = stages.map((stage, index) => {
+                        const isActive = index === stageIndex;
+                        const isComplete = index < stageIndex && taskBookkeepingStageCanAdvance(stage.id, hydratedWorkflow, reviewState);
+                        return `<span class="task-bookkeeping-workflow-step ${isActive ? "is-active" : ""} ${isComplete ? "is-complete" : ""}" data-task-bookkeeping-stage-jump="${escapeHTML(stage.id)}">${escapeHTML(stage.label)}</span>`;
+                    }).join("");
+                    stepsWrap.querySelectorAll("[data-task-bookkeeping-stage-jump]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const targetStage = String(button.getAttribute("data-task-bookkeeping-stage-jump") || "");
+                            const targetIndex = Number(stageIndexById.get(targetStage) ?? -1);
+                            if (targetIndex < 0) return;
+                            if (targetIndex > stageIndex && !taskBookkeepingStageCanAdvance(resolvedStage, hydratedWorkflow, reviewState)) {
+                                showToast("Complete this stage before moving forward.", "info");
+                                return;
+                            }
+                            companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                                ...hydratedWorkflow,
+                                stage: targetStage,
+                            };
+                            renderTaskSubpages();
+                        });
+                    });
+                }
+                panel.querySelectorAll("[data-task-bookkeeping-stage-panel]").forEach((stagePanel) => {
+                    const stageId = String(stagePanel.getAttribute("data-task-bookkeeping-stage-panel") || "");
+                    stagePanel.hidden = stageId !== resolvedStage;
+                });
+                if (backButton) backButton.disabled = stageIndex <= 0;
+                if (nextButton) {
+                    const atLastStage = stageIndex >= stages.length - 1;
+                    nextButton.hidden = atLastStage;
+                    nextButton.disabled = atLastStage || !taskBookkeepingStageCanAdvance(resolvedStage, hydratedWorkflow, reviewState);
+                    nextButton.textContent = stageIndex === stages.length - 2 ? "Review submit" : "Next";
+                }
+                if (submitButton) {
+                    submitButton.hidden = resolvedStage !== "submit";
+                    submitButton.disabled = !canSubmit;
+                }
                 if (reviewerSelect) {
                     reviewerSelect.innerHTML = managerPool.map((name) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("");
-                    reviewerSelect.value = String(workflow.reviewer || "");
+                    reviewerSelect.value = String(hydratedWorkflow.reviewer || "");
                 }
-                if (notesInput && notesInput.value !== String(workflow.notes || "")) notesInput.value = String(workflow.notes || "");
+                if (notesInput && notesInput.value !== String(hydratedWorkflow.notes || "")) notesInput.value = String(hydratedWorkflow.notes || "");
                 if (checkDividends) checkDividends.checked = !!checklist.dividends;
                 if (checkCorpTax) checkCorpTax.checked = !!checklist.corporationTax;
                 if (checkMerges) checkMerges.checked = !!checklist.suggestedMerges;
                 if (checkDuplicates) checkDuplicates.checked = !!checklist.duplicateTransactions;
+                if (checksFeedbackInput && checksFeedbackInput.value !== String(feedback.checksFeedback || "")) checksFeedbackInput.value = String(feedback.checksFeedback || "");
+                if (missingNotesInput && missingNotesInput.value !== String(feedback.missingNotes || "")) missingNotesInput.value = String(feedback.missingNotes || "");
+                if (missingConfirmed) missingConfirmed.checked = !!feedback.missingConfirmed;
+                if (reconConfirmed) reconConfirmed.checked = !!feedback.reconciliationsConfirmed;
+                if (taxEstimateInput && taxEstimateInput.value !== String(feedback.ctEstimate || "")) taxEstimateInput.value = String(feedback.ctEstimate || "");
+                if (taxEstimateSource) taxEstimateSource.textContent = reviewState.taxDividend?.ctSource || "Calculated from bookkeeping figures.";
+                if (taxEstimateConfirm) taxEstimateConfirm.checked = !!feedback.ctConfirmed;
+                if (dividendInput && dividendInput.value !== String(feedback.dividendCapacity || "")) dividendInput.value = String(feedback.dividendCapacity || "");
+                if (dividendSource) dividendSource.textContent = reviewState.taxDividend?.dividendSource || "Calculated from available reserves and post-tax earnings.";
+                if (dividendConfirm) dividendConfirm.checked = !!feedback.dividendConfirmed;
+                if (clientFeedbackSelect) clientFeedbackSelect.value = String(feedback.clientFeedbackStatus || "");
+                if (clientFeedbackNotes && clientFeedbackNotes.value !== String(feedback.clientFeedbackNotes || "")) clientFeedbackNotes.value = String(feedback.clientFeedbackNotes || "");
                 if (reviewSummary) {
                     reviewSummary.textContent = reviewState.meClient
-                        ? `Using monthly flow: ${meReportClientDisplayName(reviewState.meClient)} · ${reviewState.periodConfig.monthLabel}.`
-                        : "No matching monthly flow found yet. Refresh ME data and ensure this task's client/month exists.";
+                        ? `Using monthly flow extraction: ${meReportClientDisplayName(reviewState.meClient)} · ${reviewState.periodConfig.monthLabel}.`
+                        : "No extracted monthly flow found. The wizard is running from task metadata and connected Xero checks.";
                 }
                 if (reviewChecks) {
                     reviewChecks.innerHTML = reviewState.checks.map((item) => `
@@ -98944,6 +99224,22 @@
                 if (blockingList) {
                     blockingList.hidden = reviewState.blockingChecks.length === 0;
                     blockingList.innerHTML = reviewState.blockingChecks.map((item) => `<li>${escapeHTML(item.label)}</li>`).join("");
+                }
+                if (finalSummary) {
+                    const ctValue = taskBookkeepingNumberOrNull(feedback.ctEstimate);
+                    const dividendValue = taskBookkeepingNumberOrNull(feedback.dividendCapacity);
+                    finalSummary.textContent = [
+                        `CT estimate ${ctValue === null ? "—" : formatCurrency(ctValue)}`,
+                        `Dividend availability ${dividendValue === null ? "—" : formatCurrency(dividendValue)}`,
+                        `Reviewer ${String(hydratedWorkflow.reviewer || "—")}`,
+                        `Client feedback ${String(feedback.clientFeedbackStatus || "not set")}`,
+                    ].join(" · ");
+                }
+                if (finalBlockingList) {
+                    finalBlockingList.hidden = canSubmit;
+                    finalBlockingList.innerHTML = canSubmit
+                        ? ""
+                        : reviewState.blockingChecks.map((item) => `<li>${escapeHTML(item.label)}</li>`).join("");
                 }
                 if (unreconciledBody) {
                     const client = reviewState.meClient || null;
@@ -99041,6 +99337,7 @@
                 companiesHouseSettings.bmTaskBookkeepingWorkflow = {
                     open: true,
                     rowId,
+                    stage: "data_pull",
                     checklist: {
                         dividends: true,
                         corporationTax: true,
@@ -99049,6 +99346,18 @@
                     },
                     reviewer: defaultReviewer,
                     notes: "",
+                    feedback: {
+                        missingConfirmed: false,
+                        missingNotes: "",
+                        checksFeedback: "",
+                        reconciliationsConfirmed: false,
+                        ctEstimate: "",
+                        ctConfirmed: false,
+                        dividendCapacity: "",
+                        dividendConfirmed: false,
+                        clientFeedbackStatus: "",
+                        clientFeedbackNotes: "",
+                    },
                 };
                 setBmTaskOverrideState(rowId, { workflowState: "in_progress" });
                 updateBmTaskStatus(row, "in_review", "", {
@@ -99119,7 +99428,18 @@
                     showToast("Complete all workflow checks before submitting.", "info");
                     return;
                 }
-                const reviewState = taskBookkeepingReviewState(row);
+                const reviewState = taskBookkeepingReviewState(row, workflow);
+                const stages = taskBookkeepingWizardStages().slice(0, -1);
+                const blockedStage = stages.find((stage) => !taskBookkeepingStageCanAdvance(stage.id, workflow, reviewState));
+                if (blockedStage) {
+                    showToast(`Complete ${blockedStage.label.toLowerCase()} before submitting.`, "info");
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        stage: blockedStage.id,
+                    };
+                    renderTaskSubpages();
+                    return;
+                }
                 if (reviewState.blockingChecks.length) {
                     showToast("Resolve all blocking workflow checks before submitting for review.", "error");
                     renderTaskSubpages();
@@ -99138,11 +99458,17 @@
                     reviewer: assignedReviewer,
                     notes: assignedNotes,
                 };
+                const feedback = workflow.feedback || {};
+                const ctForNote = taskBookkeepingNumberOrNull(feedback.ctEstimate);
+                const dividendsForNote = taskBookkeepingNumberOrNull(feedback.dividendCapacity);
                 const checksSummary = [
                     checklist?.dividends ? "dividends checked" : null,
                     checklist?.corporationTax ? "corporation tax checked" : null,
                     checklist?.suggestedMerges ? "contact merge suggestions reviewed" : null,
                     checklist?.duplicateTransactions ? "duplicate transactions reviewed" : null,
+                    ctForNote !== null ? `CT estimate ${formatCurrency(ctForNote)}` : null,
+                    dividendsForNote !== null ? `dividend capacity ${formatCurrency(dividendsForNote)}` : null,
+                    feedback?.clientFeedbackStatus ? `client feedback ${String(feedback.clientFeedbackStatus).replace(/_/g, " ")}` : null,
                 ].filter(Boolean).join("; ");
                 const reviewNote = [checksSummary, assignedNotes].filter(Boolean).join(". ");
                 const rowId = bmTaskIdentitySafe(row);
@@ -99159,24 +99485,6 @@
                 showToast(`Task submitted for review to ${assignedReviewer}.`, "success");
             }
 
-            function openTaskBookkeepingMeWorkspace(allRows = []) {
-                const row = taskBookkeepingWorkflowCurrentRow(allRows);
-                if (!row) {
-                    showToast("No bookkeeping task is active.", "info");
-                    return;
-                }
-                const meClient = taskBookkeepingFindMeReportClient(row);
-                const clientId = String(meClient?.id || row?.clientId || "").trim();
-                openMeReportScreen();
-                if (clientId) {
-                    window.setTimeout(() => {
-                        try {
-                            openMeReportClientWorkspace(clientId);
-                        } catch {}
-                    }, 0);
-                }
-            }
-
             async function handleBookkeepingTaskStartFlow(row = {}, allRows = []) {
                 if (activeView !== "task-list") {
                     activeView = "task-list";
@@ -99186,10 +99494,10 @@
                     renderAll();
                 }
                 try {
-                    await loadMeReport(true);
-                } catch {}
-                try {
-                    await loadXeroLockDateOverview(false);
+                    await Promise.all([
+                        loadXeroLockDateOverview(false),
+                        companiesHouseSettings.authRegisterLoaded ? Promise.resolve() : loadAuthCodeRegisterDirectory(false),
+                    ]);
                 } catch {}
                 openTaskBookkeepingWorkflowPanel(row, allRows);
             }
@@ -103217,13 +103525,39 @@
                     resetTaskBookkeepingWorkflowPanel();
                     renderTaskSubpages();
                 });
-                document.getElementById("taskBookkeepingOpenMeButton")?.addEventListener("click", () => {
-                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
-                    openTaskBookkeepingMeWorkspace(allRows);
-                });
                 document.getElementById("taskBookkeepingWorkflowSubmitButton")?.addEventListener("click", async () => {
                     const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                     await submitTaskBookkeepingWorkflow(allRows);
+                });
+                document.getElementById("taskBookkeepingWorkflowBackButton")?.addEventListener("click", () => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    const stages = taskBookkeepingWizardStages();
+                    const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
+                    if (index <= 0) return;
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        stage: stages[index - 1].id,
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingWorkflowNextButton")?.addEventListener("click", () => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
+                    if (!row) return;
+                    const reviewState = taskBookkeepingReviewState(row, workflow);
+                    const stages = taskBookkeepingWizardStages();
+                    const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
+                    const current = stages[index] || stages[0];
+                    if (!taskBookkeepingStageCanAdvance(current.id, workflow, reviewState)) {
+                        showToast(`Complete ${current.label.toLowerCase()} before continuing.`, "info");
+                        return;
+                    }
+                    if (index >= stages.length - 1) return;
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        stage: stages[index + 1].id,
+                    };
+                    renderTaskSubpages();
                 });
                 document.getElementById("taskBookkeepingReviewerSelect")?.addEventListener("change", (event) => {
                     companiesHouseSettings.bmTaskBookkeepingWorkflow = {
@@ -103237,6 +103571,7 @@
                         ...(companiesHouseSettings.bmTaskBookkeepingWorkflow || {}),
                         notes: String(event?.target?.value || ""),
                     };
+                    renderTaskSubpages();
                 });
                 document.getElementById("taskBookkeepingCheckDividends")?.addEventListener("change", (event) => {
                     const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
@@ -103281,6 +103616,111 @@
                         },
                     };
                     renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingChecksFeedbackInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            checksFeedback: String(event?.target?.value || ""),
+                        },
+                    };
+                });
+                document.getElementById("taskBookkeepingMissingNotesInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            missingNotes: String(event?.target?.value || ""),
+                        },
+                    };
+                });
+                document.getElementById("taskBookkeepingMissingConfirmed")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            missingConfirmed: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingReconciliationsConfirmed")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            reconciliationsConfirmed: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingTaxEstimateInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            ctEstimate: String(event?.target?.value || ""),
+                        },
+                    };
+                });
+                document.getElementById("taskBookkeepingTaxEstimateConfirm")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            ctConfirmed: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingDividendInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            dividendCapacity: String(event?.target?.value || ""),
+                        },
+                    };
+                });
+                document.getElementById("taskBookkeepingDividendConfirm")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            dividendConfirmed: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingClientFeedbackSelect")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            clientFeedbackStatus: String(event?.target?.value || "").trim(),
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingClientFeedbackNotes")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        feedback: {
+                            ...(workflow.feedback || {}),
+                            clientFeedbackNotes: String(event?.target?.value || ""),
+                        },
+                    };
                 });
                 document.getElementById("taskApprovalsOpenCompletedButton")?.addEventListener("click", () => {
                     openTaskCompletedScreen();
