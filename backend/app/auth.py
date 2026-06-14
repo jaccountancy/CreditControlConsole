@@ -19,7 +19,7 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "email",
     "offline_access",
 )
-REQUIRED_XERO_CONNECTION_SCOPES = (
+DEFAULT_XERO_CONNECTION_SCOPES = (
     "accounting.invoices",
     "accounting.payments",
     "accounting.banktransactions",
@@ -145,9 +145,12 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
             if payroll_scope not in scopes:
                 scopes.append(payroll_scope)
 
-    for required_scope in REQUIRED_XERO_CONNECTION_SCOPES:
-        if required_scope not in scopes:
-            scopes.append(required_scope)
+    # Preserve existing behaviour for empty or malformed configuration while
+    # avoiding forced scope inflation when a valid explicit scope list exists.
+    if not scopes:
+        for default_scope in DEFAULT_XERO_CONNECTION_SCOPES:
+            if default_scope not in scopes:
+                scopes.append(default_scope)
 
     for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
         if required_scope not in scopes:
