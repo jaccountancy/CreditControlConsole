@@ -3918,10 +3918,42 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     month_start, month_end = _pi_month_bounds(str(safe_payload.get("month") or safe_payload.get("monthStart") or ""))
     month_label = month_start.strftime("%Y-%m")
     account_code = str(safe_payload.get("accountCode") or PI_CLEARING_DEFAULT_ACCOUNT_CODE).strip() or PI_CLEARING_DEFAULT_ACCOUNT_CODE
-    xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
-    ignition_refresh = await _pi_refresh_ignition_payment_datasets(user)
+    force_refresh_xero = bool(safe_payload.get("refreshXero"))
+    force_refresh_ignition = bool(safe_payload.get("refreshIgnition"))
+
+    # Prefer cached historical data already stored in the database.
     xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    if force_refresh_xero or not xero_rows:
+        xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
+        xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    else:
+        xero_refresh = {
+            "tenantId": tenant_id,
+            "fetched": 0,
+            "processed": 0,
+            "stored": 0,
+            "cachedRows": len(xero_rows),
+            "skippedRefresh": True,
+            "source": "cache",
+            "message": "Using cached historical Xero payments from local database.",
+        }
+
     ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
+    if force_refresh_ignition or not ignition_rows:
+        ignition_refresh = await _pi_refresh_ignition_payment_datasets(user)
+        ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
+    else:
+        ignition_refresh = {
+            "connected": True,
+            "fetched": 0,
+            "changed": 0,
+            "cachedRows": len(ignition_rows),
+            "skippedRefresh": True,
+            "source": "cache",
+            "message": "Using cached Ignition payments from local database.",
+            "datasets": {},
+        }
+
     existing_credit_note_totals = _pi_existing_credit_note_totals(user, month_start, month_end, account_code)
 
     grouped: dict[str, dict] = {}

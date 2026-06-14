@@ -46497,8 +46497,12 @@
                     const refreshSummary = runSummary?.refresh && typeof runSummary.refresh === "object" ? runSummary.refresh : {};
                     const xeroRefresh = refreshSummary?.xero && typeof refreshSummary.xero === "object" ? refreshSummary.xero : {};
                     const ignitionRefresh = refreshSummary?.ignition && typeof refreshSummary.ignition === "object" ? refreshSummary.ignition : {};
-                    const xeroFetched = Number(xeroRefresh?.fetched || 0);
-                    const ignitionFetched = Number(ignitionRefresh?.fetched || 0);
+                    const xeroFetched = Number(
+                        xeroRefresh?.skippedRefresh ? (xeroRefresh?.cachedRows || 0) : (xeroRefresh?.fetched || 0)
+                    );
+                    const ignitionFetched = Number(
+                        ignitionRefresh?.skippedRefresh ? (ignitionRefresh?.cachedRows || 0) : (ignitionRefresh?.fetched || 0)
+                    );
                     piClearingWorkflowStageState = "success";
                     piClearingWorkflowStageIndex = PI_CLEARING_WORKFLOW_STAGES.length - 1;
                     piClearingStatusMessage = `Workflow completed. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"} and Ignition pulled ${formatInteger(ignitionFetched)} row${ignitionFetched === 1 ? "" : "s"}. Review AI findings and generate credit notes.`;
