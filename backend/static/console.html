@@ -36712,7 +36712,7 @@
                 latePaymentChargeTaxType: "OUTPUT2",
                 badDebtWriteOffAccountCode: "402",
                 badDebtWriteOffAccountName: "",
-                piClearingAccountCode: "PI Clearing Account",
+                piClearingAccountCode: "",
                 piClearingAccountLocked: false,
                 updatedAt: ""
             };
@@ -36842,7 +36842,7 @@
             let payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
-            const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account";
+            const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "";
             const PI_CLEARING_BATCH_HARD_START = "2026-01-01";
             let piClearingRuns = [];
             let piClearingLoading = false;
@@ -47178,11 +47178,24 @@
             }
 
             async function ensurePiClearingNominalSetup() {
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                if (!settings.piClearingAccountLocked && (!xeroAccountsLoaded || !xeroAccounts.length) && !xeroAccountsLoading) {
+                    await loadXeroPostingSettings(true);
+                }
                 const selectedCode = String(piClearingSelectedAccountCode || "").trim();
                 if (!selectedCode) {
                     throw new Error("Choose the PI nominal account before running this batch.");
                 }
-                const settings = normalisePostingSettings(state.postingSettings || {});
+                if (!settings.piClearingAccountLocked) {
+                    const accountCodes = new Set(
+                        (xeroAccounts || [])
+                            .map((account) => String(account?.code || "").trim().toLowerCase())
+                            .filter(Boolean)
+                    );
+                    if (!accountCodes.has(selectedCode.toLowerCase())) {
+                        throw new Error("Select a PI nominal account from the connected Jaccountancy chart of accounts.");
+                    }
+                }
                 if (settings.piClearingAccountLocked && String(settings.piClearingAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase()) {
                     return;
                 }
@@ -47430,15 +47443,23 @@
                             const label = `${code}${name ? ` · ${name}` : ""}${status ? ` (${status})` : ""}`;
                             return `<option value="${escapeHTML(code)}">${escapeHTML(label)}</option>`;
                         });
+                    const selectedCode = String(piClearingSelectedAccountCode || "").trim();
                     if (!options.length) {
-                        nominalSelect.innerHTML = `<option value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}">${escapeHTML(String(piClearingSelectedAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE).trim())}</option>`;
-                    } else if (!options.join("").includes(`value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}"`)) {
-                        nominalSelect.innerHTML = `<option value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}">${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}</option>${options.join("")}`;
+                        nominalSelect.innerHTML = `<option value="">${escapeHTML(xeroAccountsLoading ? "Loading chart of accounts..." : "Load Xero chart of accounts to select a PI nominal account")}</option>`;
                     } else {
-                        nominalSelect.innerHTML = options.join("");
+                        if (!selectedCode) {
+                            const configuredCode = String(settings.piClearingAccountCode || "").trim();
+                            piClearingSelectedAccountCode = configuredCode || String(xeroAccounts[0]?.code || "").trim();
+                        }
+                        const resolvedCode = String(piClearingSelectedAccountCode || "").trim();
+                        if (resolvedCode && !options.join("").includes(`value="${escapeHTML(resolvedCode)}"`)) {
+                            nominalSelect.innerHTML = `<option value="${escapeHTML(resolvedCode)}">${escapeHTML(resolvedCode)}</option>${options.join("")}`;
+                        } else {
+                            nominalSelect.innerHTML = options.join("");
+                        }
                     }
                     nominalSelect.value = String(piClearingSelectedAccountCode || "").trim();
-                    nominalSelect.disabled = Boolean(settings.piClearingAccountLocked) || piClearingWorkflowRunning;
+                    nominalSelect.disabled = Boolean(settings.piClearingAccountLocked) || piClearingWorkflowRunning || !options.length;
                 }
                 if (nominalMeta) {
                     nominalMeta.textContent = settings.piClearingAccountLocked

@@ -265,7 +265,7 @@ XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
-PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
+PI_CLEARING_DEFAULT_ACCOUNT_CODE = ""
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
 PI_CLEARING_AI_SCHEMA = {
@@ -4523,7 +4523,12 @@ def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) 
         return configured
     if requested:
         return requested
-    return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+    if configured:
+        return configured
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Select a PI nominal account from the connected Jaccountancy chart of accounts.",
+    )
 
 
 async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
