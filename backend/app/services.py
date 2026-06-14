@@ -30952,10 +30952,6 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
         if dedupe_key in seen_contact_ids:
             continue
         seen_contact_ids.add(dedupe_key)
-        # VAT on Unregistered should only include clients that do not have a VAT
-        # number in the client register.
-        if str(row.get("vatNumber") or "").strip():
-            continue
         deduped.append(row)
     return {"clients": deduped, "count": len(deduped)}
 

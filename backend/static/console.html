@@ -89293,6 +89293,10 @@
                                 ? `${row.tenantCount.toLocaleString("en-GB")} VAT transaction${row.tenantCount === 1 ? "" : "s"}`
                                 : "Count unavailable"
                             : "Loading count...";
+                        const hasVatNumber = Number(row.totalVatRegisteredCount || 0) > 0;
+                        const vatStatusBubble = hasVatNumber
+                            ? '<span class="ch-pill is-bad">Client is VAT Registered</span>'
+                            : '<span class="ch-pill is-good">No VAT Number Found</span>';
                         const workspaceLabel = row.workspace
                             ? `<strong>${escapeHTML(row.workspace.workspaceName || "VAT workspace")}</strong>`
                             : '<span class="ch-pill is-bad">No workspace set up</span>';
@@ -89305,7 +89309,7 @@
                         return `
                         <tr class="micro-analyzer-tenant-row ${rowTone}">
                             <td><input type="checkbox" data-micro-analyzer-select-tenant="${escapeHTML(row.tenantId || "")}" ${selectedTenantIds.has(row.tenantId) ? "checked" : ""} aria-label="Select tenant"></td>
-                            <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button><br>${vatStatusBubble}</td>
                             <td><strong>${escapeHTML(countLabel)}</strong></td>
                             <td>${workspaceLabel}</td>
                             <td>
