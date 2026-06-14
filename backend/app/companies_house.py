@@ -4577,8 +4577,12 @@ def _upsert_auth_code_register_row(
     user_id: str | None,
 ) -> tuple[str, str]:
     register_key = company_number or normalised_name
-    encrypted = _encrypt_register_auth_code(auth_code, register_key)
-    hint = _mask(auth_code)
+    safe_auth_code = _coerce_text(auth_code, 80)
+    has_auth_code = bool(safe_auth_code)
+    encrypted_for_insert = _encrypt_register_auth_code(safe_auth_code, register_key)
+    hint_for_insert = _mask(safe_auth_code) if has_auth_code else ""
+    encrypted_for_update = encrypted_for_insert if has_auth_code else None
+    hint_for_update = hint_for_insert if has_auth_code else None
     updated_row = None
     if company_number:
         cursor.execute(
@@ -4596,8 +4600,8 @@ def _upsert_auth_code_register_row(
                 company_utr = COALESCE(NULLIF(%s, ''), company_utr),
                 personal_utr = COALESCE(NULLIF(%s, ''), personal_utr),
                 normalised_name = %s,
-                code_encrypted = %s,
-                code_hint = %s,
+                code_encrypted = COALESCE(%s, code_encrypted),
+                code_hint = COALESCE(%s, code_hint),
                 source_filename = %s,
                 uploaded_by_user_id = %s,
                 uploaded_at = NOW(),
@@ -4618,8 +4622,8 @@ def _upsert_auth_code_register_row(
                 company_utr,
                 personal_utr,
                 normalised_name,
-                encrypted,
-                hint,
+                encrypted_for_update,
+                hint_for_update,
                 filename,
                 user_id,
                 company_number,
@@ -4641,8 +4645,8 @@ def _upsert_auth_code_register_row(
                 client_address = COALESCE(NULLIF(%s, ''), client_address),
                 company_utr = COALESCE(NULLIF(%s, ''), company_utr),
                 personal_utr = COALESCE(NULLIF(%s, ''), personal_utr),
-                code_encrypted = %s,
-                code_hint = %s,
+                code_encrypted = COALESCE(%s, code_encrypted),
+                code_hint = COALESCE(%s, code_hint),
                 source_filename = %s,
                 uploaded_by_user_id = %s,
                 uploaded_at = NOW(),
@@ -4663,8 +4667,8 @@ def _upsert_auth_code_register_row(
                 client_address,
                 company_utr,
                 personal_utr,
-                encrypted,
-                hint,
+                encrypted_for_update,
+                hint_for_update,
                 filename,
                 user_id,
                 normalised_name,
@@ -4713,8 +4717,8 @@ def _upsert_auth_code_register_row(
             company_utr,
             personal_utr,
             normalised_name,
-            encrypted,
-            hint,
+            encrypted_for_insert,
+            hint_for_insert,
             filename,
             user_id,
         ),
@@ -4781,11 +4785,6 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
     mapping = _resolve_header_map(headers)
     mapping = _apply_header_profile(headers, mapping, _load_last_import_header_profile())
     mapping = _ai_resolve_header_map(headers, mapping)
-    if "auth_code" not in mapping:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CSV must include an auth code column (for example 'Auth Code' or 'Authentication Code').",
-        )
     output_rows: list[dict] = []
     errors: list[dict] = []
     # BM export fallback: client type in column B and client ID in column E for some files.
@@ -4804,10 +4803,8 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
         display_name = _auth_register_name(row_payload)
         client_type = _normalise_client_type(row_payload.get("company_type"))
         normalised_name = _normalise_company_name_for_match(display_name)
-        if not auth_code:
-            continue
         if not company_number and not normalised_name:
-            errors.append({"lineNumber": idx, "reason": "Missing company number and name; cannot match this auth code."})
+            errors.append({"lineNumber": idx, "reason": "Missing company number and name; cannot match this row."})
             continue
         vat_number = _normalise_vat_number(row_payload.get("vat_number"))
         if not vat_number:
@@ -4855,7 +4852,7 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
     if not rows:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No auth codes found in file. Include client/company name and auth code columns.",
+            detail="No directory rows found in file. Include client/company name or company number columns.",
         )
     user_id = user.get("id") if isinstance(user, dict) else None
     created_count = 0
@@ -4938,7 +4935,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
     if not rows:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No auth codes found in file. Include client/company name and auth code columns.",
+            detail="No directory rows found in file. Include client/company name or company number columns.",
         )
 
     incoming_by_key: dict[str, dict] = {}

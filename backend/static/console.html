@@ -98054,6 +98054,25 @@
                 saveBmTaskLocalState();
             }
 
+            function resetBmTaskStateForRestore(row = {}) {
+                const rowId = bmTaskIdentitySafe(row);
+                if (!rowId) return;
+                const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
+                const nextOverride = {
+                    ...currentOverride,
+                    completedAt: "",
+                };
+                if (bmTaskWorkflowType(row) === "bookkeeping") {
+                    nextOverride.workflowState = "not_started";
+                    nextOverride.workflowReviewer = "";
+                    if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
+                        resetTaskBookkeepingWorkflowPanel();
+                    }
+                }
+                companiesHouseSettings.bmTaskOverridesByKey[rowId] = nextOverride;
+                saveBmTaskLocalState();
+            }
+
             function updateBmTaskAssignee(row = {}, nextAssignee = "", options = {}) {
                 const rowKey = bmTaskIdentitySafe(row);
                 if (!rowKey) return;
@@ -99757,12 +99776,7 @@
                             updateBmTaskStatus(match, "open", "", {
                                 autoNote: "Task restored to outstanding from completed tasks.",
                             });
-                            const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
-                            companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
-                                ...currentOverride,
-                                completedAt: "",
-                            };
-                            saveBmTaskLocalState();
+                            resetBmTaskStateForRestore(match);
                             showToast("Task restored to outstanding.", "success");
                             renderTaskSubpages();
                             return;
@@ -102865,12 +102879,7 @@
                     updateBmTaskStatus(task, "open", "", {
                         autoNote: "Task restored to outstanding from client page.",
                     });
-                    const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
-                    companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
-                        ...currentOverride,
-                        completedAt: "",
-                    };
-                    saveBmTaskLocalState();
+                    resetBmTaskStateForRestore(task);
                     renderTaskSubpages();
                     renderClientRegisterClientPage();
                     showToast("Task restored to outstanding.", "success");
