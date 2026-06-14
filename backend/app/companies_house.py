@@ -61,6 +61,7 @@ CH_WORKFLOW_REVIEW_SECTIONS = (
 AUTH_REGISTER_SERVICE_DEFINITIONS = (
     {"key": "accounts", "label": "Accounts"},
     {"key": "ct600Return", "label": "CT600 Return"},
+    {"key": "selfAssessmentReturn", "label": "Self Assessment Tax Return"},
     {"key": "payroll", "label": "Payroll"},
     {"key": "vatReturns", "label": "VAT Returns"},
     {"key": "managementAccounts", "label": "Management Accounts"},
@@ -5174,6 +5175,8 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     vat = service_details.get("vat") if isinstance(service_details.get("vat"), dict) else {}
     payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
+    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
+    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
@@ -5206,6 +5209,11 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
             "p11d": {
                 "nextReturnDueDate": _coerce_text(p11d.get("nextReturnDueDate"), 80),
                 "latestSubmittedDate": _coerce_text(p11d.get("latestSubmittedDate"), 80),
+            },
+            "selfAssessment": {
+                "nextReturnDueDate": _coerce_text(self_assessment.get("nextReturnDueDate"), 80),
+                "latestSubmittedDate": _coerce_text(self_assessment.get("latestSubmittedDate"), 80),
+                "utr": _coerce_text(self_assessment.get("utr"), 20),
             },
         },
     }
@@ -5240,6 +5248,16 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "clientPhone": row.get("contact_phone") or "",
         "clientAddress": row.get("client_address") or "",
         "authCodeHint": row.get("code_hint") or "",
+        "filingAuthorityReference": row.get("filing_authority_reference") or "",
+        "companyStatus": row.get("company_status") or "",
+        "officers": row.get("officers") if isinstance(row.get("officers"), list) else [],
+        "pscs": row.get("pscs") if isinstance(row.get("pscs"), list) else [],
+        "filingHistory": row.get("filing_history") if isinstance(row.get("filing_history"), list) else [],
+        "registeredOffice": row.get("registered_office") or "",
+        "incorporationDate": row.get("incorporation_date").isoformat() if row.get("incorporation_date") else "",
+        "nextMadeUpToDate": row.get("next_made_up_to_date").isoformat() if row.get("next_made_up_to_date") else "",
+        "nextDueDate": row.get("next_due_date").isoformat() if row.get("next_due_date") else "",
+        "lastFiledDate": row.get("last_filed_date").isoformat() if row.get("last_filed_date") else "",
         "sourceFilename": row.get("source_filename") or "",
         "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
         "services": services,
@@ -5466,6 +5484,16 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                r.company_utr,
                r.personal_utr,
                c.id AS company_id,
+               c.company_status,
+               c.filing_authority_reference,
+               c.officers,
+               c.pscs,
+               c.filing_history,
+               c.registered_office,
+               c.incorporation_date,
+               c.next_made_up_to_date,
+               c.next_due_date,
+               c.last_filed_date,
                COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
                COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
                COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
@@ -5606,6 +5634,9 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
         ("payroll", "rtiDeadline"): "RTI deadline",
         ("p11d", "nextReturnDueDate"): "Next P11D due date",
         ("p11d", "latestSubmittedDate"): "Latest P11D submitted date",
+        ("selfAssessment", "nextReturnDueDate"): "Self Assessment next due date",
+        ("selfAssessment", "latestSubmittedDate"): "Self Assessment latest submitted date",
+        ("selfAssessment", "utr"): "Self Assessment UTR",
     }
     for (section_key, field_key), label in service_detail_fields.items():
         before_section = before_service_details.get(section_key) if isinstance(before_service_details.get(section_key), dict) else {}
@@ -5713,12 +5744,15 @@ def get_auth_register_client_page(row_id: str) -> dict:
         vat["vatAddress"] = _coerce_text(row.get("client_address"), 1000)
     if vat.get("vatNumber") and not vat.get("memberState"):
         vat["memberState"] = "GB"
+    if not self_assessment.get("utr"):
+        self_assessment["utr"] = _coerce_text(row.get("personal_utr"), 20)
     companies_house_profile["serviceDetails"] = {
         "accountsReturns": accounts_returns,
         "confirmationStatement": confirmation_statement,
         "vat": vat,
         "payroll": payroll,
         "p11d": p11d,
+        "selfAssessment": self_assessment,
     }
 
     return {
