@@ -34957,6 +34957,7 @@
                                                 <th>Existing CN</th>
                                                 <th>Difference</th>
                                                 <th>Contact mapped</th>
+                                                <th>Match status</th>
                                             </tr>
                                         </thead>
                                         <tbody id="piClearingWizardRowsBody"></tbody>
@@ -36381,14 +36382,20 @@
             let piClearingPayoutDetailOpen = false;
             let piClearingSelectedPayoutKey = "";
             let piClearingWorkflowStageTimer = null;
+            let piClearingLivePollTimer = null;
             const PI_CLEARING_WORKFLOW_STAGES = [
                 "Pulling Xero PI clearing transactions...",
                 "Pulling Ignition payout data...",
                 "Reconciling Xero against Ignition...",
                 "Running AI analysis on differences...",
             ];
+            const PI_CLEARING_STAGE_ADVANCE_SECONDS = 8;
+            const PI_CLEARING_WORKFLOW_SLOW_SECONDS = 45;
+            const PI_CLEARING_LIVE_POLL_MS = 3500;
             let piClearingWorkflowStageIndex = -1;
             let piClearingWorkflowStageState = "idle";
+            let piClearingWorkflowStartedAt = 0;
+            let piClearingWorkflowElapsedSeconds = 0;
             let clientCallStatsData = {
                 summary: {},
                 charts: {},
@@ -46304,6 +46311,29 @@
                 return query ? `${base}${base.includes("?") ? "&" : "?"}${query}` : base;
             }
 
+            function piRowMatchState(row = {}) {
+                const difference = Math.abs(Number(row?.differenceTotal || 0));
+                const existingCredit = Math.abs(Number(row?.existingCreditNoteTotal || 0));
+                const reversals = Math.abs(Number(row?.ignitionReversalTotal || 0));
+                if (difference <= 0.01) return { key: "matched", label: "Matched", className: "is-good" };
+                if (existingCredit > 0 || reversals > 0) return { key: "partial", label: "Part-matched", className: "is-info" };
+                return { key: "open", label: "Open", className: "is-bad" };
+            }
+
+            function piClearingMatchProgress(rows = []) {
+                const total = Array.isArray(rows) ? rows.length : 0;
+                let matched = 0;
+                let partial = 0;
+                let open = 0;
+                (rows || []).forEach((row) => {
+                    const state = piRowMatchState(row);
+                    if (state.key === "matched") matched += 1;
+                    else if (state.key === "partial") partial += 1;
+                    else open += 1;
+                });
+                return { total, matched, partial, open };
+            }
+
             function piClearingTopbarCards() {
                 const run = currentPiClearingRun();
                 const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
@@ -46332,8 +46362,10 @@
                     .join("");
             }
 
-            async function loadPiClearingAccount(force = false) {
-                if (piClearingLoading && !force) return;
+            async function loadPiClearingAccount(force = false, options = {}) {
+                const silent = Boolean(options?.silent);
+                const preserveStatus = Boolean(options?.preserveStatus);
+                if (piClearingLoading) return;
                 piClearingLoading = true;
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccount);
@@ -46342,7 +46374,7 @@
                     const matchedRun = piClearingRuns.find((run) => piClearingRunMonth(run) === piClearingSelectedMonth);
                     if (matchedRun) piClearingSelectedRunId = String(matchedRun.id || "");
                     else if (piClearingRuns[0]) piClearingSelectedRunId = String(piClearingRuns[0].id || "");
-                    if (!piClearingStatusMessage) {
+                    if (!preserveStatus && !piClearingStatusMessage) {
                         piClearingStatusMessage = piClearingRuns.length
                             ? "Select a month or start a workflow to refresh PI reconciliation."
                             : "No PI clearing run has been generated yet.";
@@ -46352,7 +46384,7 @@
                     console.error("Unable to load PI clearing data", error);
                     piClearingStatusMessage = error?.message || "Unable to load PI clearing workspace.";
                     piClearingStatusTone = "error";
-                    showToast(piClearingStatusMessage, "error");
+                    if (!silent) showToast(piClearingStatusMessage, "error");
                 } finally {
                     piClearingLoading = false;
                     piClearingHydrated = true;
@@ -46365,22 +46397,78 @@
                     window.clearInterval(piClearingWorkflowStageTimer);
                     piClearingWorkflowStageTimer = null;
                 }
+                piClearingWorkflowStartedAt = 0;
+                piClearingWorkflowElapsedSeconds = 0;
+            }
+
+            function piClearingWorkflowProgressMessage() {
+                const stageText = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
+                const elapsed = formatSyncDuration(Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0)));
+                if (piClearingWorkflowElapsedSeconds >= PI_CLEARING_WORKFLOW_SLOW_SECONDS) {
+                    return `${stageText} Still running after ${elapsed}. Backend processing is taking longer than usual.`;
+                }
+                return `${stageText} Elapsed ${elapsed}.`;
+            }
+
+            function piClearingWorkflowFailureMessage(error) {
+                const statusCode = Number(error?.statusCode || 0);
+                const details = error?.details && typeof error.details === "object" ? error.details : {};
+                const requestId = String(details?.request_id || details?.requestId || "").trim();
+                const message = String(error?.message || "PI Clearing workflow failed.").trim();
+                const timeoutLike = statusCode === 502 || /application failed to respond|timed out|timeout/i.test(message);
+                if (!timeoutLike) return message;
+                return [
+                    "PI Clearing workflow timed out on the backend (502).",
+                    "Retry in 30-60 seconds.",
+                    requestId ? `Request ID: ${requestId}.` : "",
+                ].filter(Boolean).join(" ");
+            }
+
+            function stopPiClearingLivePolling() {
+                if (piClearingLivePollTimer) {
+                    window.clearInterval(piClearingLivePollTimer);
+                    piClearingLivePollTimer = null;
+                }
+            }
+
+            function startPiClearingLivePolling() {
+                stopPiClearingLivePolling();
+                piClearingLivePollTimer = window.setInterval(async () => {
+                    if (!piClearingWorkflowRunning) return;
+                    await loadPiClearingAccount(true, { silent: true, preserveStatus: true });
+                    const run = currentPiClearingRun();
+                    const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                    const progress = piClearingMatchProgress(runRows);
+                    if (progress.total > 0) {
+                        piClearingStatusMessage = `${piClearingWorkflowProgressMessage()} Live match-off: ${formatInteger(progress.matched)} matched, ${formatInteger(progress.partial)} part-matched, ${formatInteger(progress.open)} open.`;
+                        piClearingStatusTone = "info";
+                        renderPiClearingAccountScreen();
+                    }
+                }, PI_CLEARING_LIVE_POLL_MS);
             }
 
             function startPiClearingWorkflowStageTicker() {
                 stopPiClearingWorkflowStageTicker();
                 piClearingWorkflowStageState = "running";
                 piClearingWorkflowStageIndex = 0;
-                piClearingStatusMessage = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
+                piClearingWorkflowStartedAt = Date.now();
+                piClearingWorkflowElapsedSeconds = 0;
+                piClearingStatusMessage = piClearingWorkflowProgressMessage();
                 piClearingStatusTone = "info";
                 renderPiClearingAccountScreen();
                 piClearingWorkflowStageTimer = window.setInterval(() => {
                     if (!piClearingWorkflowRunning) return;
-                    piClearingWorkflowStageIndex = (piClearingWorkflowStageIndex + 1) % PI_CLEARING_WORKFLOW_STAGES.length;
-                    piClearingStatusMessage = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
+                    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - Number(piClearingWorkflowStartedAt || Date.now())) / 1000));
+                    piClearingWorkflowElapsedSeconds = elapsedSeconds;
+                    const stageIndex = Math.min(
+                        PI_CLEARING_WORKFLOW_STAGES.length - 1,
+                        Math.floor(elapsedSeconds / PI_CLEARING_STAGE_ADVANCE_SECONDS)
+                    );
+                    piClearingWorkflowStageIndex = stageIndex;
+                    piClearingStatusMessage = piClearingWorkflowProgressMessage();
                     piClearingStatusTone = "info";
                     renderPiClearingAccountScreen();
-                }, 2000);
+                }, 1000);
             }
 
             async function runPiClearingWorkflow() {
@@ -46389,6 +46477,7 @@
                 piClearingWizardOpen = true;
                 piClearingWizardStep = 1;
                 startPiClearingWorkflowStageTicker();
+                startPiClearingLivePolling();
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccountRun, {
                         method: "POST",
@@ -46418,10 +46507,11 @@
                 } catch (error) {
                     piClearingWorkflowStageState = "error";
                     if (piClearingWorkflowStageIndex < 0) piClearingWorkflowStageIndex = 0;
-                    piClearingStatusMessage = error?.message || "PI Clearing workflow failed.";
+                    piClearingStatusMessage = piClearingWorkflowFailureMessage(error);
                     piClearingStatusTone = "error";
                     showToast(piClearingStatusMessage, "error");
                 } finally {
+                    stopPiClearingLivePolling();
                     stopPiClearingWorkflowStageTicker();
                     piClearingWorkflowRunning = false;
                     renderPiClearingAccountScreen();
@@ -46672,14 +46762,25 @@
                 }
 
                 if (wizardSummary) {
-                    wizardSummary.textContent = runRows.length
-                        ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded from Xero and Ignition for ${formatMonthKey(piClearingRunMonth(run))}.`
-                        : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
+                    const matchProgress = piClearingMatchProgress(runRows);
+                    if (piClearingWorkflowRunning) {
+                        wizardSummary.textContent = matchProgress.total > 0
+                            ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
+                            : (piClearingStatusMessage || "Loading transactions...");
+                    } else if (piClearingWorkflowStageState === "error" && !runRows.length) {
+                        wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
+                    } else {
+                        wizardSummary.textContent = runRows.length
+                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded from Xero and Ignition for ${formatMonthKey(piClearingRunMonth(run))}.`
+                            : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
+                    }
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
                     wizardLoadButton.textContent = piClearingWorkflowRunning
                         ? "Loading transactions..."
+                        : piClearingWorkflowStageState === "error"
+                            ? "Retry transactions"
                         : runRows.length
                             ? "Refresh transactions"
                             : "Get transactions";
@@ -46687,21 +46788,25 @@
                 }
                 if (wizardRowsBody) {
                     wizardRowsBody.innerHTML = runRows.length
-                        ? runRows.map((row) => `
-                            <tr>
-                                <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
-                                <td>${escapeHTML(formatCurrency(row?.xeroTotal || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(row?.ignitionTotal || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(row?.ignitionReversalTotal || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(row?.existingCreditNoteTotal || 0))}</td>
-                                <td>
-                                    ${escapeHTML(formatCurrency(row?.differenceTotal || 0))}
-                                    <span class="pi-mismatch-explainer">${escapeHTML(piRowExplainer(row))}</span>
-                                </td>
-                                <td>${row?.xeroContactId ? "Yes" : "No"}</td>
-                            </tr>
-                        `).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">Run the workflow to populate transaction rows.</p></td></tr>`;
+                        ? runRows.map((row) => {
+                            const matchState = piRowMatchState(row);
+                            return `
+                                <tr>
+                                    <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.xeroTotal || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.ignitionTotal || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.ignitionReversalTotal || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.existingCreditNoteTotal || 0))}</td>
+                                    <td>
+                                        ${escapeHTML(formatCurrency(row?.differenceTotal || 0))}
+                                        <span class="pi-mismatch-explainer">${escapeHTML(piRowExplainer(row))}</span>
+                                    </td>
+                                    <td>${row?.xeroContactId ? "Yes" : "No"}</td>
+                                    <td><span class="ch-pill ${escapeHTML(matchState.className)}">${escapeHTML(matchState.label)}</span></td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : `<tr><td colspan="8"><p class="detail-meta">Run the workflow to populate transaction rows.</p></td></tr>`;
                 }
                 if (wizardPayoutBody) {
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
