@@ -132,11 +132,13 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
     scopes = []
     configured_scope_tokens = _configured_xero_scopes(configured_scopes)
     for configured_scope in configured_scope_tokens:
-        for scope in LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,)):
-            if scope not in KNOWN_XERO_SCOPES:
-                continue
-            if scope and scope not in scopes:
-                scopes.append(scope)
+        # Keep configured scopes as-is. Some Xero apps still rely on broad
+        # scopes and can reject expanded granular permutations as invalid.
+        scope = configured_scope
+        if scope not in KNOWN_XERO_SCOPES:
+            continue
+        if scope and scope not in scopes:
+            scopes.append(scope)
 
     if not include_payroll_scopes:
         scopes = [scope for scope in scopes if not scope.startswith("payroll.")]

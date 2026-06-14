@@ -95,13 +95,14 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("accounting.reports.banksummary.read", scopes)
         self.assertIn("assets.read", scopes)
 
-    def test_expands_legacy_transactions_scope(self):
+    def test_preserves_legacy_transactions_scope(self):
         scopes = xero_scope_string("accounting.transactions").split()
 
-        self.assertIn("accounting.invoices", scopes)
-        self.assertIn("accounting.payments", scopes)
-        self.assertIn("accounting.banktransactions", scopes)
-        self.assertIn("accounting.manualjournals", scopes)
+        self.assertIn("accounting.transactions", scopes)
+        self.assertNotIn("accounting.invoices", scopes)
+        self.assertNotIn("accounting.payments", scopes)
+        self.assertNotIn("accounting.banktransactions", scopes)
+        self.assertNotIn("accounting.manualjournals", scopes)
 
     def test_all_available_scope_string_uses_configured_set_plus_payroll_read(self):
         configured = "openid profile email offline_access accounting.invoices accounting.payments accounting.reports.balancesheet.read"
