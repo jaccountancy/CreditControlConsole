@@ -4750,6 +4750,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
     xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
     summary = {
+        "currencyCode": PI_CLEARING_TARGET_CURRENCY,
         "refresh": {
             "xero": xero_refresh,
             "ignition": ignition_refresh,

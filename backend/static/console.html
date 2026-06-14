@@ -35439,7 +35439,7 @@
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                     <button class="ghost-button" id="piClearingToggleMatchedPairsButton" type="button">Show matched pairs</button>
                                 </div>
-                                <p class="detail-meta">Step 1 is Xero only. Each payout credit must net to same-date debit entries. Matched pairs are hidden by default.</p>
+                                <p class="detail-meta">Step 1 is Xero only and runs in GBP functional currency. Each payout credit must net to same-date debit entries. Matched pairs are hidden by default.</p>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
                                         <thead>
@@ -47567,7 +47567,8 @@
                 const summaryPrefix = piClearingStatusMessage || (piClearingLoading ? "Loading PI clearing data..." : "");
                 const batchLabel = run ? piClearingRunRangeLabel(run) : selectedBatchLabel;
                 const accountLabel = currentPiClearingAccountCode();
-                summary.textContent = [summaryPrefix, batchLabel ? `Batch: ${batchLabel}.` : "", `Nominal: ${accountLabel}.`].filter(Boolean).join(" ");
+                const currencyCode = String(run?.summary?.currencyCode || "GBP").trim().toUpperCase() || "GBP";
+                summary.textContent = [summaryPrefix, batchLabel ? `Batch: ${batchLabel}.` : "", `Nominal: ${accountLabel}.`, `Currency: ${currencyCode}.`].filter(Boolean).join(" ");
                 summary.dataset.tone = piClearingStatusTone || "info";
                 if (wizardContextMonth) {
                     wizardContextMonth.textContent = selectedBatchLabel ? `Batch ${selectedBatchLabel}` : "Batch --";
