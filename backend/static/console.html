@@ -2696,6 +2696,49 @@
                 max-width: 980px;
                 grid-template-columns: repeat(6, minmax(86px, 1fr));
             }
+            .task-list-topbar-summary {
+                flex: 1 1 1080px;
+                min-width: min(920px, 100%);
+                max-width: none;
+                grid-template-columns: minmax(160px, auto) minmax(0, 1fr);
+                gap: 10px;
+                padding: 9px 12px;
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.92);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+            }
+            .task-list-topbar-summary h4 {
+                margin: 0;
+                display: flex;
+                align-items: center;
+                color: var(--muted);
+                font-size: 0.66rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .task-list-topbar-summary .task-list-metrics-grid {
+                gap: 1px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                overflow: hidden;
+                background: var(--line);
+                grid-template-columns: repeat(7, minmax(0, 1fr));
+            }
+            .task-list-topbar-summary .task-list-metric {
+                border: 0;
+                border-radius: 0;
+                padding: 8px 10px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .task-list-topbar-summary .task-list-metric label {
+                font-size: 0.52rem;
+                letter-spacing: 0.06em;
+            }
+            .task-list-topbar-summary .task-list-metric strong {
+                margin-top: 2px;
+                font-size: 0.78rem;
+            }
             .confirmation-statements-topbar-summary {
                 flex: 1 1 1080px;
                 min-width: min(980px, 100%);
@@ -2863,6 +2906,7 @@
             .jashflow-topbar-summary[hidden],
             .lpc-topbar-summary[hidden],
             .practice-pack-topbar-summary[hidden],
+            .task-list-topbar-summary[hidden],
             .xero-lock-date-topbar-summary[hidden],
             .confirmation-statements-topbar-summary[hidden],
             .me-report-topbar-actions[hidden],
@@ -3545,6 +3589,27 @@
                 flex-basis: 430px;
                 min-width: min(430px, 100%);
                 grid-template-columns: repeat(6, minmax(58px, 1fr));
+            }
+            .ledger-topbar.is-topbar-dense .task-list-topbar-summary {
+                flex-basis: 100%;
+                min-width: 0;
+                grid-template-columns: 1fr;
+                gap: 7px;
+                padding: 8px;
+                border-radius: 12px;
+            }
+            .ledger-topbar.is-topbar-dense .task-list-topbar-summary .task-list-metrics-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                border-radius: 10px;
+            }
+            .ledger-topbar.is-topbar-dense .task-list-topbar-summary .task-list-metric {
+                padding: 7px 8px;
+            }
+            .ledger-topbar.is-topbar-dense .task-list-topbar-summary .task-list-metric label {
+                font-size: 0.5rem;
+            }
+            .ledger-topbar.is-topbar-dense .task-list-topbar-summary .task-list-metric strong {
+                font-size: 0.72rem;
             }
             .ledger-topbar.is-topbar-dense .jashflow-topbar-summary article,
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary article,
@@ -27778,6 +27843,10 @@
                             <article><span>Manager assignments</span><strong>0</strong></article>
                             <article><span>Month</span><strong>May</strong></article>
                         </div>
+                        <div class="practice-pack-topbar-summary task-list-topbar-summary" id="taskListTopbarSummary" aria-label="Task list live metrics" role="status" aria-live="polite" hidden>
+                            <h4>Live Task Metrics Today</h4>
+                            <div class="task-list-metrics-grid" id="taskListMetricsToday"></div>
+                        </div>
                         <div class="practice-pack-topbar-summary pi-clearing-topbar-summary" id="piClearingTopbarSummary" aria-label="PI Clearing summary" role="status" aria-live="polite" hidden></div>
                         <div class="bank-continuity-topbar-pill" id="bankContinuityTopbarPill" role="status" aria-live="polite" hidden>
                             <span class="bank-continuity-mark" aria-hidden="true">OK</span>
@@ -30286,10 +30355,6 @@
                                     <p class="eyebrow">Tasks</p>
                                     <h3>Task List</h3>
                                     <p class="detail-meta">All task rows loaded from BM Tasks CSV.</p>
-                                </div>
-                                <div class="task-list-metrics" aria-live="polite">
-                                    <h4>Live Task Metrics Today</h4>
-                                    <div class="task-list-metrics-grid" id="taskListMetricsToday"></div>
                                 </div>
                                 <div class="detail-actions" style="margin-left: auto;">
                                     <button class="ghost-button" type="button" id="taskListReloadButton">Reload tasks</button>
@@ -39638,6 +39703,8 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
+                if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
@@ -74553,6 +74620,8 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
+                if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 renderPiClearingTopbarSummary();
