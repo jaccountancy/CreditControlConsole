@@ -158,17 +158,10 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
     return " ".join(scopes)
 
 
-def xero_scope_string_all_available() -> str:
-    scopes = []
-    for scope in sorted(KNOWN_XERO_SCOPES):
-        if scope in REQUIRED_XERO_IDENTITY_SCOPES:
-            continue
-        if scope not in scopes:
-            scopes.append(scope)
-    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
-        if required_scope not in scopes:
-            scopes.append(required_scope)
-    return " ".join(scopes)
+def xero_scope_string_all_available(configured_scopes: str) -> str:
+    # "All available" means the maximum scope set this app is configured to
+    # request, plus payroll read scopes for future-ready consent.
+    return xero_scope_string(configured_scopes, include_payroll_scopes=True)
 
 
 def allowed_panel_origins() -> set[str]:
@@ -463,7 +456,7 @@ def xero_authorize_url(
 ) -> str:
     settings = get_settings()
     scope_value = (
-        xero_scope_string_all_available()
+        xero_scope_string_all_available(settings.xero_scopes)
         if include_all_scopes
         else xero_scope_string(settings.xero_scopes, include_payroll_scopes=include_payroll_scopes)
     )

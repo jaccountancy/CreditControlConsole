@@ -103,18 +103,18 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("accounting.banktransactions", scopes)
         self.assertIn("accounting.manualjournals", scopes)
 
-    def test_all_available_scope_string_includes_broad_feature_set(self):
-        scopes = xero_scope_string_all_available().split()
+    def test_all_available_scope_string_uses_configured_set_plus_payroll_read(self):
+        configured = "openid profile email offline_access accounting.invoices accounting.payments accounting.reports.balancesheet.read"
+        scopes = xero_scope_string_all_available(configured).split()
 
         self.assertIn("openid", scopes)
         self.assertIn("offline_access", scopes)
         self.assertIn("accounting.invoices", scopes)
-        self.assertIn("accounting.invoices.read", scopes)
         self.assertIn("accounting.reports.balancesheet.read", scopes)
-        self.assertIn("files.read", scopes)
-        self.assertIn("projects.read", scopes)
-        self.assertIn("assets.read", scopes)
+        self.assertIn("payroll.employees.read", scopes)
         self.assertIn("payroll.payruns.read", scopes)
+        self.assertNotIn("files.read", scopes)
+        self.assertNotIn("projects.read", scopes)
 
 
 if __name__ == "__main__":
