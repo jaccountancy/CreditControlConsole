@@ -11,11 +11,12 @@ os.environ.setdefault("XERO_CLIENT_SECRET", "test-xero-client-secret")
 os.environ.setdefault("XERO_REDIRECT_URI", "https://example.com/xero/callback")
 
 try:
-    from app.auth import configured_xero_scopes_include_payroll, xero_scope_string
+    from app.auth import configured_xero_scopes_include_payroll, xero_scope_string, xero_scope_string_all_available
 
     _AUTH_TEST_IMPORT_ERROR = ""
 except ModuleNotFoundError as exc:  # pragma: no cover - local runtime guard
     xero_scope_string = None  # type: ignore[assignment]
+    xero_scope_string_all_available = None  # type: ignore[assignment]
     configured_xero_scopes_include_payroll = None  # type: ignore[assignment]
     _AUTH_TEST_IMPORT_ERROR = str(exc)
 
@@ -101,6 +102,19 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("accounting.payments", scopes)
         self.assertIn("accounting.banktransactions", scopes)
         self.assertIn("accounting.manualjournals", scopes)
+
+    def test_all_available_scope_string_includes_broad_feature_set(self):
+        scopes = xero_scope_string_all_available().split()
+
+        self.assertIn("openid", scopes)
+        self.assertIn("offline_access", scopes)
+        self.assertIn("accounting.invoices", scopes)
+        self.assertIn("accounting.invoices.read", scopes)
+        self.assertIn("accounting.reports.balancesheet.read", scopes)
+        self.assertIn("files.read", scopes)
+        self.assertIn("projects.read", scopes)
+        self.assertIn("assets.read", scopes)
+        self.assertIn("payroll.payruns.read", scopes)
 
 
 if __name__ == "__main__":

@@ -158,6 +158,19 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
     return " ".join(scopes)
 
 
+def xero_scope_string_all_available() -> str:
+    scopes = []
+    for scope in sorted(KNOWN_XERO_SCOPES):
+        if scope in REQUIRED_XERO_IDENTITY_SCOPES:
+            continue
+        if scope not in scopes:
+            scopes.append(scope)
+    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
+        if required_scope not in scopes:
+            scopes.append(required_scope)
+    return " ".join(scopes)
+
+
 def allowed_panel_origins() -> set[str]:
     base_url = os.getenv("BASE_URL", "https://creditcontrolconsole-production.up.railway.app")
     panel_allowed_origins = os.getenv(
@@ -446,13 +459,19 @@ def xero_authorize_url(
     state_token: str,
     prompt_consent: bool = False,
     include_payroll_scopes: bool = False,
+    include_all_scopes: bool = False,
 ) -> str:
     settings = get_settings()
+    scope_value = (
+        xero_scope_string_all_available()
+        if include_all_scopes
+        else xero_scope_string(settings.xero_scopes, include_payroll_scopes=include_payroll_scopes)
+    )
     params = {
         "response_type": "code",
         "client_id": settings.xero_client_id,
         "redirect_uri": settings.xero_redirect_uri,
-        "scope": xero_scope_string(settings.xero_scopes, include_payroll_scopes=include_payroll_scopes),
+        "scope": scope_value,
         "state": state_token,
     }
     if prompt_consent:

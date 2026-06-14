@@ -24623,6 +24623,7 @@
                 width: 100%;
                 margin-top: 0 !important;
                 padding: 8px;
+                justify-content: center;
                 border-radius: 16px;
                 background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(226, 238, 255, 0.84));
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 4px 14px rgba(25, 56, 103, 0.08);
@@ -24816,6 +24817,27 @@
             #chRegisterClientPageJukFetchStatus {
                 font-size: 12px;
                 font-weight: 700;
+            }
+            .ch-register-juk-invoice-actions.is-loading #chRegisterClientPageJukFetchButton {
+                animation: juk-fetch-pulse 1s ease-in-out infinite;
+            }
+            #chRegisterClientPageJukFetchStatus.is-pulse {
+                animation: juk-status-glow 1.1s ease-in-out infinite;
+            }
+            #chRegisterClientPageJukInvoicesBody.is-animated {
+                animation: juk-table-fade-in 360ms ease-out;
+            }
+            @keyframes juk-fetch-pulse {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-1px); }
+            }
+            @keyframes juk-status-glow {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.68; }
+            }
+            @keyframes juk-table-fade-in {
+                0% { opacity: 0; transform: translateY(6px); }
+                100% { opacity: 1; transform: translateY(0); }
             }
             .ch-register-risk-grid {
                 display: grid;
@@ -38916,12 +38938,13 @@
                 const target = String(targetSection || "").trim();
                 const separator = base.includes("?") ? "&" : "?";
                 const payrollParam = target === "payroll-headcount" ? "&include_payroll=1" : "";
+                const allScopesParam = target === "xero-connection" ? "&include_all_scopes=1" : "";
                 if (!target) {
                     const redirectURL = xeroConnectionReturnURL();
-                    return `${base}${separator}force=1${payrollParam}&redirect_to=${encodeURIComponent(redirectURL)}`;
+                    return `${base}${separator}force=1${payrollParam}${allScopesParam}&redirect_to=${encodeURIComponent(redirectURL)}`;
                 }
                 const redirectURL = xeroConnectionReturnURL(target);
-                return `${base}${separator}force=1${payrollParam}&xero_target=${encodeURIComponent(target)}&redirect_to=${encodeURIComponent(redirectURL)}`;
+                return `${base}${separator}force=1${payrollParam}${allScopesParam}&xero_target=${encodeURIComponent(target)}&redirect_to=${encodeURIComponent(redirectURL)}`;
             }
 
             function xeroConnectionReturnURL(targetSection = "") {

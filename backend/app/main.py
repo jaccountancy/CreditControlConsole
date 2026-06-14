@@ -631,6 +631,7 @@ def auth_xero_start(
     redirect_to: str = "/",
     force: int = 0,
     include_payroll: int = 0,
+    include_all_scopes: int = 0,
 ):
     redirect_to = normalise_oauth_redirect(redirect_to)
     if not force:
@@ -639,15 +640,19 @@ def auth_xero_start(
             return response
     state_token = start_oauth_state(redirect_to=redirect_to)
     settings = get_settings()
+    request_all_scopes = bool(include_all_scopes)
     request_payroll_scopes = bool(include_payroll) and (
         bool(settings.xero_enable_payroll_scopes)
         or configured_xero_scopes_include_payroll(settings.xero_scopes)
     )
+    if request_all_scopes:
+        request_payroll_scopes = True
     return RedirectResponse(
         xero_authorize_url(
             state_token,
             prompt_consent=bool(force),
             include_payroll_scopes=request_payroll_scopes,
+            include_all_scopes=request_all_scopes,
         ),
         status_code=status.HTTP_302_FOUND,
     )
