@@ -88469,24 +88469,23 @@
                     const payload = await requestJSON(api.endpoints.microAnalyzerClients);
                     const rows = Array.isArray(payload?.clients) ? payload.clients : [];
                     microAnalyzerRows = rows
-                        .map((row) => ({
-                            id: String(row?.xeroContactId || row?.customerId || row?.id || row?.clientName || ""),
-                            clientName: String(row?.clientName || row?.customerName || "Client"),
-                            planName: String(row?.planName || "Micro/Starter/Solo"),
-                            customerId: String(row?.customerId || row?.id || ""),
-                            customerName: String(row?.customerName || row?.clientName || ""),
-                            xeroContactId: String(row?.xeroContactId || ""),
-                            tenantId: String(row?.tenantId || ""),
-                            tenantName: String(row?.tenantName || ""),
-                            vatNumber: String(row?.vatNumber || "").trim(),
-                        }))
-                        .filter((row) => {
-                            const tenantId = String(row.tenantId || "").trim();
-                            if (!tenantId) return false;
-                            const hasXeroMatch = Boolean(String(row.customerId || "").trim()) && Boolean(String(row.xeroContactId || "").trim());
-                            if (!hasXeroMatch) return false;
-                            return true;
-                        });
+                        .map((row) => {
+                            const tenantId = String(row?.tenantId || "").trim();
+                            const identity = String(row?.xeroContactId || row?.customerId || row?.id || row?.clientName || "").trim();
+                            const scopedId = tenantId && identity ? `${tenantId}:${identity}` : identity;
+                            return {
+                                id: scopedId,
+                                clientName: String(row?.clientName || row?.customerName || "Client"),
+                                planName: String(row?.planName || "Micro/Starter/Solo"),
+                                customerId: String(row?.customerId || row?.id || ""),
+                                customerName: String(row?.customerName || row?.clientName || ""),
+                                xeroContactId: String(row?.xeroContactId || ""),
+                                tenantId,
+                                tenantName: String(row?.tenantName || ""),
+                                vatNumber: String(row?.vatNumber || "").trim(),
+                            };
+                        })
+                        .filter((row) => Boolean(String(row.tenantId || "").trim()) && Boolean(String(row.id || "").trim()));
                     const existingIds = new Set((microAnalyzerRows || []).map((row) => String(row?.id || "").trim()).filter(Boolean));
                     microAnalyzerHiddenClientIds = (microAnalyzerHiddenClientIds || []).filter((value) => existingIds.has(String(value || "").trim()));
                     persistMicroAnalyzerHiddenClientIds();
@@ -88730,20 +88729,40 @@
                 if (!cleanTransactionIds.length) {
                     return { tenantId: cleanTenantId, appliedCount: 0, skippedCount: 0, failed: false, message: "No VAT-coded rows found." };
                 }
+                const workspaceResult = microAnalyzerWorkspaceResultsByTenantId[cleanTenantId] || {};
+                const vatRows = Array.isArray(workspaceResult?.vatRows) ? workspaceResult.vatRows : [];
+                let eligibleTransactionIds = cleanTransactionIds;
+                if (vatRows.length) {
+                    const requested = new Set(cleanTransactionIds);
+                    eligibleTransactionIds = vatRows
+                        .filter((row) => !microAnalyzerTransactionLockedByPeriod(row, cleanTenantId))
+                        .map((row) => String(row?.id || vatTransactionId(row)).trim())
+                        .filter((id) => id && requested.has(id));
+                }
+                if (!eligibleTransactionIds.length) {
+                    return {
+                        tenantId: cleanTenantId,
+                        appliedCount: 0,
+                        skippedCount: cleanTransactionIds.length,
+                        failed: false,
+                        message: "All selected rows are in a locked period.",
+                    };
+                }
                 try {
                     const endpoint = endpointURL(api.endpoints.microAnalyzerSetNoVat, { tenantId: cleanTenantId });
                     const payload = await requestJSON(endpoint, {
                         method: "POST",
-                        body: JSON.stringify({ transactionIds: cleanTransactionIds }),
+                        body: JSON.stringify({ transactionIds: eligibleTransactionIds }),
                     });
                     const appliedCount = Number(payload?.appliedCount || 0);
-                    const skippedCount = Number((Array.isArray(payload?.skipped) ? payload.skipped.length : 0) + Number(payload?.errorCount || 0));
+                    const lockedSkipped = Math.max(0, cleanTransactionIds.length - eligibleTransactionIds.length);
+                    const skippedCount = Number((Array.isArray(payload?.skipped) ? payload.skipped.length : 0) + Number(payload?.errorCount || 0) + lockedSkipped);
                     return { tenantId: cleanTenantId, appliedCount, skippedCount, failed: false, message: "" };
                 } catch (error) {
                     return {
                         tenantId: cleanTenantId,
                         appliedCount: 0,
-                        skippedCount: cleanTransactionIds.length,
+                        skippedCount: eligibleTransactionIds.length,
                         failed: true,
                         message: String(error?.message || "NO VAT update failed."),
                     };
@@ -88922,10 +88941,25 @@
                     showToast("No valid transaction ids were available for update.", "info");
                     return;
                 }
+                const lockFilteredIds = transactionIds.filter((txId) => {
+                    const row = vatRows.find((item) => String(item?.id || vatTransactionId(item)).trim() === txId);
+                    return row ? !microAnalyzerTransactionLockedByPeriod(row, tenantId) : true;
+                });
+                if (!lockFilteredIds.length) {
+                    microAnalyzerLockInfoModalState = {
+                        open: true,
+                        tenantName: String(microAnalyzerNoVatWizardState.tenantName || "this Xero organisation").trim(),
+                        lockDateISO: microAnalyzerTenantLockDateISO(tenantId),
+                        lockedCount: transactionIds.length,
+                    };
+                    renderMicroAnalyzerLockInfoModal();
+                    showToast("All selected transactions are in a locked period.", "info");
+                    return;
+                }
 
                 stopMicroAnalyzerNoVatWizardTimer();
                 microAnalyzerNoVatWizardState.running = true;
-                microAnalyzerNoVatWizardState.totalCount = transactionIds.length;
+                microAnalyzerNoVatWizardState.totalCount = lockFilteredIds.length;
                 microAnalyzerNoVatWizardState.appliedCount = 0;
                 microAnalyzerNoVatWizardState.skippedCount = 0;
                 microAnalyzerNoVatWizardState.status = "Preparing updates...";
@@ -88948,7 +88982,7 @@
                     const endpoint = endpointURL(api.endpoints.microAnalyzerSetNoVat, { tenantId });
                     const payload = await requestJSON(endpoint, {
                         method: "POST",
-                        body: JSON.stringify({ transactionIds }),
+                        body: JSON.stringify({ transactionIds: lockFilteredIds }),
                     });
                     stopMicroAnalyzerNoVatWizardTimer();
                     const appliedCount = Number(payload?.appliedCount || 0);
@@ -89428,6 +89462,7 @@
                                 const workspaceResult = microAnalyzerWorkspaceResultsByTenantId[tenantId] || {};
                                 const vatRows = Array.isArray(workspaceResult?.vatRows) ? workspaceResult.vatRows : [];
                                 const transactionIds = vatRows
+                                    .filter((row) => !microAnalyzerTransactionLockedByPeriod(row, tenantId))
                                     .map((row) => String(row?.id || vatTransactionId(row)).trim())
                                     .filter(Boolean);
                                 const outcome = await applyMicroAnalyzerNoVatForTenant(tenantId, transactionIds);
