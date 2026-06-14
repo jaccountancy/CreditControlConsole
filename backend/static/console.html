@@ -33123,16 +33123,31 @@
                                 <div>
                                 </div>
                                 <div class="detail-actions">
+                                    <label class="ch-checkbox-inline"><input id="microAnalyzerHideVatRegisteredToggle" type="checkbox" checked> Hide VAT-registered clients</label>
                                     <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh tenants</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="microAnalyzerSummary">Loading connected Xero organisation tenants.</p>
                             <section class="ch-companies-table-wrap" id="microAnalyzerConnectionsSection">
+                                <div class="detail-actions supplier-recon-table-toolbar">
+                                    <input id="microAnalyzerConnectionsSearchInput" type="search" placeholder="Search tenant, workspace, VAT count..." autocomplete="off">
+                                    <select id="microAnalyzerConnectionsWorkspaceFilter">
+                                        <option value="all">All workspaces</option>
+                                        <option value="no-workspace">No workspace set up</option>
+                                        <option value="with-workspace">Has workspace</option>
+                                    </select>
+                                    <select id="microAnalyzerConnectionsSortMode">
+                                        <option value="name-asc">Sort: Name A-Z</option>
+                                        <option value="name-desc">Sort: Name Z-A</option>
+                                        <option value="vat-desc">Sort: VAT high-low</option>
+                                        <option value="vat-asc">Sort: VAT low-high</option>
+                                    </select>
+                                    <button class="ghost-button" id="microAnalyzerHiddenClientsButton" type="button">Hidden clients</button>
+                                </div>
                                 <table class="ch-table" aria-label="VAT on Unregistered connected Xero accounts">
                                     <thead>
                                         <tr>
                                             <th>Xero account</th>
-                                            <th>Tenant ID</th>
                                             <th>Connection</th>
                                             <th>Workspace</th>
                                             <th>Action</th>
@@ -33231,6 +33246,37 @@
                                 Locked rows are excluded from “Update selected to NO VAT” and “Update all to NO VAT”.
                                 To edit them, update the Xero lock date first.
                             </p>
+                        </div>
+                    </div>
+                    <div class="company-secretarial-modal" id="microAnalyzerHiddenClientsModal" hidden>
+                        <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="microAnalyzerHiddenClientsTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">VAT on Unregistered</p>
+                                    <h4 id="microAnalyzerHiddenClientsTitle">Hidden VAT-registered clients</h4>
+                                    <p class="detail-meta" id="microAnalyzerHiddenClientsMeta">These rows are hidden from the tenant table for VAT cleanup focus.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="microAnalyzerHiddenClientsCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="detail-actions supplier-recon-table-toolbar">
+                                <select id="microAnalyzerHiddenClientsManualAddSelect"></select>
+                                <button class="ghost-button" id="microAnalyzerHiddenClientsManualAddButton" type="button">Add to hidden</button>
+                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Hidden VAT-registered clients">
+                                    <thead>
+                                        <tr>
+                                            <th>Client</th>
+                                            <th>Tenant</th>
+                                            <th>VAT number</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="microAnalyzerHiddenClientsBody"></tbody>
+                                </table>
+                            </section>
                         </div>
                     </div>
 
@@ -36475,6 +36521,11 @@
             let microAnalyzerRows = [];
             let microAnalyzerLoading = false;
             let microAnalyzerWorkspaceMode = "list";
+            let microAnalyzerHideVatRegistered = true;
+            let microAnalyzerConnectionsSearchTerm = "";
+            let microAnalyzerConnectionsWorkspaceFilter = "all";
+            let microAnalyzerConnectionsSortMode = "name-asc";
+            let microAnalyzerHiddenClientsModalOpen = false;
             let selectedMicroAnalyzerRowId = "";
             let selectedMicroAnalyzerTenantId = "";
             let microAnalyzerWorkspaceLoading = false;
@@ -88379,6 +88430,7 @@
                             xeroContactId: String(row?.xeroContactId || ""),
                             tenantId: String(row?.tenantId || ""),
                             tenantName: String(row?.tenantName || ""),
+                            vatNumber: String(row?.vatNumber || "").trim(),
                         }))
                         .filter((row) => {
                             const tenantId = String(row.tenantId || "").trim();
@@ -88873,38 +88925,99 @@
 
             function renderMicroAnalyzerConnectionsTable(tableBody, connectionsSection = null) {
                 if (!tableBody) return 0;
+                const hiddenIds = new Set((microAnalyzerHiddenClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
+                const vatRegisteredByTenant = new Map();
+                (microAnalyzerRows || []).forEach((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    if (!tenantId) return;
+                    const hasVat = Boolean(String(row?.vatNumber || "").trim());
+                    if (!hasVat) return;
+                    const list = vatRegisteredByTenant.get(tenantId) || [];
+                    list.push(row);
+                    vatRegisteredByTenant.set(tenantId, list);
+                });
+
+                const searchTerm = String(microAnalyzerConnectionsSearchTerm || "").trim().toLowerCase();
                 const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
                 const rows = (Array.isArray(connections) ? connections : [])
-                    .map((connection) => ({
-                        tenantId: String(connection?.tenantId || "").trim(),
-                        tenantName: xeroWorkspaceLabel(connection?.tenantName, connection?.tenantId, "Xero account"),
-                        tenantType: String(connection?.tenantType || "").trim(),
-                    }))
+                    .map((connection) => {
+                        const tenantId = String(connection?.tenantId || "").trim();
+                        const workspace = microAnalyzerWorkspaceByTenant(tenantId);
+                        const tenantCount = Number(microAnalyzerTenantVatCountByTenantId[tenantId]);
+                        const mappedClientRows = (microAnalyzerRows || []).filter((item) => String(item?.tenantId || "").trim() === tenantId);
+                        const vatRegisteredRows = vatRegisteredByTenant.get(tenantId) || [];
+                        const hiddenVatRegisteredCount = vatRegisteredRows.filter((item) => hiddenIds.has(String(item?.id || "").trim())).length;
+                        const totalVatRegisteredCount = vatRegisteredRows.length;
+                        return {
+                            tenantId,
+                            tenantName: xeroWorkspaceLabel(connection?.tenantName, connection?.tenantId, "Xero account"),
+                            tenantType: String(connection?.tenantType || "").trim(),
+                            workspace,
+                            tenantCount,
+                            hiddenVatRegisteredCount,
+                            totalVatRegisteredCount,
+                            totalMappedClients: mappedClientRows.length,
+                        };
+                    })
                     .filter((connection) => {
                         if (!connection.tenantId) return false;
                         const tenantType = String(connection.tenantType || "").trim().toLowerCase();
-                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                        if (tenantType && tenantType !== "organisation" && tenantType !== "organization") return false;
+                        if (
+                            microAnalyzerHideVatRegistered
+                            && connection.totalVatRegisteredCount > 0
+                            && connection.totalVatRegisteredCount >= Math.max(1, Number(connection.totalMappedClients || 0))
+                        ) return false;
+                        if (microAnalyzerConnectionsWorkspaceFilter === "no-workspace" && connection.workspace) return false;
+                        if (microAnalyzerConnectionsWorkspaceFilter === "with-workspace" && !connection.workspace) return false;
+                        if (!searchTerm) return true;
+                        const vatText = Number.isFinite(connection.tenantCount) && connection.tenantCount >= 0
+                            ? `${connection.tenantCount.toLocaleString("en-GB")}`
+                            : "";
+                        const haystack = [
+                            connection.tenantName,
+                            connection.tenantId,
+                            connection.workspace?.workspaceName || "",
+                            vatText,
+                        ].join(" ").toLowerCase();
+                        return haystack.includes(searchTerm);
                     })
-                    .sort((left, right) => String(left.tenantName || "").localeCompare(String(right.tenantName || ""), "en-GB"));
-                if (connectionsSection) connectionsSection.hidden = !rows.length;
-                tableBody.innerHTML = rows.map((row) => {
-                    const workspace = microAnalyzerWorkspaceByTenant(row.tenantId);
-                    const tenantCount = microAnalyzerTenantVatCountByTenantId[row.tenantId];
-                    const countLabel = Number.isFinite(tenantCount)
-                        ? tenantCount >= 0
-                            ? `${tenantCount.toLocaleString("en-GB")} VAT transaction${tenantCount === 1 ? "" : "s"}`
-                            : "Count unavailable"
-                        : "Loading count...";
-                    return `
-                    <tr>
-                        <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
-                        <td><code>${escapeHTML(row.tenantId || "--")}</code></td>
-                        <td><small>${escapeHTML(row.tenantType ? `${row.tenantType} · Connected` : "Connected")} · ${escapeHTML(countLabel)}</small></td>
-                        <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "VAT workspace")}</strong>` : '<small>No workspace set up</small>'}</td>
-                        <td><button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${workspace ? "Open" : "Set up"}</button></td>
-                    </tr>
-                `;
-                }).join("");
+                    .sort((left, right) => {
+                        if (microAnalyzerConnectionsSortMode === "name-desc") {
+                            return String(right.tenantName || "").localeCompare(String(left.tenantName || ""), "en-GB");
+                        }
+                        if (microAnalyzerConnectionsSortMode === "vat-desc") {
+                            return Number(right.tenantCount || -1) - Number(left.tenantCount || -1);
+                        }
+                        if (microAnalyzerConnectionsSortMode === "vat-asc") {
+                            return Number(left.tenantCount || -1) - Number(right.tenantCount || -1);
+                        }
+                        return String(left.tenantName || "").localeCompare(String(right.tenantName || ""), "en-GB");
+                    });
+
+                if (connectionsSection) connectionsSection.hidden = false;
+                if (!rows.length) {
+                    tableBody.innerHTML = '<tr><td colspan="4"><small>No tenants match this search/filter.</small></td></tr>';
+                } else {
+                    tableBody.innerHTML = rows.map((row) => {
+                        const countLabel = Number.isFinite(row.tenantCount)
+                            ? row.tenantCount >= 0
+                                ? `${row.tenantCount.toLocaleString("en-GB")} VAT transaction${row.tenantCount === 1 ? "" : "s"}`
+                                : "Count unavailable"
+                            : "Loading count...";
+                        const workspaceLabel = row.workspace
+                            ? `<strong>${escapeHTML(row.workspace.workspaceName || "VAT workspace")}</strong>`
+                            : '<span class="ch-pill is-bad">No workspace set up</span>';
+                        return `
+                        <tr>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
+                            <td><strong>${escapeHTML(countLabel)}</strong></td>
+                            <td>${workspaceLabel}</td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${row.workspace ? "Open" : "Set up"}</button></td>
+                        </tr>
+                    `;
+                    }).join("");
+                }
                 rows.forEach((row) => {
                     if (!Object.prototype.hasOwnProperty.call(microAnalyzerTenantVatCountByTenantId, row.tenantId)) {
                         ensureMicroAnalyzerTenantVatCount(row.tenantId, false);
@@ -88930,11 +89043,73 @@
                 return rows.length;
             }
 
+            function renderMicroAnalyzerHiddenClientsModal() {
+                const modal = document.getElementById("microAnalyzerHiddenClientsModal");
+                const meta = document.getElementById("microAnalyzerHiddenClientsMeta");
+                const body = document.getElementById("microAnalyzerHiddenClientsBody");
+                const addSelect = document.getElementById("microAnalyzerHiddenClientsManualAddSelect");
+                const addButton = document.getElementById("microAnalyzerHiddenClientsManualAddButton");
+                if (!modal || !meta || !body || !addSelect || !addButton) return;
+                modal.hidden = !Boolean(microAnalyzerHiddenClientsModalOpen);
+
+                const hiddenIds = new Set((microAnalyzerHiddenClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
+                const vatRows = (microAnalyzerRows || []).filter((row) => Boolean(String(row?.vatNumber || "").trim()));
+                const hiddenRows = vatRows
+                    .filter((row) => hiddenIds.has(String(row?.id || "").trim()))
+                    .sort((left, right) => String(left?.clientName || "").localeCompare(String(right?.clientName || ""), "en-GB"));
+                const manualAddRows = vatRows
+                    .filter((row) => !hiddenIds.has(String(row?.id || "").trim()))
+                    .sort((left, right) => String(left?.clientName || "").localeCompare(String(right?.clientName || ""), "en-GB"));
+
+                meta.textContent = `${hiddenRows.length.toLocaleString("en-GB")} VAT-registered client${hiddenRows.length === 1 ? " is" : "s are"} currently hidden.`;
+                body.innerHTML = hiddenRows.length
+                    ? hiddenRows.map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(row.clientName || row.customerName || "Client")}</strong></td>
+                            <td><small>${escapeHTML(row.tenantName || row.tenantId || "—")}</small></td>
+                            <td><code>${escapeHTML(String(row.vatNumber || ""))}</code></td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-unhide-client="${escapeHTML(String(row.id || ""))}">Unhide</button></td>
+                        </tr>
+                    `).join("")
+                    : '<tr><td colspan="4"><small>No hidden VAT-registered clients.</small></td></tr>';
+
+                addSelect.innerHTML = [
+                    '<option value="">Select VAT-registered client...</option>',
+                    ...manualAddRows.map((row) => {
+                        const label = [
+                            row.clientName || row.customerName || "Client",
+                            row.tenantName || row.tenantId || "",
+                            row.vatNumber || "",
+                        ].filter(Boolean).join(" · ");
+                        return `<option value="${escapeHTML(String(row.id || ""))}">${escapeHTML(label)}</option>`;
+                    }),
+                ].join("");
+                addButton.disabled = manualAddRows.length === 0;
+
+                body.querySelectorAll("[data-micro-analyzer-unhide-client]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const rowId = String(button.dataset.microAnalyzerUnhideClient || "").trim();
+                        if (!rowId) return;
+                        microAnalyzerSetClientHidden(rowId, false);
+                        renderMicroAnalyzerScreen();
+                    });
+                });
+            }
+
             function renderMicroAnalyzerScreen() {
                 const summary = document.getElementById("microAnalyzerSummary");
                 const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
                 const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
+                const hideVatRegisteredToggle = document.getElementById("microAnalyzerHideVatRegisteredToggle");
+                const connectionsSearchInput = document.getElementById("microAnalyzerConnectionsSearchInput");
+                const connectionsWorkspaceFilter = document.getElementById("microAnalyzerConnectionsWorkspaceFilter");
+                const connectionsSortMode = document.getElementById("microAnalyzerConnectionsSortMode");
+                const hiddenClientsButton = document.getElementById("microAnalyzerHiddenClientsButton");
+                const hiddenClientsModal = document.getElementById("microAnalyzerHiddenClientsModal");
+                const hiddenClientsCloseButton = document.getElementById("microAnalyzerHiddenClientsCloseButton");
+                const hiddenClientsManualAddSelect = document.getElementById("microAnalyzerHiddenClientsManualAddSelect");
+                const hiddenClientsManualAddButton = document.getElementById("microAnalyzerHiddenClientsManualAddButton");
                 const workspaceSection = document.getElementById("microAnalyzerWorkspaceSection");
                 const workspaceTitle = document.getElementById("microAnalyzerWorkspaceTitle");
                 const workspaceMeta = document.getElementById("microAnalyzerWorkspaceMeta");
@@ -89011,6 +89186,76 @@
                             renderMicroAnalyzerScreen();
                         }
                     });
+                }
+                if (hideVatRegisteredToggle && hideVatRegisteredToggle.dataset.microWired !== "true") {
+                    hideVatRegisteredToggle.dataset.microWired = "true";
+                    hideVatRegisteredToggle.addEventListener("change", () => {
+                        microAnalyzerHideVatRegistered = Boolean(hideVatRegisteredToggle.checked);
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (connectionsSearchInput && connectionsSearchInput.dataset.microWired !== "true") {
+                    connectionsSearchInput.dataset.microWired = "true";
+                    connectionsSearchInput.addEventListener("input", (event) => {
+                        microAnalyzerConnectionsSearchTerm = String(event?.target?.value || "");
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (connectionsWorkspaceFilter && connectionsWorkspaceFilter.dataset.microWired !== "true") {
+                    connectionsWorkspaceFilter.dataset.microWired = "true";
+                    connectionsWorkspaceFilter.addEventListener("change", (event) => {
+                        microAnalyzerConnectionsWorkspaceFilter = String(event?.target?.value || "all");
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (connectionsSortMode && connectionsSortMode.dataset.microWired !== "true") {
+                    connectionsSortMode.dataset.microWired = "true";
+                    connectionsSortMode.addEventListener("change", (event) => {
+                        microAnalyzerConnectionsSortMode = String(event?.target?.value || "name-asc");
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (hiddenClientsButton && hiddenClientsButton.dataset.microWired !== "true") {
+                    hiddenClientsButton.dataset.microWired = "true";
+                    hiddenClientsButton.addEventListener("click", () => {
+                        microAnalyzerHiddenClientsModalOpen = true;
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (hiddenClientsCloseButton && hiddenClientsCloseButton.dataset.microWired !== "true") {
+                    hiddenClientsCloseButton.dataset.microWired = "true";
+                    hiddenClientsCloseButton.addEventListener("click", () => {
+                        microAnalyzerHiddenClientsModalOpen = false;
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (hiddenClientsManualAddButton && hiddenClientsManualAddButton.dataset.microWired !== "true") {
+                    hiddenClientsManualAddButton.dataset.microWired = "true";
+                    hiddenClientsManualAddButton.addEventListener("click", () => {
+                        const selectedId = String(hiddenClientsManualAddSelect?.value || "").trim();
+                        if (!selectedId) return;
+                        microAnalyzerSetClientHidden(selectedId, true);
+                        renderMicroAnalyzerScreen();
+                    });
+                }
+                if (hiddenClientsModal && hiddenClientsModal.dataset.microWired !== "true") {
+                    hiddenClientsModal.dataset.microWired = "true";
+                    hiddenClientsModal.addEventListener("click", (event) => {
+                        if (event.target === hiddenClientsModal) {
+                            microAnalyzerHiddenClientsModalOpen = false;
+                            renderMicroAnalyzerScreen();
+                        }
+                    });
+                }
+                if (hideVatRegisteredToggle) hideVatRegisteredToggle.checked = Boolean(microAnalyzerHideVatRegistered);
+                if (connectionsSearchInput && connectionsSearchInput.value !== microAnalyzerConnectionsSearchTerm) connectionsSearchInput.value = microAnalyzerConnectionsSearchTerm;
+                if (connectionsWorkspaceFilter) connectionsWorkspaceFilter.value = microAnalyzerConnectionsWorkspaceFilter;
+                if (connectionsSortMode) connectionsSortMode.value = microAnalyzerConnectionsSortMode;
+                if (hiddenClientsButton) {
+                    hiddenClientsButton.textContent = `Hidden clients (${(microAnalyzerRows || []).filter((row) => {
+                        const id = String(row?.id || "").trim();
+                        return id && (microAnalyzerHiddenClientIds || []).includes(id) && String(row?.vatNumber || "").trim();
+                    }).length.toLocaleString("en-GB")})`;
                 }
 
                 workspaceTitle.textContent = inWorkspaceMode
@@ -89103,6 +89348,7 @@
                 workspaceBulkNoVatButton.disabled = !inWorkspaceMode || microAnalyzerWorkspaceLoading || !editableRows.length || Boolean(microAnalyzerNoVatWizardState.running);
                 renderMicroAnalyzerNoVatWizard();
                 renderMicroAnalyzerLockInfoModal();
+                renderMicroAnalyzerHiddenClientsModal();
 
                 if (!inWorkspaceMode) {
                     workspaceBody.innerHTML = "";
