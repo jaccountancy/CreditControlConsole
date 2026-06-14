@@ -280,6 +280,8 @@ PI_CLEARING_AI_SCHEMA = {
 }
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
 VAT_INCREMENTAL_REFRESH_OVERLAP = timedelta(minutes=2)
+VAT_CODED_SCAN_LOOKBACK_DAYS = 548
+VAT_CODED_SCAN_MAX_PAGES_PER_COLLECTION = 18
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
@@ -1124,21 +1126,23 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
 
     errors: list[str] = []
-    employees_payload = {}
-    payruns_payload = {}
-    try:
-        employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
-    except Exception as exc:
-        errors.append(f"Employees sync failed: {_sync_error_message(exc)}")
-    try:
-        payruns_payload = await xero_api_get(connection_row, XERO_PAYROLL_PAYRUNS_URL)
-    except Exception as exc:
-        errors.append(f"Pay runs sync failed: {_sync_error_message(exc)}")
+    async def _fetch_payroll_dataset(url: str, label: str) -> dict:
+        try:
+            payload = await xero_api_get(connection_row, url)
+            return payload if isinstance(payload, dict) else {}
+        except Exception as exc:
+            errors.append(f"{label} sync failed: {_sync_error_message(exc)}")
+            return {}
 
-    employees = employees_payload.get("Employees") if isinstance(employees_payload, dict) else []
-    payruns = payruns_payload.get("PayRuns") if isinstance(payruns_payload, dict) else []
-    employees = employees if isinstance(employees, list) else []
-    payruns = payruns if isinstance(payruns, list) else []
+    employees_payload, payruns_payload = await asyncio.gather(
+        _fetch_payroll_dataset(XERO_PAYROLL_EMPLOYEES_URL, "Employees"),
+        _fetch_payroll_dataset(XERO_PAYROLL_PAYRUNS_URL, "Pay runs"),
+    )
+
+    employees_source = employees_payload.get("Employees") if isinstance(employees_payload, dict) else []
+    payruns_source = payruns_payload.get("PayRuns") if isinstance(payruns_payload, dict) else []
+    employees = [row for row in employees_source if isinstance(row, dict)] if isinstance(employees_source, list) else []
+    payruns = [row for row in payruns_source if isinstance(row, dict)] if isinstance(payruns_source, list) else []
 
     if not employees and not payruns and errors:
         reconnect_hint = (
@@ -34725,25 +34729,57 @@ async def xero_vat_coded_transactions_by_tenant(
     if not clean_tenant_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenantId is required.")
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    scan_end_date = utcnow().date()
+    scan_start_date = scan_end_date - timedelta(days=max(int(VAT_CODED_SCAN_LOOKBACK_DAYS or 0), 30))
+    scan_end_exclusive = scan_end_date + timedelta(days=1)
+    date_where = (
+        f"(Date>={_xero_datetime_where_literal(scan_start_date)}"
+        f"&&Date<{_xero_datetime_where_literal(scan_end_exclusive)})"
+    )
+    where_clause = f'{date_where}&&Status!="DELETED"'
 
-    raw_invoices = await fetch_paginated_collection(
-        connection_row,
-        INVOICES_URL,
-        "Invoices",
-        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
-    )
-    raw_credit_notes = await fetch_paginated_collection(
-        connection_row,
-        CREDIT_NOTES_URL,
-        "CreditNotes",
-        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
-    )
-    raw_bank_transactions = await fetch_paginated_collection(
-        connection_row,
-        BANK_TRANSACTIONS_URL,
-        "BankTransactions",
-        params={"where": 'Status!="DELETED"', "order": "Date DESC"},
-    )
+    try:
+        raw_invoices = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"where": where_clause, "order": "Date DESC"},
+            max_pages=VAT_CODED_SCAN_MAX_PAGES_PER_COLLECTION,
+        )
+        raw_credit_notes = await fetch_paginated_collection(
+            connection_row,
+            CREDIT_NOTES_URL,
+            "CreditNotes",
+            params={"where": where_clause, "order": "Date DESC"},
+            max_pages=VAT_CODED_SCAN_MAX_PAGES_PER_COLLECTION,
+        )
+        raw_bank_transactions = await fetch_paginated_collection(
+            connection_row,
+            BANK_TRANSACTIONS_URL,
+            "BankTransactions",
+            params={"where": where_clause, "order": "Date DESC"},
+            max_pages=VAT_CODED_SCAN_MAX_PAGES_PER_COLLECTION,
+        )
+    except HTTPException as exc:
+        message = _sync_error_message(exc).lower()
+        if "not filtering invoices efficiently" in message or "filtering invoices efficiently" in message:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": (
+                        "Xero rejected this VAT scan for high volume history. "
+                        "The scan now uses a recent window only; retry and, if needed, reduce the lookback period."
+                    ),
+                    "hint": (
+                        f"Current window: {scan_start_date.isoformat()} to {scan_end_date.isoformat()} "
+                        f"({VAT_CODED_SCAN_LOOKBACK_DAYS} days)."
+                    ),
+                    "reconnect_required": False,
+                    "periodStartISO": scan_start_date.isoformat(),
+                    "periodEndISO": scan_end_date.isoformat(),
+                },
+            ) from exc
+        raise
     combined_rows = (
         _invoice_lines_for_vat_period(raw_invoices, None, None)
         + _credit_note_lines_for_vat_scan(raw_credit_notes)
@@ -34783,13 +34819,17 @@ async def xero_vat_coded_transactions_by_tenant(
         "periodCount": len(period_end_values),
         "count": len(vat_rows),
         "cacheStatus": {
-            "source": "xero_tenant_all_dates",
+            "source": "xero_tenant_recent_window",
             "fetchedFromXero": True,
             "incrementalRefresh": False,
             "refreshRequested": bool(refresh),
             "cachedRows": len(vat_rows),
             "lastFetchedAt": _iso(utcnow()) or "",
             "latestXeroUpdatedAt": "",
+            "periodStartISO": scan_start_date.isoformat(),
+            "periodEndISO": scan_end_date.isoformat(),
+            "lookbackDays": int(VAT_CODED_SCAN_LOOKBACK_DAYS),
+            "historyWindowed": True,
         },
         "fetchedAt": _iso(utcnow()),
     }

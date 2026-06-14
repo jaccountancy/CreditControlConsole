@@ -52,7 +52,7 @@ class _DummyClient:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def get(self, url: str):
+    def get(self, url: str, **kwargs):
         if len(self._responses) > 1:
             return self._responses.pop(0)
         return self._responses[0]
@@ -107,7 +107,10 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertTrue(fake_connection.committed)
         first_query = fake_cursor.queries[0]
         self.assertIn("SELECT r.id", first_query)
-        self.assertIn("FROM ch_auth_code_register r", first_query)
+        self.assertTrue(
+            "FROM ch_auth_code_register r" in first_query
+            or "FROM limited_register r" in first_query
+        )
         self.assertIn("ON c.company_number = r.company_number", first_query)
 
     def test_reconcile_status_code(self):

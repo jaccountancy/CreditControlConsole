@@ -153,6 +153,11 @@ CH_GATEWAY_MAX_ATTEMPTS = 4
 CH_GATEWAY_BACKOFF_SECONDS = 1.5
 CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 25.0
 CH_GATEWAY_MAX_ELAPSED_SECONDS = 90.0
+CH_CONNECTION_TEST_REST_TIMEOUT_SECONDS = 8.0
+CH_CONNECTION_TEST_GATEWAY_MAX_ATTEMPTS = 2
+CH_CONNECTION_TEST_GATEWAY_BACKOFF_SECONDS = 0.5
+CH_CONNECTION_TEST_GATEWAY_REQUEST_TIMEOUT_SECONDS = 5.0
+CH_CONNECTION_TEST_GATEWAY_MAX_ELAPSED_SECONDS = 8.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
 CH_COMPANY_SNAPSHOT_CACHE_TTL = timedelta(hours=12)
@@ -514,8 +519,22 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
     base_url = _companies_house_api_base(environment)
     endpoint = f"{base_url}/company/00000000"
     rest_started = utcnow()
-    with _companies_house_http_client(api_key) as client:
-        response = client.get(endpoint)
+    try:
+        with _companies_house_http_client(api_key) as client:
+            response = client.get(endpoint, timeout=CH_CONNECTION_TEST_REST_TIMEOUT_SECONDS)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "Companies House REST connection test timed out. "
+                "Retry in a few moments and verify outbound network access from the server."
+            ),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Companies House REST connection test failed: {str(exc) or exc.__class__.__name__}",
+        ) from exc
     rest_duration_ms = int((utcnow() - rest_started).total_seconds() * 1000)
 
     if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
@@ -615,7 +634,13 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                     "class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
                 )
             gateway_request_xml = gateway_request.decode("utf-8", errors="replace")
-            gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
+            gateway_response_text, gateway_response_root = _post_ch_gateway(
+                gateway_request,
+                max_attempts=CH_CONNECTION_TEST_GATEWAY_MAX_ATTEMPTS,
+                backoff_seconds=CH_CONNECTION_TEST_GATEWAY_BACKOFF_SECONDS,
+                request_timeout_seconds=CH_CONNECTION_TEST_GATEWAY_REQUEST_TIMEOUT_SECONDS,
+                max_elapsed_seconds=CH_CONNECTION_TEST_GATEWAY_MAX_ELAPSED_SECONDS,
+            )
             gateway_response_xml = gateway_response_text
             gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
             gateway_response_bytes = len(gateway_response_text.encode("utf-8"))
@@ -2552,15 +2577,23 @@ def _poll_ch_status_ack_and_document(
     return output
 
 
-def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
+def _post_ch_gateway(
+    xml_payload: bytes,
+    *,
+    max_attempts: int = CH_GATEWAY_MAX_ATTEMPTS,
+    backoff_seconds: float = CH_GATEWAY_BACKOFF_SECONDS,
+    request_timeout_seconds: float = CH_GATEWAY_REQUEST_TIMEOUT_SECONDS,
+    max_elapsed_seconds: float = CH_GATEWAY_MAX_ELAPSED_SECONDS,
+) -> tuple[str, ET.Element]:
     last_error = ""
     started_at = time.monotonic()
-    for attempt in range(1, CH_GATEWAY_MAX_ATTEMPTS + 1):
+    attempts = max(1, int(max_attempts))
+    for attempt in range(1, attempts + 1):
         elapsed = time.monotonic() - started_at
-        remaining = CH_GATEWAY_MAX_ELAPSED_SECONDS - elapsed
+        remaining = max_elapsed_seconds - elapsed
         if remaining <= 0:
             break
-        request_timeout = max(1.0, min(CH_GATEWAY_REQUEST_TIMEOUT_SECONDS, remaining))
+        request_timeout = max(1.0, min(request_timeout_seconds, remaining))
         try:
             response = httpx.post(
                 COMPANIES_HOUSE_XML_GATEWAY_URL,
@@ -2568,10 +2601,10 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
                 headers={"Content-Type": "text/xml; charset=utf-8"},
                 timeout=request_timeout,
             )
-            if response.status_code >= 500 and attempt < CH_GATEWAY_MAX_ATTEMPTS:
+            if response.status_code >= 500 and attempt < attempts:
                 last_error = f"HTTP {response.status_code}"
-                remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
-                sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+                remaining_before_sleep = max_elapsed_seconds - (time.monotonic() - started_at)
+                sleep_seconds = min(backoff_seconds * attempt, max(0.0, remaining_before_sleep - 0.1))
                 if sleep_seconds > 0:
                     time.sleep(sleep_seconds)
                 continue
@@ -2595,7 +2628,7 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
             return response_text, root
         except httpx.TimeoutException as exc:
             last_error = f"Timed out after {int(round(request_timeout))}s"
-            if attempt >= CH_GATEWAY_MAX_ATTEMPTS:
+            if attempt >= attempts:
                 raise HTTPException(
                     status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                     detail=(
@@ -2603,19 +2636,19 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
                         "No confirmation that the filing was sent was returned."
                     ),
                 ) from exc
-            remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
-            sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+            remaining_before_sleep = max_elapsed_seconds - (time.monotonic() - started_at)
+            sleep_seconds = min(backoff_seconds * attempt, max(0.0, remaining_before_sleep - 0.1))
             if sleep_seconds > 0:
                 time.sleep(sleep_seconds)
         except httpx.HTTPError as exc:
             last_error = str(exc) or exc.__class__.__name__
-            if attempt >= CH_GATEWAY_MAX_ATTEMPTS:
+            if attempt >= attempts:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Companies House gateway request failed after retries: {last_error}",
                 ) from exc
-            remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
-            sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+            remaining_before_sleep = max_elapsed_seconds - (time.monotonic() - started_at)
+            sleep_seconds = min(backoff_seconds * attempt, max(0.0, remaining_before_sleep - 0.1))
             if sleep_seconds > 0:
                 time.sleep(sleep_seconds)
     if "timed out" in last_error.lower():
