@@ -32529,6 +32529,54 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="jukInvoicesSummary">JUKSIB is ready. Create a batch to import invoices and run matching.</p>
+                            <section class="detail-panel">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Batch history</p>
+                                        <h4>Previous JUK invoice batches</h4>
+                                        <p class="detail-meta">Review imported batches in read-only mode.</p>
+                                    </div>
+                                </div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="JUK invoice batches">
+                                        <thead>
+                                            <tr class="juk-batch-table-controls-row">
+                                                <th colspan="9">
+                                                    <div class="juk-batch-table-controls-wrap">
+                                                        <div class="juk-batch-table-toolbar">
+                                                            <label class="search-wrap">
+                                                                <input id="jukInvoicesBatchSearchInput" type="search" placeholder="Search by batch reference, mode or status">
+                                                            </label>
+                                                            <select id="jukInvoicesBatchStatusFilter" aria-label="Filter batch status">
+                                                                <option value="all">All statuses</option>
+                                                                <option value="completed">Completed only</option>
+                                                                <option value="draft">Draft only</option>
+                                                            </select>
+                                                            <select id="jukInvoicesBatchSortSelect" aria-label="Sort batches">
+                                                                <option value="created-desc">Newest first</option>
+                                                                <option value="created-asc">Oldest first</option>
+                                                                <option value="reference-asc">Reference A-Z</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th>Batch</th>
+                                                <th>Status</th>
+                                                <th>Mode</th>
+                                                <th>Window</th>
+                                                <th>Created</th>
+                                                <th>Imported</th>
+                                                <th>Ready</th>
+                                                <th>Published</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="jukInvoicesMainBatchTableBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
 
                             <div class="juk-batch-modal-backdrop" id="jukInvoicesWizardBackdrop" hidden></div>
                             <div class="juk-wizard-modal" id="jukInvoicesWizardModal" hidden>
@@ -41464,6 +41512,10 @@
                 setJukLoading(jukLoadingState.active, jukLoadingState.message);
 
                 const batch = jukCurrentBatch();
+                const allBatches = Array.isArray(jukInvoicesState?.batches) ? jukInvoicesState.batches : [];
+                summary.textContent = allBatches.length
+                    ? `${allBatches.length.toLocaleString("en-GB")} batch${allBatches.length === 1 ? "" : "es"} available. Previous batches are view-only from this screen.`
+                    : "JUKSIB is ready. Create a batch to import invoices and run matching.";
                 const openReadOnlyBatchView = (batchRow = null, reason = "") => {
                     const viewModal = document.getElementById("jukBatchViewModal");
                     const viewMeta = document.getElementById("jukBatchViewModalMeta");
@@ -41602,10 +41654,10 @@
                 const previousYearsModalCloseButton = document.getElementById("jukPreviousYearsCloseButton");
                 const previousYearsBody = document.getElementById("jukPreviousYearsBody");
                 if (previousYearsButton) {
-                    previousYearsButton.disabled = !batch;
-                    previousYearsButton.title = batch
-                        ? "Compare available prior years across Companies House and Xero."
-                        : "Load a batch first to review previous years.";
+                    previousYearsButton.disabled = !allBatches.length;
+                    previousYearsButton.title = allBatches.length
+                        ? "Compare prior years across all available JUK batches."
+                        : "No batches available yet.";
                 }
                 const closePreviousYearsModal = () => {
                     if (previousYearsModal) previousYearsModal.hidden = true;
@@ -41613,35 +41665,51 @@
                 if (previousYearsButton && previousYearsButton.dataset.jukWired !== "true") {
                     previousYearsButton.dataset.jukWired = "true";
                     previousYearsButton.addEventListener("click", () => {
-                        const currentBatch = jukCurrentBatch();
-                        if (!currentBatch) {
-                            showToast("Load a batch first to view previous years.", "info");
+                        const availableBatches = (Array.isArray(jukInvoicesState?.batches) ? jukInvoicesState.batches : [])
+                            .filter((item) => Array.isArray(item?.invoices) && item.invoices.length);
+                        if (!availableBatches.length) {
+                            showToast("No batch data is available yet.", "info");
+                            if (previousYearsBody) {
+                                previousYearsBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No periods available</p><h4>No prior years found yet</h4><p>Import invoices first, then open this view to compare previous years.</p></div></td></tr>';
+                            }
+                            if (previousYearsModal) previousYearsModal.hidden = false;
                             return;
                         }
-                        const rows = Array.isArray(currentBatch?.invoices) ? currentBatch.invoices : [];
                         const byYear = new Map();
-                        rows.forEach((invoice) => {
-                            const year = Number(String(jukDateToISO(invoice?.invoiceDate || "") || "").slice(0, 4));
-                            if (!Number.isFinite(year) || year <= 0) return;
-                            const xeroTotal = Number(invoice?.total || 0);
-                            byYear.set(year, (byYear.get(year) || 0) + xeroTotal);
+                        availableBatches.forEach((batchRow) => {
+                            const rows = Array.isArray(batchRow?.invoices) ? batchRow.invoices : [];
+                            rows.forEach((invoice) => {
+                                const year = Number(String(jukDateToISO(invoice?.invoiceDate || "") || "").slice(0, 4));
+                                if (!Number.isFinite(year) || year <= 0) return;
+                                const xeroTotal = Number(invoice?.total || 0);
+                                const existing = byYear.get(year) || { total: 0, references: new Set() };
+                                existing.total += xeroTotal;
+                                if (batchRow.batchReference) existing.references.add(String(batchRow.batchReference));
+                                byYear.set(year, existing);
+                            });
                         });
                         const years = [...byYear.keys()].sort((a, b) => b - a);
                         if (previousYearsBody) {
                             previousYearsBody.innerHTML = years.length
                                 ? years.map((year, index) => {
-                                    const xeroValue = Number(byYear.get(year) || 0);
-                                    const priorYearValue = index < years.length - 1 ? Number(byYear.get(years[index + 1]) || 0) : null;
+                                    const current = byYear.get(year) || { total: 0, references: new Set() };
+                                    const previous = byYear.get(years[index + 1]) || { total: 0 };
+                                    const xeroValue = Number(current.total || 0);
+                                    const priorYearValue = index < years.length - 1 ? Number(previous.total || 0) : null;
                                     const movement = priorYearValue === null
                                         ? "--"
                                         : formatCurrency(xeroValue - priorYearValue);
+                                    const references = [...(current.references || [])];
+                                    const sourceText = references.length
+                                        ? `${references.length} batch${references.length === 1 ? "" : "es"} · ${references.slice(0, 3).join(", ")}${references.length > 3 ? ` +${references.length - 3} more` : ""}`
+                                        : "Batch data";
                                     return `
                                     <tr>
                                         <td><strong>${escapeHTML(String(year))}</strong></td>
                                         <td>Pending data source</td>
                                         <td>${escapeHTML(formatCurrency(xeroValue))}</td>
                                         <td>${escapeHTML(String(movement))}</td>
-                                        <td>Xero imported totals ready. Companies House figures load from filed accounts data when available.</td>
+                                        <td>${escapeHTML(sourceText)}. Companies House figures load from filed accounts data when available.</td>
                                     </tr>
                                 `;
                                 }).join("")
@@ -41749,7 +41817,6 @@
                         const itemSummary = item.summary || {};
                         const lifecycle = jukBatchLifecycleStatus(item);
                         const statusClass = lifecycle.key === "completed" ? "is-completed" : "";
-                        const canDeleteBatch = lifecycle.key === "draft";
                         const windowLabel = `${item.invoiceDateFrom ? formatDate(item.invoiceDateFrom) : "--"} → ${item.invoiceDateTo ? formatDate(item.invoiceDateTo) : "--"}`;
                         return `
                             <tr>
@@ -41762,64 +41829,17 @@
                                 <td>${escapeHTML(String(itemSummary.readyToPublish || 0))}</td>
                                 <td>${escapeHTML(String(itemSummary.published || 0))}</td>
                                 <td>
-                                    <button class="ghost-button" type="button" data-juk-open-wizard-batch="${escapeHTML(item.id || "")}" data-juk-open-mode="${lifecycle.key === "completed" ? "view" : "wizard"}">${lifecycle.key === "completed" ? "View batch" : "Open wizard"}</button>
-                                    <button class="ghost-button" type="button" data-juk-delete-batch="${escapeHTML(item.id || "")}" data-juk-delete-batch-reference="${escapeHTML(item.batchReference || "")}" data-juk-delete-allowed="${canDeleteBatch ? "true" : "false"}" ${canDeleteBatch ? "" : "disabled"} title="${canDeleteBatch ? "Delete this draft batch" : "Only draft batches can be deleted"}">Delete</button>
+                                    <button class="ghost-button" type="button" data-juk-open-view-batch="${escapeHTML(item.id || "")}">View batch</button>
                                 </td>
                             </tr>
                         `;
                     }).join("") : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No batches</p><h4>No matching JUK batch records</h4><p>Create a new batch or adjust search/filter.</p></div></td></tr>';
-                    mainBatchTableBody.querySelectorAll("[data-juk-open-wizard-batch]").forEach((button) => {
+                    mainBatchTableBody.querySelectorAll("[data-juk-open-view-batch]").forEach((button) => {
                         button.addEventListener("click", async () => {
-                            const batchId = String(button.dataset.jukOpenWizardBatch || "").trim();
+                            const batchId = String(button.dataset.jukOpenViewBatch || "").trim();
                             if (!batchId) return;
-                            const openMode = String(button.dataset.jukOpenMode || "wizard").trim().toLowerCase();
                             const targetBatch = (jukInvoicesState.batches || []).find((row) => String(row?.id || "").trim() === batchId) || null;
-                            if (openMode === "view" || (targetBatch && jukBatchLifecycleStatus(targetBatch).key === "completed")) {
-                                openReadOnlyBatchView(targetBatch || {}, "This batch is completed. The wizard is locked and this view is read-only.");
-                                return;
-                            }
-                            jukInvoicesState.currentBatchId = batchId;
-                            jukInvoicesState.batchModalOpen = true;
-                            jukSetStep(2);
-                            try {
-                                await jukRefreshFromAPI({ silent: true, batchId });
-                            } catch {}
-                            renderJukInvoicesScreen();
-                        });
-                    });
-                    mainBatchTableBody.querySelectorAll("[data-juk-delete-batch]").forEach((button) => {
-                        button.addEventListener("click", async () => {
-                            const deleteAllowed = String(button.dataset.jukDeleteAllowed || "false").toLowerCase() === "true";
-                            if (!deleteAllowed) {
-                                showToast("Only draft batches can be deleted.", "info");
-                                return;
-                            }
-                            const batchId = String(button.dataset.jukDeleteBatch || "").trim();
-                            if (!batchId) return;
-                            const batchReference = String(button.dataset.jukDeleteBatchReference || "").trim() || "this batch";
-                            const originalLabel = button.textContent;
-                            const wasCurrentBatch = jukInvoicesState.currentBatchId === batchId;
-                            button.disabled = true;
-                            button.textContent = "Deleting...";
-                            try {
-                                const response = await requestJSON(api.endpoints.juksibDeleteBatch, {
-                                    method: "DELETE",
-                                }, { batchId });
-                                jukApplyServerListPayload(response || {});
-                                if (wasCurrentBatch) {
-                                    jukInvoicesState.batchModalOpen = false;
-                                    jukInvoicesState.selectedInvoiceIds = [];
-                                    jukInvoicesState.currentInvoiceId = "";
-                                    jukInvoicesState.audit = [];
-                                }
-                                renderJukInvoicesScreen();
-                                showToast(`${batchReference} deleted.`, "success");
-                            } catch (error) {
-                                showToast(error?.message || "Unable to delete this batch.", "error");
-                            } finally {
-                                button.disabled = false;
-                                button.textContent = originalLabel || "Delete";
-                            }
+                            openReadOnlyBatchView(targetBatch || {}, "This batch is available in read-only mode from the history table.");
                         });
                     });
                 }
