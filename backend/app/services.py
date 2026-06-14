@@ -33140,19 +33140,36 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
     if tenant_ids:
         with get_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id, name, tenant_id, xero_contact_id, vat_number
-                    FROM customers
-                    WHERE tenant_id = ANY(%s)
-                    ORDER BY
-                        CASE WHEN COALESCE(TRIM(xero_contact_id), '') <> '' THEN 0 ELSE 1 END,
-                        updated_at DESC NULLS LAST,
-                        created_at DESC,
-                        name ASC
-                    """,
-                    (tenant_ids,),
-                )
+                try:
+                    cursor.execute(
+                        """
+                        SELECT id, name, tenant_id, xero_contact_id, vat_number
+                        FROM customers
+                        WHERE tenant_id = ANY(%s)
+                        ORDER BY
+                            CASE WHEN COALESCE(TRIM(xero_contact_id), '') <> '' THEN 0 ELSE 1 END,
+                            updated_at DESC NULLS LAST,
+                            created_at DESC,
+                            name ASC
+                        """,
+                        (tenant_ids,),
+                    )
+                except pg_errors.UndefinedColumn:
+                    # Backward-compatible fallback for environments where
+                    # customers.vat_number has not been migrated yet.
+                    cursor.execute(
+                        """
+                        SELECT id, name, tenant_id, xero_contact_id, ''::text AS vat_number
+                        FROM customers
+                        WHERE tenant_id = ANY(%s)
+                        ORDER BY
+                            CASE WHEN COALESCE(TRIM(xero_contact_id), '') <> '' THEN 0 ELSE 1 END,
+                            updated_at DESC NULLS LAST,
+                            created_at DESC,
+                            name ASC
+                        """,
+                        (tenant_ids,),
+                    )
                 rows = cursor.fetchall() or []
             connection.commit()
         for row in rows:
