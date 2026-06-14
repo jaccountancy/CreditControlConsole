@@ -26279,7 +26279,18 @@
                 width: 100%;
             }
             .juk-invoice-cell {
+                display: grid;
+                gap: 5px;
+                align-items: start;
+            }
+            .juk-invoice-cell strong {
+                font-size: 13px;
+                line-height: 1.2;
+                color: #1f355c;
+            }
+            .juk-invoice-meta-row {
                 display: inline-flex;
+                flex-wrap: wrap;
                 align-items: center;
                 gap: 8px;
             }
@@ -26342,6 +26353,26 @@
             .juk-client-cell {
                 display: grid;
                 gap: 4px;
+            }
+            .juk-client-name {
+                margin: 0;
+                font-size: 13px;
+                line-height: 1.32;
+                font-weight: 700;
+                color: #253a62;
+            }
+            .juk-client-subtext {
+                margin: 0;
+                color: #6f7f9c;
+                font-size: 11px;
+                line-height: 1.25;
+                font-weight: 700;
+            }
+            .juk-status-cell {
+                display: inline-flex;
+                align-items: center;
+                justify-content: flex-start;
+                min-height: 28px;
             }
             #jukPreviousYearsModal .ch-table td:nth-child(2),
             #jukPreviousYearsModal .ch-table td:nth-child(3),
@@ -26532,7 +26563,7 @@
             }
             .juk-wizard-modal.is-step3 .juk-panel#jukInvoicesStep3Panel .ch-table {
                 width: 100%;
-                min-width: 840px;
+                min-width: 1360px;
             }
             .juk-batch-table-toolbar {
                 display: flex;
@@ -27012,64 +27043,80 @@
                 min-width: 160px;
             }
             #jukInvoicesStep3Panel .ch-table {
-                table-layout: fixed;
+                table-layout: auto;
                 font-size: 13px;
+            }
+            #jukInvoicesStep3Panel .ch-table thead th {
+                position: sticky;
+                top: 0;
+                z-index: 3;
+                background: rgba(244, 248, 255, 0.98);
             }
             #jukInvoicesStep3Panel .ch-table th,
             #jukInvoicesStep3Panel .ch-table td {
-                padding: 6px 8px;
-                vertical-align: top;
+                padding: 8px 10px;
+                vertical-align: middle;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.11);
             }
             #jukInvoicesStep3Panel .ch-table td small {
                 margin-top: 2px;
                 font-size: 11px;
                 line-height: 1.2;
             }
+            #jukInvoicesStep3Panel .ch-table tbody tr:hover {
+                background: rgba(231, 241, 255, 0.72);
+            }
             #jukInvoicesStep3Panel .ch-table .ghost-button {
                 padding: 5px 9px;
                 font-size: 12px;
             }
+            #jukInvoicesStep3Panel .ch-table th:nth-child(1),
             #jukInvoicesStep3Panel .ch-table td:nth-child(1) {
-                width: 34px;
+                width: 38px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(2),
             #jukInvoicesStep3Panel .ch-table td:nth-child(2) {
-                width: 112px;
+                min-width: 180px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(3),
             #jukInvoicesStep3Panel .ch-table td:nth-child(3) {
-                width: 88px;
+                min-width: 126px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(4),
             #jukInvoicesStep3Panel .ch-table td:nth-child(4) {
-                width: 150px;
+                min-width: 240px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(5),
             #jukInvoicesStep3Panel .ch-table td:nth-child(5) {
-                width: 148px;
+                min-width: 220px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(6),
             #jukInvoicesStep3Panel .ch-table td:nth-child(6) {
-                width: 114px;
+                min-width: 170px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(7),
             #jukInvoicesStep3Panel .ch-table td:nth-child(7) {
-                width: 86px;
+                min-width: 110px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(8),
             #jukInvoicesStep3Panel .ch-table td:nth-child(8) {
-                width: 72px;
+                min-width: 100px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(9),
             #jukInvoicesStep3Panel .ch-table td:nth-child(9) {
-                width: 96px;
+                min-width: 168px;
             }
             #jukInvoicesStep3Panel .ch-table th:nth-child(3),
             #jukInvoicesStep3Panel .ch-table td:nth-child(3),
             #jukInvoicesStep3Panel .ch-table th:nth-child(7),
             #jukInvoicesStep3Panel .ch-table td:nth-child(7),
             #jukInvoicesStep3Panel .ch-table th:nth-child(8),
-            #jukInvoicesStep3Panel .ch-table td:nth-child(8) {
+            #jukInvoicesStep3Panel .ch-table td:nth-child(8),
+            #jukInvoicesStep3Panel .ch-table th:nth-child(9),
+            #jukInvoicesStep3Panel .ch-table td:nth-child(9) {
+                white-space: nowrap;
+            }
+            #jukInvoicesStep3Panel .ch-table td:nth-child(9) .status-pill {
                 white-space: nowrap;
             }
             .juk-progress-track {
@@ -43005,14 +43052,25 @@
                                 <td>
                                     <div class="juk-invoice-cell">
                                         <strong>${escapeHTML(invoice.jukInvoiceNumber || "--")}</strong>
-                                        ${isPriorPeriodCarryOver ? `<span class="juk-prior-period-chip" title="${escapeHTML(priorPeriodTitle)}" aria-label="${escapeHTML(priorPeriodTitle)}">\u23F2</span>` : ""}
-                                        <button class="juk-vat-bubble juk-vat-bubble-action ${vatBubbleClass}" type="button" data-juk-open-vat-info="${escapeHTML(invoice.id)}" title="${escapeHTML(vatBubbleTitle)}" aria-label="Show VAT details for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}">${escapeHTML(vatBubbleLabel)}</button>
-                                        <button class="juk-invoice-breakdown-trigger" type="button" data-juk-invoice-breakdown="${escapeHTML(invoice.id)}" aria-label="View full breakdown for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}" title="View full invoice breakdown">👓</button>
+                                        <div class="juk-invoice-meta-row">
+                                            ${isPriorPeriodCarryOver ? `<span class="juk-prior-period-chip" title="${escapeHTML(priorPeriodTitle)}" aria-label="${escapeHTML(priorPeriodTitle)}">\u23F2</span>` : ""}
+                                            <button class="juk-vat-bubble juk-vat-bubble-action ${vatBubbleClass}" type="button" data-juk-open-vat-info="${escapeHTML(invoice.id)}" title="${escapeHTML(vatBubbleTitle)}" aria-label="Show VAT details for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}">${escapeHTML(vatBubbleLabel)}</button>
+                                            <button class="juk-invoice-breakdown-trigger" type="button" data-juk-invoice-breakdown="${escapeHTML(invoice.id)}" aria-label="View full breakdown for ${escapeHTML(invoice.jukInvoiceNumber || "invoice")}" title="View full invoice breakdown">👓</button>
+                                        </div>
                                     </div>
                                 </td>
-                                <td>${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</td>
-                                <td>${escapeHTML(invoice.jukContactName || "--")}</td>
-                                <td>${escapeHTML(suggestedClientName || "No match")}</td>
+                                <td><span class="juk-client-name">${escapeHTML(formatDate(invoice.invoiceDate) || "--")}</span></td>
+                                <td>
+                                    <div class="juk-client-cell">
+                                        <p class="juk-client-name">${escapeHTML(invoice.jukContactName || "--")}</p>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="juk-client-cell">
+                                        <p class="juk-client-name">${escapeHTML(suggestedClientName || "No match")}</p>
+                                        <p class="juk-client-subtext">Suggested destination</p>
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="juk-confidence-wrap">
                                         <div class="juk-confidence-bar"><div class="juk-confidence-fill" style="width:${confidencePct}%"></div></div>
@@ -43021,7 +43079,7 @@
                                 </td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.vatTotal || 0))}</td>
-                                <td>${statusMarkup}</td>
+                                <td><div class="juk-status-cell">${statusMarkup}</div></td>
                             </tr>
                             ${isExpanded ? `
                             <tr class="juk-detail-row">
