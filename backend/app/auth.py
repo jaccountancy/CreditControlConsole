@@ -24,7 +24,6 @@ DEFAULT_XERO_CONNECTION_SCOPES = (
     "accounting.payments",
     "accounting.banktransactions",
     "accounting.manualjournals",
-    "accounting.journals.read",
     "accounting.contacts",
     "accounting.settings",
     "accounting.attachments",
@@ -32,7 +31,6 @@ DEFAULT_XERO_CONNECTION_SCOPES = (
     "accounting.reports.balancesheet.read",
     "accounting.reports.profitandloss.read",
     "accounting.reports.trialbalance.read",
-    "assets.read",
 )
 XERO_PAYROLL_SCOPES = (
     "payroll.employees.read",

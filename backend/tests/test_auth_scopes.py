@@ -83,7 +83,6 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertNotIn("accounting.invoices", scopes)
         self.assertNotIn("accounting.reports.balancesheet.read", scopes)
         self.assertNotIn("accounting.reports.banksummary.read", scopes)
-        self.assertNotIn("assets.read", scopes)
         self.assertIn("payroll.employees", scopes)
         self.assertIn("payroll.payruns", scopes)
 
@@ -93,7 +92,7 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("accounting.invoices", scopes)
         self.assertIn("accounting.reports.balancesheet.read", scopes)
         self.assertIn("accounting.reports.banksummary.read", scopes)
-        self.assertIn("assets.read", scopes)
+        self.assertNotIn("accounting.journals.read", scopes)
 
     def test_preserves_legacy_transactions_scope(self):
         scopes = xero_scope_string("accounting.transactions").split()

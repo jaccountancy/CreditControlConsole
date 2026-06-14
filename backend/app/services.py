@@ -16247,6 +16247,22 @@ def _xero_connection_has_journal_scope(connection_row: dict | None) -> bool:
     return any(scope in scopes for scope in journal_scopes)
 
 
+def _configured_xero_scope_requirements() -> tuple[bool, bool]:
+    configured_scope_row = {"scope": get_settings().xero_scopes}
+    configured_scopes = _xero_connection_scope_set(configured_scope_row)
+    requires_reports = _xero_connection_has_reports_scope(configured_scope_row)
+    requires_journals = any(
+        scope in configured_scopes
+        for scope in (
+            "accounting.journals.read",
+            "accounting.journals",
+            "accounting.transactions",
+            "accounting.transactions.read",
+        )
+    )
+    return requires_reports, requires_journals
+
+
 def _xero_connection_has_manual_journal_scope(connection_row: dict | None) -> bool:
     scopes = _xero_connection_scope_set(connection_row)
     return any(
@@ -16264,8 +16280,13 @@ XERO_SCOPE_AUDIT_BROAD_SCOPES = {
 XERO_SCOPE_BROAD_SCOPES_RETIREMENT_DATE = "2027-09-30"
 
 
-def _xero_scope_audit_row(connection_row: dict | None) -> dict:
+def _xero_scope_audit_row(connection_row: dict | None, requires_reports: bool = True, requires_journals: bool = True) -> dict:
     if not isinstance(connection_row, dict):
+        missing_default_scopes: list[str] = []
+        if requires_reports:
+            missing_default_scopes.append("accounting.reports.balancesheet.read")
+        if requires_journals:
+            missing_default_scopes.append("accounting.journals.read")
         return {
             "tenantId": "",
             "tenantName": "",
@@ -16276,10 +16297,10 @@ def _xero_scope_audit_row(connection_row: dict | None) -> dict:
             "scopes": [],
             "hasReportsScope": False,
             "hasJournalScope": False,
-            "missingRequiredScopes": ["accounting.reports.balancesheet.read", "accounting.journals.read"],
+            "missingRequiredScopes": missing_default_scopes,
             "usesBroadScopes": False,
             "broadScopesDetected": [],
-            "requiresReconnect": True,
+            "requiresReconnect": bool(missing_default_scopes),
         }
     raw_scope_value = connection_row.get("scope")
     if isinstance(raw_scope_value, (list, tuple, set)):
@@ -16290,9 +16311,9 @@ def _xero_scope_audit_row(connection_row: dict | None) -> dict:
     has_reports_scope = _xero_connection_has_reports_scope(connection_row)
     has_journal_scope = _xero_connection_has_journal_scope(connection_row)
     missing_required_scopes: list[str] = []
-    if not has_reports_scope:
+    if requires_reports and not has_reports_scope:
         missing_required_scopes.append("accounting.reports.balancesheet.read")
-    if not has_journal_scope:
+    if requires_journals and not has_journal_scope:
         missing_required_scopes.append("accounting.journals.read")
     broad_scopes_detected = sorted(scope for scope in scopes if scope in XERO_SCOPE_AUDIT_BROAD_SCOPES)
     return {
@@ -16315,7 +16336,15 @@ def _xero_scope_audit_row(connection_row: dict | None) -> dict:
 def xero_scope_audit_payload(user: dict, tenant_id: str | None = None) -> dict:
     requested_tenant_id = str(tenant_id or "").strip()
     rows = list_xero_connections_for_user(user["id"], include_fallback=False)
-    audits = [_xero_scope_audit_row(row) for row in rows]
+    configured_requires_reports, configured_requires_journals = _configured_xero_scope_requirements()
+    audits = [
+        _xero_scope_audit_row(
+            row,
+            requires_reports=configured_requires_reports,
+            requires_journals=configured_requires_journals,
+        )
+        for row in rows
+    ]
     if requested_tenant_id:
         audits = [row for row in audits if str(row.get("tenantId") or "").strip() == requested_tenant_id]
     configured_scopes = sorted(_xero_connection_scope_set({"scope": get_settings().xero_scopes}))
@@ -23155,7 +23184,12 @@ async def code_breaker_workspace_snapshot(user: dict, payload: dict | None = Non
 
     xero_net_assets = None
     xero_source = "unavailable"
-    xero_scope_audit = _xero_scope_audit_row(connection_row)
+    configured_requires_reports, configured_requires_journals = _configured_xero_scope_requirements()
+    xero_scope_audit = _xero_scope_audit_row(
+        connection_row,
+        requires_reports=configured_requires_reports,
+        requires_journals=configured_requires_journals,
+    )
     xero_diagnostics = {"scopeIncludesReportsRead": False, "scopeIncludesJournalRead": False}
     xero_reason = connection_lookup_error.strip()
     if connection_row:

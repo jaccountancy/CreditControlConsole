@@ -18,11 +18,11 @@ class Settings(BaseSettings):
     xero_redirect_uri: str
     xero_scopes: str = (
         "openid profile email offline_access "
-        "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.journals.read "
+        "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals "
         "accounting.contacts accounting.settings accounting.attachments "
         "accounting.reports.banksummary.read accounting.reports.balancesheet.read "
         "accounting.reports.profitandloss.read accounting.reports.trialbalance.read "
-        "assets.read"
+        "payroll.employees payroll.payruns"
     )
     xero_enable_payroll_scopes: bool = Field(
         default=False,
