@@ -34947,9 +34947,6 @@ async def xero_set_tenant_transactions_no_vat(
                     skipped.append({"transactionId": f"{invoice_id}:{index}", "reason": "Line index is out of range for this invoice."})
                     continue
                 line = line_items[index] if isinstance(line_items[index], dict) else {}
-                if str(line.get("TaxType") or "").strip().upper() == "NONE":
-                    skipped.append({"transactionId": f"{invoice_id}:{index}", "reason": "Line is already coded as NONE."})
-                    continue
                 line["TaxType"] = "NONE"
                 line_items[index] = line
                 applied_count += 1
@@ -34975,9 +34972,6 @@ async def xero_set_tenant_transactions_no_vat(
                     skipped.append({"transactionId": f"cn:{credit_note_id}:{index}", "reason": "Line index is out of range for this credit note."})
                     continue
                 line = line_items[index] if isinstance(line_items[index], dict) else {}
-                if str(line.get("TaxType") or "").strip().upper() == "NONE":
-                    skipped.append({"transactionId": f"cn:{credit_note_id}:{index}", "reason": "Line is already coded as NONE."})
-                    continue
                 line["TaxType"] = "NONE"
                 line_items[index] = line
                 applied_count += 1
@@ -35003,9 +34997,6 @@ async def xero_set_tenant_transactions_no_vat(
                     skipped.append({"transactionId": f"bt:{bank_transaction_id}:{index}", "reason": "Line index is out of range for this bank transaction."})
                     continue
                 line = line_items[index] if isinstance(line_items[index], dict) else {}
-                if str(line.get("TaxType") or "").strip().upper() == "NONE":
-                    skipped.append({"transactionId": f"bt:{bank_transaction_id}:{index}", "reason": "Line is already coded as NONE."})
-                    continue
                 line["TaxType"] = "NONE"
                 line_items[index] = line
                 applied_count += 1
