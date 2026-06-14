@@ -99502,6 +99502,101 @@
                 openTaskBookkeepingWorkflowPanel(row, allRows);
             }
 
+            function bmTaskXeroWorkspaceCandidates() {
+                const candidates = [];
+                const pushCandidate = (row = {}) => {
+                    const tenantId = String(row?.tenantId || row?.xeroTenantId || row?.tenant || "").trim();
+                    if (!tenantId) return;
+                    const tenantName = String(row?.tenantName || row?.xeroTenantName || row?.displayName || "").trim();
+                    const clientName = String(row?.clientName || "").trim();
+                    const clientId = String(row?.clientId || "").trim();
+                    const companyNumber = normaliseCompanyNumberInput(row?.companyNumber || row?.company_number || "");
+                    const existing = candidates.find((item) => item.tenantId === tenantId);
+                    if (existing) {
+                        if (!existing.tenantName && tenantName) existing.tenantName = tenantName;
+                        if (!existing.clientName && clientName) existing.clientName = clientName;
+                        if (!existing.clientId && clientId) existing.clientId = clientId;
+                        if (!existing.companyNumber && companyNumber) existing.companyNumber = companyNumber;
+                        return;
+                    }
+                    candidates.push({
+                        tenantId,
+                        tenantName,
+                        clientName,
+                        clientId,
+                        companyNumber,
+                    });
+                };
+
+                const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                lockRows.forEach((row) => pushCandidate(row));
+                if (!candidates.length && typeof settingsXeroConnectionRows === "function") {
+                    const rows = settingsXeroConnectionRows();
+                    (Array.isArray(rows) ? rows : []).forEach((row) => pushCandidate(row));
+                }
+                if (!candidates.length) {
+                    const rows = Array.isArray(xeroScopeAudit?.connections) ? xeroScopeAudit.connections : [];
+                    rows.forEach((row) => pushCandidate(row));
+                }
+                return candidates;
+            }
+
+            function bmTaskBestXeroWorkspaceMatch(row = {}) {
+                const candidates = bmTaskXeroWorkspaceCandidates();
+                if (!candidates.length) return null;
+                const registerRow = taskBookkeepingRegisterRowForTask(row) || {};
+                const taskCompanyNumber = normaliseCompanyNumberInput(
+                    row?.matchedRegister?.companyNumber || registerRow?.companyNumber || ""
+                );
+                const taskClientId = String(row?.clientId || registerRow?.clientId || "").trim().toLowerCase();
+                const taskClientName = normaliseStatus(
+                    bmTaskClientDisplayName(row?.clientName || registerRow?.displayName || registerRow?.companyName || "")
+                );
+                let best = null;
+                let bestScore = -1;
+                candidates.forEach((candidate) => {
+                    let score = 0;
+                    const tenantNameKey = normaliseStatus(candidate.tenantName || "");
+                    const clientNameKey = normaliseStatus(candidate.clientName || "");
+                    const candidateCompanyNumber = normaliseCompanyNumberInput(candidate.companyNumber || "");
+                    if (taskCompanyNumber && candidateCompanyNumber && taskCompanyNumber === candidateCompanyNumber) score += 100;
+                    if (taskClientId && String(candidate.clientId || "").trim().toLowerCase() === taskClientId) score += 35;
+                    if (taskClientName && (tenantNameKey === taskClientName || clientNameKey === taskClientName)) score += 60;
+                    if (taskClientName && (
+                        (tenantNameKey && (tenantNameKey.includes(taskClientName) || taskClientName.includes(tenantNameKey)))
+                        || (clientNameKey && (clientNameKey.includes(taskClientName) || taskClientName.includes(clientNameKey)))
+                    )) score += 28;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = candidate;
+                    }
+                });
+                if (!best || bestScore < 40) return null;
+                return {
+                    ...best,
+                    score: bestScore,
+                };
+            }
+
+            async function autoMatchBookkeepingTaskXeroWorkspace(row = {}, allRows = []) {
+                const resolved = bmTaskResolvedXeroMatch(row);
+                if (resolved?.matched && String(resolved?.tenantId || "").trim()) return true;
+                const match = bmTaskBestXeroWorkspaceMatch(row);
+                if (!match?.tenantId) return false;
+                const rowId = bmTaskIdentitySafe(row);
+                setBmTaskOverrideState(rowId, {
+                    xeroMatched: true,
+                    xeroTenantId: String(match.tenantId || "").trim(),
+                    xeroTenantName: String(match.tenantName || match.clientName || match.tenantId || "").trim(),
+                    xeroVatReturnKey: "",
+                });
+                updateBmTaskStatus(row, String(row?.status || "open").trim().toLowerCase() || "open", "", {
+                    autoNote: `Xero workspace auto-matched to ${String(match.tenantName || match.clientName || match.tenantId || "workspace")}.`,
+                });
+                renderTaskSubpages();
+                return true;
+            }
+
             function openBmTaskDetailModal(row = {}, allRows = []) {
                 const rowId = bmTaskIdentitySafe(row);
                 if (!rowId) return;
@@ -100112,8 +100207,18 @@
                             return;
                         }
                         if (actionKind === "open_bookkeeping_queue") {
-                            openMeReportScreen();
-                            showToast("Match the client to a Xero workspace before starting monthly bookkeeping.", "info");
+                            try {
+                                await loadXeroLockDateOverview(false);
+                            } catch {}
+                            const matched = await autoMatchBookkeepingTaskXeroWorkspace(match, allRows);
+                            if (!matched) {
+                                showToast("No confident Xero workspace match found automatically. Add workspace mapping data and try again.", "error");
+                                return;
+                            }
+                            const refreshedRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item));
+                            const refreshed = refreshedRows.find((item) => bmTaskIdentitySafe(item) === rowId) || match;
+                            await handleBookkeepingTaskStartFlow(refreshed, refreshedRows);
+                            showToast("Xero workspace matched and bookkeeping workflow started.", "success");
                             return;
                         }
                         if (actionKind === "awaiting_review") return;
