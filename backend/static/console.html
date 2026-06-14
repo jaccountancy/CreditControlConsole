@@ -81411,6 +81411,7 @@
             }
 
             function normaliseVatTransaction(row = {}, fallback = {}) {
+                const preservedTransactionId = String(row?.id || fallback?.id || "").trim();
                 const net = Number(
                     row.netAmount ?? row.net ?? row.lineAmount ?? row.amountExcludingTax ?? row.subtotal ?? fallback.netAmount ?? 0
                 ) || 0;
@@ -81434,7 +81435,7 @@
                     transactionType: row.transactionType || row.type || row.documentType || row.kind || "",
                     documentType: row.documentType || row.sourceDocumentType || row.type || "",
                 };
-                normalised.id = vatTransactionId(normalised);
+                normalised.id = preservedTransactionId || vatTransactionId(normalised);
                 return normalised;
             }
 
