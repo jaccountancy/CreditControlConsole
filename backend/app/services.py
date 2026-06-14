@@ -30949,16 +30949,19 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                     (tenant_ids,),
                 )
             customer_rows = cursor.fetchall() or []
-            cursor.execute(
-                """
-                SELECT client_id, client_name, company_name, vat_number
-                FROM ch_auth_code_register
-                WHERE COALESCE(TRIM(vat_number), '') <> ''
-                ORDER BY uploaded_at DESC, updated_at DESC
-                LIMIT 5000
-                """
-            )
-            register_rows = cursor.fetchall() or []
+            try:
+                cursor.execute(
+                    """
+                    SELECT client_id, client_name, company_name, vat_number
+                    FROM ch_auth_code_register
+                    WHERE COALESCE(TRIM(vat_number), '') <> ''
+                    ORDER BY uploaded_at DESC, updated_at DESC
+                    LIMIT 5000
+                    """
+                )
+                register_rows = cursor.fetchall() or []
+            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                register_rows = []
             cursor.execute(
                 """
                 SELECT payload
@@ -33710,16 +33713,19 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
                         (tenant_ids,),
                     )
                 rows = cursor.fetchall() or []
-                cursor.execute(
-                    """
-                    SELECT client_name, company_name, vat_number
-                    FROM ch_auth_code_register
-                    WHERE COALESCE(TRIM(vat_number), '') <> ''
-                    ORDER BY uploaded_at DESC, updated_at DESC
-                    LIMIT 5000
-                    """
-                )
-                register_rows = cursor.fetchall() or []
+                try:
+                    cursor.execute(
+                        """
+                        SELECT client_name, company_name, vat_number
+                        FROM ch_auth_code_register
+                        WHERE COALESCE(TRIM(vat_number), '') <> ''
+                        ORDER BY uploaded_at DESC, updated_at DESC
+                        LIMIT 5000
+                        """
+                    )
+                    register_rows = cursor.fetchall() or []
+                except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                    register_rows = []
             connection.commit()
         for row in rows:
             row_tenant_id = str(row.get("tenant_id") or "").strip()
