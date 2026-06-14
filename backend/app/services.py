@@ -30924,6 +30924,7 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
 
     tenant_name_by_id = {str(row.get("tenant_id") or "").strip(): str(row.get("tenant_name") or row.get("tenant_id") or "").strip() for row in connections}
 
+    customer_rows: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
             try:
@@ -30937,18 +30938,28 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                     """,
                     (tenant_ids,),
                 )
-            except pg_errors.UndefinedColumn:
-                cursor.execute(
-                    """
-                    SELECT id, name, xero_contact_id, tenant_id, ''::text AS vat_number
-                    FROM customers
-                    WHERE tenant_id = ANY(%s)
-                      AND COALESCE(TRIM(xero_contact_id), '') <> ''
-                    ORDER BY name ASC
-                    """,
-                    (tenant_ids,),
-                )
-            customer_rows = cursor.fetchall() or []
+                customer_rows = cursor.fetchall() or []
+            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                connection.rollback()
+                try:
+                    cursor.execute(
+                        """
+                        SELECT id, name, ''::text AS xero_contact_id, tenant_id, ''::text AS vat_number
+                        FROM customers
+                        WHERE tenant_id = ANY(%s)
+                        ORDER BY name ASC
+                        """,
+                        (tenant_ids,),
+                    )
+                    customer_rows = cursor.fetchall() or []
+                except Exception:
+                    connection.rollback()
+                    customer_rows = []
+        connection.commit()
+
+    register_rows: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
             try:
                 cursor.execute(
                     """
@@ -30961,19 +30972,29 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                 )
                 register_rows = cursor.fetchall() or []
             except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                connection.rollback()
                 register_rows = []
-            cursor.execute(
-                """
-                SELECT payload
-                FROM ignition_reporting_records
-                WHERE user_id = %s
-                  AND dataset = 'proposals'
-                ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
-                LIMIT 12000
-                """,
-                (user["id"],),
-            )
-            proposal_rows = cursor.fetchall() or []
+        connection.commit()
+
+    proposal_rows: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute(
+                    """
+                    SELECT payload
+                    FROM ignition_reporting_records
+                    WHERE user_id = %s
+                      AND dataset = 'proposals'
+                    ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+                    LIMIT 12000
+                    """,
+                    (user["id"],),
+                )
+                proposal_rows = cursor.fetchall() or []
+            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                connection.rollback()
+                proposal_rows = []
         connection.commit()
 
     register_vat_by_client_id: dict[str, str] = {}
