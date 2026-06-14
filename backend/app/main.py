@@ -1832,14 +1832,14 @@ async def api_companies_house_auth_code_register_commit(
 ):
     payload = await request.json()
     preview = payload.get("preview") or {}
-    apply_deletes = bool(payload.get("applyDeletes", True))
+    apply_deletes = bool(payload.get("applyDeletes", False))
     result = commit_auth_code_register_import(user, preview, apply_deletes=apply_deletes)
     return {"status": "ok", "result": result}
 
 
 @app.get("/api/companies-house/auth-code-register")
 def api_companies_house_auth_code_register_list(
-    limit: int = Query(300, ge=20, le=1000),
+    limit: int = Query(300, ge=20, le=5000),
     user: dict = Depends(require_panel_user),
 ):
     return {"status": "ok", **list_auth_code_register(limit=limit)}

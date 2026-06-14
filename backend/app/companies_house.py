@@ -4388,16 +4388,14 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             auth_codes_in_file += 1
         company_classification = _company_import_classification(data)
         row["classification"] = company_classification
-        row["included"] = company_classification == "include"
+        row["included"] = True
         if row["errors"]:
             error_count += 1
             row["action"] = "error"
             continue
         if company_classification == "exclude":
             excluded_non_ltd_count += 1
-            row["action"] = "skip"
-            row["warnings"].append("Auto-excluded: this row is not a private limited company.")
-            continue
+            row["warnings"].append("Classification note: this row is not a private limited company.")
         if company_classification == "review":
             review_required_count += 1
             row["warnings"].append("Review required: unable to confidently classify this row as a private limited company.")
@@ -5078,7 +5076,7 @@ def preview_auth_code_register_csv(content: bytes, filename: str) -> dict:
     }
 
 
-def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes: bool = True) -> dict:
+def commit_auth_code_register_import(user: dict, preview: dict, *, apply_deletes: bool = False) -> dict:
     rows_to_upsert = preview.get("rowsToUpsert") or []
     delete_ids = preview.get("deleteIds") or []
     if not isinstance(rows_to_upsert, list):
@@ -5302,7 +5300,7 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
 
 
 def list_auth_code_register(limit: int = 300) -> dict:
-    safe_limit = max(20, min(int(limit or 300), 1000))
+    safe_limit = max(20, min(int(limit or 300), 5000))
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -7349,14 +7347,6 @@ def commit_clients_import(user: dict, preview: dict) -> dict:
                 data = row.get("data") or {}
                 if row.get("included") is False:
                     skipped_count += 1
-                    continue
-                if not _looks_private_limited(data):
-                    skipped_count += 1
-                    errors_committed.append({
-                        "lineNumber": row.get("lineNumber"),
-                        "errors": ["Excluded: non-Ltd entity."],
-                        "companyNumber": data.get("company_number"),
-                    })
                     continue
                 if row.get("errors"):
                     skipped_count += 1

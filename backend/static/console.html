@@ -30323,7 +30323,7 @@
                                 <article class="ch-import-card">
                                     <div>
                                         <p class="ch-section-title">Bulk client import</p>
-                                        <p class="ch-section-sub">Upload your BM Client export as CSV. We automatically exclude non-private-limited rows, flag unsure rows for manual review, and save included authentication codes (including backfills on existing records) encrypted.</p>
+                                        <p class="ch-section-sub">Upload your BM Client export as CSV. We include all valid rows by default, flag company-type classifications for manual review, and save included authentication codes (including backfills on existing records) encrypted.</p>
                                     </div>
                                     <div class="ch-import-dropzone">
                                         Drag and drop or choose a CSV file
@@ -96986,7 +96986,7 @@
                 authRegisterLoaded: false,
                 authRegisterRows: [],
                 authRegisterTotalCount: 0,
-                authRegisterLoadedLimit: 300,
+                authRegisterLoadedLimit: 2000,
                 authRegisterLookupByNumber: new Map(),
                 authRegisterTableState: {
                     searchTerm: "",
@@ -99583,7 +99583,7 @@
                 status.className = `ch-pill ${service.enabled ? "is-good" : "is-warn"}`;
                 status.textContent = service.enabled ? "Enabled" : "Not enabled";
                 body.textContent = service.enabled
-                    ? `${service.label} is enabled for this client. You can proceed with HMRC authorisation activity.`
+                    ? `${service.label} is enabled for this client. Complete this form to submit to HMRC and move the request through approval.`
                     : `${service.label} is not enabled for this client. Enable the service in Services Required before starting HMRC authorisation.`;
                 submitButton.disabled = !service.enabled;
                 modal.hidden = false;
@@ -100419,17 +100419,20 @@
                 }
                 const hmrc648CardsWrap = document.getElementById("chRegisterClientPageHmrc648Cards");
                 if (hmrc648CardsWrap) {
-                    hmrc648CardsWrap.innerHTML = clientRegisterHmrc648Cards(services).map((service) => `
-                        <button
-                            class="ch-register-hmrc648-card ${service.enabled ? "is-enabled" : "is-disabled"}"
-                            type="button"
-                            data-client-page-hmrc648-service="${escapeHTML(service.id)}"
-                        >
-                            <span class="ch-pill ${service.enabled ? "is-good" : "is-warn"}">${service.enabled ? "Enabled" : "Not enabled"}</span>
-                            <h5>${escapeHTML(service.label)}</h5>
-                            <p>${service.enabled ? "Open to continue 64-8/MTD authorisation." : "Enable this service first in Services Required."}</p>
-                        </button>
-                    `).join("");
+                    const enabledHmrc648Services = clientRegisterHmrc648Cards(services).filter((service) => service.enabled);
+                    hmrc648CardsWrap.innerHTML = enabledHmrc648Services.length
+                        ? enabledHmrc648Services.map((service) => `
+                            <button
+                                class="ch-register-hmrc648-card is-enabled"
+                                type="button"
+                                data-client-page-hmrc648-service="${escapeHTML(service.id)}"
+                            >
+                                <span class="ch-pill is-good">Enabled</span>
+                                <h5>${escapeHTML(service.label)}</h5>
+                                <p>Open to start and submit the HMRC authorisation request for approval.</p>
+                            </button>
+                        `).join("")
+                        : `<div class="empty-state"><p class="eyebrow">No HMRC services enabled</p><h4>Enable a service to begin</h4><p>Turn on a service in Services Required and save to start an HMRC 64-8/MTD submission.</p></div>`;
                 }
                 setClientRegisterClientPageEditingState(!!pageState.editMode);
                 renderClientRegisterClientPageTabs();
@@ -101257,7 +101260,7 @@
                 companiesHouseSettings.authRegisterLoading = true;
                 setAuthCodeRegisterStatus("", "muted");
                 try {
-                    const limit = Math.max(100, Math.min(Number(companiesHouseSettings.authRegisterLoadedLimit || 300), 1000));
+                    const limit = Math.max(100, Math.min(Number(companiesHouseSettings.authRegisterLoadedLimit || 2000), 5000));
                     const payload = await requestJSON(`/api/companies-house/auth-code-register?limit=${limit}`);
                     const rows = payload?.rows || [];
                     const totalCount = Number(payload?.totalCount || rows.length || 0);
@@ -101464,7 +101467,7 @@
                         ],
                     };
                     let activeTab = "updates";
-                    let applyDeletes = true;
+                    let applyDeletes = false;
                     const reviewDecision = await showOperationReviewDialog({
                         eyebrow: "Client Register",
                         title: "Review directory changes",
@@ -101492,7 +101495,7 @@
                                 `;
                                 const toolsHtml = `
                                     <div class="operation-review-tools">
-                                        <label class="ch-checkbox-inline"><input id="chAuthRegisterApplyDeletesToggle" type="checkbox" ${applyDeletes ? "checked" : ""}> Apply deletions from this file</label>
+                                        <label class="ch-checkbox-inline"><input id="chAuthRegisterApplyDeletesToggle" type="checkbox" ${applyDeletes ? "checked" : ""}> Delete rows missing from this file</label>
                                     </div>
                                 `;
                                 const errorHtml = parseErrors.length
@@ -102026,7 +102029,7 @@
                         showToast("All client register rows are already loaded.", "info");
                         return;
                     }
-                    companiesHouseSettings.authRegisterLoadedLimit = Math.min(1000, loadedCount + AUTH_REGISTER_LOAD_MORE_STEP);
+                    companiesHouseSettings.authRegisterLoadedLimit = Math.min(5000, loadedCount + AUTH_REGISTER_LOAD_MORE_STEP);
                     await loadAuthCodeRegisterDirectory(true);
                     showToast("Loaded more client register rows.", "success");
                 });
@@ -105106,7 +105109,7 @@
                     { label: "Will update", value: selectedUpdate, tone: "" },
                     { label: "Needs review", value: preview.reviewRequiredCount || 0, tone: (preview.reviewRequiredCount || 0) ? "is-warn" : "" },
                     { label: "Errors", value: preview.errorCount, tone: preview.errorCount ? "is-error" : "" },
-                    { label: "Excluded non-Ltd", value: preview.excludedNonLtdCount || 0, tone: "" },
+                    { label: "Classification notes", value: preview.excludedNonLtdCount || 0, tone: "" },
                     { label: "Auth backfills", value: preview.authCodeBackfillCount || 0, tone: "" },
                     { label: "Auth codes in file", value: preview.authCodesInFile, tone: "" },
                 ].map((tile) => `<article class="${tile.tone}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
@@ -105257,7 +105260,7 @@
                     if (deselect) deselect.hidden = !companiesHouseState.importPreview || !previewRows.length;
                     if (reset) reset.hidden = false;
                     chSetImportStatus(
-                        `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} non-Ltd auto-excluded, ${(companiesHouseState.importPreview?.reviewRequiredCount || 0).toLocaleString("en-GB")} need review, ${(companiesHouseState.importPreview?.authCodeBackfillCount || 0).toLocaleString("en-GB")} auth-code backfills, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
+                        `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} classification notes, ${(companiesHouseState.importPreview?.reviewRequiredCount || 0).toLocaleString("en-GB")} need review, ${(companiesHouseState.importPreview?.authCodeBackfillCount || 0).toLocaleString("en-GB")} auth-code backfills, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
                         "muted"
                     );
                 } catch (error) {
@@ -105312,7 +105315,7 @@
                         `${updateCount.toLocaleString("en-GB")} update`,
                         `${errorCount.toLocaleString("en-GB")} errors skipped`,
                         `${reviewRequiredCount.toLocaleString("en-GB")} needs review`,
-                        `${excludedNonLtdCount.toLocaleString("en-GB")} excluded non-Ltd`,
+                        `${excludedNonLtdCount.toLocaleString("en-GB")} classification notes`,
                     ],
                     columns: [
                         { key: "line", label: "Line", kind: "number" },
