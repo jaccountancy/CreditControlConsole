@@ -46548,12 +46548,17 @@
                 const run = currentPiClearingRun();
                 const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const dailyBalance = summary?.dailyBalance && typeof summary.dailyBalance === "object" ? summary.dailyBalance : {};
+                const imbalanceDayCount = Number(dailyBalance?.imbalanceDayCount || 0);
                 return [
                     { label: "Xero total", value: formatCurrency(summary?.xeroTotal || 0) },
+                    { label: "Xero debits", value: formatCurrency(summary?.xeroDebitTotal || 0) },
+                    { label: "Xero credits", value: formatCurrency(summary?.xeroCreditTotal || 0) },
                     { label: "Ignition total", value: formatCurrency(summary?.ignitionTotal || 0) },
                     { label: "Reversals", value: formatCurrency(summary?.ignitionReversalTotal || 0) },
                     { label: "Existing CN", value: formatCurrency(summary?.existingCreditNoteTotal || 0) },
                     { label: "Difference", value: formatCurrency(summary?.differenceTotal || 0), className: "is-pi-difference" },
+                    { label: "Imbalance days", value: formatInteger(imbalanceDayCount) },
                     { label: "Rows", value: formatInteger(summary?.differenceCount || runRows.length || 0) },
                 ];
             }
@@ -46983,6 +46988,8 @@
                     const xeroCredits = xeroRows.reduce((sum, row) => sum + Number(row.credit || 0), 0);
                     const payoutMatches = buildPiClearingPayoutMatches(runRows);
                     const missingPayoutCount = payoutMatches.filter((item) => !item.matched).length;
+                    const dailyBalance = summaryRows?.dailyBalance && typeof summaryRows.dailyBalance === "object" ? summaryRows.dailyBalance : {};
+                    const imbalanceDayCount = Number(dailyBalance?.imbalanceDayCount || 0);
                     if (piClearingWorkflowRunning) {
                         wizardSummary.textContent = matchProgress.total > 0
                             ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
@@ -46991,7 +46998,7 @@
                         wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
                     } else {
                         wizardSummary.textContent = runRows.length
-                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for ${formatMonthKey(piClearingRunMonth(run))}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
+                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for ${formatMonthKey(piClearingRunMonth(run))}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Days not nil: ${formatInteger(imbalanceDayCount)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
                             : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
                     }
                 }

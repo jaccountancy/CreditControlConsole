@@ -3464,6 +3464,27 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
         "Payments",
         params={"where": date_where, "order": "Date ASC"},
     )
+    raw_bank_transactions = await fetch_paginated_collection(
+        connection_row,
+        BANK_TRANSACTIONS_URL,
+        "BankTransactions",
+        params={
+            "where": f'{date_where}&&(Type=="RECEIVE"||Type=="SPEND")&&Status!="DELETED"',
+            "order": "Date ASC",
+        },
+    )
+    raw_accounts = await fetch_paginated_collection(
+        connection_row,
+        ACCOUNTS_URL,
+        "Accounts",
+        params={"where": 'Status=="ACTIVE"', "order": "Code ASC"},
+        max_pages=8,
+    )
+    account_name_by_code = {
+        str(item.get("Code") or "").strip(): str(item.get("Name") or "").strip()
+        for item in (raw_accounts or [])
+        if isinstance(item, dict) and str(item.get("Code") or "").strip()
+    }
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3557,10 +3578,103 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
                     },
                 )
                 stored += 1
+            for raw_transaction in raw_bank_transactions or []:
+                transaction = raw_transaction if isinstance(raw_transaction, dict) else {}
+                bank_transaction_id = str(transaction.get("BankTransactionID") or "").strip()
+                if not bank_transaction_id:
+                    continue
+                tx_date = _parse_optional_iso_date(transaction.get("DateString") or transaction.get("Date"))
+                if tx_date is None or tx_date < month_start or tx_date > month_end:
+                    continue
+                tx_type = str(transaction.get("Type") or "").strip().upper()
+                if tx_type not in {"RECEIVE", "SPEND"}:
+                    continue
+                line_items = transaction.get("LineItems") if isinstance(transaction.get("LineItems"), list) else []
+                if not line_items:
+                    line_items = [
+                        {
+                            "LineAmount": transaction.get("Total") or transaction.get("SubTotal") or 0,
+                            "Description": str(transaction.get("Reference") or tx_type or "Bank transaction").strip(),
+                            "AccountCode": "",
+                        }
+                    ]
+                contact = transaction.get("Contact") if isinstance(transaction.get("Contact"), dict) else {}
+                for line_index, line in enumerate(line_items):
+                    if not isinstance(line, dict):
+                        continue
+                    line_amount = _money(line.get("LineAmount"))
+                    if line_amount == 0:
+                        continue
+                    amount_abs = line_amount.copy_abs()
+                    synthetic_id = f"bt:{bank_transaction_id}:{line_index}"
+                    account_code = str(line.get("AccountCode") or "").strip()
+                    account_name = str(line.get("Account") or "").strip() or account_name_by_code.get(account_code, "")
+                    signed_amount = -amount_abs if tx_type == "RECEIVE" else amount_abs
+                    raw_payload = {
+                        **transaction,
+                        "Account": {
+                            "Code": account_code,
+                            "Name": account_name,
+                        },
+                        "InvoiceType": "ACCPAY" if tx_type == "RECEIVE" else "ACCREC",
+                        "PI_SignedAmount": float(signed_amount),
+                        "PI_Source": "bank_transaction",
+                        "PI_LineIndex": line_index,
+                        "PI_LineDescription": str(line.get("Description") or "").strip(),
+                    }
+                    cursor.execute(
+                        """
+                        INSERT INTO payments (
+                            tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                            invoice_number, payment_date, amount, currency_code, reference,
+                            status, account_name, raw, synced_at, updated_at
+                        )
+                        VALUES (
+                            %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                            %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                            %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                        )
+                        ON CONFLICT (xero_payment_id) DO UPDATE
+                        SET customer_id = EXCLUDED.customer_id,
+                            invoice_id = EXCLUDED.invoice_id,
+                            xero_invoice_id = EXCLUDED.xero_invoice_id,
+                            invoice_number = EXCLUDED.invoice_number,
+                            payment_date = EXCLUDED.payment_date,
+                            amount = EXCLUDED.amount,
+                            currency_code = EXCLUDED.currency_code,
+                            reference = EXCLUDED.reference,
+                            status = EXCLUDED.status,
+                            account_name = EXCLUDED.account_name,
+                            raw = EXCLUDED.raw,
+                            synced_at = EXCLUDED.synced_at,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        {
+                            "tenant_id": tenant_id,
+                            "customer_id": customer_lookup.get(str(contact.get("ContactID") or "").strip()),
+                            "invoice_id": None,
+                            "xero_payment_id": synthetic_id,
+                            "xero_invoice_id": "",
+                            "invoice_number": "",
+                            "payment_date": tx_date,
+                            "amount": amount_abs,
+                            "currency_code": str(transaction.get("CurrencyCode") or "GBP"),
+                            "reference": str(transaction.get("Reference") or bank_transaction_id).strip(),
+                            "status": str(transaction.get("Status") or "").strip(),
+                            "account_name": account_name or account_code,
+                            "raw_json": json.dumps(raw_payload, default=_json_default),
+                            "synced_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    processed += 1
+                    stored += 1
         connection.commit()
     return {
         "tenantId": tenant_id,
-        "fetched": len(raw_payments or []),
+        "fetched": len(raw_payments or []) + len(raw_bank_transactions or []),
+        "paymentFetched": len(raw_payments or []),
+        "bankTransactionFetched": len(raw_bank_transactions or []),
         "processed": processed,
         "stored": stored,
     }
@@ -3641,6 +3755,17 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
         raw_account = raw.get("Account") if isinstance(raw.get("Account"), dict) else {}
         code = str(raw_account.get("Code") or "").strip()
         name = str(raw_account.get("Name") or row.get("account_name") or "").strip()
+        if not code or not name:
+            line_items = raw.get("LineItems") if isinstance(raw.get("LineItems"), list) else []
+            for line in line_items:
+                if not isinstance(line, dict):
+                    continue
+                if not code:
+                    code = str(line.get("AccountCode") or "").strip()
+                if not name:
+                    name = str(line.get("Account") or "").strip()
+                if code and name:
+                    break
         if wanted:
             code_lower = code.lower()
             name_lower = name.lower()
@@ -3651,11 +3776,15 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                     continue
         invoice_type = str(raw_invoice.get("Type") or raw.get("InvoiceType") or "").strip().upper()
         amount = _money(row.get("amount"))
-        signed_amount = amount
-        if invoice_type == "ACCPAY":
-            signed_amount = -amount.copy_abs()
-        elif invoice_type == "ACCREC":
-            signed_amount = amount.copy_abs()
+        raw_signed_amount = raw.get("PI_SignedAmount")
+        if isinstance(raw_signed_amount, (int, float, Decimal, str)) and str(raw_signed_amount).strip() not in {"", "None", "null"}:
+            signed_amount = _money(raw_signed_amount)
+        else:
+            signed_amount = amount
+            if invoice_type == "ACCPAY":
+                signed_amount = -amount.copy_abs()
+            elif invoice_type == "ACCREC":
+                signed_amount = amount.copy_abs()
         if signed_amount == 0:
             continue
         debit_amount = signed_amount if signed_amount > 0 else Decimal("0.00")
@@ -3720,14 +3849,24 @@ def _pi_existing_credit_note_totals(
     return totals
 
 
-def _pi_group_payout_date(ignition_rows: list[dict], fallback: date) -> date:
-    parsed_dates = [
+def _pi_group_effective_date(ignition_rows: list[dict], xero_rows: list[dict], fallback: date) -> date:
+    ignition_dates = [
         _parse_optional_iso_date(str(item.get("paidOn") or "").strip())
         for item in (ignition_rows or [])
         if isinstance(item, dict)
     ]
-    valid_dates = [item for item in parsed_dates if item is not None]
-    return max(valid_dates) if valid_dates else fallback
+    valid_ignition_dates = [item for item in ignition_dates if item is not None]
+    if valid_ignition_dates:
+        return max(valid_ignition_dates)
+    xero_dates = [
+        _parse_optional_iso_date(str(item.get("paidOn") or "").strip())
+        for item in (xero_rows or [])
+        if isinstance(item, dict)
+    ]
+    valid_xero_dates = [item for item in xero_dates if item is not None]
+    if valid_xero_dates:
+        return max(valid_xero_dates)
+    return fallback
 
 
 def _pi_row_risk_and_explainer(
@@ -3847,6 +3986,59 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
             "confidence": 0.0,
             "engine": "local_error",
         }
+
+
+def _pi_daily_balance_analysis(xero_rows: list[dict]) -> dict:
+    by_day: dict[str, dict] = {}
+    for row in xero_rows or []:
+        paid_on = str(row.get("paidOn") or "").strip()[:10]
+        if not paid_on:
+            continue
+        bucket = by_day.setdefault(
+            paid_on,
+            {
+                "date": paid_on,
+                "debitTotal": Decimal("0.00"),
+                "creditTotal": Decimal("0.00"),
+                "netMovement": Decimal("0.00"),
+                "xeroCount": 0,
+            },
+        )
+        amount = _money(row.get("amount"))
+        if amount >= Decimal("0.00"):
+            bucket["debitTotal"] += amount
+        else:
+            bucket["creditTotal"] += amount.copy_abs()
+        bucket["netMovement"] += amount
+        bucket["xeroCount"] += 1
+    days = sorted(by_day.values(), key=lambda item: str(item.get("date") or ""))
+    imbalance_days = [item for item in days if _money(item.get("netMovement")).copy_abs() > Decimal("0.01")]
+    return {
+        "dayCount": len(days),
+        "balancedDayCount": len(days) - len(imbalance_days),
+        "imbalanceDayCount": len(imbalance_days),
+        "days": [
+            {
+                "date": str(item.get("date") or ""),
+                "debitTotal": float(_money(item.get("debitTotal"))),
+                "creditTotal": float(_money(item.get("creditTotal"))),
+                "netMovement": float(_money(item.get("netMovement"))),
+                "xeroCount": int(item.get("xeroCount") or 0),
+                "isBalanced": _money(item.get("netMovement")).copy_abs() <= Decimal("0.01"),
+            }
+            for item in days
+        ],
+        "imbalanceDays": [
+            {
+                "date": str(item.get("date") or ""),
+                "debitTotal": float(_money(item.get("debitTotal"))),
+                "creditTotal": float(_money(item.get("creditTotal"))),
+                "netMovement": float(_money(item.get("netMovement"))),
+                "xeroCount": int(item.get("xeroCount") or 0),
+            }
+            for item in imbalance_days
+        ],
+    }
 
 
 def _pi_payout_batches_from_ignition_rows(ignition_rows: list[dict]) -> list[dict]:
@@ -4183,7 +4375,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             existing_credit_note_total = _money(existing_credit_note_totals.get(contact_id))
         raw_difference = (group["xeroTotal"] - group["ignitionTotal"]).quantize(Decimal("0.01"))
         difference = (raw_difference - existing_credit_note_total).quantize(Decimal("0.01"))
-        payout_date = _pi_group_payout_date(group.get("ignitionRows") or [], month_end)
+        payout_date = _pi_group_effective_date(group.get("ignitionRows") or [], group.get("xeroRows") or [], month_end)
         risk_level, risk_score, explainer = _pi_row_risk_and_explainer(
             difference=difference,
             raw_difference=raw_difference,
@@ -4243,6 +4435,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     rows_to_store.sort(key=lambda row: abs(float(row.get("difference") or 0)), reverse=True)
 
     payout_matching = _pi_match_ignition_payouts_to_xero_credits(ignition_rows, xero_rows)
+    daily_balance = _pi_daily_balance_analysis(xero_rows)
 
     ai_analysis = await _pi_ai_analysis(
         month_label,
@@ -4263,7 +4456,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             }
             for row in rows_to_store
         ],
-        payout_matching,
+        {
+            "payoutMatching": payout_matching,
+            "dailyBalance": daily_balance,
+        },
     )
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
     xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
@@ -4285,6 +4481,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "existingCreditNoteTotal": float(sum((_money(row.get("existingCreditNoteTotal")) for row in rows_to_store), start=Decimal("0.00"))),
         "differenceTotal": float(sum((_money(row.get("difference")) for row in rows_to_store), start=Decimal("0.00"))),
         "payoutMatching": payout_matching,
+        "dailyBalance": daily_balance,
     }
     status_value = "ready" if rows_to_store else "empty"
     now = utcnow()
