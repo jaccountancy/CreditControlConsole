@@ -33129,11 +33129,11 @@
                                     <table class="ch-table" aria-label="JUK invoice batches">
                                         <thead>
                                             <tr class="juk-batch-table-controls-row">
-                                                <th colspan="9">
+                                                <th colspan="8">
                                                     <div class="juk-batch-table-controls-wrap">
                                                         <div class="juk-batch-table-toolbar">
                                                             <label class="search-wrap">
-                                                                <input id="jukInvoicesBatchSearchInput" type="search" placeholder="Search by batch reference, mode or status">
+                                                                <input id="jukInvoicesBatchSearchInput" type="search" placeholder="Search by batch reference or status">
                                                             </label>
                                                             <select id="jukInvoicesBatchStatusFilter" aria-label="Filter batch status">
                                                                 <option value="all">All statuses</option>
@@ -33152,7 +33152,6 @@
                                             <tr>
                                                 <th>Batch</th>
                                                 <th>Status</th>
-                                                <th>Mode</th>
                                                 <th>Window</th>
                                                 <th>Created</th>
                                                 <th>Imported</th>
@@ -42706,7 +42705,7 @@
                             const lifecycle = jukBatchLifecycleStatus(item);
                             if (filter !== "all" && lifecycle.key !== filter) return false;
                             if (!query) return true;
-                            const haystack = `${item.batchReference || ""} ${item.mode || ""} ${lifecycle.label}`.toLowerCase();
+                            const haystack = `${item.batchReference || ""} ${lifecycle.label}`.toLowerCase();
                             return haystack.includes(query);
                         })
                         .sort((left, right) => {
@@ -42723,7 +42722,6 @@
                             <tr>
                                 <td><strong>${escapeHTML(item.batchReference || "--")}</strong></td>
                                 <td><span class="juk-batch-status-pill ${statusClass}">${escapeHTML(lifecycle.label)}</span></td>
-                                <td>${escapeHTML(String(item.mode || "test").toUpperCase())}</td>
                                 <td>${escapeHTML(windowLabel)}</td>
                                 <td>${escapeHTML(formatDateTime(item.createdAt) || "--")}</td>
                                 <td>${escapeHTML(String(itemSummary.totalImported || 0))}</td>
@@ -42734,7 +42732,7 @@
                                 </td>
                             </tr>
                         `;
-                    }).join("") : '<tr><td colspan="9"><div class="empty-state"><p class="eyebrow">No batches</p><h4>No matching JUK batch records</h4><p>Create a new batch or adjust search/filter.</p></div></td></tr>';
+                    }).join("") : '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No batches</p><h4>No matching JUK batch records</h4><p>Create a new batch or adjust search/filter.</p></div></td></tr>';
                     mainBatchTableBody.querySelectorAll("[data-juk-open-view-batch]").forEach((button) => {
                         button.addEventListener("click", async () => {
                             const batchId = String(button.dataset.jukOpenViewBatch || "").trim();
