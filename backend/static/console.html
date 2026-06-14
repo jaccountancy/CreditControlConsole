@@ -26000,6 +26000,14 @@
                 letter-spacing: 0.05em;
                 font-weight: 900;
             }
+            .payroll-headcount-workspace-copy {
+                display: grid;
+                gap: 4px;
+            }
+            .payroll-headcount-workspace-copy strong,
+            .payroll-headcount-workspace-copy small {
+                display: block;
+            }
             @media (max-width: 960px) {
                 #xeroLockDateScreen .detail-hero {
                     flex-direction: column;
@@ -44850,7 +44858,22 @@
                 const planAssessments = listedConnections.map((connection) => {
                     const workspace = payrollHeadcountWorkspaceByTenant(String(connection?.tenantId || "").trim());
                     const snapshot = workspace?.latestSnapshot || null;
-                    return payrollPlanFit(workspace?.ignitionPlanName || "", Number(snapshot?.headcount || 0));
+                    const hasSnapshot = Boolean(
+                        snapshot
+                        && (
+                            snapshot?.monthStart
+                            || snapshot?.fetchedAt
+                            || snapshot?.updatedAt
+                            || Number.isFinite(Number(snapshot?.headcount))
+                            || Number.isFinite(Number(snapshot?.payrollCount))
+                        )
+                    );
+                    const headcountValue = Number(snapshot?.headcount);
+                    return payrollPlanFit(
+                        workspace?.ignitionPlanName || "",
+                        Number.isFinite(headcountValue) ? headcountValue : 0,
+                        { hasSnapshot }
+                    );
                 });
                 const upgradeCount = planAssessments.filter((item) => item.status === "upgrade").length;
                 const reviewCount = planAssessments.filter((item) => item.status === "review").length;
@@ -44864,20 +44887,44 @@
                     const tenantType = String(connection?.tenantType || "").trim();
                     const connectionCopy = tenantType ? `${tenantType} · Connected` : "Connected";
                     const snapshot = workspace?.latestSnapshot || null;
-                    const noPayroll = Number(snapshot?.headcount || 0) === 0 && Number(snapshot?.payrollCount || 0) === 0;
-                    const headcountCopy = Number.isFinite(Number(snapshot?.headcount)) ? (noPayroll ? "No payroll" : `${Number(snapshot?.headcount).toLocaleString("en-GB")} on payroll`) : "Headcount not synced";
-                    const payrollCopy = Number.isFinite(Number(snapshot?.payrollCount)) ? `${Number(snapshot?.payrollCount).toLocaleString("en-GB")} payroll run${Number(snapshot?.payrollCount) === 1 ? "" : "s"}` : "Payroll runs pending";
+                    const hasSnapshot = Boolean(
+                        snapshot
+                        && (
+                            snapshot?.monthStart
+                            || snapshot?.fetchedAt
+                            || snapshot?.updatedAt
+                            || Number.isFinite(Number(snapshot?.headcount))
+                            || Number.isFinite(Number(snapshot?.payrollCount))
+                        )
+                    );
+                    const headcountValue = Number(snapshot?.headcount);
+                    const payrollCountValue = Number(snapshot?.payrollCount);
+                    const hasHeadcount = hasSnapshot && Number.isFinite(headcountValue);
+                    const hasPayrollCount = hasSnapshot && Number.isFinite(payrollCountValue);
+                    const noPayroll = hasHeadcount && hasPayrollCount && headcountValue === 0 && payrollCountValue === 0;
+                    const headcountCopy = !hasSnapshot
+                        ? "Headcount not synced"
+                        : noPayroll
+                            ? "No payroll"
+                            : hasHeadcount
+                                ? `${headcountValue.toLocaleString("en-GB")} on payroll`
+                                : "Headcount not synced";
+                    const payrollCopy = !hasSnapshot
+                        ? "Payroll runs pending"
+                        : hasPayrollCount
+                            ? `${payrollCountValue.toLocaleString("en-GB")} payroll run${payrollCountValue === 1 ? "" : "s"}`
+                            : "Payroll runs pending";
                     const monthCopy = snapshot?.monthStart ? `(${new Date(snapshot.monthStart).toLocaleDateString("en-GB", { month: "short", year: "numeric" })})` : "";
                     const planName = String(workspace?.ignitionPlanName || "").trim();
                     const planBadge = planName ? `<span class="status-pill">${escapeHTML(planName)}</span>` : "";
-                    const planFit = payrollPlanFit(planName, Number(snapshot?.headcount || 0));
+                    const planFit = payrollPlanFit(planName, hasHeadcount ? headcountValue : 0, { hasSnapshot });
                     const fitBadge = `<span class="status-pill ${planFit.status === "upgrade" ? "court" : planFit.status === "review" ? "query" : planFit.status === "ok" ? "paid" : ""}">${escapeHTML(planFit.bubble)}</span>`;
                     const isSelected = selectedPayrollHeadcountWorkspaceTenantId && selectedPayrollHeadcountWorkspaceTenantId === tenantId;
                     return `
                         <tr data-payroll-headcount-open="${escapeHTML(tenantId)}"${isSelected ? ' class="is-selected"' : ""}>
                             <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong>${planBadge}${fitBadge}</td>
                             <td><small>${escapeHTML(connectionCopy)}</small></td>
-                            <td>${workspace ? `<strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small><small>${escapeHTML(planFit.detail)}</small>` : '<small>No workspace set up</small>'}</td>
+                            <td>${workspace ? `<div class="payroll-headcount-workspace-copy"><strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small><small>${escapeHTML(planFit.detail)}</small></div>` : '<small>No workspace set up</small>'}</td>
                             <td>${escapeHTML(formatDateTime(workspace?.updatedAt || workspace?.createdAt || ""))}</td>
                             <td>
                                 <button class="ghost-button" type="button" data-payroll-headcount-setup="${escapeHTML(tenantId)}">${workspace ? "Reconfigure" : "Set up"}</button>
@@ -44980,7 +45027,11 @@
                 return 0;
             }
 
-            function payrollPlanRecommendation(headcountRaw = 0) {
+            function payrollPlanRecommendation(headcountRaw = 0, options = {}) {
+                const hasSnapshot = options?.hasSnapshot !== false;
+                if (!hasSnapshot) {
+                    return { recommendedPlan: "", recommendationType: "sync-needed", label: "Sync required", note: "Run payroll sync to calculate a plan recommendation." };
+                }
                 const headcount = Math.max(0, Number(headcountRaw || 0));
                 if (!Number.isFinite(headcount) || headcount <= 0) {
                     return { recommendedPlan: "", recommendationType: "no-payroll", label: "No payroll", note: "No staff currently on payroll." };
@@ -44994,9 +45045,12 @@
                 return { recommendedPlan: "Ultimate", recommendationType: "review", label: "Review", note: "Headcount above 50 exceeds current Ultimate band." };
             }
 
-            function payrollPlanFit(currentPlanName = "", headcountRaw = 0) {
+            function payrollPlanFit(currentPlanName = "", headcountRaw = 0, options = {}) {
                 const currentPlan = String(currentPlanName || "").trim();
-                const recommendation = payrollPlanRecommendation(headcountRaw);
+                const recommendation = payrollPlanRecommendation(headcountRaw, options);
+                if (recommendation.recommendationType === "sync-needed") {
+                    return { status: "pending", bubble: "Sync required", detail: recommendation.note, recommendedPlan: "" };
+                }
                 if (recommendation.recommendationType === "no-payroll") {
                     return { status: "no-payroll", bubble: "No payroll", detail: recommendation.note, recommendedPlan: "" };
                 }
