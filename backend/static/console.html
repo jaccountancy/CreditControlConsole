@@ -94484,14 +94484,12 @@
                 const rowId = bmTaskIdentitySafe(row);
                 if (!rowId) return;
                 const resolved = bmTaskRowWithOverrides(row);
-                const clientKey = bmTaskClientTimelineKey(resolved);
-                const clientRows = allRows.filter((item) => bmTaskClientTimelineKey(item) === clientKey);
                 const titleClient = bmTaskClientDisplayName(resolved.clientName);
                 const titleTask = bmTaskDisplayName(resolved);
                 const renderModalBody = (body, summary) => {
                     const latest = bmTaskRowWithOverrides(resolved);
                     const history = bmTaskHistoryEntries(rowId).slice(0, 16);
-                    const timelineRows = bmTaskTimelineEntriesForClient(clientKey, clientRows).slice(0, 10);
+                    const statusHistory = history.filter((entry) => String(entry?.type || "").trim().toLowerCase() === "status");
                     const progressNotes = history
                         .filter((entry) => String(entry?.type || "").includes("note"))
                         .slice(0, 8);
@@ -94524,23 +94522,9 @@
                                     : `<p class="detail-meta">No task notes yet.</p>`}
                             </article>
                             <article class="task-detail-modal-card">
-                                <h5>Recent Timeline Activity</h5>
-                                ${timelineRows.length
-                                    ? `<div class="task-history-list">${timelineRows.map((entry) => `
-                                        <article class="task-history-item">
-                                            <div class="task-history-item-head">
-                                                <strong>${escapeHTML(entry?.title || "Update")}</strong>
-                                                <span>${escapeHTML(entry?.stamp ? formatDateTime(entry.stamp) : "—")}</span>
-                                            </div>
-                                            <p>${escapeHTML(entry?.body || "No details")}</p>
-                                        </article>
-                                    `).join("")}</div>`
-                                    : `<p class="detail-meta">No timeline activity available.</p>`}
-                            </article>
-                            <article class="task-detail-modal-card">
                                 <h5>Task History</h5>
-                                ${history.length
-                                    ? `<div class="task-history-list">${history.map((entry) => `
+                                ${statusHistory.length
+                                    ? `<div class="task-history-list">${statusHistory.map((entry) => `
                                         <article class="task-history-item">
                                             <div class="task-history-item-head">
                                                 <strong>${escapeHTML(entry?.title || "Updated")}</strong>
@@ -94571,7 +94555,7 @@
                 showOperationReviewDialog({
                     eyebrow: "Task detail",
                     title: `${titleClient} · ${titleTask}`,
-                    subtitle: "Review task progress notes, timeline activity, and task history.",
+                    subtitle: "Review task progress notes and status change history.",
                     confirmLabel: "Close",
                     columns: [],
                     rows: [{}],
