@@ -77,6 +77,7 @@ from .xero import (
     normalise_payment,
     upsert_contact,
     update_bank_transaction_status,
+    update_bank_transaction_line_items,
     update_credit_note_status,
     update_invoice_status,
     update_overpayment_status,
@@ -4762,6 +4763,22 @@ def _latest_accounts_filed_date(ch_row: dict | None) -> date | None:
     return latest
 
 
+def _companies_house_accounts_filing_made_up_to(item: dict | None) -> date | None:
+    if not isinstance(item, dict):
+        return None
+    for key in ("made_up_to", "madeUpTo", "made_up_to_date", "period_end_on", "period_end_date", "period_end", "periodEnd"):
+        parsed = _parse_date_value(item.get(key))
+        if parsed:
+            return parsed
+    description_values = item.get("description_values")
+    if isinstance(description_values, dict):
+        for key in ("made_up_date", "made_up_to", "period_end_on", "period_end", "period_end_date"):
+            parsed = _parse_date_value(description_values.get(key))
+            if parsed:
+                return parsed
+    return None
+
+
 def _companies_house_year_end_date(ch_row: dict | None) -> date | None:
     if not ch_row:
         return None
@@ -4778,10 +4795,9 @@ def _companies_house_year_end_date(ch_row: dict | None) -> date | None:
         is_accounts_filing = filing_type.startswith("AA") or "accounts" in description or category == "accounts"
         if not is_accounts_filing:
             continue
-        for key in ("made_up_to", "made_up_to_date", "period_end_on", "period_end_date", "period_end"):
-            parsed = _parse_date_value(item.get(key))
-            if parsed:
-                candidates.append(parsed)
+        made_up_to = _companies_house_accounts_filing_made_up_to(item)
+        if made_up_to:
+            candidates.append(made_up_to)
     if not candidates:
         return None
     return max(candidates)
@@ -5102,12 +5118,11 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
             [lock_date for lock_date in (period_lock_date, end_of_year_lock_date) if lock_date],
             default=None,
         )
-        comparison_target = accounts_year_end_date
+        comparison_target = accounts_year_end_date or accounts_filed_date
         mapping_missing = not mapped_company_number
-        insufficient_accounts_data = bool(mapped_company_number and not accounts_year_end_date)
+        insufficient_accounts_data = bool(mapped_company_number and not comparison_target)
         accounts_filed_not_locked = bool(
-            accounts_year_end_date
-            and comparison_target
+            comparison_target
             and (xero_effective_lock_date is None or xero_effective_lock_date < comparison_target)
         )
         rows.append(
@@ -34782,6 +34797,7 @@ async def xero_set_tenant_transactions_no_vat(
 
     invoice_line_indexes: dict[str, set[int]] = defaultdict(set)
     credit_note_line_indexes: dict[str, set[int]] = defaultdict(set)
+    bank_transaction_line_indexes: dict[str, set[int]] = defaultdict(set)
     skipped: list[dict] = []
     for tx_id in clean_ids:
         tx_type = "invoice"
@@ -34790,8 +34806,8 @@ async def xero_set_tenant_transactions_no_vat(
             tx_type = "credit_note"
             source = tx_id[3:]
         elif tx_id.startswith("bt:"):
-            skipped.append({"transactionId": tx_id, "reason": "Bank transactions cannot be recoded in bulk via this action."})
-            continue
+            tx_type = "bank_transaction"
+            source = tx_id[3:]
         elif tx_id.startswith("inv:"):
             source = tx_id[4:]
 
@@ -34806,10 +34822,12 @@ async def xero_set_tenant_transactions_no_vat(
             continue
         if tx_type == "credit_note":
             credit_note_line_indexes[invoice_id].add(line_index)
+        elif tx_type == "bank_transaction":
+            bank_transaction_line_indexes[invoice_id].add(line_index)
         else:
             invoice_line_indexes[invoice_id].add(line_index)
 
-    if not invoice_line_indexes and not credit_note_line_indexes:
+    if not invoice_line_indexes and not credit_note_line_indexes and not bank_transaction_line_indexes:
         return {
             "status": "ok",
             "tenantId": str(connection_row.get("tenant_id") or ""),
@@ -34879,6 +34897,34 @@ async def xero_set_tenant_transactions_no_vat(
                 await create_credit_note(connection_row, {"CreditNoteID": credit_note_id, "LineItems": line_items})
         except Exception as exc:
             errors.append({"creditNoteId": credit_note_id, "message": _sync_error_message(exc)})
+
+    for bank_transaction_id, line_indexes in bank_transaction_line_indexes.items():
+        try:
+            payload = await xero_api_get(connection_row, f"{BANK_TRANSACTIONS_URL}/{bank_transaction_id}")
+            transaction_rows = payload.get("BankTransactions") if isinstance(payload, dict) else []
+            raw_transaction = transaction_rows[0] if isinstance(transaction_rows, list) and transaction_rows else {}
+            line_items = raw_transaction.get("LineItems") if isinstance(raw_transaction.get("LineItems"), list) else []
+            if not line_items:
+                for index in sorted(line_indexes):
+                    skipped.append({"transactionId": f"bt:{bank_transaction_id}:{index}", "reason": "Bank transaction has no line items in Xero."})
+                continue
+            updated_any = False
+            for index in sorted(line_indexes):
+                if index < 0 or index >= len(line_items):
+                    skipped.append({"transactionId": f"bt:{bank_transaction_id}:{index}", "reason": "Line index is out of range for this bank transaction."})
+                    continue
+                line = line_items[index] if isinstance(line_items[index], dict) else {}
+                if str(line.get("TaxType") or "").strip().upper() == "NONE":
+                    skipped.append({"transactionId": f"bt:{bank_transaction_id}:{index}", "reason": "Line is already coded as NONE."})
+                    continue
+                line["TaxType"] = "NONE"
+                line_items[index] = line
+                applied_count += 1
+                updated_any = True
+            if updated_any:
+                await update_bank_transaction_line_items(connection_row, bank_transaction_id, line_items)
+        except Exception as exc:
+            errors.append({"bankTransactionId": bank_transaction_id, "message": _sync_error_message(exc)})
 
     return {
         "status": "ok",

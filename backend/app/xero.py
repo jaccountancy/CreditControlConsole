@@ -1026,6 +1026,64 @@ async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idem
         return response.json()
 
 
+async def update_bank_transaction_line_items(
+    connection_row: dict,
+    bank_transaction_id: str,
+    line_items: list[dict],
+    idempotency_key: str | None = None,
+) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {
+        "BankTransactions": [
+            {
+                "BankTransactionID": str(bank_transaction_id or "").strip(),
+                "LineItems": line_items if isinstance(line_items, list) else [],
+            }
+        ]
+    }
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.post(
+                BANK_TRANSACTIONS_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": idempotency_key or str(uuid4()),
+                },
+                json=request_payload,
+            )
+        except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                BANK_TRANSACTIONS_URL,
+                "POST bank transaction line update",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
+            _raise_xero_request_error(exc, "bank transaction line update")
+        _record_xero_usage(
+            connection_row,
+            BANK_TRANSACTIONS_URL,
+            "POST bank transaction line update",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
+        if response.is_error:
+            _raise_xero_http_error(response, "bank transaction line update")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def fetch_invoice_pdf(connection_row: dict, invoice_id: str) -> bytes:
     connection_row = await refresh_connection(connection_row["id"])
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
