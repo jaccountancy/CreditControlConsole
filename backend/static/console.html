@@ -18319,27 +18319,7 @@
             .ignition-client-name-cell {
                 display: flex;
                 align-items: center;
-                gap: 10px;
                 min-width: 0;
-            }
-            .ignition-client-icon {
-                flex: 0 0 auto;
-                width: 34px;
-                height: 34px;
-                display: grid;
-                place-items: center;
-                border-radius: 12px;
-                background: linear-gradient(135deg, rgba(29, 103, 242, 0.12), rgba(39, 176, 95, 0.10));
-                color: var(--blue);
-            }
-            .ignition-client-icon svg {
-                width: 18px;
-                height: 18px;
-                fill: none;
-                stroke: currentColor;
-                stroke-width: 2.1;
-                stroke-linecap: round;
-                stroke-linejoin: round;
             }
             .ignition-client-name-cell strong,
             .ignition-client-table td strong {
@@ -27812,6 +27792,52 @@
                 box-shadow: 0 10px 18px rgba(20, 69, 150, 0.15);
                 transform: translateY(-1px);
             }
+            .pi-clearing-step-chip.is-complete {
+                border-color: rgba(39, 176, 95, 0.3);
+                background: rgba(232, 248, 238, 0.92);
+                color: #186d42;
+            }
+            .pi-clearing-step-chip.is-error {
+                border-color: rgba(211, 67, 67, 0.36);
+                background: rgba(255, 236, 236, 0.95);
+                color: #a02828;
+            }
+            .pi-clearing-workflow-stage-row {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 8px;
+                margin: 2px 0 6px;
+            }
+            .pi-clearing-workflow-stage-chip {
+                border-radius: 999px;
+                border: 1px solid rgba(30, 63, 124, 0.14);
+                background: rgba(243, 248, 255, 0.92);
+                color: #355177;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 6px 8px;
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+            }
+            .pi-clearing-workflow-stage-chip.is-active {
+                background: linear-gradient(120deg, #dbe8ff, #f0f6ff);
+                color: #0f3e95;
+                box-shadow: 0 8px 14px rgba(20, 69, 150, 0.12);
+                transform: translateY(-1px);
+            }
+            .pi-clearing-workflow-stage-chip.is-complete {
+                border-color: rgba(39, 176, 95, 0.3);
+                background: rgba(232, 248, 238, 0.92);
+                color: #186d42;
+            }
+            .pi-clearing-workflow-stage-chip.is-error {
+                border-color: rgba(211, 67, 67, 0.36);
+                background: rgba(255, 236, 236, 0.95);
+                color: #a02828;
+            }
             .pi-clearing-wizard-section {
                 animation: pi-clearing-enter 0.28s ease;
             }
@@ -34425,6 +34451,12 @@
                                 <span class="pi-clearing-wizard-context-chip" id="piClearingWizardContextMonth">Month --</span>
                                 <span class="pi-clearing-wizard-context-chip" id="piClearingWizardContextRows">0 rows</span>
                             </div>
+                            <div class="pi-clearing-workflow-stage-row" id="piClearingWorkflowStageRow" aria-live="polite">
+                                <span class="pi-clearing-workflow-stage-chip" data-pi-workflow-stage-chip="0">1. Pulling Xero</span>
+                                <span class="pi-clearing-workflow-stage-chip" data-pi-workflow-stage-chip="1">2. Pulling Ignition</span>
+                                <span class="pi-clearing-workflow-stage-chip" data-pi-workflow-stage-chip="2">3. Reconciling</span>
+                                <span class="pi-clearing-workflow-stage-chip" data-pi-workflow-stage-chip="3">4. AI analysis</span>
+                            </div>
                             <div class="pi-clearing-wizard-body">
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="1">
                                 <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this month appear below.</p>
@@ -35865,6 +35897,15 @@
             let piClearingStatusTone = "info";
             let piClearingPayoutDetailOpen = false;
             let piClearingSelectedPayoutKey = "";
+            let piClearingWorkflowStageTimer = null;
+            const PI_CLEARING_WORKFLOW_STAGES = [
+                "Pulling Xero PI clearing transactions...",
+                "Pulling Ignition payout data...",
+                "Reconciling Xero against Ignition...",
+                "Running AI analysis on differences...",
+            ];
+            let piClearingWorkflowStageIndex = -1;
+            let piClearingWorkflowStageState = "idle";
             let clientCallStatsData = {
                 summary: {},
                 charts: {},
@@ -45785,14 +45826,35 @@
                 }
             }
 
+            function stopPiClearingWorkflowStageTicker() {
+                if (piClearingWorkflowStageTimer) {
+                    window.clearInterval(piClearingWorkflowStageTimer);
+                    piClearingWorkflowStageTimer = null;
+                }
+            }
+
+            function startPiClearingWorkflowStageTicker() {
+                stopPiClearingWorkflowStageTicker();
+                piClearingWorkflowStageState = "running";
+                piClearingWorkflowStageIndex = 0;
+                piClearingStatusMessage = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
+                piClearingStatusTone = "info";
+                renderPiClearingAccountScreen();
+                piClearingWorkflowStageTimer = window.setInterval(() => {
+                    if (!piClearingWorkflowRunning) return;
+                    piClearingWorkflowStageIndex = (piClearingWorkflowStageIndex + 1) % PI_CLEARING_WORKFLOW_STAGES.length;
+                    piClearingStatusMessage = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
+                    piClearingStatusTone = "info";
+                    renderPiClearingAccountScreen();
+                }, 2000);
+            }
+
             async function runPiClearingWorkflow() {
                 if (piClearingWorkflowRunning) return;
                 piClearingWorkflowRunning = true;
                 piClearingWizardOpen = true;
                 piClearingWizardStep = 1;
-                piClearingStatusMessage = "Running PI clearing workflow...";
-                piClearingStatusTone = "info";
-                renderPiClearingAccountScreen();
+                startPiClearingWorkflowStageTicker();
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccountRun, {
                         method: "POST",
@@ -45808,14 +45870,25 @@
                     piClearingWizardOpen = true;
                     piClearingWizardStep = 1;
                     piClearingSelectedRowIds = new Set();
-                    piClearingStatusMessage = "Workflow completed. Review AI findings and generate credit notes.";
+                    const runSummary = payload?.run?.summary && typeof payload.run.summary === "object" ? payload.run.summary : {};
+                    const refreshSummary = runSummary?.refresh && typeof runSummary.refresh === "object" ? runSummary.refresh : {};
+                    const xeroRefresh = refreshSummary?.xero && typeof refreshSummary.xero === "object" ? refreshSummary.xero : {};
+                    const ignitionRefresh = refreshSummary?.ignition && typeof refreshSummary.ignition === "object" ? refreshSummary.ignition : {};
+                    const xeroFetched = Number(xeroRefresh?.fetched || 0);
+                    const ignitionFetched = Number(ignitionRefresh?.fetched || 0);
+                    piClearingWorkflowStageState = "success";
+                    piClearingWorkflowStageIndex = PI_CLEARING_WORKFLOW_STAGES.length - 1;
+                    piClearingStatusMessage = `Workflow completed. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"} and Ignition pulled ${formatInteger(ignitionFetched)} row${ignitionFetched === 1 ? "" : "s"}. Review AI findings and generate credit notes.`;
                     piClearingStatusTone = "success";
                     showToast("PI Clearing workflow completed.", "success");
                 } catch (error) {
+                    piClearingWorkflowStageState = "error";
+                    if (piClearingWorkflowStageIndex < 0) piClearingWorkflowStageIndex = 0;
                     piClearingStatusMessage = error?.message || "PI Clearing workflow failed.";
                     piClearingStatusTone = "error";
                     showToast(piClearingStatusMessage, "error");
                 } finally {
+                    stopPiClearingWorkflowStageTicker();
                     piClearingWorkflowRunning = false;
                     renderPiClearingAccountScreen();
                 }
@@ -45903,6 +45976,7 @@
                 const wizardActions = document.getElementById("piClearingWizardActions");
                 const wizardContextMonth = document.getElementById("piClearingWizardContextMonth");
                 const wizardContextRows = document.getElementById("piClearingWizardContextRows");
+                const workflowStageRow = document.getElementById("piClearingWorkflowStageRow");
                 const wizardCreditSummary = document.getElementById("piClearingWizardCreditSummary");
                 const wizardCreditRowsBody = document.getElementById("piClearingWizardCreditRowsBody");
                 const step3BalanceGrid = document.getElementById("piClearingStep3BalanceGrid");
@@ -46034,7 +46108,24 @@
                     ? `Month ${formatMonthKey(piClearingRunMonth(run))} · ${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`
                     : "Run workflow to load monthly transactions.";
                 document.querySelectorAll("[data-pi-step-chip]").forEach((chip) => {
-                    chip.classList.toggle("is-active", Number(chip.dataset.piStepChip || "0") === piClearingWizardStep);
+                    const chipStep = Number(chip.dataset.piStepChip || "0");
+                    chip.classList.toggle("is-active", chipStep === piClearingWizardStep);
+                    chip.classList.toggle("is-complete", chipStep < piClearingWizardStep);
+                    chip.classList.remove("is-error");
+                });
+                if (workflowStageRow) {
+                    workflowStageRow.hidden = !(piClearingWorkflowRunning || piClearingWorkflowStageState === "success" || piClearingWorkflowStageState === "error");
+                }
+                document.querySelectorAll("[data-pi-workflow-stage-chip]").forEach((chip) => {
+                    const chipIndex = Number(chip.dataset.piWorkflowStageChip || "-1");
+                    const isActive = piClearingWorkflowRunning && chipIndex === piClearingWorkflowStageIndex;
+                    const isComplete = piClearingWorkflowStageState === "success"
+                        ? chipIndex <= piClearingWorkflowStageIndex
+                        : chipIndex < piClearingWorkflowStageIndex;
+                    const isError = piClearingWorkflowStageState === "error" && chipIndex === piClearingWorkflowStageIndex;
+                    chip.classList.toggle("is-active", isActive);
+                    chip.classList.toggle("is-complete", !isActive && !isError && isComplete);
+                    chip.classList.toggle("is-error", isError);
                 });
                 document.querySelectorAll("[data-pi-wizard-section]").forEach((section) => {
                     section.hidden = Number(section.dataset.piWizardSection || "0") !== piClearingWizardStep;
@@ -49914,12 +50005,14 @@
 
             function openClientAuthRegisterScreen() {
                 activeView = "client-auth-register";
+                companiesHouseSettings.authRegisterSelectedRowId = "";
+                closeClientRegisterClientPage();
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
                 loadAuthCodeRegisterDirectory();
-                setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
+                setClientRegisterDataTab("clients");
                 renderBmTasksTable();
                 scrollConsoleToTop();
             }
@@ -61924,7 +62017,6 @@
                                 const link = String(client.link || "").trim();
                                 const nameHTML = `
                                     <div class="ignition-client-name-cell">
-                                        <span class="ignition-client-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
                                         <div>
                                             <strong>${escapeHTML(client.name || "Unknown client")}</strong>
                                             <span>${escapeHTML(client.email || client.id || "No email stored")}</span>
