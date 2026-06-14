@@ -26794,9 +26794,14 @@
             }
             .juk-step1-shell {
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) 290px;
-                gap: 12px;
+                gap: 14px;
                 align-items: start;
+            }
+            .juk-step1-card-row {
+                display: grid;
+                gap: 12px;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                align-items: stretch;
             }
             .juk-step1-main {
                 display: grid;
@@ -26828,6 +26833,32 @@
             .juk-step1-kpis {
                 display: grid;
                 gap: 8px;
+            }
+            .juk-step1-settings-stack {
+                display: grid;
+                gap: 10px;
+            }
+            .juk-step1-settings-field {
+                display: grid;
+                gap: 6px;
+                font-size: 12px;
+                color: var(--ink-soft);
+            }
+            .juk-step1-settings-card .juk-toggle-group {
+                display: grid;
+                gap: 6px;
+                width: 100%;
+            }
+            .juk-step1-settings-card .juk-toggle-option {
+                width: 100%;
+                text-align: left;
+            }
+            .juk-step1-settings-note {
+                margin: 0;
+                color: #5d6f8c;
+                font-size: 0.72rem;
+                font-weight: 700;
+                line-height: 1.35;
             }
             .juk-step1-kpis article {
                 border: 1px solid rgba(29, 103, 242, 0.16);
@@ -27601,6 +27632,9 @@
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .juk-form-grid {
+                    grid-template-columns: 1fr;
+                }
+                .juk-step1-card-row {
                     grid-template-columns: 1fr;
                 }
                 .juk-step1-shell {
@@ -33132,6 +33166,94 @@
                                     </div>
                                 </section>
                                 <div class="juk-step1-shell">
+                                    <div class="juk-step1-card-row">
+                                        <aside class="juk-step1-insight" aria-live="polite">
+                                            <p class="eyebrow">Live setup</p>
+                                            <h5>Import profile</h5>
+                                            <p id="jukInvoicesStep1LiveSummary">Preparing import profile…</p>
+                                            <div class="juk-step1-kpis">
+                                                <article>
+                                                    <span>Scope</span>
+                                                    <strong id="jukInvoicesStep1ScopeValue">Since last batch</strong>
+                                                    <small id="jukInvoicesStep1ScopeDetail">Smartly resumes from your previous run.</small>
+                                                </article>
+                                                <article>
+                                                    <span>Publish Mode</span>
+                                                    <strong id="jukInvoicesStep1ModeValue">Draft test mode</strong>
+                                                    <small id="jukInvoicesStep1ModeDetail">Safe dry run into review flow.</small>
+                                                </article>
+                                            </div>
+                                        </aside>
+                                        <aside class="juk-step1-insight" aria-live="polite">
+                                            <p class="eyebrow">Batch context</p>
+                                            <h5>Date and coverage</h5>
+                                            <p>Current range and last successful import marker for quick validation.</p>
+                                            <div class="juk-step1-kpis">
+                                                <article>
+                                                    <span>Date Window</span>
+                                                    <strong id="jukInvoicesStep1WindowValue">Not set</strong>
+                                                    <small id="jukInvoicesStep1WindowDetail">Set from and to dates before import.</small>
+                                                </article>
+                                                <article>
+                                                    <span>Invoices Up To</span>
+                                                    <strong id="jukInvoicesStep1LastInvoicedValue">Not available</strong>
+                                                    <small id="jukInvoicesStep1LastInvoicedDetail">No completed batch yet.</small>
+                                                </article>
+                                            </div>
+                                        </aside>
+                                        <aside class="juk-step1-insight juk-step1-settings-card" aria-live="polite">
+                                            <p class="eyebrow">Import settings</p>
+                                            <h5>Vertical setup</h5>
+                                            <p>Configuration is grouped here to keep the batch form focused on dates.</p>
+                                            <div class="juk-step1-settings-stack">
+                                                <label class="juk-step1-settings-field">Import Scope
+                                                    <div class="juk-toggle-group" role="radiogroup" aria-label="Import Scope" data-juk-toggle-for="jukInvoicesScopeSelect">
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="since-last">Since last batch</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="date-range">Selected range</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="recent">Most recent</button>
+                                                    </div>
+                                                    <select id="jukInvoicesScopeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
+                                                        <option value="since-last">All since last successful batch</option>
+                                                        <option value="date-range">Selected date range</option>
+                                                        <option value="recent">Most recent invoices</option>
+                                                    </select>
+                                                </label>
+                                                <label class="juk-step1-settings-field">Invoice Status
+                                                    <div class="juk-toggle-group" role="radiogroup" aria-label="Invoice Status" data-juk-toggle-for="jukInvoicesStatusSelect">
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="authorised">Authorised</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="all">All statuses</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="paid">Include paid</button>
+                                                    </div>
+                                                    <select id="jukInvoicesStatusSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
+                                                        <option value="authorised">Authorised / Awaiting payment</option>
+                                                        <option value="all">All statuses</option>
+                                                        <option value="paid">Include paid</option>
+                                                    </select>
+                                                </label>
+                                                <label class="juk-step1-settings-field">Include Previously Imported
+                                                    <div class="juk-toggle-group" role="radiogroup" aria-label="Include Previously Imported" data-juk-toggle-for="jukInvoicesIncludeImportedSelect">
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="no">No</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="yes">Yes</button>
+                                                    </div>
+                                                    <select id="jukInvoicesIncludeImportedSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
+                                                        <option value="no">No</option>
+                                                        <option value="yes">Yes</option>
+                                                    </select>
+                                                </label>
+                                                <label class="juk-step1-settings-field">Publish Mode
+                                                    <div class="juk-toggle-group" role="radiogroup" aria-label="Publish Mode" data-juk-toggle-for="jukInvoicesModeSelect">
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="live">Live publish mode</button>
+                                                        <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="test">Draft test mode</button>
+                                                    </div>
+                                                    <select id="jukInvoicesModeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
+                                                        <option value="live" selected>Live publish mode</option>
+                                                        <option value="test">Draft test mode</option>
+                                                    </select>
+                                                </label>
+                                            </div>
+                                            <p class="juk-step1-settings-note">Batch reference is locked. Adjust invoice dates if needed and keep settings aligned with your import intent.</p>
+                                        </aside>
+                                    </div>
                                     <div class="juk-step1-main">
                                         <div class="juk-step1-meta-row">
                                             <span class="juk-step1-meta-chip" id="jukInvoicesStep1ScopeHint">Scope: Since last successful batch</span>
@@ -33139,57 +33261,13 @@
                                         </div>
                                         <form class="juk-form-grid" id="jukInvoicesCreateBatchForm">
                                             <label>Batch Reference
-                                                <input id="jukInvoicesBatchReferenceInput" type="text" readonly>
+                                                <input id="jukInvoicesBatchReferenceInput" type="text" readonly disabled>
                                             </label>
                                             <label>Invoice Date From
                                                 <input id="jukInvoicesDateFromInput" type="date">
                                             </label>
                                             <label>Invoice Date To
                                                 <input id="jukInvoicesDateToInput" type="date">
-                                            </label>
-                                            <label class="juk-toggle-field">Import Scope
-                                                <div class="juk-toggle-group" role="radiogroup" aria-label="Import Scope" data-juk-toggle-for="jukInvoicesScopeSelect">
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="since-last">Since last batch</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="date-range">Selected range</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="recent">Most recent</button>
-                                                </div>
-                                                <select id="jukInvoicesScopeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
-                                                    <option value="since-last">All since last successful batch</option>
-                                                    <option value="date-range">Selected date range</option>
-                                                    <option value="recent">Most recent invoices</option>
-                                                </select>
-                                            </label>
-                                            <label class="juk-toggle-field">Invoice Status
-                                                <div class="juk-toggle-group" role="radiogroup" aria-label="Invoice Status" data-juk-toggle-for="jukInvoicesStatusSelect">
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="authorised">Authorised</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="all">All statuses</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="paid">Include paid</button>
-                                                </div>
-                                                <select id="jukInvoicesStatusSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
-                                                    <option value="authorised">Authorised / Awaiting payment</option>
-                                                    <option value="all">All statuses</option>
-                                                    <option value="paid">Include paid</option>
-                                                </select>
-                                            </label>
-                                            <label class="juk-toggle-field">Include Previously Imported
-                                                <div class="juk-toggle-group" role="radiogroup" aria-label="Include Previously Imported" data-juk-toggle-for="jukInvoicesIncludeImportedSelect">
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="no">No</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="yes">Yes</button>
-                                                </div>
-                                                <select id="jukInvoicesIncludeImportedSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
-                                                    <option value="no">No</option>
-                                                    <option value="yes">Yes</option>
-                                                </select>
-                                            </label>
-                                            <label class="juk-toggle-field">Publish Mode
-                                                <div class="juk-toggle-group" role="radiogroup" aria-label="Publish Mode" data-juk-toggle-for="jukInvoicesModeSelect">
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="live">Live publish mode</button>
-                                                    <button class="juk-toggle-option" type="button" role="radio" aria-checked="false" data-juk-toggle-value="test">Draft test mode</button>
-                                                </div>
-                                                <select id="jukInvoicesModeSelect" class="juk-toggle-source" tabindex="-1" aria-hidden="true">
-                                                    <option value="live" selected>Live publish mode</option>
-                                                    <option value="test">Draft test mode</option>
-                                                </select>
                                             </label>
                                         </form>
                                         <div class="juk-toolbar is-step1">
@@ -33206,33 +33284,6 @@
                                             <p id="jukInvoicesCoverageWarningDetail">This run will skip days between your last completed batch and the new import window.</p>
                                         </section>
                                     </div>
-                                    <aside class="juk-step1-insight" aria-live="polite">
-                                        <p class="eyebrow">Live setup</p>
-                                        <h5>Import profile</h5>
-                                        <p id="jukInvoicesStep1LiveSummary">Preparing import profile…</p>
-                                        <div class="juk-step1-kpis">
-                                            <article>
-                                                <span>Scope</span>
-                                                <strong id="jukInvoicesStep1ScopeValue">Since last batch</strong>
-                                                <small id="jukInvoicesStep1ScopeDetail">Smartly resumes from your previous run.</small>
-                                            </article>
-                                            <article>
-                                                <span>Date Window</span>
-                                                <strong id="jukInvoicesStep1WindowValue">Not set</strong>
-                                                <small id="jukInvoicesStep1WindowDetail">Set from and to dates before import.</small>
-                                            </article>
-                                            <article>
-                                                <span>Invoices Up To</span>
-                                                <strong id="jukInvoicesStep1LastInvoicedValue">Not available</strong>
-                                                <small id="jukInvoicesStep1LastInvoicedDetail">No completed batch yet.</small>
-                                            </article>
-                                            <article>
-                                                <span>Publish Mode</span>
-                                                <strong id="jukInvoicesStep1ModeValue">Draft test mode</strong>
-                                                <small id="jukInvoicesStep1ModeDetail">Safe dry run into review flow.</small>
-                                            </article>
-                                        </div>
-                                    </aside>
                                 </div>
                             </section>
 
