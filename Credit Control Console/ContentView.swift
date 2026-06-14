@@ -7,6 +7,22 @@
 
 import SwiftUI
 
+private enum SidebarDestination: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard"
+    case jentry = "Jentry"
+
+    var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .dashboard:
+            "rectangle.3.group"
+        case .jentry:
+            "square.grid.2x2"
+        }
+    }
+}
+
 struct ContentView: View {
     @Environment(\.openURL) private var openURL
     @State private var authenticationState: AuthenticationState = .signedOut
@@ -14,37 +30,60 @@ struct ContentView: View {
     @State private var sessionToken = UserDefaults.standard.string(forKey: "BackendSessionToken") ?? ""
     @State private var signedInUser: DeviceUser?
     @State private var pollingTask: Task<Void, Never>?
+    @State private var selectedDestination: SidebarDestination? = .dashboard
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if sessionToken.isEmpty {
+        Group {
+            if sessionToken.isEmpty {
+                NavigationStack {
                     loginView
-                } else {
-                    dashboardView
+                        .navigationTitle("Credit Control")
+                }
+            } else {
+                NavigationSplitView {
+                    List(SidebarDestination.allCases, selection: $selectedDestination) { destination in
+                        Label(destination.rawValue, systemImage: destination.iconName)
+                            .tag(destination)
+                    }
+                    .navigationTitle("Credit Control")
+                } detail: {
+                    detailView(for: selectedDestination ?? .dashboard)
                 }
             }
-            .navigationTitle("Credit Control")
-            .toolbar {
-                if !sessionToken.isEmpty {
-                    ToolbarItemGroup {
+        }
+        .toolbar {
+            if !sessionToken.isEmpty {
+                ToolbarItemGroup {
+                    if selectedDestination == .dashboard {
                         Button {
                             Task { await loadDashboard() }
                         } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
+                    }
 
-                        Button("Sign Out") {
-                            signOut()
-                        }
+                    Button("Sign Out") {
+                        signOut()
                     }
                 }
             }
-            .task {
-                if !sessionToken.isEmpty, case .idle = dashboardState {
-                    await loadDashboard()
-                }
+        }
+        .task {
+            if !sessionToken.isEmpty, case .idle = dashboardState {
+                await loadDashboard()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func detailView(for destination: SidebarDestination) -> some View {
+        switch destination {
+        case .dashboard:
+            dashboardView
+                .navigationTitle("Dashboard")
+        case .jentry:
+            JentryView()
+                .navigationTitle("Jentry")
         }
     }
 
@@ -229,6 +268,7 @@ struct ContentView: View {
                             UserDefaults.standard.set(token, forKey: "BackendSessionToken")
                             signedInUser = response.user
                             authenticationState = .signedIn(response.user)
+                            selectedDestination = .dashboard
                         }
                         await loadDashboard()
                         return
@@ -263,6 +303,7 @@ struct ContentView: View {
         signedInUser = nil
         dashboardState = .idle
         authenticationState = .signedOut
+        selectedDestination = .dashboard
         UserDefaults.standard.removeObject(forKey: "BackendSessionToken")
     }
 
@@ -275,6 +316,13 @@ struct ContentView: View {
         }
 
         return BackendService(baseURL: baseURL)
+    }
+}
+
+private struct JentryView: View {
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
