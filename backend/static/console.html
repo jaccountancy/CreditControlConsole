@@ -34033,6 +34033,7 @@
                                     <p class="detail-meta">Review outbound and inbound client call performance across teams and time periods.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="clientCallStatsOpenImportModalButton" type="button">Import CSV</button>
                                     <button class="ghost-button" id="clientCallStatsRefreshButton" type="button">Refresh</button>
                                     <button class="primary-button" id="clientCallStatsResyncButton" type="button">Re-Sync Call Data</button>
                                 </div>
@@ -34040,34 +34041,8 @@
                             <p class="late-charge-summary" id="clientCallStatsSummary">Loading call analytics workspace…</p>
 
                             <section class="detail-card">
-                                <h4>CSV Import Wizard</h4>
-                                <p class="detail-meta">Upload provider call logs, preview mapping, and import only new records.</p>
-                                <form id="clientCallStatsImportForm" class="detail-actions" enctype="multipart/form-data">
-                                    <label class="field-inline" for="clientCallStatsImportFile">
-                                        <span>CSV file</span>
-                                        <input id="clientCallStatsImportFile" name="file" type="file" accept=".csv,text/csv" required />
-                                    </label>
-                                    <label class="field-inline" for="clientCallStatsImportProvider">
-                                        <span>Provider</span>
-                                        <input id="clientCallStatsImportProvider" name="sourceProvider" type="text" placeholder="Telephone provider name" />
-                                    </label>
-                                    <button class="ghost-button" id="clientCallStatsPreviewButton" type="button">Preview</button>
-                                    <button class="primary-button" id="clientCallStatsImportButton" type="submit">Import CSV</button>
-                                </form>
-                                <div class="summary-grid" id="clientCallStatsImportSummaryCards"></div>
-                                <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="Client call CSV mapping and preview">
-                                        <thead>
-                                            <tr>
-                                                <th>Row</th>
-                                                <th>Direction</th>
-                                                <th>External number</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="clientCallStatsImportPreviewBody"></tbody>
-                                    </table>
-                                </section>
+                                <h4>CSV Import</h4>
+                                <p class="detail-meta">Use the Import CSV button to open the import wizard.</p>
                             </section>
 
                             <section class="detail-card">
@@ -34296,6 +34271,46 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="clientCallStatsImportModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="clientCallStatsImportModalTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Client Call Stats</p>
+                                    <h4 id="clientCallStatsImportModalTitle">CSV Import Wizard</h4>
+                                    <p class="detail-meta">Upload provider call logs, preview mapping, and import only new records.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="clientCallStatsImportModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <form id="clientCallStatsImportForm" class="detail-actions" enctype="multipart/form-data">
+                                <label class="field-inline" for="clientCallStatsImportFile">
+                                    <span>CSV file</span>
+                                    <input id="clientCallStatsImportFile" name="file" type="file" accept=".csv,text/csv" required />
+                                </label>
+                                <label class="field-inline" for="clientCallStatsImportProvider">
+                                    <span>Provider</span>
+                                    <input id="clientCallStatsImportProvider" name="sourceProvider" type="text" placeholder="Telephone provider name" />
+                                </label>
+                                <button class="ghost-button" id="clientCallStatsPreviewButton" type="button">Preview</button>
+                                <button class="primary-button" id="clientCallStatsImportButton" type="submit">Import CSV</button>
+                            </form>
+                            <div class="summary-grid" id="clientCallStatsImportSummaryCards"></div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Client call CSV mapping and preview">
+                                    <thead>
+                                        <tr>
+                                            <th>Row</th>
+                                            <th>Direction</th>
+                                            <th>External number</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="clientCallStatsImportPreviewBody"></tbody>
+                                </table>
+                            </section>
+                        </section>
+                    </div>
                     <section class="late-charges-screen detail-card" id="piClearingAccountScreen" hidden>
                         <section class="detail-panel pi-clearing-workspace">
                             <div class="detail-hero">
@@ -45038,6 +45053,22 @@
                 }
             }
 
+            function openClientCallStatsImportModal() {
+                const modal = document.getElementById("clientCallStatsImportModal");
+                if (!modal) return;
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+            }
+
+            function closeClientCallStatsImportModal() {
+                const modal = document.getElementById("clientCallStatsImportModal");
+                if (!modal) return;
+                modal.hidden = true;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
             async function previewClientCallStatsImport() {
                 const form = document.getElementById("clientCallStatsImportForm");
                 if (!form) return;
@@ -45068,6 +45099,7 @@
                     const imported = Number(result?.summary?.newRows || 0).toLocaleString("en-GB");
                     showToast(`Call CSV imported. New rows: ${imported}.`, "success");
                     renderClientCallStatsScreen();
+                    closeClientCallStatsImportModal();
                 } catch (error) {
                     showToast(error?.message || "Unable to import call log CSV.", "error");
                 }
@@ -45171,6 +45203,11 @@
             function bindClientCallStatsEvents() {
                 if (clientCallStatsEventsBound) return;
                 clientCallStatsEventsBound = true;
+                document.getElementById("clientCallStatsOpenImportModalButton")?.addEventListener("click", () => openClientCallStatsImportModal());
+                document.getElementById("clientCallStatsImportModalCloseButton")?.addEventListener("click", () => closeClientCallStatsImportModal());
+                document.getElementById("clientCallStatsImportModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "clientCallStatsImportModal") closeClientCallStatsImportModal();
+                });
                 document.getElementById("clientCallStatsRefreshButton")?.addEventListener("click", () => loadClientCallStats());
                 document.getElementById("clientCallStatsResyncButton")?.addEventListener("click", () => runClientCallStatsResync());
                 document.getElementById("clientCallStatsPreviewButton")?.addEventListener("click", () => previewClientCallStatsImport());
