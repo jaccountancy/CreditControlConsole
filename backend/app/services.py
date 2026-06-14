@@ -1064,57 +1064,142 @@ def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
     tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
     workspace_name = f"{tenant_name} Headcount Workspace"
+    now = utcnow()
     with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO payroll_headcount_workspaces (
-                    user_id,
-                    tenant_id,
-                    tenant_name,
-                    workspace_name,
-                    wizard_completed,
-                    ignition_plan_name,
-                    ignition_client_name,
-                    ignition_proposal_name,
-                    ignition_matched_at,
-                    created_at,
-                    updated_at
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO payroll_headcount_workspaces (
+                        user_id,
+                        tenant_id,
+                        tenant_name,
+                        workspace_name,
+                        wizard_completed,
+                        ignition_plan_name,
+                        ignition_client_name,
+                        ignition_proposal_name,
+                        ignition_matched_at,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, tenant_id)
+                    DO UPDATE
+                    SET tenant_name = EXCLUDED.tenant_name,
+                        workspace_name = EXCLUDED.workspace_name,
+                        wizard_completed = TRUE,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING id,
+                              tenant_id,
+                              tenant_name,
+                              workspace_name,
+                              wizard_completed,
+                              ignition_plan_name,
+                              ignition_client_name,
+                              ignition_proposal_name,
+                              ignition_matched_at,
+                              created_at,
+                              updated_at
+                    """,
+                    (
+                        user["id"],
+                        clean_tenant_id,
+                        tenant_name,
+                        workspace_name,
+                        True,
+                        "",
+                        "",
+                        "",
+                        None,
+                        now,
+                        now,
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, tenant_id)
-                DO UPDATE
-                SET tenant_name = EXCLUDED.tenant_name,
-                    workspace_name = EXCLUDED.workspace_name,
-                    wizard_completed = TRUE,
-                    updated_at = EXCLUDED.updated_at
-                RETURNING id,
-                          tenant_id,
-                          tenant_name,
-                          workspace_name,
-                          wizard_completed,
-                          ignition_plan_name,
-                          ignition_client_name,
-                          ignition_proposal_name,
-                          ignition_matched_at,
-                          created_at,
-                          updated_at
-                """,
-                (
-                    user["id"],
-                    clean_tenant_id,
-                    tenant_name,
-                    workspace_name,
-                    True,
-                    "",
-                    "",
-                    "",
-                    None,
-                    utcnow(),
-                    utcnow(),
-                ),
+                row = cursor.fetchone() or {}
+        except pg_errors.InvalidColumnReference:
+            # Older deployments may miss the unique constraint required by ON CONFLICT.
+            connection.rollback()
+            logger.warning(
+                "payroll_headcount_workspace_upsert_legacy_schema user_id=%s tenant_id=%s",
+                user.get("id"),
+                clean_tenant_id,
             )
-            row = cursor.fetchone() or {}
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE payroll_headcount_workspaces
+                    SET tenant_name = %s,
+                        workspace_name = %s,
+                        wizard_completed = TRUE,
+                        updated_at = %s
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                    RETURNING id,
+                              tenant_id,
+                              tenant_name,
+                              workspace_name,
+                              wizard_completed,
+                              ignition_plan_name,
+                              ignition_client_name,
+                              ignition_proposal_name,
+                              ignition_matched_at,
+                              created_at,
+                              updated_at
+                    """,
+                    (
+                        tenant_name,
+                        workspace_name,
+                        now,
+                        user["id"],
+                        clean_tenant_id,
+                    ),
+                )
+                row = cursor.fetchone() or {}
+                if not row:
+                    cursor.execute(
+                        """
+                        INSERT INTO payroll_headcount_workspaces (
+                            user_id,
+                            tenant_id,
+                            tenant_name,
+                            workspace_name,
+                            wizard_completed,
+                            ignition_plan_name,
+                            ignition_client_name,
+                            ignition_proposal_name,
+                            ignition_matched_at,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id,
+                                  tenant_id,
+                                  tenant_name,
+                                  workspace_name,
+                                  wizard_completed,
+                                  ignition_plan_name,
+                                  ignition_client_name,
+                                  ignition_proposal_name,
+                                  ignition_matched_at,
+                                  created_at,
+                                  updated_at
+                        """,
+                        (
+                            user["id"],
+                            clean_tenant_id,
+                            tenant_name,
+                            workspace_name,
+                            True,
+                            "",
+                            "",
+                            "",
+                            None,
+                            now,
+                            now,
+                        ),
+                    )
+                    row = cursor.fetchone() or {}
         connection.commit()
     return _payroll_headcount_workspace_row_payload(row, snapshots=[])
 
@@ -30866,6 +30951,16 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
             customer_rows = cursor.fetchall() or []
             cursor.execute(
                 """
+                SELECT client_id, client_name, company_name, vat_number
+                FROM ch_auth_code_register
+                WHERE COALESCE(TRIM(vat_number), '') <> ''
+                ORDER BY uploaded_at DESC, updated_at DESC
+                LIMIT 5000
+                """
+            )
+            register_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
                 SELECT payload
                 FROM ignition_reporting_records
                 WHERE user_id = %s
@@ -30877,6 +30972,20 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
             )
             proposal_rows = cursor.fetchall() or []
         connection.commit()
+
+    register_vat_by_client_id: dict[str, str] = {}
+    register_vat_by_name: dict[str, str] = {}
+    for register_row in register_rows:
+        cleaned_vat = _juksib_clean_vat_number(register_row.get("vat_number"))
+        if not cleaned_vat:
+            continue
+        client_id_key = str(register_row.get("client_id") or "").strip().lower()
+        if client_id_key and client_id_key not in register_vat_by_client_id:
+            register_vat_by_client_id[client_id_key] = cleaned_vat
+        display_name = str(register_row.get("company_name") or register_row.get("client_name") or "").strip()
+        name_key = _bm_tasks_normalise_name_key(display_name)
+        if name_key and name_key not in register_vat_by_name:
+            register_vat_by_name[name_key] = cleaned_vat
 
     eligible_labels = {"Micro", "Starter", "Solo", "Solo+", "Solo MTD"}
     active_ignition_by_key: dict[str, dict] = {}
@@ -30926,20 +31035,27 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                 break
         if not matched:
             continue
+        customer_id_text = str(customer.get("id") or "").strip()
+        customer_name = str(customer.get("name") or "").strip()
+        customer_vat = _juksib_clean_vat_number(customer.get("vat_number"))
+        if not customer_vat:
+            customer_vat = register_vat_by_client_id.get(customer_id_text.lower(), "")
+        if not customer_vat:
+            customer_vat = register_vat_by_name.get(_bm_tasks_normalise_name_key(customer_name), "")
         rows.append(
             {
-                "id": str(customer.get("id") or ""),
+                "id": customer_id_text,
                 "clientName": matched.get("clientName") or customer_name,
                 "planName": matched.get("planName") or "",
                 "serviceName": matched.get("serviceName") or "",
                 "proposalName": matched.get("proposalName") or "",
                 "ignitionClientId": matched.get("ignitionClientId") or "",
-                "customerId": str(customer.get("id") or ""),
+                "customerId": customer_id_text,
                 "customerName": customer_name,
                 "xeroContactId": str(customer.get("xero_contact_id") or ""),
                 "tenantId": str(customer.get("tenant_id") or ""),
                 "tenantName": tenant_name_by_id.get(str(customer.get("tenant_id") or ""), str(customer.get("tenant_id") or "")),
-                "vatNumber": str(customer.get("vat_number") or "").strip(),
+                "vatNumber": customer_vat,
             }
         )
 
@@ -30952,9 +31068,6 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
         if dedupe_key in seen_contact_ids:
             continue
         seen_contact_ids.add(dedupe_key)
-        # VAT on Unregistered should exclude clients that already have a VAT number.
-        if str(row.get("vatNumber") or "").strip():
-            continue
         deduped.append(row)
     return {"clients": deduped, "count": len(deduped)}
 
@@ -33562,6 +33675,7 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
     connection_rows = sorted(connection_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name), reverse=True)
     tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connection_rows]
     customer_by_tenant: dict[str, dict] = {}
+    register_vat_by_name: dict[str, str] = {}
     if tenant_ids:
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -33596,16 +33710,44 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
                         (tenant_ids,),
                     )
                 rows = cursor.fetchall() or []
+                cursor.execute(
+                    """
+                    SELECT client_name, company_name, vat_number
+                    FROM ch_auth_code_register
+                    WHERE COALESCE(TRIM(vat_number), '') <> ''
+                    ORDER BY uploaded_at DESC, updated_at DESC
+                    LIMIT 5000
+                    """
+                )
+                register_rows = cursor.fetchall() or []
             connection.commit()
         for row in rows:
             row_tenant_id = str(row.get("tenant_id") or "").strip()
-            if row_tenant_id and row_tenant_id not in customer_by_tenant:
+            if not row_tenant_id:
+                continue
+            existing = customer_by_tenant.get(row_tenant_id)
+            if existing is None:
                 customer_by_tenant[row_tenant_id] = row
+                continue
+            existing_has_vat = bool(_juksib_clean_vat_number(existing.get("vat_number")))
+            incoming_has_vat = bool(_juksib_clean_vat_number(row.get("vat_number")))
+            if incoming_has_vat and not existing_has_vat:
+                customer_by_tenant[row_tenant_id] = row
+        for register_row in register_rows:
+            cleaned_vat = _juksib_clean_vat_number(register_row.get("vat_number"))
+            if not cleaned_vat:
+                continue
+            display_name = str(register_row.get("company_name") or register_row.get("client_name") or "").strip()
+            name_key = _bm_tasks_normalise_name_key(display_name)
+            if name_key and name_key not in register_vat_by_name:
+                register_vat_by_name[name_key] = cleaned_vat
 
     all_rows: list[dict] = []
     workspaces: list[dict] = []
     for connection_row in connection_rows:
         row_tenant_id = str(connection_row.get("tenant_id") or "").strip()
+        tenant_name = str(connection_row.get("tenant_name") or row_tenant_id).strip()
+        fallback_vat_number = register_vat_by_name.get(_bm_tasks_normalise_name_key(tenant_name), "")
         workspace_rows: list[dict] = []
         workspace_error = ""
         try:
@@ -33617,18 +33759,26 @@ async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> 
                 if isinstance(raw_return, dict)
             ]
             workspace_rows = [row for row in workspace_rows if row.get("periodEndISO") or row.get("deadlineISO")]
+            if fallback_vat_number:
+                workspace_rows = [
+                    {**row, "vatNumber": str(row.get("vatNumber") or "").strip() or fallback_vat_number}
+                    for row in workspace_rows
+                ]
         except Exception as exc:
             workspace_error = _sync_error_message(exc)
         all_rows.extend(workspace_rows)
         customer = customer_by_tenant.get(row_tenant_id) or {}
+        workspace_vat_number = _juksib_clean_vat_number(customer.get("vat_number"))
+        if not workspace_vat_number:
+            workspace_vat_number = fallback_vat_number
         workspaces.append(
             {
                 "tenantId": row_tenant_id,
-                "tenantName": str(connection_row.get("tenant_name") or row_tenant_id).strip(),
+                "tenantName": tenant_name,
                 "tenantType": str(connection_row.get("tenant_type") or "").strip(),
                 "clientId": str(customer.get("id") or "").strip(),
-                "clientName": str(customer.get("name") or connection_row.get("tenant_name") or row_tenant_id).strip(),
-                "vatNumber": str(customer.get("vat_number") or "").strip(),
+                "clientName": str(customer.get("name") or tenant_name or row_tenant_id).strip(),
+                "vatNumber": workspace_vat_number,
                 "periodCount": len(workspace_rows),
                 "submittedCount": sum(1 for row in workspace_rows if row.get("submitted")),
                 "outstandingCount": sum(1 for row in workspace_rows if not row.get("submitted")),
