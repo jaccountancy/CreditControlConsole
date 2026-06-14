@@ -23969,6 +23969,82 @@
                 color: var(--muted);
                 line-height: 1.25;
             }
+            .task-bookkeeping-workflow {
+                margin-top: 14px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 14px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 248, 255, 0.94));
+                padding: 14px;
+            }
+            .task-bookkeeping-workflow-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .task-bookkeeping-workflow-steps {
+                display: inline-flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .task-bookkeeping-workflow-step {
+                border: 1px solid #c9d7ea;
+                border-radius: 999px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: 800;
+                color: #456080;
+                background: #edf3fb;
+            }
+            .task-bookkeeping-workflow-step.is-active {
+                border-color: #7ea8ec;
+                color: #0f448a;
+                background: #deebff;
+            }
+            .task-bookkeeping-workflow-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+            .task-bookkeeping-workflow-card {
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.9);
+                padding: 12px;
+            }
+            .task-bookkeeping-workflow-card h5 {
+                margin: 0 0 8px;
+                font-size: 13px;
+            }
+            .task-bookkeeping-checklist label {
+                display: block;
+                margin-bottom: 8px;
+                font-size: 12px;
+            }
+            .task-bookkeeping-workflow-card select,
+            .task-bookkeeping-workflow-card textarea {
+                width: 100%;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                font: inherit;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .task-bookkeeping-workflow-footer {
+                margin-top: 10px;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            @media (max-width: 980px) {
+                .task-bookkeeping-workflow-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
             .task-list-client-cell {
                 gap: 6px;
             }
@@ -24000,6 +24076,44 @@
                 color: var(--ink);
                 font-weight: 700;
                 opacity: 0.86;
+            }
+            .task-xero-cell {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+            }
+            .task-xero-logo {
+                width: 22px;
+                height: 22px;
+                border-radius: 999px;
+                background: radial-gradient(circle at 28% 24%, #7fc7ff, #2592e6 58%, #1578c8);
+                color: #ffffff;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 8px;
+                font-weight: 900;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+                box-shadow: 0 7px 14px rgba(27, 124, 210, 0.28);
+                flex-shrink: 0;
+            }
+            .task-xero-copy {
+                min-width: 0;
+            }
+            .task-xero-copy strong {
+                display: block;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .task-xero-copy small {
+                margin: 0;
+            }
+            .task-xero-unmatched {
+                color: var(--muted);
+                font-weight: 700;
             }
             .task-complete-button {
                 min-width: 96px;
@@ -30540,7 +30654,7 @@
                                                 <th>Status</th>
                                                 <th>Assignee</th>
                                                 <th>Register match</th>
-                                                <th>Xero match</th>
+                                                <th>Xero</th>
                                                 <th>Action</th>
                                             </tr>
                                         </thead>
@@ -30700,7 +30814,7 @@
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
                                                 <th data-task-col="register">Register match</th>
-                                                <th data-task-col="xero">Xero match</th>
+                                                <th data-task-col="xero">Xero</th>
                                                 <th>Done</th>
                                             </tr>
                                         </thead>
@@ -30708,6 +30822,49 @@
                                     </table>
                                 </div>
                                 <p class="detail-meta" id="taskListMeta">No tasks loaded.</p>
+                                <section class="task-bookkeeping-workflow" id="taskBookkeepingWorkflowPanel" hidden>
+                                    <div class="task-bookkeeping-workflow-head">
+                                        <div>
+                                            <p class="eyebrow">Monthly Bookkeeping Workflow</p>
+                                            <h4 id="taskBookkeepingWorkflowTitle">No task selected</h4>
+                                            <p class="detail-meta" id="taskBookkeepingWorkflowMeta">Choose a bookkeeping task and click Start.</p>
+                                        </div>
+                                        <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCloseButton">Close</button>
+                                    </div>
+                                    <div class="task-bookkeeping-workflow-steps">
+                                        <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepChecks">1. Checks</span>
+                                        <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepReviewer">2. Reviewer</span>
+                                        <span class="task-bookkeeping-workflow-step" id="taskBookkeepingStepSubmit">3. Submit</span>
+                                    </div>
+                                    <div class="task-bookkeeping-workflow-grid">
+                                        <article class="task-bookkeeping-workflow-card">
+                                            <h5>ME-style quality checks</h5>
+                                            <div class="task-bookkeeping-checklist">
+                                                <label><input type="checkbox" id="taskBookkeepingCheckDividends"> Check dividends</label>
+                                                <label><input type="checkbox" id="taskBookkeepingCheckCorpTax"> Check corporation tax</label>
+                                                <label><input type="checkbox" id="taskBookkeepingCheckMerges"> Suggest contacts to be merged</label>
+                                                <label><input type="checkbox" id="taskBookkeepingCheckDuplicates"> Highlight potential duplicate transactions</label>
+                                            </div>
+                                            <div class="detail-actions">
+                                                <button class="ghost-button" type="button" id="taskBookkeepingOpenMeButton">Open ME workspace</button>
+                                            </div>
+                                        </article>
+                                        <article class="task-bookkeeping-workflow-card">
+                                            <h5>Review handoff</h5>
+                                            <label class="detail-meta" for="taskBookkeepingReviewerSelect">Reviewer</label>
+                                            <select id="taskBookkeepingReviewerSelect" aria-label="Bookkeeping reviewer"></select>
+                                            <label class="detail-meta" for="taskBookkeepingNotesInput" style="margin-top: 8px;">Workflow notes</label>
+                                            <textarea id="taskBookkeepingNotesInput" rows="4" placeholder="Add notes for the reviewer..."></textarea>
+                                        </article>
+                                    </div>
+                                    <div class="task-bookkeeping-workflow-footer">
+                                        <p class="detail-meta" id="taskBookkeepingWorkflowProgressMeta">Complete checks, select reviewer, then submit.</p>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCancelButton">Cancel</button>
+                                            <button class="primary-button" type="button" id="taskBookkeepingWorkflowSubmitButton">Submit task for review</button>
+                                        </div>
+                                    </div>
+                                </section>
                             </section>
                         </section>
                     </section>
@@ -30738,7 +30895,7 @@
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
                                                 <th data-task-col="register">Register match</th>
-                                                <th data-task-col="xero">Xero match</th>
+                                                <th data-task-col="xero">Xero</th>
                                                 <th>Done</th>
                                             </tr>
                                         </thead>
@@ -30776,7 +30933,7 @@
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
                                                 <th data-task-col="register">Register match</th>
-                                                <th data-task-col="xero">Xero match</th>
+                                                <th data-task-col="xero">Xero</th>
                                                 <th>Done</th>
                                             </tr>
                                         </thead>
@@ -95136,11 +95293,23 @@
                 },
                 bmTasksSelection: new Set(),
                 bmTasksColumnState: {
-                    hidden: ["register", "xero"],
+                    hidden: ["register"],
                 },
                 bmTaskTimelineByClient: bmTaskLocalState.timelineByClient || {},
                 bmTaskOverridesByKey: bmTaskLocalState.overridesByKey || {},
                 bmTaskHistoryByKey: bmTaskLocalState.historyByKey || {},
+                bmTaskBookkeepingWorkflow: {
+                    open: false,
+                    rowId: "",
+                    checklist: {
+                        dividends: true,
+                        corporationTax: true,
+                        suggestedMerges: true,
+                        duplicateTransactions: true,
+                    },
+                    reviewer: "",
+                    notes: "",
+                },
                 authRegisterEdit: {
                     rowId: "",
                     saving: false,
@@ -95343,6 +95512,39 @@
                 try {
                     const payload = await requestJSON("/api/companies-house/tasks");
                     companiesHouseSettings.bmTasksRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    let xeroOverrideChanged = false;
+                    (companiesHouseSettings.bmTasksRows || []).forEach((row) => {
+                        const rowId = bmTaskIdentitySafe(row);
+                        const xero = row?.xeroMatch || {};
+                        const tenantId = String(xero?.tenantId || "").trim();
+                        const tenantName = String(xero?.tenantName || "").trim();
+                        const vatReturnKey = String(xero?.vatReturnKey || "").trim();
+                        const isDisconnected = String(xero?.status || "").trim().toLowerCase() === "disconnected" || xero?.isDisconnected === true;
+                        const isDeleted = xero?.isDeleted === true;
+                        const existing = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
+                        if (tenantId) {
+                            if (!existing.xeroMatched || existing.xeroTenantId !== tenantId || existing.xeroTenantName !== tenantName || existing.xeroVatReturnKey !== vatReturnKey) {
+                                companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
+                                    ...existing,
+                                    xeroMatched: true,
+                                    xeroTenantId: tenantId,
+                                    xeroTenantName: tenantName,
+                                    xeroVatReturnKey: vatReturnKey,
+                                };
+                                xeroOverrideChanged = true;
+                            }
+                        } else if ((isDisconnected || isDeleted) && existing.xeroMatched) {
+                            companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
+                                ...existing,
+                                xeroMatched: false,
+                                xeroTenantId: "",
+                                xeroTenantName: "",
+                                xeroVatReturnKey: "",
+                            };
+                            xeroOverrideChanged = true;
+                        }
+                    });
+                    if (xeroOverrideChanged) saveBmTaskLocalState();
                     companiesHouseSettings.bmTasksFilename = String(payload?.filename || "");
                     companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || "");
                     companiesHouseSettings.bmTasksSummary = payload?.summary || {};
@@ -95422,6 +95624,47 @@
                 return "";
             }
 
+            function bmTaskResolvedXeroMatch(row = {}) {
+                const rowKey = bmTaskIdentitySafe(row);
+                const override = companiesHouseSettings.bmTaskOverridesByKey?.[rowKey] || {};
+                const xero = row?.xeroMatch || {};
+                const rowTenantId = String(xero?.tenantId || "").trim();
+                const rowTenantName = String(xero?.tenantName || "").trim();
+                const rowReturnKey = String(xero?.vatReturnKey || "").trim();
+                const disconnected = String(xero?.status || "").trim().toLowerCase() === "disconnected" || xero?.isDisconnected === true;
+                const deleted = xero?.isDeleted === true;
+                if (rowTenantId) {
+                    return {
+                        matched: true,
+                        tenantId: rowTenantId,
+                        tenantName: rowTenantName,
+                        vatReturnKey: rowReturnKey,
+                    };
+                }
+                if (disconnected || deleted) {
+                    return {
+                        matched: false,
+                        tenantId: "",
+                        tenantName: "",
+                        vatReturnKey: "",
+                    };
+                }
+                if (override?.xeroMatched) {
+                    return {
+                        matched: true,
+                        tenantId: String(override?.xeroTenantId || "").trim(),
+                        tenantName: String(override?.xeroTenantName || "").trim(),
+                        vatReturnKey: String(override?.xeroVatReturnKey || "").trim(),
+                    };
+                }
+                return {
+                    matched: false,
+                    tenantId: "",
+                    tenantName: "",
+                    vatReturnKey: "",
+                };
+            }
+
             function bmTaskEffectivePeriodEndISO(row = {}) {
                 return String(row?.vatPeriodEndISO || row?.xeroMatch?.periodEndISO || "").trim();
             }
@@ -95450,6 +95693,10 @@
                     completedAt: override.completedAt || row?.completedAt || "",
                     workflowState: String(override.workflowState || row?.workflowState || ""),
                     workflowReviewer: String(override.workflowReviewer || row?.workflowReviewer || ""),
+                    xeroStickyMatched: !!override?.xeroMatched,
+                    xeroStickyTenantId: String(override?.xeroTenantId || ""),
+                    xeroStickyTenantName: String(override?.xeroTenantName || ""),
+                    xeroStickyVatReturnKey: String(override?.xeroVatReturnKey || ""),
                 };
             }
 
@@ -95864,10 +96111,11 @@
                 activeView = "vat-return-prepare";
                 activeNavSection = "vat-return-prepare";
                 const xero = match?.xeroMatch || {};
-                const desiredTenantId = String(xero.tenantId || "").trim();
+                const xeroResolved = bmTaskResolvedXeroMatch(match);
+                const desiredTenantId = String(xeroResolved.tenantId || xero.tenantId || "").trim();
                 const desiredPeriodEndISO = bmTaskEffectivePeriodEndISO(match);
                 vatReturnSelectedWorkspaceTenantId = desiredTenantId;
-                selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
+                selectedVatReturnKey = String(xeroResolved.vatReturnKey || xero.vatReturnKey || "").trim();
                 vatReturnDetailTab = "transactions";
                 renderAll();
                 try {
@@ -95940,108 +96188,192 @@
                 renderTaskSubpages();
             }
 
-            async function handleBookkeepingTaskStartFlow(row = {}, allRows = []) {
+            function resetTaskBookkeepingWorkflowPanel() {
+                companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                    open: false,
+                    rowId: "",
+                    checklist: {
+                        dividends: true,
+                        corporationTax: true,
+                        suggestedMerges: true,
+                        duplicateTransactions: true,
+                    },
+                    reviewer: "",
+                    notes: "",
+                };
+            }
+
+            function taskBookkeepingWorkflowCurrentRow(allRows = []) {
+                const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                const rowId = String(workflow.rowId || "");
+                if (!rowId) return null;
+                return (Array.isArray(allRows) ? allRows : []).find((row) => bmTaskIdentitySafe(row) === rowId) || null;
+            }
+
+            function taskBookkeepingChecklistProgress(checklist = {}) {
+                const checks = [
+                    !!checklist?.dividends,
+                    !!checklist?.corporationTax,
+                    !!checklist?.suggestedMerges,
+                    !!checklist?.duplicateTransactions,
+                ];
+                return checks.filter(Boolean).length;
+            }
+
+            function renderTaskBookkeepingWorkflowPanel(allRows = []) {
+                const panel = document.getElementById("taskBookkeepingWorkflowPanel");
+                if (!panel) return;
+                const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                const row = taskBookkeepingWorkflowCurrentRow(allRows);
+                const isTaskListView = activeView === "task-list";
+                panel.hidden = !isTaskListView || !workflow.open || !row;
+                if (panel.hidden) return;
+
+                const managerPool = Array.from(new Set(
+                    (Array.isArray(allRows) ? allRows : [])
+                        .map((item) => String(item?.assigneeName || "").trim())
+                        .filter(Boolean)
+                )).sort((left, right) => left.localeCompare(right));
+                const defaultReviewer = String(workflow.reviewer || row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
+                if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
+                if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
+                const checklist = workflow.checklist || {};
+                const checksCompleted = taskBookkeepingChecklistProgress(checklist);
+                const allChecksCompleted = checksCompleted === 4;
+                const hasReviewer = Boolean(String(workflow.reviewer || "").trim());
+                const canSubmit = allChecksCompleted && hasReviewer;
+
+                const title = document.getElementById("taskBookkeepingWorkflowTitle");
+                const meta = document.getElementById("taskBookkeepingWorkflowMeta");
+                const progressMeta = document.getElementById("taskBookkeepingWorkflowProgressMeta");
+                const stepChecks = document.getElementById("taskBookkeepingStepChecks");
+                const stepReviewer = document.getElementById("taskBookkeepingStepReviewer");
+                const stepSubmit = document.getElementById("taskBookkeepingStepSubmit");
+                const submitButton = document.getElementById("taskBookkeepingWorkflowSubmitButton");
+                const reviewerSelect = document.getElementById("taskBookkeepingReviewerSelect");
+                const notesInput = document.getElementById("taskBookkeepingNotesInput");
+                const checkDividends = document.getElementById("taskBookkeepingCheckDividends");
+                const checkCorpTax = document.getElementById("taskBookkeepingCheckCorpTax");
+                const checkMerges = document.getElementById("taskBookkeepingCheckMerges");
+                const checkDuplicates = document.getElementById("taskBookkeepingCheckDuplicates");
+
+                if (title) title.textContent = `${bmTaskClientDisplayName(row?.clientName)} · ${bmTaskDisplayName(row)}`;
+                if (meta) meta.textContent = `Period end ${bmTaskEffectivePeriodEndISO(row) || "—"} · Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`;
+                if (progressMeta) {
+                    progressMeta.textContent = canSubmit
+                        ? "Ready to submit for review."
+                        : `${checksCompleted}/4 checks complete${hasReviewer ? "" : " · reviewer needed"}.`;
+                }
+                if (stepChecks) stepChecks.classList.toggle("is-active", true);
+                if (stepReviewer) stepReviewer.classList.toggle("is-active", allChecksCompleted || hasReviewer);
+                if (stepSubmit) stepSubmit.classList.toggle("is-active", canSubmit);
+                if (submitButton) submitButton.disabled = !canSubmit;
+                if (reviewerSelect) {
+                    reviewerSelect.innerHTML = managerPool.map((name) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("");
+                    reviewerSelect.value = String(workflow.reviewer || "");
+                }
+                if (notesInput && notesInput.value !== String(workflow.notes || "")) notesInput.value = String(workflow.notes || "");
+                if (checkDividends) checkDividends.checked = !!checklist.dividends;
+                if (checkCorpTax) checkCorpTax.checked = !!checklist.corporationTax;
+                if (checkMerges) checkMerges.checked = !!checklist.suggestedMerges;
+                if (checkDuplicates) checkDuplicates.checked = !!checklist.duplicateTransactions;
+            }
+
+            function openTaskBookkeepingWorkflowPanel(row = {}, allRows = []) {
                 const rowId = bmTaskIdentitySafe(row);
+                if (!rowId) return;
                 const managerPool = Array.from(new Set(
                     (Array.isArray(allRows) ? allRows : [])
                         .map((item) => String(item?.assigneeName || "").trim())
                         .filter(Boolean)
                 )).sort((left, right) => left.localeCompare(right));
                 const defaultReviewer = String(row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
-                if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
-                let selectedReviewer = defaultReviewer;
-                let checklist = {
-                    dividends: true,
-                    corporationTax: true,
-                    suggestedMerges: true,
-                    duplicateTransactions: true,
-                };
-                let notes = "";
-                const decision = await showOperationReviewDialog({
-                    eyebrow: "Monthly bookkeeping workflow",
-                    title: "Submit Monthly Bookkeeping task for review",
-                    subtitle: "Run the ME-style checks, add notes, and route to a reviewer.",
-                    confirmLabel: "Submit for review",
-                    cancelLabel: "Cancel",
-                    columns: [],
-                    rows: [{}],
-                    summaryChips: [
-                        bmTaskClientDisplayName(row?.clientName),
-                        `Period end ${bmTaskEffectivePeriodEndISO(row) || "—"}`,
-                        `Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`,
-                    ],
-                    onRender: ({ body }) => {
-                        body.innerHTML = `
-                            <div class="task-detail-modal-grid">
-                                <article class="task-detail-modal-card">
-                                    <h5>ME workflow checks</h5>
-                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckDividends" checked> Check dividends</label>
-                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckCorpTax" checked> Check corporation tax</label>
-                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckMerges" checked> Suggest contacts to merge</label>
-                                    <label style="display:block;"><input type="checkbox" id="taskBookkeepingCheckDuplicates" checked> Highlight potential duplicate transactions</label>
-                                </article>
-                                <article class="task-detail-modal-card">
-                                    <h5>Review routing</h5>
-                                    <select id="taskBookkeepingReviewerSelect" aria-label="Reviewer">
-                                        ${managerPool.map((name) => `<option value="${escapeHTML(name)}" ${name === selectedReviewer ? "selected" : ""}>${escapeHTML(name)}</option>`).join("")}
-                                    </select>
-                                    <p class="detail-meta" style="margin-top:8px;">Submission notes are posted to timeline and task history.</p>
-                                    <textarea id="taskBookkeepingNotes" rows="4" placeholder="Add review notes..."></textarea>
-                                </article>
-                            </div>
-                        `;
-                        const dividendsInput = body.querySelector("#taskBookkeepingCheckDividends");
-                        const corpTaxInput = body.querySelector("#taskBookkeepingCheckCorpTax");
-                        const mergesInput = body.querySelector("#taskBookkeepingCheckMerges");
-                        const duplicatesInput = body.querySelector("#taskBookkeepingCheckDuplicates");
-                        const reviewerInput = body.querySelector("#taskBookkeepingReviewerSelect");
-                        const notesInput = body.querySelector("#taskBookkeepingNotes");
-                        dividendsInput?.addEventListener("change", (event) => {
-                            checklist.dividends = !!event?.target?.checked;
-                        });
-                        corpTaxInput?.addEventListener("change", (event) => {
-                            checklist.corporationTax = !!event?.target?.checked;
-                        });
-                        mergesInput?.addEventListener("change", (event) => {
-                            checklist.suggestedMerges = !!event?.target?.checked;
-                        });
-                        duplicatesInput?.addEventListener("change", (event) => {
-                            checklist.duplicateTransactions = !!event?.target?.checked;
-                        });
-                        reviewerInput?.addEventListener("change", (event) => {
-                            selectedReviewer = String(event?.target?.value || "").trim();
-                        });
-                        notesInput?.addEventListener("input", (event) => {
-                            notes = String(event?.target?.value || "");
-                        });
+                companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                    open: true,
+                    rowId,
+                    checklist: {
+                        dividends: true,
+                        corporationTax: true,
+                        suggestedMerges: true,
+                        duplicateTransactions: true,
                     },
-                    resultProvider: () => ({
-                        reviewer: String(selectedReviewer || "").trim(),
-                        notes: String(notes || "").trim(),
-                        checklist,
-                    }),
+                    reviewer: defaultReviewer,
+                    notes: "",
+                };
+                setBmTaskOverrideState(rowId, { workflowState: "in_progress" });
+                updateBmTaskStatus(row, "in_review", "", {
+                    autoNote: "Monthly bookkeeping workflow started from task list.",
                 });
-                if (!decision) return;
-                if (!String(decision.reviewer || "").trim()) {
+                renderTaskSubpages();
+                showToast("Bookkeeping workflow opened. Complete checks and submit for review.", "info");
+            }
+
+            function submitTaskBookkeepingWorkflow(allRows = []) {
+                const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                const row = taskBookkeepingWorkflowCurrentRow(allRows);
+                if (!row) {
+                    showToast("Bookkeeping workflow task was not found.", "error");
+                    resetTaskBookkeepingWorkflowPanel();
+                    renderTaskSubpages();
+                    return;
+                }
+                const reviewer = String(workflow.reviewer || "").trim();
+                if (!reviewer) {
                     showToast("Select a reviewer before submitting this task.", "info");
                     return;
                 }
+                const checklist = workflow.checklist || {};
+                if (taskBookkeepingChecklistProgress(checklist) < 4) {
+                    showToast("Complete all workflow checks before submitting.", "info");
+                    return;
+                }
                 const checksSummary = [
-                    decision.checklist?.dividends ? "dividends checked" : null,
-                    decision.checklist?.corporationTax ? "corporation tax checked" : null,
-                    decision.checklist?.suggestedMerges ? "contact merge suggestions reviewed" : null,
-                    decision.checklist?.duplicateTransactions ? "duplicate transactions reviewed" : null,
+                    checklist?.dividends ? "dividends checked" : null,
+                    checklist?.corporationTax ? "corporation tax checked" : null,
+                    checklist?.suggestedMerges ? "contact merge suggestions reviewed" : null,
+                    checklist?.duplicateTransactions ? "duplicate transactions reviewed" : null,
                 ].filter(Boolean).join("; ");
-                const reviewNote = [checksSummary, decision.notes].filter(Boolean).join(". ");
+                const reviewNote = [checksSummary, String(workflow.notes || "").trim()].filter(Boolean).join(". ");
+                const rowId = bmTaskIdentitySafe(row);
                 setBmTaskOverrideState(rowId, {
                     workflowState: "submitted_for_review",
-                    workflowReviewer: String(decision.reviewer || "").trim(),
+                    workflowReviewer: reviewer,
                 });
                 updateBmTaskStatus(row, "awaiting_approval", reviewNote, {
-                    autoNote: `Monthly bookkeeping workflow submitted for review to ${decision.reviewer || "reviewer"}.`,
+                    autoNote: `Monthly bookkeeping workflow submitted for review to ${reviewer}.`,
                 });
+                resetTaskBookkeepingWorkflowPanel();
+                renderTaskSubpages();
                 openTaskApprovalsBouncebacksScreen();
-                showToast(`Task submitted for review${decision.reviewer ? ` to ${decision.reviewer}` : ""}.`, "success");
+                showToast(`Task submitted for review to ${reviewer}.`, "success");
+            }
+
+            function openTaskBookkeepingMeWorkspace(allRows = []) {
+                const row = taskBookkeepingWorkflowCurrentRow(allRows);
+                if (!row) {
+                    showToast("No bookkeeping task is active.", "info");
+                    return;
+                }
+                const clientId = String(row?.clientId || "").trim();
+                openMeReportScreen();
+                if (clientId) {
+                    window.setTimeout(() => {
+                        try {
+                            openMeReportClientWorkspace(clientId);
+                        } catch {}
+                    }, 0);
+                }
+            }
+
+            async function handleBookkeepingTaskStartFlow(row = {}, allRows = []) {
+                if (activeView !== "task-list") {
+                    activeView = "task-list";
+                    syncActiveViewShell();
+                    closeTopbarMenu();
+                    closeToolbarMenus();
+                    renderAll();
+                }
+                openTaskBookkeepingWorkflowPanel(row, allRows);
             }
 
             function openBmTaskDetailModal(row = {}, allRows = []) {
@@ -96132,12 +96464,12 @@
             }
 
             async function openTaskListColumnsDialog() {
-                const state = companiesHouseSettings.bmTasksColumnState || { hidden: ["register", "xero"] };
-                const hidden = new Set(Array.isArray(state.hidden) ? state.hidden : ["register", "xero"]);
+                const state = companiesHouseSettings.bmTasksColumnState || { hidden: ["register"] };
+                const hidden = new Set(Array.isArray(state.hidden) ? state.hidden : ["register"]);
                 const columns = [
                     { key: "assignee", label: "Client Manager" },
                     { key: "register", label: "Register match" },
-                    { key: "xero", label: "Xero match" },
+                    { key: "xero", label: "Xero" },
                 ];
                 const decision = await showOperationReviewDialog({
                     eyebrow: "Task List",
@@ -96270,13 +96602,14 @@
                     body.innerHTML = rows.map((row) => {
                         const register = row?.matchedRegister || {};
                         const xero = row?.xeroMatch || {};
+                        const xeroResolved = bmTaskResolvedXeroMatch(row);
                         const registerLabel = register?.id
                             ? `${register.displayName || row.clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
                             : "No client-register match";
-                        const xeroLabel = xero?.tenantId
-                            ? `${xero.tenantName || "Matched workspace"}${xero.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
+                        const xeroLabel = xeroResolved?.matched
+                            ? `${xeroResolved.tenantName || "Matched workspace"}${xeroResolved.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
                             : "No Xero workspace match";
-                        const hasOpenAction = Boolean(xero?.tenantId || xero?.vatReturnKey);
+                        const hasOpenAction = Boolean(xeroResolved?.tenantId || xeroResolved?.vatReturnKey);
                         return `
                             <tr>
                                 <td>${hasOpenAction
@@ -96319,7 +96652,7 @@
                 }));
                 const hiddenColumns = new Set(Array.isArray(companiesHouseSettings.bmTasksColumnState?.hidden)
                     ? companiesHouseSettings.bmTasksColumnState.hidden
-                    : ["register", "xero"]);
+                    : ["register"]);
                 if (!rows.length) {
                     body.innerHTML = `<tr><td colspan="10" class="ch-empty-state">${
                         allRows.length
@@ -96332,6 +96665,7 @@
                 body.innerHTML = rows.map((row) => {
                     const register = row?.matchedRegister || {};
                     const xero = row?.xeroMatch || {};
+                    const xeroResolved = bmTaskResolvedXeroMatch(row);
                     const rowId = bmTaskIdentitySafe(row);
                     const clientKey = bmTaskClientTimelineKey(row);
                     const clientName = bmTaskClientDisplayName(row.clientName);
@@ -96339,9 +96673,12 @@
                     const registerLabel = register?.id
                         ? `${register.displayName || clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
                         : "No client-register match";
-                    const xeroLabel = xero?.tenantId
-                        ? `${xero.tenantName || "Matched workspace"}${xero.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
+                    const xeroLabel = xeroResolved.matched
+                        ? `${xeroResolved.tenantName || "Connected workspace"}${xeroResolved.vatReturnKey ? " · VAT row matched" : " · workspace linked"}`
                         : "No Xero workspace match";
+                    const xeroCellMarkup = xeroResolved.matched
+                        ? `<span class="task-xero-cell"><span class="task-xero-logo" aria-label="Xero connected" title="Xero connected">x</span><span class="task-xero-copy"><strong>${escapeHTML(xeroResolved.tenantName || "Xero connected")}</strong><small>${escapeHTML(xeroResolved.vatReturnKey ? "VAT return matched" : "Workspace matched")}</small></span></span>`
+                        : `<span class="task-xero-unmatched">${escapeHTML(xeroLabel)}</span>`;
                     const isSelected = companiesHouseSettings.bmTasksSelection?.has(rowId);
                     const statusPill = `<button class="task-list-status-trigger" type="button" data-task-status-trigger="${escapeHTML(rowId)}"><span class="lock-status-pill task-status-pill ${bmTaskStatusTone(row.status)}"><span>${escapeHTML(bmTaskStatusLabel(row.status))}</span></span></button>`;
                     const assigneeName = String(row.assigneeName || "").trim();
@@ -96378,11 +96715,11 @@
                         }
                     } else if (!isCompleted && workflowType === "bookkeeping") {
                         if (String(row?.status || "").trim().toLowerCase() === "awaiting_approval" || workflowState === "submitted_for_review") {
-                            actionKind = "awaiting_review";
-                            actionLabel = "Awaiting review";
-                            actionClass = "is-awaiting";
-                            actionDisabled = true;
-                            actionIcon = "⏳";
+                            actionKind = "complete";
+                            actionLabel = "Complete review";
+                            actionClass = "";
+                            actionDisabled = false;
+                            actionIcon = "✓";
                         } else if (workflowState === "ready_to_complete") {
                             actionKind = "complete";
                             actionLabel = "Complete";
@@ -96419,7 +96756,7 @@
                                 </span>
                             </td>
                             <td data-task-col="register" ${hiddenColumns.has("register") ? "hidden" : ""}>${escapeHTML(registerLabel)}</td>
-                            <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${escapeHTML(xeroLabel)}</td>
+                            <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${xeroCellMarkup}</td>
                             <td><button class="task-complete-button ${actionClass}" type="button" data-task-mark-completed="${escapeHTML(rowId)}" data-task-action-kind="${escapeHTML(actionKind)}" ${actionDisabled ? "disabled" : ""} title="${escapeHTML(actionLabel)}" aria-label="${escapeHTML(actionLabel)}"><span class="task-complete-icon" aria-hidden="true">${escapeHTML(actionIcon)}</span><span>${escapeHTML(actionLabel)}</span></button></td>
                         </tr>
                     `;
@@ -96496,6 +96833,9 @@
                             updateBmTaskStatus(match, "completed", "", {
                                 autoNote: "Task marked completed from task list.",
                             });
+                            if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
+                                resetTaskBookkeepingWorkflowPanel();
+                            }
                             if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
                                 companiesHouseSettings.bmTasksSelection.delete(rowId);
                             }
@@ -96538,10 +96878,12 @@
             }
 
             function renderTaskSubpages() {
+                const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                 renderTaskListToolbarControls();
                 renderTaskSubpageTable("list", "taskListTableBody", "taskListMeta");
                 renderTaskSubpageTable("approvals", "taskApprovalsTableBody", "taskApprovalsMeta");
                 renderTaskSubpageTable("completed", "taskCompletedTableBody", "taskCompletedMeta");
+                renderTaskBookkeepingWorkflowPanel(allRows);
             }
 
             function renderTaskListToolbarControls() {
@@ -98206,7 +98548,7 @@
                 if (companiesHouseSettings.authRegisterLoading) return;
                 if (companiesHouseSettings.authRegisterLoaded && !force) return;
                 companiesHouseSettings.authRegisterLoading = true;
-                setAuthCodeRegisterStatus("Loading auth code directory…", "muted");
+                setAuthCodeRegisterStatus("", "muted");
                 try {
                     const limit = Math.max(100, Math.min(Number(companiesHouseSettings.authRegisterLoadedLimit || 300), 1000));
                     const payload = await requestJSON(`/api/companies-house/auth-code-register?limit=${limit}`);
@@ -99017,6 +99359,79 @@
                 });
                 document.getElementById("taskListReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingWorkflowCloseButton")?.addEventListener("click", () => {
+                    resetTaskBookkeepingWorkflowPanel();
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingWorkflowCancelButton")?.addEventListener("click", () => {
+                    resetTaskBookkeepingWorkflowPanel();
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingOpenMeButton")?.addEventListener("click", () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    openTaskBookkeepingMeWorkspace(allRows);
+                });
+                document.getElementById("taskBookkeepingWorkflowSubmitButton")?.addEventListener("click", () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    submitTaskBookkeepingWorkflow(allRows);
+                });
+                document.getElementById("taskBookkeepingReviewerSelect")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...(companiesHouseSettings.bmTaskBookkeepingWorkflow || {}),
+                        reviewer: String(event?.target?.value || "").trim(),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingNotesInput")?.addEventListener("input", (event) => {
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...(companiesHouseSettings.bmTaskBookkeepingWorkflow || {}),
+                        notes: String(event?.target?.value || ""),
+                    };
+                });
+                document.getElementById("taskBookkeepingCheckDividends")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        checklist: {
+                            ...(workflow.checklist || {}),
+                            dividends: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingCheckCorpTax")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        checklist: {
+                            ...(workflow.checklist || {}),
+                            corporationTax: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingCheckMerges")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        checklist: {
+                            ...(workflow.checklist || {}),
+                            suggestedMerges: !!event?.target?.checked,
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingCheckDuplicates")?.addEventListener("change", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        checklist: {
+                            ...(workflow.checklist || {}),
+                            duplicateTransactions: !!event?.target?.checked,
+                        },
+                    };
                     renderTaskSubpages();
                 });
                 document.getElementById("taskApprovalsOpenCompletedButton")?.addEventListener("click", () => {
