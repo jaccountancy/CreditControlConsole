@@ -25534,6 +25534,24 @@
                 color: var(--ink);
                 background: #fff;
             }
+            #xeroLockDateScreen .xero-lock-date-filter {
+                min-width: 220px;
+                flex: 0 1 260px;
+                display: grid;
+                gap: 6px;
+            }
+            #xeroLockDateScreen .xero-lock-date-filter select {
+                width: 100%;
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 0 10px;
+                font: inherit;
+                font-size: 0.86rem;
+                font-weight: 760;
+                color: var(--ink);
+                background: #fff;
+            }
             #xeroLockDateSearchMeta {
                 margin-top: 0;
                 flex: 1 1 100%;
@@ -32046,6 +32064,15 @@
                                             <span>Search tenants and mapping</span>
                                             <input id="xeroLockDateSearchInput" type="search" placeholder="Tenant, tenant ID, CH number, company name, or status">
                                         </label>
+                                        <label class="xero-lock-date-filter" for="xeroLockDateStatusFilter">
+                                            <span>Lock status filter</span>
+                                            <select id="xeroLockDateStatusFilter" aria-label="Filter lock-date rows by status">
+                                                <option value="needs-attention">Needs attention (default)</option>
+                                                <option value="flagged">Flagged mismatches only</option>
+                                                <option value="awaiting">Awaiting data/mapping only</option>
+                                                <option value="all">All rows</option>
+                                            </select>
+                                        </label>
                                         <p class="late-charge-summary" id="xeroLockDateSearchMeta" hidden></p>
                                     </div>
                                 </div>
@@ -36858,6 +36885,7 @@
             let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateFixInFlightTenantIds = new Set();
             let xeroLockDateSearchTerm = "";
+            let xeroLockDateStatusFilter = "needs-attention";
             let selectedXeroLockDateTenantIds = new Set();
             let xeroLockDateColumnSettings = { showCompanyNumber: false, menuOpen: false };
             let settingsLockDateSearchTerm = "";
@@ -52738,7 +52766,11 @@
                 const companyNumberToggle = document.getElementById("xeroLockDateShowCompanyNumberColumn");
                 const selectAllToggle = document.getElementById("xeroLockDateSelectAll");
                 const deleteSelectedButton = document.getElementById("deleteSelectedXeroLockDateButton");
+                const statusFilterSelect = document.getElementById("xeroLockDateStatusFilter");
                 if (!summary || !body) return;
+                if (statusFilterSelect && statusFilterSelect.value !== xeroLockDateStatusFilter) {
+                    statusFilterSelect.value = xeroLockDateStatusFilter;
+                }
                 renderXeroLockDateRefreshButtons();
                 if (table) table.classList.toggle("show-company-number-column", !!xeroLockDateColumnSettings.showCompanyNumber);
                 if (columnsMenu) columnsMenu.hidden = !xeroLockDateColumnSettings.menuOpen;
@@ -52790,35 +52822,52 @@
                 }
                 const rows = xeroLockDateOverview.rows || [];
                 const query = String(xeroLockDateSearchTerm || "").trim().toLowerCase();
-                const filteredRows = !query
-                    ? rows
-                    : rows.filter((row) => {
-                        const mapping = row?.mapping || {};
-                        const companiesHouse = row?.companiesHouse || {};
-                        const statusLabel = row?.flags?.accountsFiledNotLocked
-                            ? "accounts filed but period not locked flagged mismatch"
-                            : row?.flags?.mappingMissing
-                                ? "mapping needed unmapped"
-                                : "no lock issue detected mapped";
-                        const haystack = [
-                            row?.tenantName || "",
-                            row?.tenantId || "",
-                            row?.periodLockDate || "",
-                            row?.endOfYearLockDate || "",
-                            mapping?.companyNumber || "",
-                            companiesHouse?.companyName || "",
-                            companiesHouse?.clientName || "",
-                            companiesHouse?.yearEndDate || "",
-                            companiesHouse?.accountsFiledDate || "",
-                            statusLabel,
-                            row?.xeroError || ""
-                        ].join(" ").toLowerCase();
-                        return haystack.includes(query);
-                    });
+                const filteredRows = rows.filter((row) => {
+                    const mappingMissing = Boolean(row?.flags?.mappingMissing);
+                    const accountsDataMissing = Boolean(row?.flags?.insufficientAccountsData);
+                    const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
+                    const isGreenCovered = !isFlagged && !mappingMissing && !accountsDataMissing;
+                    if (xeroLockDateStatusFilter === "needs-attention" && isGreenCovered) return false;
+                    if (xeroLockDateStatusFilter === "flagged" && !isFlagged) return false;
+                    if (xeroLockDateStatusFilter === "awaiting" && !(mappingMissing || accountsDataMissing)) return false;
+                    if (!query) return true;
+                    const mapping = row?.mapping || {};
+                    const companiesHouse = row?.companiesHouse || {};
+                    const statusLabel = isFlagged
+                        ? "accounts filed but period not locked flagged mismatch"
+                        : mappingMissing
+                            ? "mapping needed unmapped"
+                            : accountsDataMissing
+                                ? "waiting for companies house accounts history awaiting data"
+                                : "lock date covers latest filed accounts period no lock issue detected mapped";
+                    const haystack = [
+                        row?.tenantName || "",
+                        row?.tenantId || "",
+                        row?.periodLockDate || "",
+                        row?.endOfYearLockDate || "",
+                        mapping?.companyNumber || "",
+                        companiesHouse?.companyName || "",
+                        companiesHouse?.clientName || "",
+                        companiesHouse?.yearEndDate || "",
+                        companiesHouse?.accountsFiledDate || "",
+                        statusLabel,
+                        row?.xeroError || ""
+                    ].join(" ").toLowerCase();
+                    return haystack.includes(query);
+                });
                 if (searchMeta) {
-                    if (query) {
+                    const filterLabel = xeroLockDateStatusFilter === "all"
+                        ? "all rows"
+                        : xeroLockDateStatusFilter === "flagged"
+                            ? "flagged mismatches"
+                            : xeroLockDateStatusFilter === "awaiting"
+                                ? "awaiting data/mapping"
+                                : "needs attention";
+                    if (query || xeroLockDateStatusFilter !== "all") {
                         searchMeta.hidden = false;
-                        searchMeta.textContent = `Showing ${filteredRows.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} for "${xeroLockDateSearchTerm.trim()}".`;
+                        searchMeta.textContent = query
+                            ? `Showing ${filteredRows.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} for "${xeroLockDateSearchTerm.trim()}" (${filterLabel}).`
+                            : `Showing ${filteredRows.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} (${filterLabel}).`;
                     } else {
                         searchMeta.hidden = true;
                         searchMeta.textContent = "";
@@ -52921,7 +52970,7 @@
                         `;
                     }).join("")
                     : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 6 : 5}"><div class="ch-empty-state">${
-                        rows.length ? "No tenants match this search." : "Connect Xero tenants to view lock dates."
+                        rows.length ? "No tenants match this search/filter." : "Connect Xero tenants to view lock dates."
                     }</div></td></tr>`;
                 body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
                     if (button.dataset.xeroLockMapWired === "true") return;
@@ -95722,6 +95771,17 @@
                     xeroLockDateSearchInput.value = xeroLockDateSearchTerm;
                     xeroLockDateSearchInput.addEventListener("input", (event) => {
                         xeroLockDateSearchTerm = event.target.value || "";
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
+                const xeroLockDateStatusFilterSelect = document.getElementById("xeroLockDateStatusFilter");
+                if (xeroLockDateStatusFilterSelect) {
+                    xeroLockDateStatusFilterSelect.value = xeroLockDateStatusFilter;
+                    xeroLockDateStatusFilterSelect.addEventListener("change", (event) => {
+                        const next = String(event.target.value || "needs-attention");
+                        xeroLockDateStatusFilter = ["needs-attention", "flagged", "awaiting", "all"].includes(next)
+                            ? next
+                            : "needs-attention";
                         if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                     });
                 }
