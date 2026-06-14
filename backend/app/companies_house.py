@@ -5177,6 +5177,7 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
+    self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
