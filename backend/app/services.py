@@ -31576,7 +31576,18 @@ def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date |
                     "AccountCode": "",
                 }
             ]
-        for index, line in enumerate(line_items):
+        valid_line_items = [line for line in line_items if isinstance(line, dict)]
+        if not valid_line_items:
+            valid_line_items = [
+                {
+                    "Description": str(invoice.get("Reference") or "Invoice"),
+                    "LineAmount": invoice.get("SubTotal") or invoice.get("Total") or 0,
+                    "TaxAmount": invoice.get("TotalTax") or 0,
+                    "TaxType": str(invoice.get("TaxType") or "").strip(),
+                    "AccountCode": "",
+                }
+            ]
+        for index, line in enumerate(valid_line_items):
             line_amount = _money(line.get("LineAmount") or 0)
             line_tax = _money(line.get("TaxAmount") or 0)
             line_total = _money(line_amount + line_tax)
