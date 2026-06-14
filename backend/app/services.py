@@ -1141,7 +1141,7 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
 
     if not employees and not payruns and errors:
         reconnect_hint = (
-            "/auth/xero/start?force=1&include_payroll=1"
+            "/auth/xero/start?force=1"
             f"&xero_target=payroll-headcount&redirect_to=%2F%23credit-control-payroll-headcount"
         )
         raise HTTPException(

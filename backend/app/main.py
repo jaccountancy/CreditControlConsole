@@ -621,11 +621,13 @@ def auth_xero_start(
         if response:
             return response
     state_token = start_oauth_state(redirect_to=redirect_to)
+    settings = get_settings()
+    request_payroll_scopes = bool(include_payroll) and bool(settings.xero_enable_payroll_scopes)
     return RedirectResponse(
         xero_authorize_url(
             state_token,
             prompt_consent=bool(force),
-            include_payroll_scopes=bool(include_payroll),
+            include_payroll_scopes=request_payroll_scopes,
         ),
         status_code=status.HTTP_302_FOUND,
     )

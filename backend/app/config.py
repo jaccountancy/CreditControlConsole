@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         "accounting.contacts accounting.settings accounting.attachments "
         "accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read"
     )
+    xero_enable_payroll_scopes: bool = False
     xero_primary_tenant_name: str = "jaccountancy"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
