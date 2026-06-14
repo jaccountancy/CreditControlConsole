@@ -302,6 +302,10 @@ from .hmrc_648 import (
     hmrc_64_8_export_csv,
     hmrc_64_8_history,
     hmrc_64_8_payload,
+    hmrc_mtd_oauth_callback,
+    hmrc_mtd_oauth_disconnect,
+    hmrc_mtd_oauth_start,
+    hmrc_mtd_oauth_status,
     send_hmrc_64_8_reminder,
     submit_hmrc_64_8_request,
     update_hmrc_64_8_request,
@@ -2228,6 +2232,30 @@ async def api_companies_house_reconcile_submissions(
 @app.get("/api/hmrc-64-8")
 def api_hmrc_64_8(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **hmrc_64_8_payload(user)}
+
+
+@app.get("/api/hmrc-64-8/oauth/status")
+def api_hmrc_64_8_oauth_status(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "oauth": hmrc_mtd_oauth_status(user)}
+
+
+@app.post("/api/hmrc-64-8/oauth/start")
+async def api_hmrc_64_8_oauth_start(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_mtd_oauth_start(user, redirect_to=payload.get("redirectTo"))}
+
+
+@app.get("/api/hmrc-64-8/oauth/callback")
+def api_hmrc_64_8_oauth_callback(code: str = Query(""), state: str = Query("")):
+    result = hmrc_mtd_oauth_callback(code=code, state=state)
+    redirect_to = result.get("redirectTo") or "/credit-control-hmrc-64-8s"
+    separator = "&" if "?" in redirect_to else "?"
+    return RedirectResponse(f"{redirect_to}{separator}hmrcMtdConnected=1")
+
+
+@app.post("/api/hmrc-64-8/oauth/disconnect")
+def api_hmrc_64_8_oauth_disconnect(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "oauth": hmrc_mtd_oauth_disconnect(user)}
 
 
 @app.get("/api/hmrc-64-8/export.csv")

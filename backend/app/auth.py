@@ -19,9 +19,24 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "email",
     "offline_access",
 )
+REQUIRED_XERO_CONNECTION_SCOPES = (
+    "accounting.invoices",
+    "accounting.payments",
+    "accounting.banktransactions",
+    "accounting.manualjournals",
+    "accounting.journals.read",
+    "accounting.contacts",
+    "accounting.settings",
+    "accounting.attachments",
+    "accounting.reports.banksummary.read",
+    "accounting.reports.balancesheet.read",
+    "accounting.reports.profitandloss.read",
+    "accounting.reports.trialbalance.read",
+    "assets.read",
+)
 XERO_PAYROLL_SCOPES = (
-    "payroll.employees",
-    "payroll.payruns",
+    "payroll.employees.read",
+    "payroll.payruns.read",
 )
 KNOWN_XERO_SCOPES = {
     "openid",
@@ -125,6 +140,14 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
 
     if not include_payroll_scopes:
         scopes = [scope for scope in scopes if not scope.startswith("payroll.")]
+    elif not any(scope.startswith("payroll.") for scope in scopes):
+        for payroll_scope in XERO_PAYROLL_SCOPES:
+            if payroll_scope not in scopes:
+                scopes.append(payroll_scope)
+
+    for required_scope in REQUIRED_XERO_CONNECTION_SCOPES:
+        if required_scope not in scopes:
+            scopes.append(required_scope)
 
     for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
         if required_scope not in scopes:

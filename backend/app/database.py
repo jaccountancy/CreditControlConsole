@@ -1960,12 +1960,20 @@ CREATE TABLE IF NOT EXISTS hmrc_64_8_requests (
     client_contact_phone TEXT NOT NULL DEFAULT '',
     postal_address TEXT NOT NULL DEFAULT '',
     sa_utr TEXT NOT NULL DEFAULT '',
+    sa_nino TEXT NOT NULL DEFAULT '',
     ct_utr TEXT NOT NULL DEFAULT '',
+    postcode TEXT NOT NULL DEFAULT '',
     paye_reference TEXT NOT NULL DEFAULT '',
+    tax_office_number TEXT NOT NULL DEFAULT '',
+    tax_office_reference TEXT NOT NULL DEFAULT '',
+    accounts_office_reference TEXT NOT NULL DEFAULT '',
     company_number TEXT NOT NULL DEFAULT '',
     include_sa BOOLEAN NOT NULL DEFAULT FALSE,
     include_paye BOOLEAN NOT NULL DEFAULT FALSE,
     include_ct BOOLEAN NOT NULL DEFAULT FALSE,
+    include_vat_mtd BOOLEAN NOT NULL DEFAULT FALSE,
+    include_sa_mtd BOOLEAN NOT NULL DEFAULT FALSE,
+    include_cis BOOLEAN NOT NULL DEFAULT FALSE,
     status TEXT NOT NULL DEFAULT 'draft',
     submission_channel TEXT NOT NULL DEFAULT 'online',
     hmrc_submission_reference TEXT NOT NULL DEFAULT '',
@@ -1991,12 +1999,20 @@ ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_email TEX
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_phone TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS postal_address TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS sa_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS sa_nino TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS ct_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS postcode TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS paye_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS tax_office_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS tax_office_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS accounts_office_reference TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS company_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_sa BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_paye BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_ct BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_vat_mtd BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_sa_mtd BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_cis BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS submission_channel TEXT NOT NULL DEFAULT 'online';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS hmrc_submission_reference TEXT NOT NULL DEFAULT '';
@@ -2017,6 +2033,29 @@ ON hmrc_64_8_requests (created_by_user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS hmrc_64_8_requests_status_idx
 ON hmrc_64_8_requests (status, submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS hmrc_mtd_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    access_token TEXT NOT NULL DEFAULT '',
+    refresh_token TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id)
+);
+
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS access_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS refresh_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS hmrc_mtd_connections_user_unique_idx
+ON hmrc_mtd_connections (user_id);
 
 CREATE TABLE IF NOT EXISTS release_updates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

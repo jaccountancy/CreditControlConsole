@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,9 +20,14 @@ class Settings(BaseSettings):
         "openid profile email offline_access "
         "accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.journals.read "
         "accounting.contacts accounting.settings accounting.attachments "
-        "accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read"
+        "accounting.reports.banksummary.read accounting.reports.balancesheet.read "
+        "accounting.reports.profitandloss.read accounting.reports.trialbalance.read "
+        "assets.read"
     )
-    xero_enable_payroll_scopes: bool = False
+    xero_enable_payroll_scopes: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("XERO_ENABLE_PAYROLL_SCOPES", "XERO_INCLUDE_PAYROLL_SCOPES"),
+    )
     xero_primary_tenant_name: str = "jaccountancy"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
