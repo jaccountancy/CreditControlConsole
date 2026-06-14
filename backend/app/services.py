@@ -265,10 +265,9 @@ XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
-PI_CLEARING_DEFAULT_ACCOUNT_CODE = ""
+PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
-PI_CLEARING_TARGET_CURRENCY = "GBP"
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -1257,29 +1256,62 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     payroll_count = current_month_payrun_count if payruns else 0
 
     with get_connection() as connection:
-        now = utcnow()
-        raw_payload = json.dumps(
-            {
-                "employeeCount": len(employees),
-                "payRunCount": len(payruns),
-                "errors": errors,
-            },
-            default=_json_default,
-        )
-        snapshot_row: dict = {}
-        try:
-            with connection.cursor() as cursor:
+        with connection.cursor() as cursor:
+            now = utcnow()
+            raw_payload = json.dumps(
+                {
+                    "employeeCount": len(employees),
+                    "payRunCount": len(payruns),
+                    "errors": errors,
+                },
+                default=_json_default,
+            )
+            cursor.execute(
+                """
+                UPDATE payroll_headcount_monthly_snapshots
+                SET headcount = %s,
+                    payroll_count = %s,
+                    source = %s,
+                    fetched_at = %s,
+                    raw_payload = %s::jsonb,
+                    updated_at = %s
+                WHERE workspace_id = %s
+                  AND month_start = %s
+                RETURNING month_start,
+                          headcount,
+                          payroll_count,
+                          source,
+                          fetched_at,
+                          created_at,
+                          updated_at
+                """,
+                (
+                    active_headcount,
+                    payroll_count,
+                    "xero-payroll",
+                    now,
+                    raw_payload,
+                    now,
+                    workspace["id"],
+                    month_start,
+                ),
+            )
+            snapshot_row = cursor.fetchone() or {}
+            if not snapshot_row:
                 cursor.execute(
                     """
-                    UPDATE payroll_headcount_monthly_snapshots
-                    SET headcount = %s,
-                        payroll_count = %s,
-                        source = %s,
-                        fetched_at = %s,
-                        raw_payload = %s::jsonb,
-                        updated_at = %s
-                    WHERE workspace_id = %s
-                      AND month_start = %s
+                    INSERT INTO payroll_headcount_monthly_snapshots (
+                        workspace_id,
+                        month_start,
+                        headcount,
+                        payroll_count,
+                        source,
+                        fetched_at,
+                        raw_payload,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                     RETURNING month_start,
                               headcount,
                               payroll_count,
@@ -1289,132 +1321,28 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                               updated_at
                     """,
                     (
+                        workspace["id"],
+                        month_start,
                         active_headcount,
                         payroll_count,
                         "xero-payroll",
                         now,
                         raw_payload,
                         now,
-                        workspace["id"],
-                        month_start,
-                    ),
-                )
-                snapshot_row = cursor.fetchone() or {}
-                if not snapshot_row:
-                    cursor.execute(
-                        """
-                        INSERT INTO payroll_headcount_monthly_snapshots (
-                            workspace_id,
-                            month_start,
-                            headcount,
-                            payroll_count,
-                            source,
-                            fetched_at,
-                            raw_payload,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                        RETURNING month_start,
-                                  headcount,
-                                  payroll_count,
-                                  source,
-                                  fetched_at,
-                                  created_at,
-                                  updated_at
-                        """,
-                        (
-                            workspace["id"],
-                            month_start,
-                            active_headcount,
-                            payroll_count,
-                            "xero-payroll",
-                            now,
-                            raw_payload,
-                            now,
-                            now,
-                        ),
-                    )
-                    snapshot_row = cursor.fetchone() or {}
-                cursor.execute(
-                    """
-                    UPDATE payroll_headcount_workspaces
-                    SET wizard_completed = TRUE,
-                        updated_at = %s
-                    WHERE id = %s
-                    """,
-                    (utcnow(), workspace["id"]),
-                )
-            connection.commit()
-        except pg_errors.UndefinedColumn:
-            logger.warning(
-                "payroll_headcount_sync_legacy_snapshot_schema user_id=%s tenant_id=%s",
-                user.get("id"),
-                clean_tenant_id,
-            )
-            connection.rollback()
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE payroll_headcount_monthly_snapshots
-                    SET headcount = %s,
-                        payroll_count = %s,
-                        updated_at = %s
-                    WHERE workspace_id = %s
-                      AND month_start = %s
-                    RETURNING month_start,
-                              headcount,
-                              payroll_count,
-                              created_at,
-                              updated_at
-                    """,
-                    (
-                        active_headcount,
-                        payroll_count,
                         now,
-                        workspace["id"],
-                        month_start,
                     ),
                 )
                 snapshot_row = cursor.fetchone() or {}
-                if not snapshot_row:
-                    cursor.execute(
-                        """
-                        INSERT INTO payroll_headcount_monthly_snapshots (
-                            workspace_id,
-                            month_start,
-                            headcount,
-                            payroll_count,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING month_start,
-                                  headcount,
-                                  payroll_count,
-                                  created_at,
-                                  updated_at
-                        """,
-                        (
-                            workspace["id"],
-                            month_start,
-                            active_headcount,
-                            payroll_count,
-                            now,
-                            now,
-                        ),
-                    )
-                    snapshot_row = cursor.fetchone() or {}
-                cursor.execute(
-                    """
-                    UPDATE payroll_headcount_workspaces
-                    SET wizard_completed = TRUE,
-                        updated_at = %s
-                    WHERE id = %s
-                    """,
-                    (utcnow(), workspace["id"]),
-                )
-            connection.commit()
+            cursor.execute(
+                """
+                UPDATE payroll_headcount_workspaces
+                SET wizard_completed = TRUE,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), workspace["id"]),
+            )
+        connection.commit()
 
     snapshot = {
         "monthStart": snapshot_row.get("month_start").isoformat() if snapshot_row.get("month_start") else "",
@@ -3602,9 +3530,6 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
         amount = _pi_amount_value(payload)
         if amount == 0:
             continue
-        currency_code = str(payload.get("currency") or payload.get("currency_code") or "GBP").strip().upper() or "GBP"
-        if PI_CLEARING_TARGET_CURRENCY and currency_code != PI_CLEARING_TARGET_CURRENCY:
-            continue
         is_reversal = _pi_is_reversal_entry(payload, dataset=dataset) or amount < 0
         signed_amount = -amount.copy_abs() if is_reversal else amount
         client_name = _pi_first_non_empty(
@@ -3629,7 +3554,7 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
                 "payoutId": payout_id,
                 "paidOn": paid_on.isoformat(),
                 "amount": float(_money(signed_amount)),
-                "currencyCode": currency_code,
+                "currencyCode": str(payload.get("currency") or payload.get("currency_code") or "GBP"),
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
                 "isReversal": is_reversal,
@@ -3968,9 +3893,6 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 if not token_match:
                     continue
         invoice_type = str(raw_invoice.get("Type") or raw.get("InvoiceType") or "").strip().upper()
-        currency_code = str(row.get("currency_code") or raw.get("CurrencyCode") or "GBP").strip().upper() or "GBP"
-        if PI_CLEARING_TARGET_CURRENCY and currency_code != PI_CLEARING_TARGET_CURRENCY:
-            continue
         amount = _money(row.get("amount"))
         raw_signed_amount = raw.get("PI_SignedAmount")
         if isinstance(raw_signed_amount, (int, float, Decimal, str)) and str(raw_signed_amount).strip() not in {"", "None", "null"}:
@@ -3995,7 +3917,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "amount": float(signed_amount),
                 "debitAmount": float(debit_amount),
                 "creditAmount": float(credit_amount),
-                "currencyCode": currency_code,
+                "currencyCode": str(row.get("currency_code") or "GBP"),
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
                 "xeroContactId": xero_contact_id,
@@ -4282,7 +4204,11 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
             for item in (bucket.get("debits") or [])
             if _money(item.get("amount")) > Decimal("0.00")
         ]
-        credits = list(bucket.get("credits") or [])
+        credits = sorted(
+            (bucket.get("credits") or []),
+            key=lambda item: _money(item.get("amount")).copy_abs(),
+            reverse=True,
+        )
         for credit in credits:
             target = _money(credit.get("amount")).copy_abs()
             if target <= Decimal("0.00"):
@@ -4597,12 +4523,7 @@ def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) 
         return configured
     if requested:
         return requested
-    if configured:
-        return configured
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Select a PI nominal account from the connected Jaccountancy chart of accounts.",
-    )
+    return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
 
 
 async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
@@ -4821,7 +4742,6 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
     xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
     summary = {
-        "currencyCode": PI_CLEARING_TARGET_CURRENCY,
         "refresh": {
             "xero": xero_refresh,
             "ignition": ignition_refresh,
