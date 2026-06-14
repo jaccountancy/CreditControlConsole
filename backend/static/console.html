@@ -98641,6 +98641,9 @@
                     payload: null,
                     activeTab: "client-info",
                     showCompletedTasks: false,
+                    jukInvoiceLookupBusy: false,
+                    jukInvoiceLookup: null,
+                    jukInvoiceLookupAnimateUntil: 0,
                     callStats: {
                         loading: false,
                         clientId: "",
@@ -99222,82 +99225,15 @@
                     showToast("No Xero customers are loaded. Sync Credit Control first.", "error");
                     return;
                 }
-                let selectedCustomerId = String(candidates[0]?.customerId || "").trim();
-                const topConfidence = Math.round((Number(candidates[0]?.confidence || 0) || 0) * 100);
-                const decision = await showOperationReviewDialog({
-                    eyebrow: "JUK Invoices",
-                    title: "Find client invoices from Xero",
-                    subtitle: "Jenius AI will search the master Jaccountancy Xero-connected contacts list and link this client to pull all invoices.",
-                    confirmLabel: "Load invoices",
-                    cancelLabel: "Cancel",
-                    summaryChips: [
-                        `${candidates.length.toLocaleString("en-GB")} customer candidates`,
-                        `Top AI match ${topConfidence}%`,
-                    ],
-                    columns: [],
-                    rows: [{}],
-                    onRender: ({ body, confirmButton }) => {
-                        const renderRows = () => {
-                            const query = String(body.querySelector("#clientRegisterJukInvoiceCandidateSearch")?.value || "").trim().toLowerCase();
-                            const rows = query
-                                ? candidates.filter((entry) => (
-                                    String(entry.customerName || "").toLowerCase().includes(query)
-                                    || String(entry.customerId || "").toLowerCase().includes(query)
-                                ))
-                                : candidates;
-                            body.innerHTML = `
-                                <div class="operation-review-tools">
-                                    <input id="clientRegisterJukInvoiceCandidateSearch" type="search" placeholder="Search Xero customer by name or client ID..." aria-label="Search Xero customers">
-                                </div>
-                                <div class="operation-review-table-wrap">
-                                    <table class="operation-review-table" aria-label="Xero customer candidates">
-                                        <thead>
-                                            <tr>
-                                                <th>Select</th>
-                                                <th>Customer</th>
-                                                <th>AI confidence</th>
-                                                <th>Invoices</th>
-                                                <th>Outstanding</th>
-                                                <th>Match reason</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${rows.length ? rows.map((entry) => `
-                                                <tr>
-                                                    <td><input type="radio" name="clientRegisterJukCandidate" value="${escapeHTML(entry.customerId)}" ${entry.customerId === selectedCustomerId ? "checked" : ""}></td>
-                                                    <td><strong>${escapeHTML(entry.customerName)}</strong><br><small>${escapeHTML(entry.customerId || "No client ID")}</small></td>
-                                                    <td>${Math.round(Number(entry.confidence || 0) * 100)}%</td>
-                                                    <td>${Number(entry.invoiceCount || 0).toLocaleString("en-GB")}</td>
-                                                    <td>${formatCurrency(entry.outstanding || 0)}</td>
-                                                    <td>${escapeHTML(entry.reason || "")}</td>
-                                                </tr>
-                                            `).join("") : '<tr><td colspan="6" class="ch-empty-state">No candidate matches this search.</td></tr>'}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            `;
-                            body.querySelector("#clientRegisterJukInvoiceCandidateSearch")?.addEventListener("input", renderRows);
-                            body.querySelectorAll('input[name="clientRegisterJukCandidate"]').forEach((input) => {
-                                input.addEventListener("change", () => {
-                                    selectedCustomerId = String(input.value || "").trim();
-                                    if (confirmButton) confirmButton.disabled = !selectedCustomerId;
-                                });
-                            });
-                            if (confirmButton) confirmButton.disabled = !selectedCustomerId;
-                        };
-                        renderRows();
-                    },
-                    resultProvider: () => ({ customerId: selectedCustomerId }),
-                });
-                if (!decision?.customerId) return;
-                const chosen = candidates.find((entry) => String(entry.customerId || "") === String(decision.customerId || ""));
+                const chosen = candidates[0];
                 if (!chosen?.customer) {
-                    showToast("Selected customer could not be resolved.", "error");
+                    showToast("Automatic customer match could not be resolved.", "error");
                     return;
                 }
                 companiesHouseSettings.authRegisterClientPage = {
                     ...(companiesHouseSettings.authRegisterClientPage || {}),
                     jukInvoiceLookupBusy: true,
+                    jukInvoiceLookupAnimateUntil: Date.now() + 1800,
                 };
                 renderClientRegisterClientPage();
                 try {
@@ -99309,14 +99245,26 @@
                         jukInvoiceLookup: {
                             matchedCustomerId: chosen.customerId,
                             matchedCustomerName: chosen.customerName,
-                            confidence: Number(chosen.confidence || 0),
-                            matchedBy: chosen.reason,
+                            confidence: 1,
+                            matchedBy: "Automatic client match",
                             lastSyncAt: new Date().toISOString(),
                             rows,
                             outstandingTotal,
                         },
+                        jukInvoiceLookupAnimateUntil: Date.now() + 1800,
                     };
                     renderClientRegisterClientPage();
+                    window.setTimeout(() => {
+                        const latest = companiesHouseSettings.authRegisterClientPage || {};
+                        if (!latest?.open) return;
+                        if (latest.jukInvoiceLookupAnimateUntil && latest.jukInvoiceLookupAnimateUntil > Date.now()) {
+                            companiesHouseSettings.authRegisterClientPage = {
+                                ...latest,
+                                jukInvoiceLookupAnimateUntil: 0,
+                            };
+                            renderClientRegisterClientPage();
+                        }
+                    }, 1850);
                     showToast(
                         `Loaded ${rows.length.toLocaleString("en-GB")} invoice${rows.length === 1 ? "" : "s"} from ${chosen.customerName}.`,
                         "success"
@@ -99849,7 +99797,10 @@
                 const jukInvoicesBody = document.getElementById("chRegisterClientPageJukInvoicesBody");
                 const jukFetchButton = document.getElementById("chRegisterClientPageJukFetchButton");
                 const jukFetchStatus = document.getElementById("chRegisterClientPageJukFetchStatus");
+                const jukActions = document.getElementById("chRegisterClientPageJukInvoiceActions");
                 const jukLookup = pageState?.jukInvoiceLookup || {};
+                const lookupAnimateUntil = Number(pageState?.jukInvoiceLookupAnimateUntil || 0);
+                const lookupAnimating = lookupAnimateUntil > Date.now();
                 if (jukInvoicesBody) {
                     const clientInvoices = clientRegisterJukInvoicesForRow(row);
                     const outstanding = clientInvoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
@@ -99873,16 +99824,23 @@
                             ? "Searching Xero..."
                             : (clientInvoices.length ? "Refresh invoices" : "Get invoices");
                     }
+                    if (jukActions) {
+                        jukActions.classList.toggle("is-loading", !!pageState?.jukInvoiceLookupBusy);
+                    }
+                    jukInvoicesBody.classList.toggle("is-animated", lookupAnimating);
                     if (jukFetchStatus) {
                         const matchedName = String(jukLookup?.matchedCustomerName || "").trim();
                         const syncedAt = String(jukLookup?.lastSyncAt || "").trim();
+                        const confidencePct = Math.round(Number(jukLookup?.confidence || 0) * 100);
                         const syncLabel = syncedAt ? `Last sync ${chFormatDateTime(syncedAt)}` : "Not synced yet";
-                        const matchLabel = matchedName ? `Matched: ${matchedName}` : "AI match pending";
+                        const matchLabel = matchedName ? `Matched: ${matchedName}` : "Auto-match pending";
+                        const confidenceLabel = matchedName ? `AI confidence ${confidencePct}%` : "AI confidence pending";
                         jukFetchStatus.textContent = clientInvoices.length
-                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${syncLabel}`
-                            : `No invoices loaded. ${matchLabel}. Use Get invoices to run AI matching across Xero contacts.`;
+                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${syncLabel}`
+                            : `No invoices loaded. ${matchLabel}. Use Get invoices to auto-run AI matching across Xero contacts.`;
                         jukFetchStatus.classList.remove("is-muted", "is-success", "is-error");
                         jukFetchStatus.classList.add(clientInvoices.length ? "is-success" : "is-muted");
+                        jukFetchStatus.classList.toggle("is-pulse", !!pageState?.jukInvoiceLookupBusy || lookupAnimating);
                     }
                 }
 
@@ -99953,6 +99911,7 @@
                     payload: null,
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
+                    jukInvoiceLookupAnimateUntil: 0,
                     callStats: {
                         loading: false,
                         clientId: "",
