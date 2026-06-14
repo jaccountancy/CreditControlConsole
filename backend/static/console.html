@@ -97478,6 +97478,14 @@
                         if (!col) return;
                         cell.hidden = hiddenColumns.has(col);
                     });
+                    const headRows = table.tHead?.rows;
+                    if (headRows && headRows.length >= 2) {
+                        const controlsCell = headRows[0]?.querySelector("th[colspan]");
+                        if (controlsCell) {
+                            const visibleColumnCount = [...headRows[1].cells].filter((cell) => !cell.hidden).length;
+                            controlsCell.colSpan = Math.max(1, visibleColumnCount || headRows[1].cells.length || 1);
+                        }
+                    }
                 }
                 renderTaskSelectionMeta(rows);
             }
