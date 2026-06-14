@@ -5475,13 +5475,50 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
 def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
     cursor.execute(
         """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('ch_auth_code_register', 'ch_companies', 'ch_auth_register_client_profiles')
+        """
+    )
+    tables = {str(item.get("table_name") or "").strip() for item in (cursor.fetchall() or [])}
+
+    cursor.execute(
+        """
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('ch_auth_code_register', 'ch_companies', 'ch_auth_register_client_profiles')
+        """
+    )
+    register_columns: set[str] = set()
+    company_columns: set[str] = set()
+    profile_columns: set[str] = set()
+    for item in (cursor.fetchall() or []):
+        table_name = str(item.get("table_name") or "").strip()
+        column_name = str(item.get("column_name") or "").strip()
+        if table_name == "ch_auth_code_register":
+            register_columns.add(column_name)
+        elif table_name == "ch_companies":
+            company_columns.add(column_name)
+        elif table_name == "ch_auth_register_client_profiles":
+            profile_columns.add(column_name)
+
+    def r_col(column_name: str, *, default_expr: str, alias: str | None = None) -> str:
+        label = alias or column_name
+        if column_name in register_columns:
+            return f"r.{column_name} AS {label}"
+        return f"{default_expr} AS {label}"
+
+    cursor.execute(
+        """
         SELECT column_name
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'ch_companies'
         """
     )
-    company_columns = {str(item.get("column_name") or "").strip() for item in (cursor.fetchall() or [])}
+    company_columns = company_columns
 
     def c_col(column_name: str, *, default_expr: str, alias: str | None = None) -> str:
         label = alias or column_name
@@ -5489,17 +5526,24 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
             return f"c.{column_name} AS {label}"
         return f"{default_expr} AS {label}"
 
+    has_profiles = "ch_auth_register_client_profiles" in tables
+    profile_join = "LEFT JOIN ch_auth_register_client_profiles p ON p.register_row_id = r.id" if has_profiles else ""
+    p_services = "p.services" if has_profiles and "services" in profile_columns else "'{}'::jsonb AS services"
+    p_risk = "p.risk_assessment" if has_profiles and "risk_assessment" in profile_columns else "'{}'::jsonb AS risk_assessment"
+    p_companies_house = "p.companies_house" if has_profiles and "companies_house" in profile_columns else "'{}'::jsonb AS companies_house"
+    p_juk = "p.juk_invoices" if has_profiles and "juk_invoices" in profile_columns else "'{}'::jsonb AS juk_invoices"
+
     cursor.execute(
         f"""
-        SELECT r.id,
-               r.company_number,
-               COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
-               r.client_type,
-               r.client_manager,
-               r.client_id,
-               r.vat_number,
-               r.company_utr,
-               r.personal_utr,
+        SELECT {r_col("id", default_expr="NULL::uuid")},
+               {r_col("company_number", default_expr="''")},
+               COALESCE(NULLIF({ "r.company_name" if "company_name" in register_columns else "''" }, ''), { "r.client_name" if "client_name" in register_columns else "''" }, '') AS display_name,
+               {r_col("client_type", default_expr="''")},
+               {r_col("client_manager", default_expr="''")},
+               {r_col("client_id", default_expr="''")},
+               {r_col("vat_number", default_expr="''")},
+               {r_col("company_utr", default_expr="''")},
+               {r_col("personal_utr", default_expr="''")},
                {c_col("id", default_expr="NULL::uuid", alias="company_id")},
                {c_col("company_status", default_expr="''")},
                {c_col("filing_authority_reference", default_expr="''")},
@@ -5511,21 +5555,20 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                {c_col("next_made_up_to_date", default_expr="NULL::date")},
                {c_col("next_due_date", default_expr="NULL::date")},
                {c_col("last_filed_date", default_expr="NULL::date")},
-               COALESCE(NULLIF({ 'c.contact_email' if 'contact_email' in company_columns else "''" }, ''), r.contact_email) AS contact_email,
-               COALESCE(NULLIF({ 'c.contact_phone' if 'contact_phone' in company_columns else "''" }, ''), r.contact_phone) AS contact_phone,
-               COALESCE(NULLIF({ 'c.client_address' if 'client_address' in company_columns else "''" }, ''), r.client_address) AS client_address,
-               r.code_hint,
-               r.source_filename,
-               r.uploaded_at,
-               p.services,
-               p.risk_assessment,
-               p.companies_house,
-               p.juk_invoices
+               COALESCE(NULLIF({ 'c.contact_email' if 'contact_email' in company_columns else "''" }, ''), { "r.contact_email" if "contact_email" in register_columns else "''" }) AS contact_email,
+               COALESCE(NULLIF({ 'c.contact_phone' if 'contact_phone' in company_columns else "''" }, ''), { "r.contact_phone" if "contact_phone" in register_columns else "''" }) AS contact_phone,
+               COALESCE(NULLIF({ 'c.client_address' if 'client_address' in company_columns else "''" }, ''), { "r.client_address" if "client_address" in register_columns else "''" }) AS client_address,
+               {r_col("code_hint", default_expr="''")},
+               {r_col("source_filename", default_expr="''")},
+               {r_col("uploaded_at", default_expr="NULL::timestamptz")},
+               {p_services},
+               {p_risk},
+               {p_companies_house},
+               {p_juk}
         FROM ch_auth_code_register r
         LEFT JOIN ch_companies c
-          ON c.company_number = r.company_number
-        LEFT JOIN ch_auth_register_client_profiles p
-          ON p.register_row_id = r.id
+          ON c.company_number = { "r.company_number" if "company_number" in register_columns else "''" }
+        {profile_join}
         WHERE r.id = %s
         LIMIT 1
         """,
@@ -5686,18 +5729,31 @@ def get_auth_register_client_page(row_id: str) -> dict:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
             cursor.execute(
                 """
-                SELECT n.id,
-                       n.note,
-                       n.created_by_name,
-                       n.created_at
-                FROM ch_auth_register_client_notes n
-                WHERE n.register_row_id = %s
-                ORDER BY n.created_at DESC
-                LIMIT 250
-                """,
-                (safe_row_id,),
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'ch_auth_register_client_notes'
+                ) AS present
+                """
             )
-            notes_rows = cursor.fetchall() or []
+            notes_rows = []
+            notes_present = bool((cursor.fetchone() or {}).get("present"))
+            if notes_present:
+                cursor.execute(
+                    """
+                    SELECT n.id,
+                           n.note,
+                           n.created_by_name,
+                           n.created_at
+                    FROM ch_auth_register_client_notes n
+                    WHERE n.register_row_id = %s
+                    ORDER BY n.created_at DESC
+                    LIMIT 250
+                    """,
+                    (safe_row_id,),
+                )
+                notes_rows = cursor.fetchall() or []
             company_id = str(row.get("company_id") or "").strip()
             if company_id:
                 cursor.execute(
