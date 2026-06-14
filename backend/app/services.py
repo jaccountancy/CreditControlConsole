@@ -31346,7 +31346,7 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
                 "error": "",
             }
 
-    vat_tasks: list[dict] = []
+    task_rows: list[dict] = []
     total_rows = 0
     for index, row in enumerate(records):
         total_rows += 1
@@ -31354,11 +31354,7 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
         client_name = _bm_tasks_column_value(row, ["Client Name", "ClientName", "Company Name", "Company"])
         task_id = _bm_tasks_column_value(row, ["Task ID", "TaskId"])
         task_name = _bm_tasks_column_value(row, ["Task Name", "Task", "Title"])
-        if not _bm_tasks_is_vat_task(task_name):
-            continue
         completed = _bm_tasks_yes(_bm_tasks_column_value(row, ["Completed?", "Completed", "Is Completed"]))
-        if completed:
-            continue
         progress = _bm_tasks_column_value(row, ["Task Progress", "Progress", "Status"])
         latest_action = _bm_tasks_column_value(row, ["Latest Action Date", "Latest Action", "Action Date"])
         progress_notes = _bm_tasks_column_value(row, ["Progress Notes", "Notes", "Latest Note"])
@@ -31395,7 +31391,7 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
                 "submitted": False,
             }
 
-        vat_tasks.append(
+        task_rows.append(
             {
                 "id": f"bm-vat-{index + 1}",
                 "sourceRow": index + 2,
@@ -31430,7 +31426,7 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
             }
         )
 
-    vat_tasks.sort(
+    task_rows.sort(
         key=lambda item: (
             0 if item.get("deadlineISO") else 1,
             date.fromisoformat(item["deadlineISO"]).toordinal() if item.get("deadlineISO") else date.max.toordinal(),
@@ -31438,20 +31434,24 @@ async def bm_tasks_vat_preview_payload(user: dict, content: bytes, filename: str
             str(item.get("taskName") or "").casefold(),
         )
     )
-    matched_register_count = sum(1 for row in vat_tasks if row.get("matchedRegister", {}).get("id"))
-    matched_xero_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("tenantId"))
-    matched_vat_row_count = sum(1 for row in vat_tasks if row.get("xeroMatch", {}).get("vatReturnKey"))
+    matched_register_count = sum(1 for row in task_rows if row.get("matchedRegister", {}).get("id"))
+    matched_xero_count = sum(1 for row in task_rows if row.get("xeroMatch", {}).get("tenantId"))
+    matched_vat_row_count = sum(1 for row in task_rows if row.get("xeroMatch", {}).get("vatReturnKey"))
+    completed_rows = sum(1 for row in task_rows if str(row.get("status") or "").strip().lower() == "completed")
     payload = {
         "filename": filename or "bm-tasks.csv",
         "uploadedAt": _iso(utcnow()),
         "summary": {
             "totalRows": total_rows,
-            "vatOutstandingRows": len(vat_tasks),
+            "taskRows": len(task_rows),
+            "completedRows": completed_rows,
+            "openRows": max(0, len(task_rows) - completed_rows),
+            "vatOutstandingRows": len(task_rows),
             "matchedRegisterRows": matched_register_count,
             "matchedXeroWorkspaceRows": matched_xero_count,
             "matchedVatPeriodRows": matched_vat_row_count,
         },
-        "rows": vat_tasks,
+        "rows": task_rows,
     }
     _store_bm_tasks_vat_payload(user, payload)
     return payload

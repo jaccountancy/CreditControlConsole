@@ -30412,7 +30412,7 @@
                                         <tbody id="chBmTasksTableBody"></tbody>
                                     </table>
                                 </div>
-                                <p class="settings-help is-muted" id="chBmTasksStatus">Upload a BM tasks CSV to extract outstanding VAT submissions.</p>
+                                <p class="settings-help is-muted" id="chBmTasksStatus">Upload a BM tasks CSV to extract task rows.</p>
                             </section>
                             <div class="company-secretarial-modal" id="chRegisterUploadModal" hidden>
                                 <section class="company-secretarial-modal-panel ch-register-upload-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterUploadModalTitle">
@@ -94006,10 +94006,15 @@
                     companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || "");
                     companiesHouseSettings.bmTasksSummary = payload?.summary || {};
                     renderBmTasksTable();
-                    const count = Number(companiesHouseSettings.bmTasksSummary?.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0);
+                    const count = Number(
+                        companiesHouseSettings.bmTasksSummary?.taskRows
+                        || companiesHouseSettings.bmTasksSummary?.vatOutstandingRows
+                        || companiesHouseSettings.bmTasksRows.length
+                        || 0
+                    );
                     if (count > 0) {
                         setBmTasksStatus(
-                            `${count.toLocaleString("en-GB")} outstanding VAT task row${count === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "saved BM tasks CSV"}.`,
+                            `${count.toLocaleString("en-GB")} task row${count === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "saved BM tasks CSV"}.`,
                             "muted"
                         );
                     }
@@ -96876,7 +96881,7 @@
                 const authUploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
                 if (uploadButton) uploadButton.disabled = true;
                 if (authUploadButton) authUploadButton.disabled = true;
-                setBmTasksStatus("Uploading BM tasks CSV and extracting outstanding VAT tasks…", "muted");
+                setBmTasksStatus("Uploading BM tasks CSV and extracting task rows…", "muted");
                 try {
                     const form = new FormData();
                     form.append("file", file);
@@ -96908,11 +96913,12 @@
                     renderBmTasksTable();
                     setClientRegisterDataTab("clients");
                     const summary = companiesHouseSettings.bmTasksSummary || {};
+                    const rowCount = Number(summary.taskRows || summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0);
                     setBmTasksStatus(
-                        `${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0).toLocaleString("en-GB")} outstanding VAT task row${Number(summary.vatOutstandingRows || companiesHouseSettings.bmTasksRows.length || 0) === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "BM tasks CSV"}.`,
+                        `${rowCount.toLocaleString("en-GB")} task row${rowCount === 1 ? "" : "s"} loaded from ${companiesHouseSettings.bmTasksFilename || "BM tasks CSV"}.`,
                         "success"
                     );
-                    showToast("BM tasks loaded and VAT tasks matched.", "success");
+                    showToast("BM tasks loaded.", "success");
                 } catch (error) {
                     console.error("Unable to upload BM tasks file", error);
                     if (error instanceof AuthRequiredError) {
