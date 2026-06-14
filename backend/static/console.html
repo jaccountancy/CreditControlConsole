@@ -95904,7 +95904,20 @@
             function bmTaskIdentitySafe(row = {}, fallback = "") {
                 const id = bmTaskIdentityKey(row);
                 if (id) return id;
-                return String(fallback || `task-${Date.now()}`).trim();
+                const fallbackId = String(fallback || "").trim();
+                if (fallbackId) return fallbackId;
+                const xero = row?.xeroMatch || {};
+                const derived = [
+                    String(row?.clientId || "").trim().toLowerCase(),
+                    String(row?.clientName || "").trim().toLowerCase(),
+                    String(row?.taskName || "").trim().toLowerCase(),
+                    String(row?.vatPeriodEndISO || xero?.periodEndISO || "").trim().toLowerCase(),
+                    String(row?.deadlineISO || xero?.deadlineISO || "").trim().toLowerCase(),
+                    String(row?.assigneeName || "").trim().toLowerCase(),
+                    String(xero?.tenantId || "").trim().toLowerCase(),
+                ].filter(Boolean).join("|");
+                if (derived) return `task-${derived}`;
+                return "task-unknown";
             }
 
             function bmTaskClientTimelineKey(row = {}) {
@@ -96000,6 +96013,7 @@
                     id: key,
                     status: String(override.status || row?.status || "open"),
                     taskProgress: String(override.taskProgress || row?.taskProgress || ""),
+                    assigneeName: String(override.assigneeName || row?.assigneeName || "").trim(),
                     completedAt: override.completedAt || row?.completedAt || "",
                     workflowState: String(override.workflowState || row?.workflowState || ""),
                     workflowReviewer: String(override.workflowReviewer || row?.workflowReviewer || ""),
@@ -96199,6 +96213,35 @@
                     title: bmTaskStatusLabel(status),
                     detail: fullNote,
                     status,
+                    actor: String(options?.actorName || bmTaskCurrentActorName()),
+                    stamp: nowIso,
+                });
+                saveBmTaskLocalState();
+            }
+
+            function updateBmTaskAssignee(row = {}, nextAssignee = "", options = {}) {
+                const rowKey = bmTaskIdentitySafe(row);
+                if (!rowKey) return;
+                const current = bmTaskRowWithOverrides(row);
+                const assignee = String(nextAssignee || "").trim() || "Unassigned";
+                const currentAssignee = String(current?.assigneeName || "").trim() || "Unassigned";
+                if (assignee === currentAssignee) return;
+                const nowIso = new Date().toISOString();
+                companiesHouseSettings.bmTaskOverridesByKey[rowKey] = {
+                    ...(companiesHouseSettings.bmTaskOverridesByKey?.[rowKey] || {}),
+                    assigneeName: assignee,
+                };
+                const clientKey = bmTaskClientTimelineKey(current);
+                const autoNote = options?.autoNote || `Client manager changed to ${assignee}.`;
+                appendBmTaskTimeline(clientKey, {
+                    title: bmTaskDisplayName(current),
+                    body: autoNote,
+                    stamp: nowIso,
+                });
+                appendBmTaskHistory(rowKey, {
+                    type: "assignee",
+                    title: "Client manager reassigned",
+                    detail: autoNote,
                     actor: String(options?.actorName || bmTaskCurrentActorName()),
                     stamp: nowIso,
                 });
@@ -96963,6 +97006,12 @@
                 const hiddenColumns = new Set(Array.isArray(companiesHouseSettings.bmTasksColumnState?.hidden)
                     ? companiesHouseSettings.bmTasksColumnState.hidden
                     : ["register"]);
+                const managerOptions = Array.from(new Set(
+                    allRows
+                        .map((row) => String(row?.assigneeName || "").trim())
+                        .filter(Boolean)
+                )).sort((a, b) => a.localeCompare(b));
+                if (!managerOptions.includes("Unassigned")) managerOptions.unshift("Unassigned");
                 if (!rows.length) {
                     body.innerHTML = `<tr><td colspan="10" class="ch-empty-state">${
                         allRows.length
@@ -97014,6 +97063,29 @@
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
                     const assigneeHue = bmTaskAssigneeHue(assigneeName);
+                    const assigneeCurrent = assigneeName || "Unassigned";
+                    const assigneeMenu = `
+                        <details class="task-status-menu-wrap" data-task-manager-menu-wrap="${escapeHTML(rowId)}">
+                            <summary class="task-list-status-trigger" data-task-manager-trigger="${escapeHTML(rowId)}" aria-label="Change client manager">
+                                <span class="task-manager-identity">
+                                    <span class="task-manager-chip" style="--task-manager-hue:${escapeHTML(String(assigneeHue))};" title="${escapeHTML(assigneeCurrent)}" aria-label="${escapeHTML(assigneeCurrent)}">${escapeHTML(assigneeInitials)}</span>
+                                    <small>${escapeHTML(assigneeCurrent)}</small>
+                                </span>
+                                <span class="task-status-caret" aria-hidden="true">⌄</span>
+                            </summary>
+                            <div class="task-status-menu" data-task-manager-menu="${escapeHTML(rowId)}" role="menu" aria-label="Client manager options">
+                                ${managerOptions.map((managerName) => {
+                                    const isActiveManager = managerName === assigneeCurrent;
+                                    return `
+                                        <button class="task-status-option ${isActiveManager ? "is-active" : ""}" type="button" role="menuitemradio" aria-checked="${isActiveManager ? "true" : "false"}" data-task-manager-option="${escapeHTML(rowId)}" data-task-manager-value="${escapeHTML(managerName)}">
+                                            <span>${escapeHTML(managerName)}</span>
+                                            ${isActiveManager ? '<span class="task-status-option-check">Current</span>' : ""}
+                                        </button>
+                                    `;
+                                }).join("")}
+                            </div>
+                        </details>
+                    `;
                     const deadlineISO = bmTaskEffectiveDeadlineISO(row);
                     const periodEndISO = bmTaskEffectivePeriodEndISO(row);
                     const deadlineDateLabel = deadlineISO ? formatDate(deadlineISO) : "—";
@@ -97061,6 +97133,16 @@
                             actionIcon = "▶";
                         }
                     }
+                    if (!isCompleted && (workflowType === "vat" || workflowType === "bookkeeping")) {
+                        const hasXeroTenantConnection = Boolean(xeroResolved?.matched && String(xeroResolved?.tenantId || "").trim());
+                        if (!hasXeroTenantConnection && actionKind !== "complete") {
+                            actionKind = "connect_xero";
+                            actionLabel = "Connect Xero";
+                            actionClass = "";
+                            actionDisabled = true;
+                            actionIcon = "•";
+                        }
+                    }
                     return `
                         <tr class="${mode === "list" ? bmTaskRowClassByDeadline(row) : ""} task-row-clickable" data-task-open-detail="${escapeHTML(rowId)}" data-task-row-id="${escapeHTML(rowId)}">
                             <td class="task-list-select-col"><input type="checkbox" data-task-select="${escapeHTML(rowId)}" ${isSelected ? "checked" : ""}></td>
@@ -97074,12 +97156,7 @@
                             <td>${escapeHTML(periodEndISO ? formatDate(periodEndISO) : "—")}</td>
                             <td><span class="task-deadline-chip ${bmTaskDeadlineToneClass(row)}">${escapeHTML(deadlineDateLabel)}</span><small>${escapeHTML(deadlineMeta)}</small></td>
                             <td>${statusMenu}</td>
-                            <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>
-                                <span class="task-manager-identity">
-                                    <span class="task-manager-chip" style="--task-manager-hue:${escapeHTML(String(assigneeHue))};" title="${escapeHTML(assigneeName || "Unassigned")}" aria-label="${escapeHTML(assigneeName || "Unassigned")}">${escapeHTML(assigneeInitials)}</span>
-                                    <small>${escapeHTML(assigneeName || "Unassigned")}</small>
-                                </span>
-                            </td>
+                            <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>${assigneeMenu}</td>
                             <td data-task-col="register" ${hiddenColumns.has("register") ? "hidden" : ""}>${escapeHTML(registerLabel)}</td>
                             <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${xeroCellMarkup}</td>
                             <td><button class="task-complete-button ${actionClass}" type="button" data-task-mark-completed="${escapeHTML(rowId)}" data-task-action-kind="${escapeHTML(actionKind)}" ${actionDisabled ? "disabled" : ""} title="${escapeHTML(actionLabel)}" aria-label="${escapeHTML(actionLabel)}"><span class="task-complete-icon" aria-hidden="true">${escapeHTML(actionIcon)}</span><span>${escapeHTML(actionLabel)}</span></button></td>
@@ -97118,6 +97195,16 @@
                         event.stopPropagation();
                     });
                 });
+                body.querySelectorAll("[data-task-manager-trigger]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                    });
+                });
+                body.querySelectorAll("[data-task-manager-menu]").forEach((menu) => {
+                    menu.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                    });
+                });
                 body.querySelectorAll("[data-task-status-option]").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.preventDefault();
@@ -97132,6 +97219,23 @@
                         const statusWrap = button.closest("[data-task-status-menu-wrap]");
                         if (statusWrap instanceof HTMLDetailsElement) statusWrap.open = false;
                         showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
+                        renderTaskSubpages();
+                    });
+                });
+                body.querySelectorAll("[data-task-manager-option]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rowId = String(button.getAttribute("data-task-manager-option") || "");
+                        const nextManager = String(button.getAttribute("data-task-manager-value") || "").trim();
+                        const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
+                        if (!match || !nextManager) return;
+                        updateBmTaskAssignee(match, nextManager, {
+                            autoNote: `Client manager set to ${nextManager} from task table.`,
+                        });
+                        const managerWrap = button.closest("[data-task-manager-menu-wrap]");
+                        if (managerWrap instanceof HTMLDetailsElement) managerWrap.open = false;
+                        showToast(`Task reassigned to ${nextManager}.`, "success");
                         renderTaskSubpages();
                     });
                 });
