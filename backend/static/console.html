@@ -4,6 +4,7 @@
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Jenius Tools</title>
+                <link rel="icon" type="image/png" href="JaccountancyBlueIcon.png">
                 <link rel="preconnect" href="https://fonts.googleapis.com">
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
                 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -28413,6 +28414,40 @@
             .pi-step1-row.is-missing_debits {
                 background: rgba(255, 236, 236, 0.76);
             }
+            .pi-reconcile-row {
+                transition: transform 0.28s ease, box-shadow 0.28s ease, opacity 0.28s ease, background 0.28s ease;
+            }
+            .pi-reconcile-row.is-matched {
+                background: rgba(232, 248, 238, 0.72);
+                opacity: 0.55;
+            }
+            .pi-reconcile-row.is-partial {
+                background: rgba(255, 246, 230, 0.76);
+                box-shadow: inset 3px 0 0 rgba(206, 128, 10, 0.35);
+            }
+            .pi-reconcile-row.is-open {
+                background: rgba(255, 236, 236, 0.8);
+                box-shadow: inset 3px 0 0 rgba(200, 33, 33, 0.36);
+            }
+            .pi-reconcile-row.is-step1 {
+                background: rgba(232, 241, 255, 0.78);
+                box-shadow: inset 3px 0 0 rgba(47, 124, 255, 0.32);
+            }
+            .pi-payout-row {
+                transition: opacity 0.28s ease, transform 0.28s ease, box-shadow 0.28s ease, background 0.28s ease;
+            }
+            .pi-payout-row.is-matched {
+                background: rgba(232, 248, 238, 0.72);
+                opacity: 0.58;
+            }
+            .pi-payout-row.is-open {
+                background: rgba(255, 236, 236, 0.76);
+                box-shadow: inset 3px 0 0 rgba(200, 33, 33, 0.34);
+            }
+            .pi-payout-row.is-neutral {
+                background: rgba(232, 241, 255, 0.76);
+                box-shadow: inset 3px 0 0 rgba(47, 124, 255, 0.28);
+            }
             [data-pi-payout-key] {
                 cursor: pointer;
             }
@@ -35422,6 +35457,9 @@
                             </section>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="2" hidden>
                                 <p class="detail-meta" id="piClearingWizardAnalysisSummary">Ignition payout checks and AI findings appear here after Step 1 completes.</p>
+                                <div class="detail-actions pi-clearing-step-toolbar">
+                                    <button class="ghost-button" id="piClearingToggleReconciledButton" type="button">Show reconciled batches</button>
+                                </div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI clearing wizard transaction rows">
                                         <thead>
@@ -36856,6 +36894,7 @@
             let piClearingWizardOpen = false;
             let piClearingWizardStep = 0;
             let piClearingShowMatchedStep1 = false;
+            let piClearingShowReconciledStep2 = false;
             let piClearingSelectedRowIds = new Set();
             let piClearingStatusMessage = "";
             let piClearingStatusTone = "info";
@@ -46900,6 +46939,9 @@
                     const leftDate = Date.parse(left.paidOn || 0) || 0;
                     const rightDate = Date.parse(right.paidOn || 0) || 0;
                     if (leftDate !== rightDate) return leftDate - rightDate;
+                    const leftCredit = Number(left.credit || 0) > 0 ? 0 : 1;
+                    const rightCredit = Number(right.credit || 0) > 0 ? 0 : 1;
+                    if (leftCredit !== rightCredit) return leftCredit - rightCredit;
                     return String(left.clientName || "").localeCompare(String(right.clientName || ""));
                 });
             }
@@ -47034,6 +47076,21 @@
                     else open += 1;
                 });
                 return { total, matched, partial, open };
+            }
+
+            function piSortRowsForReconciliation(rows = []) {
+                return [...(Array.isArray(rows) ? rows : [])].sort((left, right) => {
+                    const leftDate = Date.parse(String(left?.payoutDate || left?.raw?.payoutDate || left?.paidOn || "")) || 0;
+                    const rightDate = Date.parse(String(right?.payoutDate || right?.raw?.payoutDate || right?.paidOn || "")) || 0;
+                    if (leftDate !== rightDate) return leftDate - rightDate;
+                    const leftCredit = Number(left?.xeroTotal || 0) < 0 ? 0 : 1;
+                    const rightCredit = Number(right?.xeroTotal || 0) < 0 ? 0 : 1;
+                    if (leftCredit !== rightCredit) return leftCredit - rightCredit;
+                    const leftDelta = Math.abs(Number(left?.differenceTotal || 0));
+                    const rightDelta = Math.abs(Number(right?.differenceTotal || 0));
+                    if (leftDelta !== rightDelta) return rightDelta - leftDelta;
+                    return String(left?.clientName || "").localeCompare(String(right?.clientName || ""));
+                });
             }
 
             function piClearingTopbarCards() {
@@ -47213,6 +47270,7 @@
                 if (piClearingWorkflowRunning) return;
                 piClearingWizardOpen = true;
                 piClearingWizardStep = 0;
+                piClearingShowReconciledStep2 = false;
                 if (!xeroAccountsLoaded && !xeroAccountsLoading) {
                     await loadXeroPostingSettings(true);
                 }
@@ -47243,6 +47301,7 @@
                 piClearingWizardOpen = true;
                 piClearingWizardStep = 1;
                 piClearingShowMatchedStep1 = false;
+                piClearingShowReconciledStep2 = false;
                 startPiClearingWorkflowStageTicker();
                 startPiClearingLivePolling();
                 try {
@@ -47378,6 +47437,7 @@
                 const wizardRowsBody = document.getElementById("piClearingWizardRowsBody");
                 const wizardPayoutBody = document.getElementById("piClearingWizardPayoutBody");
                 const wizardToggleMatchedButton = document.getElementById("piClearingToggleMatchedPairsButton");
+                const wizardToggleReconciledButton = document.getElementById("piClearingToggleReconciledButton");
                 const wizardAnalysisSummary = document.getElementById("piClearingWizardAnalysisSummary");
                 const wizardFindings = document.getElementById("piClearingWizardFindings");
                 const wizardActions = document.getElementById("piClearingWizardActions");
@@ -47500,6 +47560,7 @@
 
                 const run = currentPiClearingRun();
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const orderedRunRows = piSortRowsForReconciliation(runRows);
                 const summaryRows = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const differenceTotal = Number(summaryRows?.differenceTotal || 0);
                 const selectedBatchLabel = piClearingRunRangeLabel(run) || (piClearingBatchStart && piClearingBatchEnd ? `${formatDate(piClearingBatchStart)} to ${formatDate(piClearingBatchEnd)}` : "--");
@@ -47553,14 +47614,14 @@
                 }
 
                 if (rowsBody) {
-                    if (!runRows.length) {
+                    if (!orderedRunRows.length) {
                         rowsBody.innerHTML = `
                             <tr>
                                 <td colspan="8"><p class="detail-meta">No difference rows for this batch.</p></td>
                             </tr>
                         `;
                     } else {
-                        rowsBody.innerHTML = runRows.map((row) => `
+                        rowsBody.innerHTML = orderedRunRows.map((row) => `
                             <tr>
                                 <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
                                 <td>${escapeHTML(formatCurrency(row?.xeroTotal || 0))}</td>
@@ -47691,12 +47752,15 @@
                             : "Get transactions";
                     wizardLoadButton.onclick = runPiClearingWorkflow;
                 }
+                const visibleStep2Rows = piClearingShowReconciledStep2
+                    ? orderedRunRows
+                    : orderedRunRows.filter((row) => piRowMatchState(row).key !== "matched");
                 if (wizardRowsBody) {
-                    wizardRowsBody.innerHTML = runRows.length
-                        ? runRows.map((row) => {
+                    wizardRowsBody.innerHTML = visibleStep2Rows.length
+                        ? visibleStep2Rows.map((row) => {
                             const matchState = piRowMatchState(row);
                             return `
-                                <tr>
+                                <tr class="pi-reconcile-row is-${escapeHTML(matchState.key)}">
                                     <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
                                     <td>${escapeHTML(formatCurrency(row?.xeroTotal || 0))}</td>
                                     <td>${escapeHTML(formatCurrency(row?.ignitionTotal || 0))}</td>
@@ -47711,7 +47775,7 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="8"><p class="detail-meta">Run the workflow to populate transaction rows.</p></td></tr>`;
+                        : `<tr><td colspan="8"><p class="detail-meta">${orderedRunRows.length ? "All reconciled rows are currently hidden. Use Show reconciled batches to review them." : "Run the workflow to populate transaction rows."}</p></td></tr>`;
                 }
                 if (wizardPayoutBody) {
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
@@ -47719,16 +47783,25 @@
                     const matchByKey = new Map(
                         payoutMatches.map((item) => [String(item?.payout?.key || ""), item])
                     );
-                    wizardPayoutBody.innerHTML = payoutRows.length
-                        ? payoutRows.map((row) => {
+                    const visiblePayoutRows = piClearingShowReconciledStep2
+                        ? payoutRows
+                        : payoutRows.filter((row) => {
                             const matchItem = matchByKey.get(String(row.key || ""));
+                            return !matchItem?.matched;
+                        });
+                    wizardPayoutBody.innerHTML = visiblePayoutRows.length
+                        ? visiblePayoutRows.map((row) => {
+                            const matchItem = matchByKey.get(String(row.key || ""));
+                            const rowClass = Number(row.netPayout || 0) <= 0
+                                ? "is-neutral"
+                                : (matchItem?.matched ? "is-matched" : "is-open");
                             const hint = Number(row.netPayout || 0) <= 0
                                 ? "Check non-positive batch"
                                 : matchItem?.matched
                                     ? `Matched Xero credit ${formatDate(matchItem?.matchedCredit?.paidOn || "")}`
                                     : "Missing Xero credit transaction";
                             return `
-                                <tr data-pi-payout-key="${escapeHTML(String(row.key || ""))}">
+                                <tr class="pi-payout-row ${rowClass}" data-pi-payout-key="${escapeHTML(String(row.key || ""))}">
                                     <td>${escapeHTML(formatDate(row.paidOn || ""))}</td>
                                     <td>${escapeHTML(String(row.payoutId || "unlabeled-batch"))}</td>
                                     <td>${escapeHTML(formatCurrency(row.grossCollections || 0))}</td>
@@ -47739,7 +47812,7 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No Ignition payout rows found for this batch.</p></td></tr>`;
+                        : `<tr><td colspan="7"><p class="detail-meta">${payoutRows.length ? "All reconciled payout batches are hidden. Use Show reconciled batches to review them." : "No Ignition payout rows found for this batch."}</p></td></tr>`;
                     if (wizardPayoutBody.dataset.piWired !== "true") {
                         wizardPayoutBody.dataset.piWired = "true";
                         wizardPayoutBody.addEventListener("click", (event) => {
@@ -47751,6 +47824,13 @@
                         });
                     }
                 }
+                if (wizardToggleReconciledButton) {
+                    wizardToggleReconciledButton.textContent = piClearingShowReconciledStep2 ? "Hide reconciled batches" : "Show reconciled batches";
+                    wizardToggleReconciledButton.onclick = () => {
+                        piClearingShowReconciledStep2 = !piClearingShowReconciledStep2;
+                        renderPiClearingAccountScreen();
+                    };
+                }
 
                 const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
                 if (wizardAnalysisSummary) {
@@ -47758,12 +47838,18 @@
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
                     const payoutMatches = buildPiClearingPayoutMatches(runRows);
                     const unmatchedPayoutCount = payoutMatches.filter((item) => !item.matched).length;
+                    const matchedPayoutCount = payoutMatches.filter((item) => item.matched).length;
+                    const hiddenRunRows = orderedRunRows.length - visibleStep2Rows.length;
                     const ignitionIntro = payoutRows.length
                         ? `Step 2 loaded ${formatInteger(payoutRows.length)} Ignition payout batch${payoutRows.length === 1 ? "" : "es"}; ${formatInteger(unmatchedPayoutCount)} need attention before credit notes.`
                         : "Step 2 has no Ignition payout rows for this batch.";
+                    const cinematicSummary = `${formatInteger(matchedPayoutCount)} payout batch${matchedPayoutCount === 1 ? "" : "es"} reconciled on-screen; ${formatInteger(unmatchedPayoutCount)} still open.`;
+                    const hiddenSummary = hiddenRunRows > 0 && !piClearingShowReconciledStep2
+                        ? ` ${formatInteger(hiddenRunRows)} fully reconciled client row${hiddenRunRows === 1 ? "" : "s"} are hidden.`
+                        : "";
                     wizardAnalysisSummary.textContent = summaryText
-                        ? `${ignitionIntro} ${summaryText}`
-                        : `${ignitionIntro} AI analysis will appear after the workflow run completes.`;
+                        ? `${ignitionIntro} ${cinematicSummary}${hiddenSummary} ${summaryText}`.trim()
+                        : `${ignitionIntro} ${cinematicSummary}${hiddenSummary} AI analysis will appear after the workflow run completes.`.trim();
                 }
                 if (wizardFindings) {
                     const findings = Array.isArray(analysis?.findings) ? analysis.findings : [];
@@ -47778,7 +47864,7 @@
                         : "<li>No actions generated.</li>";
                 }
 
-                const creditRows = runRows.filter((row) => {
+                const creditRows = orderedRunRows.filter((row) => {
                     const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
                     return Number(row?.differenceTotal || 0) > 0
                         && !["credit_note_created", "balanced_by_existing_credit_note", "step1_xero_check_required"].includes(resolution);

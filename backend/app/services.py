@@ -268,6 +268,7 @@ XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = ""
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
+PI_CLEARING_TARGET_CURRENCY = "GBP"
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -3530,6 +3531,9 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
         amount = _pi_amount_value(payload)
         if amount == 0:
             continue
+        currency_code = str(payload.get("currency") or payload.get("currency_code") or "GBP").strip().upper() or "GBP"
+        if PI_CLEARING_TARGET_CURRENCY and currency_code != PI_CLEARING_TARGET_CURRENCY:
+            continue
         is_reversal = _pi_is_reversal_entry(payload, dataset=dataset) or amount < 0
         signed_amount = -amount.copy_abs() if is_reversal else amount
         client_name = _pi_first_non_empty(
@@ -3554,7 +3558,7 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
                 "payoutId": payout_id,
                 "paidOn": paid_on.isoformat(),
                 "amount": float(_money(signed_amount)),
-                "currencyCode": str(payload.get("currency") or payload.get("currency_code") or "GBP"),
+                "currencyCode": currency_code,
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
                 "isReversal": is_reversal,
@@ -3893,6 +3897,9 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 if not token_match:
                     continue
         invoice_type = str(raw_invoice.get("Type") or raw.get("InvoiceType") or "").strip().upper()
+        currency_code = str(row.get("currency_code") or raw.get("CurrencyCode") or "GBP").strip().upper() or "GBP"
+        if PI_CLEARING_TARGET_CURRENCY and currency_code != PI_CLEARING_TARGET_CURRENCY:
+            continue
         amount = _money(row.get("amount"))
         raw_signed_amount = raw.get("PI_SignedAmount")
         if isinstance(raw_signed_amount, (int, float, Decimal, str)) and str(raw_signed_amount).strip() not in {"", "None", "null"}:
@@ -3917,7 +3924,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "amount": float(signed_amount),
                 "debitAmount": float(debit_amount),
                 "creditAmount": float(credit_amount),
-                "currencyCode": str(row.get("currency_code") or "GBP"),
+                "currencyCode": currency_code,
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
                 "xeroContactId": xero_contact_id,
@@ -4204,11 +4211,7 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
             for item in (bucket.get("debits") or [])
             if _money(item.get("amount")) > Decimal("0.00")
         ]
-        credits = sorted(
-            (bucket.get("credits") or []),
-            key=lambda item: _money(item.get("amount")).copy_abs(),
-            reverse=True,
-        )
+        credits = list(bucket.get("credits") or [])
         for credit in credits:
             target = _money(credit.get("amount")).copy_abs()
             if target <= Decimal("0.00"):
