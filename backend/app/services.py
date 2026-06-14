@@ -3215,6 +3215,63 @@ def _pi_first_non_empty(payload: dict, *paths: tuple[str, ...]) -> str:
 
 
 def _pi_amount_value(payload: dict) -> Decimal:
+    def _parse_scalar_amount(candidate) -> Decimal | None:
+        if candidate in (None, ""):
+            return None
+        if isinstance(candidate, (int, float, Decimal)):
+            return _money(candidate)
+        text = str(candidate).strip()
+        if not text:
+            return None
+        cleaned = text.replace(",", "").replace("£", "")
+        try:
+            return Decimal(cleaned).quantize(Decimal("0.01"))
+        except Exception:
+            return None
+
+    def _parse_amount_candidate(candidate) -> Decimal | None:
+        if candidate in (None, ""):
+            return None
+        if isinstance(candidate, dict):
+            nested_money_keys = (
+                "amount",
+                "value",
+                "gross_amount",
+                "grossAmount",
+                "net_amount",
+                "netAmount",
+                "total",
+                "total_amount",
+                "totalAmount",
+                "amount_paid",
+                "amountPaid",
+            )
+            for key in nested_money_keys:
+                parsed = _parse_amount_candidate(candidate.get(key))
+                if parsed is not None:
+                    return parsed
+            nested_pence_keys = (
+                "amount_pence",
+                "amountPence",
+                "amount_in_pence",
+                "amountInPence",
+                "pence",
+                "cents",
+            )
+            for key in nested_pence_keys:
+                raw = candidate.get(key)
+                scalar = _parse_scalar_amount(raw)
+                if scalar is not None:
+                    return _money(scalar / Decimal("100"))
+            return None
+        if isinstance(candidate, (list, tuple)):
+            for item in candidate:
+                parsed = _parse_amount_candidate(item)
+                if parsed is not None:
+                    return parsed
+            return None
+        return _parse_scalar_amount(candidate)
+
     candidates = [
         payload.get("amount"),
         payload.get("value"),
@@ -3229,12 +3286,9 @@ def _pi_amount_value(payload: dict) -> Decimal:
         payload.get("amountPaid"),
     ]
     for candidate in candidates:
-        if candidate in (None, ""):
-            continue
-        try:
-            return _money(candidate)
-        except Exception:
-            continue
+        parsed = _parse_amount_candidate(candidate)
+        if parsed is not None:
+            return parsed
     pence_candidates = [
         payload.get("amount_pence"),
         payload.get("amountPence"),
@@ -3242,12 +3296,9 @@ def _pi_amount_value(payload: dict) -> Decimal:
         payload.get("amountInPence"),
     ]
     for candidate in pence_candidates:
-        if candidate in (None, ""):
-            continue
-        try:
-            return _money(Decimal(str(candidate)) / Decimal("100"))
-        except Exception:
-            continue
+        parsed = _parse_scalar_amount(candidate)
+        if parsed is not None:
+            return _money(parsed / Decimal("100"))
     return Decimal("0.00")
 
 
@@ -3364,6 +3415,161 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
     return items
 
 
+async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, month_end: date) -> dict:
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Master Xero tenant is missing.")
+
+    period_end_exclusive = month_end + timedelta(days=1)
+    date_where = (
+        f"(Date>={_xero_datetime_where_literal(month_start)}"
+        f"&&Date<{_xero_datetime_where_literal(period_end_exclusive)})"
+    )
+    raw_payments = await fetch_paginated_collection(
+        connection_row,
+        PAYMENTS_URL,
+        "Payments",
+        params={"where": date_where, "order": "Date ASC"},
+    )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id
+                FROM customers
+                WHERE tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            customer_lookup = {
+                str(row.get("xero_contact_id") or "").strip(): row.get("id")
+                for row in (cursor.fetchall() or [])
+                if str(row.get("xero_contact_id") or "").strip()
+            }
+            cursor.execute(
+                """
+                SELECT invoices.id, invoices.xero_invoice_id, invoices.customer_id
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE customers.tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            invoice_lookup = {
+                str(row.get("xero_invoice_id") or "").strip(): {
+                    "id": row.get("id"),
+                    "customer_id": row.get("customer_id"),
+                }
+                for row in (cursor.fetchall() or [])
+                if str(row.get("xero_invoice_id") or "").strip()
+            }
+        connection.commit()
+
+    now = utcnow()
+    processed = 0
+    stored = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for raw_payment in raw_payments or []:
+                payment = normalise_payment(raw_payment if isinstance(raw_payment, dict) else {})
+                payment_id = str(payment.get("xero_payment_id") or "").strip()
+                if not payment_id:
+                    continue
+                invoice_type = str(payment.get("invoice_type") or "").strip().upper()
+                if invoice_type and invoice_type != "ACCREC":
+                    continue
+                processed += 1
+
+                invoice_id_value = str(payment.get("xero_invoice_id") or "").strip()
+                invoice_match = invoice_lookup.get(invoice_id_value) if invoice_id_value else None
+                contact_id = str(payment.get("xero_contact_id") or "").strip()
+                customer_id = customer_lookup.get(contact_id) or (invoice_match or {}).get("customer_id")
+
+                cursor.execute(
+                    """
+                    INSERT INTO payments (
+                        tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                        invoice_number, payment_date, amount, currency_code, reference,
+                        status, account_name, raw, synced_at, updated_at
+                    )
+                    VALUES (
+                        %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                        %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                        %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                    )
+                    ON CONFLICT (xero_payment_id) DO UPDATE
+                    SET customer_id = EXCLUDED.customer_id,
+                        invoice_id = EXCLUDED.invoice_id,
+                        xero_invoice_id = EXCLUDED.xero_invoice_id,
+                        invoice_number = EXCLUDED.invoice_number,
+                        payment_date = EXCLUDED.payment_date,
+                        amount = EXCLUDED.amount,
+                        currency_code = EXCLUDED.currency_code,
+                        reference = EXCLUDED.reference,
+                        status = EXCLUDED.status,
+                        account_name = EXCLUDED.account_name,
+                        raw = EXCLUDED.raw,
+                        synced_at = EXCLUDED.synced_at,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    {
+                        **payment,
+                        "tenant_id": tenant_id,
+                        "customer_id": customer_id,
+                        "invoice_id": (invoice_match or {}).get("id"),
+                        "raw_json": json.dumps(payment.get("raw") or {}, default=_json_default),
+                        "synced_at": now,
+                        "updated_at": now,
+                    },
+                )
+                stored += 1
+        connection.commit()
+    return {
+        "tenantId": tenant_id,
+        "fetched": len(raw_payments or []),
+        "processed": processed,
+        "stored": stored,
+    }
+
+
+async def _pi_refresh_ignition_payment_datasets(user: dict) -> dict:
+    try:
+        connection_row = get_ignition_connection_for_user(user["id"])
+    except HTTPException as exc:
+        if exc.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND):
+            return {
+                "connected": False,
+                "message": "Ignition not connected; using cached Ignition reporting data.",
+                "datasets": {},
+            }
+        raise
+
+    endpoint_lookup = {name: endpoint for name, endpoint in IGNITION_DATASETS}
+    practice_id = str(connection_row.get("practice_id") or "")
+    dataset_stats: dict[str, dict] = {}
+    total_fetched = 0
+    total_changed = 0
+    for dataset in ("payments", "collections"):
+        endpoint = endpoint_lookup.get(dataset)
+        if not endpoint:
+            continue
+        rows, _meta = await fetch_ignition_collection(connection_row, endpoint)
+        changed = _upsert_ignition_records(user, practice_id, dataset, rows)
+        fetched = len(rows or [])
+        dataset_stats[dataset] = {"fetched": fetched, "changed": changed}
+        total_fetched += fetched
+        total_changed += changed
+
+    return {
+        "connected": True,
+        "fetched": total_fetched,
+        "changed": total_changed,
+        "datasets": dataset_stats,
+    }
+
+
 def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, account_code: str) -> tuple[list[dict], str]:
     connection_row = get_master_xero_connection_for_user(user["id"])
     tenant_id = str(connection_row.get("tenant_id") or "").strip()
@@ -3396,16 +3602,27 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
     items: list[dict] = []
     for row in rows:
         raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+        raw_invoice = raw.get("Invoice") if isinstance(raw.get("Invoice"), dict) else {}
+        raw_contact = raw_invoice.get("Contact") if isinstance(raw_invoice.get("Contact"), dict) else {}
+        if not raw_contact and isinstance(raw.get("Contact"), dict):
+            raw_contact = raw.get("Contact")
         raw_account = raw.get("Account") if isinstance(raw.get("Account"), dict) else {}
         code = str(raw_account.get("Code") or "").strip()
         name = str(raw_account.get("Name") or row.get("account_name") or "").strip()
         if wanted:
-            if code.lower() != wanted and wanted not in name.lower():
-                continue
+            code_lower = code.lower()
+            name_lower = name.lower()
+            if code_lower != wanted and wanted not in name_lower and wanted not in code_lower:
+                wanted_tokens = [token for token in re.split(r"[^a-z0-9]+", wanted) if token and token not in {"account"}]
+                token_match = bool(wanted_tokens) and all(token in name_lower or token in code_lower for token in wanted_tokens)
+                if not token_match:
+                    continue
         amount = _money(row.get("amount"))
         if amount <= 0:
             continue
-        client_name = str(row.get("customer_name") or "Unknown client").strip()
+        raw_contact_name = str(raw_contact.get("Name") or "").strip()
+        client_name = str(row.get("customer_name") or raw_contact_name or "Unknown client").strip()
+        xero_contact_id = str(row.get("xero_contact_id") or raw_contact.get("ContactID") or "").strip()
         items.append(
             {
                 "paymentId": str(row.get("xero_payment_id") or ""),
@@ -3414,7 +3631,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "currencyCode": str(row.get("currency_code") or "GBP"),
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
-                "xeroContactId": str(row.get("xero_contact_id") or ""),
+                "xeroContactId": xero_contact_id,
                 "reference": str(row.get("reference") or ""),
                 "accountCode": code,
                 "accountName": name,
@@ -3696,6 +3913,8 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     month_start, month_end = _pi_month_bounds(str(safe_payload.get("month") or safe_payload.get("monthStart") or ""))
     month_label = month_start.strftime("%Y-%m")
     account_code = str(safe_payload.get("accountCode") or PI_CLEARING_DEFAULT_ACCOUNT_CODE).strip() or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+    xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
+    ignition_refresh = await _pi_refresh_ignition_payment_datasets(user)
     xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
     ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
     existing_credit_note_totals = _pi_existing_credit_note_totals(user, month_start, month_end, account_code)
@@ -3839,6 +4058,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         ],
     )
     summary = {
+        "refresh": {
+            "xero": xero_refresh,
+            "ignition": ignition_refresh,
+        },
         "xeroCount": len(xero_rows),
         "ignitionCount": len(ignition_rows),
         "differenceCount": sum(1 for row in rows_to_store if _money(row.get("difference")) != 0),
