@@ -1003,7 +1003,8 @@ def payroll_headcount_payload(user: dict) -> dict:
             if workspace_ids:
                 cursor.execute(
                     """
-                    SELECT workspace_id,
+                    SELECT DISTINCT ON (workspace_id, month_start)
+                           workspace_id,
                            month_start,
                            headcount,
                            payroll_count,
@@ -1013,7 +1014,7 @@ def payroll_headcount_payload(user: dict) -> dict:
                            updated_at
                     FROM payroll_headcount_monthly_snapshots
                     WHERE workspace_id = ANY(%s)
-                    ORDER BY month_start DESC, fetched_at DESC
+                    ORDER BY workspace_id, month_start DESC, fetched_at DESC, updated_at DESC
                     """,
                     (workspace_ids,),
                 )
@@ -1170,28 +1171,26 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            now = utcnow()
+            raw_payload = json.dumps(
+                {
+                    "employeeCount": len(employees),
+                    "payRunCount": len(payruns),
+                    "errors": errors,
+                },
+                default=_json_default,
+            )
             cursor.execute(
                 """
-                INSERT INTO payroll_headcount_monthly_snapshots (
-                    workspace_id,
-                    month_start,
-                    headcount,
-                    payroll_count,
-                    source,
-                    fetched_at,
-                    raw_payload,
-                    created_at,
-                    updated_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                ON CONFLICT (workspace_id, month_start)
-                DO UPDATE
-                SET headcount = EXCLUDED.headcount,
-                    payroll_count = EXCLUDED.payroll_count,
-                    source = EXCLUDED.source,
-                    fetched_at = EXCLUDED.fetched_at,
-                    raw_payload = EXCLUDED.raw_payload,
-                    updated_at = EXCLUDED.updated_at
+                UPDATE payroll_headcount_monthly_snapshots
+                SET headcount = %s,
+                    payroll_count = %s,
+                    source = %s,
+                    fetched_at = %s,
+                    raw_payload = %s::jsonb,
+                    updated_at = %s
+                WHERE workspace_id = %s
+                  AND month_start = %s
                 RETURNING month_start,
                           headcount,
                           payroll_count,
@@ -1201,25 +1200,53 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                           updated_at
                 """,
                 (
-                    workspace["id"],
-                    month_start,
                     active_headcount,
                     payroll_count,
                     "xero-payroll",
-                    utcnow(),
-                    json.dumps(
-                        {
-                            "employeeCount": len(employees),
-                            "payRunCount": len(payruns),
-                            "errors": errors,
-                        },
-                        default=_json_default,
-                    ),
-                    utcnow(),
-                    utcnow(),
+                    now,
+                    raw_payload,
+                    now,
+                    workspace["id"],
+                    month_start,
                 ),
             )
             snapshot_row = cursor.fetchone() or {}
+            if not snapshot_row:
+                cursor.execute(
+                    """
+                    INSERT INTO payroll_headcount_monthly_snapshots (
+                        workspace_id,
+                        month_start,
+                        headcount,
+                        payroll_count,
+                        source,
+                        fetched_at,
+                        raw_payload,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    RETURNING month_start,
+                              headcount,
+                              payroll_count,
+                              source,
+                              fetched_at,
+                              created_at,
+                              updated_at
+                    """,
+                    (
+                        workspace["id"],
+                        month_start,
+                        active_headcount,
+                        payroll_count,
+                        "xero-payroll",
+                        now,
+                        raw_payload,
+                        now,
+                        now,
+                    ),
+                )
+                snapshot_row = cursor.fetchone() or {}
             cursor.execute(
                 """
                 UPDATE payroll_headcount_workspaces
