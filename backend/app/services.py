@@ -1141,7 +1141,7 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
 
     if not employees and not payruns and errors:
         reconnect_hint = (
-            "/auth/xero/start?force=1"
+            "/auth/xero/start?force=1&include_payroll=1"
             f"&xero_target=payroll-headcount&redirect_to=%2F%23credit-control-payroll-headcount"
         )
         raise HTTPException(
@@ -1379,6 +1379,1802 @@ def sync_payroll_headcount_with_ignition(user: dict) -> dict:
         "matches": updates,
         "payrollHeadcount": payload,
     }
+
+
+CALL_STATS_AI_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["headline", "insights", "risks", "actions"],
+    "properties": {
+        "headline": {"type": "string"},
+        "insights": {"type": "array", "items": {"type": "string"}},
+        "risks": {"type": "array", "items": {"type": "string"}},
+        "actions": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+CALL_STATS_FILTER_PRESET_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["presets"],
+    "properties": {
+        "presets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "description", "filters"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "filters": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["dateFrom", "dateTo", "staffMember", "clientManager", "direction", "matchStatus"],
+                        "properties": {
+                            "dateFrom": {"type": "string"},
+                            "dateTo": {"type": "string"},
+                            "staffMember": {"type": "string"},
+                            "clientManager": {"type": "string"},
+                            "direction": {"type": "string"},
+                            "matchStatus": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        }
+    },
+}
+
+CALL_STATS_DEFAULT_EXTENSION_DIRECTORY = [
+    ("200", "Martha"),
+    ("203", "Tom"),
+    ("204", "Office Spare"),
+    ("205", "Jay"),
+    ("206", "T Room"),
+    ("207", "Dean H"),
+    ("208", "Hannah"),
+    ("209", "Lauren"),
+    ("210", "Boardroom"),
+    ("211", "Mia"),
+    ("212", "Gracie"),
+    ("213", "Amie"),
+]
+
+CALL_STATS_MAPPING_ALIASES = {
+    "direction": {"direction", "calltype", "type", "call_direction"},
+    "datetime": {"datetime", "date_time", "timestamp", "call_datetime", "start"},
+    "date": {"date", "call_date", "start_date"},
+    "time": {"time", "call_time", "start_time"},
+    "duration": {"duration", "duration_seconds", "secs", "length"},
+    "cost": {"cost", "call_cost", "price", "charge"},
+    "from_number": {"from", "from_number", "source", "caller", "cli", "calling"},
+    "to_number": {"to", "to_number", "destination", "dialed", "dialled", "ddi"},
+    "extension": {"extension", "ext", "internal", "internal_extension", "staff_extension"},
+    "external_number": {"external", "external_number", "client_number", "telephone"},
+    "outcome": {"outcome", "result", "status", "answer_status"},
+}
+
+
+def _call_stats_clean_header(value) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _call_stats_normalise_phone(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"[^\d+]", "", text)
+    if text.startswith("00"):
+        text = f"+{text[2:]}"
+    digits = re.sub(r"\D+", "", text)
+    if not digits:
+        return ""
+    if digits.startswith("44") and len(digits) >= 12:
+        digits = f"0{digits[2:]}"
+    return digits
+
+
+def _call_stats_phone_keys(value) -> list[str]:
+    normalised = _call_stats_normalise_phone(value)
+    if not normalised:
+        return []
+    keys = [normalised]
+    if len(normalised) > 10:
+        keys.append(normalised[-10:])
+    if len(normalised) > 9:
+        keys.append(normalised[-9:])
+    return list(dict.fromkeys(key for key in keys if key))
+
+
+def _call_stats_safe_int(value, default_value: int = 0) -> int:
+    try:
+        return int(float(str(value or "").strip()))
+    except Exception:
+        return default_value
+
+
+def _call_stats_parse_duration_seconds(value) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    if re.fullmatch(r"\d+", text):
+        return _call_stats_safe_int(text, 0)
+    if re.fullmatch(r"\d+:\d{2}:\d{2}", text):
+        parts = [int(item) for item in text.split(":")]
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    if re.fullmatch(r"\d{1,2}:\d{2}", text):
+        parts = [int(item) for item in text.split(":")]
+        return parts[0] * 60 + parts[1]
+    return _call_stats_safe_int(text, 0)
+
+
+def _call_stats_parse_cost(value) -> Decimal:
+    text = str(value or "").strip()
+    if not text:
+        return Decimal("0.00")
+    text = text.replace("£", "").replace(",", "")
+    try:
+        return Decimal(text).quantize(Decimal("0.0001"))
+    except Exception:
+        return Decimal("0.00")
+
+
+def _call_stats_parse_datetime(value, date_value="", time_value="") -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        combined = f"{str(date_value or '').strip()} {str(time_value or '').strip()}".strip()
+        raw = combined
+    if not raw:
+        return None
+    candidate = raw.replace("T", " ").replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        pass
+    formats = [
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%d-%m-%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M",
+    ]
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
+def _call_stats_normalise_direction(value) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if "in" in text:
+        return "inbound"
+    if "out" in text:
+        return "outbound"
+    if "miss" in text:
+        return "missed"
+    return text
+
+
+def _call_stats_normalise_outcome(value, direction: str, duration_seconds: int) -> str:
+    text = str(value or "").strip()
+    if text:
+        return text
+    if direction == "missed":
+        return "Missed"
+    if duration_seconds <= 0 and direction in {"inbound", "outbound"}:
+        return "Missed"
+    if duration_seconds > 0:
+        return "Answered"
+    return ""
+
+
+def _call_stats_extension_from_number(value) -> str:
+    digits = _call_stats_normalise_phone(value)
+    if not digits:
+        return ""
+    for size in (3, 4):
+        if len(digits) == size:
+            return digits
+    return ""
+
+
+def _call_stats_auto_mapping(headers: list[str]) -> dict:
+    by_clean = {_call_stats_clean_header(header): header for header in headers}
+    mapping = {}
+    for field_name, aliases in CALL_STATS_MAPPING_ALIASES.items():
+        mapping[field_name] = ""
+        for alias in aliases:
+            clean_alias = _call_stats_clean_header(alias)
+            if clean_alias in by_clean:
+                mapping[field_name] = by_clean[clean_alias]
+                break
+    return mapping
+
+
+def _call_stats_resolve_mapping(headers: list[str], provided_mapping: dict | None = None) -> dict:
+    auto_mapping = _call_stats_auto_mapping(headers)
+    if not isinstance(provided_mapping, dict):
+        return auto_mapping
+    resolved = dict(auto_mapping)
+    header_set = set(headers)
+    for key, value in provided_mapping.items():
+        if key not in resolved:
+            continue
+        header_name = str(value or "").strip()
+        resolved[key] = header_name if header_name in header_set else resolved[key]
+    return resolved
+
+
+def _call_stats_extension_lookup() -> dict[str, str]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT extension, staff_name
+                FROM call_extension_directory
+                WHERE is_active = TRUE
+                ORDER BY extension ASC
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    directory = {
+        str(row.get("extension") or "").strip(): str(row.get("staff_name") or "").strip()
+        for row in rows
+        if str(row.get("extension") or "").strip()
+    }
+    for extension, staff_name in CALL_STATS_DEFAULT_EXTENSION_DIRECTORY:
+        directory.setdefault(extension, staff_name)
+    return directory
+
+
+def _call_stats_number_labels(user_id: str | None = None) -> dict[str, dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT number_value,
+                           label_type,
+                           assigned_client_id,
+                           assigned_client_name,
+                           assigned_client_manager
+                    FROM call_number_labels
+                    WHERE user_id = %s OR user_id IS NULL
+                    """,
+                    (user_id,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT number_value,
+                           label_type,
+                           assigned_client_id,
+                           assigned_client_name,
+                           assigned_client_manager
+                    FROM call_number_labels
+                    """
+                )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    labels: dict[str, dict] = {}
+    for row in rows:
+        label_payload = {
+            "labelType": str(row.get("label_type") or "").strip().lower(),
+            "clientId": str(row.get("assigned_client_id") or "").strip(),
+            "clientName": str(row.get("assigned_client_name") or "").strip(),
+            "clientManager": str(row.get("assigned_client_manager") or "").strip(),
+        }
+        for key in _call_stats_phone_keys(row.get("number_value")):
+            labels[key] = label_payload
+    return labels
+
+
+def _call_stats_extract_customer_phones(customer: dict) -> list[str]:
+    numbers = []
+    for field_name in ("phone", "mobile", "telephone"):
+        value = customer.get(field_name)
+        if value:
+            numbers.append(str(value))
+    contact_people = customer.get("contact_people") if isinstance(customer.get("contact_people"), list) else []
+    for person in contact_people:
+        if not isinstance(person, dict):
+            continue
+        for key in ("PhoneNumber", "Mobile", "Phone", "phone", "mobile", "telephone"):
+            if person.get(key):
+                numbers.append(str(person.get(key)))
+    return numbers
+
+
+def _call_stats_client_phone_index() -> dict[str, dict]:
+    by_number: dict[str, dict] = {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, phone, contact_people
+                FROM customers
+                ORDER BY updated_at DESC
+                """
+            )
+            customer_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT client_id, client_name, client_manager, contact_phone
+                FROM ch_auth_code_register
+                ORDER BY updated_at DESC
+                """
+            )
+            register_rows = cursor.fetchall() or []
+        connection.commit()
+    for row in customer_rows:
+        payload = {
+            "clientId": str(row.get("id") or "").strip(),
+            "clientName": str(row.get("name") or "").strip(),
+            "clientManager": "",
+        }
+        for number in _call_stats_extract_customer_phones(row):
+            for key in _call_stats_phone_keys(number):
+                if key and key not in by_number:
+                    by_number[key] = payload
+    for row in register_rows:
+        payload = {
+            "clientId": str(row.get("client_id") or "").strip(),
+            "clientName": str(row.get("client_name") or "").strip(),
+            "clientManager": str(row.get("client_manager") or "").strip(),
+        }
+        if not payload["clientName"]:
+            continue
+        for key in _call_stats_phone_keys(row.get("contact_phone")):
+            if key and key not in by_number:
+                by_number[key] = payload
+    return by_number
+
+
+def _call_stats_lookup_client_by_id(client_id: str) -> dict:
+    clean_client_id = str(client_id or "").strip()
+    if not clean_client_id:
+        return {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM customers
+                WHERE id::text = %s
+                LIMIT 1
+                """,
+                (clean_client_id,),
+            )
+            customer = cursor.fetchone() or {}
+            if customer:
+                connection.commit()
+                return {
+                    "clientId": str(customer.get("id") or ""),
+                    "clientName": str(customer.get("name") or ""),
+                    "clientManager": "",
+                }
+            cursor.execute(
+                """
+                SELECT client_id, client_name, client_manager
+                FROM ch_auth_code_register
+                WHERE client_id = %s
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (clean_client_id,),
+            )
+            register = cursor.fetchone() or {}
+        connection.commit()
+    if register:
+        return {
+            "clientId": str(register.get("client_id") or "").strip(),
+            "clientName": str(register.get("client_name") or "").strip(),
+            "clientManager": str(register.get("client_manager") or "").strip(),
+        }
+    return {}
+
+
+def _call_stats_resolve_number_match(number: str, client_index: dict[str, dict], labels: dict[str, dict]) -> dict:
+    keys = _call_stats_phone_keys(number)
+    label_payload = {}
+    for key in keys:
+        if key in labels:
+            label_payload = labels[key]
+            break
+    label_type = str(label_payload.get("labelType") or "").strip().lower()
+    if label_type == "assign_client":
+        return {
+            "matchedStatus": "matched",
+            "matchSource": "manual_label",
+            "numberTag": "",
+            "clientId": str(label_payload.get("clientId") or ""),
+            "clientName": str(label_payload.get("clientName") or ""),
+            "clientManager": str(label_payload.get("clientManager") or ""),
+            "ignored": False,
+        }
+    if label_type in {"supplier", "hmrc", "spam", "ignore"}:
+        return {
+            "matchedStatus": "ignored",
+            "matchSource": "manual_label",
+            "numberTag": label_type,
+            "clientId": "",
+            "clientName": "",
+            "clientManager": "",
+            "ignored": True,
+        }
+    for key in keys:
+        client = client_index.get(key)
+        if not client:
+            continue
+        return {
+            "matchedStatus": "matched",
+            "matchSource": "auto_number_match",
+            "numberTag": "",
+            "clientId": str(client.get("clientId") or ""),
+            "clientName": str(client.get("clientName") or ""),
+            "clientManager": str(client.get("clientManager") or ""),
+            "ignored": False,
+        }
+    return {
+        "matchedStatus": "unmatched",
+        "matchSource": "",
+        "numberTag": "",
+        "clientId": "",
+        "clientName": "",
+        "clientManager": "",
+        "ignored": False,
+    }
+
+
+def _call_stats_existing_fingerprint_set(user_id: str, fingerprints: list[str]) -> set[str]:
+    clean = [value for value in dict.fromkeys(str(item or "").strip() for item in fingerprints) if value]
+    if not clean:
+        return set()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT call_fingerprint
+                FROM call_records_processed
+                WHERE user_id = %s
+                  AND call_fingerprint = ANY(%s)
+                """,
+                (user_id, clean),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {str(row.get("call_fingerprint") or "") for row in rows if str(row.get("call_fingerprint") or "").strip()}
+
+
+def _call_stats_parse_csv_rows(content: bytes) -> tuple[list[str], list[dict]]:
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = [str(field).strip() for field in (reader.fieldnames or []) if str(field).strip()]
+    rows = [row for row in reader]
+    return headers, rows
+
+
+def _call_stats_prepare_import_rows(user: dict, content: bytes, mapping: dict | None = None) -> dict:
+    headers, rows = _call_stats_parse_csv_rows(content)
+    if not headers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV headers were not detected.")
+    resolved_mapping = _call_stats_resolve_mapping(headers, mapping)
+    extension_lookup = _call_stats_extension_lookup()
+    client_index = _call_stats_client_phone_index()
+    labels = _call_stats_number_labels(str(user.get("id") or ""))
+
+    processed_candidates: list[dict] = []
+    preview_rows: list[dict] = []
+    fingerprints: list[str] = []
+    for row_number, row in enumerate(rows, start=1):
+        date_time = _call_stats_parse_datetime(
+            row.get(resolved_mapping.get("datetime", "") or ""),
+            date_value=row.get(resolved_mapping.get("date", "") or ""),
+            time_value=row.get(resolved_mapping.get("time", "") or ""),
+        )
+        from_number = _call_stats_normalise_phone(row.get(resolved_mapping.get("from_number", "") or ""))
+        to_number = _call_stats_normalise_phone(row.get(resolved_mapping.get("to_number", "") or ""))
+        explicit_extension = _call_stats_normalise_phone(row.get(resolved_mapping.get("extension", "") or ""))
+        extension = explicit_extension or _call_stats_extension_from_number(from_number) or _call_stats_extension_from_number(to_number)
+        direction = _call_stats_normalise_direction(row.get(resolved_mapping.get("direction", "") or ""))
+        if not direction:
+            if extension and from_number == extension and to_number != extension:
+                direction = "outbound"
+            elif extension and to_number == extension and from_number != extension:
+                direction = "inbound"
+            else:
+                direction = "inbound"
+        external_number = _call_stats_normalise_phone(row.get(resolved_mapping.get("external_number", "") or ""))
+        if not external_number:
+            if direction == "outbound":
+                external_number = to_number if to_number != extension else from_number
+            else:
+                external_number = from_number if from_number != extension else to_number
+        duration_seconds = _call_stats_parse_duration_seconds(row.get(resolved_mapping.get("duration", "") or ""))
+        cost = _call_stats_parse_cost(row.get(resolved_mapping.get("cost", "") or ""))
+        outcome = _call_stats_normalise_outcome(row.get(resolved_mapping.get("outcome", "") or ""), direction, duration_seconds)
+        validation_errors: list[str] = []
+        if not date_time:
+            validation_errors.append("Missing or invalid date/time.")
+        if not external_number:
+            validation_errors.append("Missing external number.")
+        call_date = date_time.date() if date_time else None
+        call_time = date_time.strftime("%H:%M:%S") if date_time else ""
+        fingerprint_seed = "|".join(
+            [
+                date_time.isoformat() if date_time else "",
+                direction,
+                external_number,
+                extension,
+                str(duration_seconds),
+                f"{cost:.4f}",
+                from_number,
+                to_number,
+            ]
+        )
+        fingerprint = hashlib.sha256(fingerprint_seed.encode("utf-8")).hexdigest()
+        if not validation_errors:
+            fingerprints.append(fingerprint)
+        parsed = {
+            "rowNumber": row_number,
+            "originalRow": row,
+            "fingerprint": fingerprint,
+            "isValid": not validation_errors,
+            "validationErrors": validation_errors,
+            "direction": direction,
+            "callDatetime": date_time,
+            "callDate": call_date,
+            "callTime": call_time,
+            "durationSeconds": duration_seconds,
+            "cost": cost,
+            "outcome": outcome,
+            "fromNumber": from_number,
+            "toNumber": to_number,
+            "externalNumber": external_number,
+            "internalExtension": extension,
+            "staffMember": extension_lookup.get(extension, ""),
+        }
+        processed_candidates.append(parsed)
+        if len(preview_rows) < 25:
+            preview_rows.append(
+                {
+                    "rowNumber": row_number,
+                    "dateTime": date_time.isoformat() if date_time else "",
+                    "direction": direction,
+                    "externalNumber": external_number,
+                    "extension": extension,
+                    "staffMember": extension_lookup.get(extension, ""),
+                    "durationSeconds": duration_seconds,
+                    "outcome": outcome,
+                    "errors": validation_errors,
+                }
+            )
+
+    existing_fingerprints = _call_stats_existing_fingerprint_set(str(user.get("id") or ""), fingerprints)
+    seen_fingerprints: set[str] = set()
+    summary = {
+        "totalRows": len(rows),
+        "newRows": 0,
+        "duplicateRows": 0,
+        "invalidRows": 0,
+        "matchedClientCalls": 0,
+        "unmatchedCalls": 0,
+    }
+    prepared_rows: list[dict] = []
+    for parsed in processed_candidates:
+        is_duplicate = False
+        if not parsed["isValid"]:
+            summary["invalidRows"] += 1
+        else:
+            fingerprint = parsed["fingerprint"]
+            if fingerprint in existing_fingerprints or fingerprint in seen_fingerprints:
+                is_duplicate = True
+                summary["duplicateRows"] += 1
+            else:
+                summary["newRows"] += 1
+                seen_fingerprints.add(fingerprint)
+        match_payload = _call_stats_resolve_number_match(parsed["externalNumber"], client_index, labels)
+        if match_payload["matchedStatus"] == "matched":
+            summary["matchedClientCalls"] += 1
+        elif match_payload["matchedStatus"] == "unmatched":
+            summary["unmatchedCalls"] += 1
+        prepared_rows.append({**parsed, "isDuplicate": is_duplicate, **match_payload})
+    return {
+        "headers": headers,
+        "mapping": resolved_mapping,
+        "summary": summary,
+        "previewRows": preview_rows,
+        "rows": prepared_rows,
+    }
+
+
+def call_stats_import_preview(user: dict, content: bytes, mapping: dict | None = None) -> dict:
+    payload = _call_stats_prepare_import_rows(user, content, mapping=mapping)
+    return {
+        "headers": payload["headers"],
+        "mapping": payload["mapping"],
+        "summary": payload["summary"],
+        "previewRows": payload["previewRows"],
+    }
+
+
+def call_stats_import_commit(
+    user: dict,
+    content: bytes,
+    filename: str,
+    source_provider: str = "",
+    mapping: dict | None = None,
+) -> dict:
+    prepared = _call_stats_prepare_import_rows(user, content, mapping=mapping)
+    source_hash = hashlib.sha256(content).hexdigest()
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO call_import_files (
+                    uploaded_by_user_id,
+                    source_filename,
+                    source_file_hash,
+                    source_provider,
+                    total_rows,
+                    new_rows,
+                    duplicate_rows,
+                    invalid_rows,
+                    matched_rows,
+                    unmatched_rows,
+                    mapping_json,
+                    import_summary,
+                    created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                RETURNING id
+                """,
+                (
+                    user["id"],
+                    str(filename or "").strip() or "call-log.csv",
+                    source_hash,
+                    str(source_provider or "").strip(),
+                    int(prepared["summary"]["totalRows"]),
+                    int(prepared["summary"]["newRows"]),
+                    int(prepared["summary"]["duplicateRows"]),
+                    int(prepared["summary"]["invalidRows"]),
+                    int(prepared["summary"]["matchedClientCalls"]),
+                    int(prepared["summary"]["unmatchedCalls"]),
+                    json.dumps(prepared["mapping"], default=_json_default),
+                    json.dumps(prepared["summary"], default=_json_default),
+                    now,
+                ),
+            )
+            import_file_id = str((cursor.fetchone() or {}).get("id") or "")
+            for row in prepared["rows"]:
+                cursor.execute(
+                    """
+                    INSERT INTO call_import_rows_raw (
+                        import_file_id,
+                        row_number,
+                        original_row,
+                        fingerprint,
+                        is_duplicate,
+                        is_valid,
+                        validation_errors,
+                        created_at
+                    )
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::jsonb, %s)
+                    RETURNING id
+                    """,
+                    (
+                        import_file_id,
+                        int(row.get("rowNumber") or 0),
+                        json.dumps(row.get("originalRow") or {}, default=_json_default),
+                        str(row.get("fingerprint") or ""),
+                        bool(row.get("isDuplicate")),
+                        bool(row.get("isValid")),
+                        json.dumps(row.get("validationErrors") or [], default=_json_default),
+                        now,
+                    ),
+                )
+                raw_row_id = str((cursor.fetchone() or {}).get("id") or "")
+                processed_call_id = ""
+                if row.get("isValid") and not row.get("isDuplicate"):
+                    cursor.execute(
+                        """
+                        INSERT INTO call_records_processed (
+                            user_id,
+                            import_file_id,
+                            raw_row_id,
+                            call_fingerprint,
+                            direction,
+                            call_datetime,
+                            call_date,
+                            call_time,
+                            duration_seconds,
+                            cost,
+                            outcome,
+                            from_number,
+                            to_number,
+                            external_number,
+                            internal_extension,
+                            staff_member,
+                            client_id,
+                            client_name,
+                            client_manager,
+                            matched_status,
+                            match_source,
+                            number_tag,
+                            ignored,
+                            last_resync_at,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
+                        ON CONFLICT (call_fingerprint)
+                        DO NOTHING
+                        RETURNING id
+                        """,
+                        (
+                            user["id"],
+                            import_file_id,
+                            raw_row_id,
+                            str(row.get("fingerprint") or ""),
+                            str(row.get("direction") or ""),
+                            row.get("callDatetime"),
+                            row.get("callDate"),
+                            str(row.get("callTime") or ""),
+                            int(row.get("durationSeconds") or 0),
+                            row.get("cost") or Decimal("0.00"),
+                            str(row.get("outcome") or ""),
+                            str(row.get("fromNumber") or ""),
+                            str(row.get("toNumber") or ""),
+                            str(row.get("externalNumber") or ""),
+                            str(row.get("internalExtension") or ""),
+                            str(row.get("staffMember") or ""),
+                            str(row.get("clientId") or ""),
+                            str(row.get("clientName") or ""),
+                            str(row.get("clientManager") or ""),
+                            str(row.get("matchedStatus") or "unmatched"),
+                            str(row.get("matchSource") or ""),
+                            str(row.get("numberTag") or ""),
+                            bool(row.get("ignored")),
+                            now,
+                            now,
+                            now,
+                        ),
+                    )
+                    processed_call_id = str((cursor.fetchone() or {}).get("id") or "")
+                    if processed_call_id:
+                        cursor.execute(
+                            """
+                            UPDATE call_import_rows_raw
+                            SET processed_call_id = %s
+                            WHERE id = %s
+                            """,
+                            (processed_call_id, raw_row_id),
+                        )
+        connection.commit()
+    resync_result = call_stats_resync(user, trigger_source="import", reason=f"Import commit {filename}")
+    return {
+        "importFileId": import_file_id,
+        "summary": prepared["summary"],
+        "mapping": prepared["mapping"],
+        "resync": resync_result,
+    }
+
+
+def call_stats_import_files(user: dict, limit: int = 40) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       source_filename,
+                       source_provider,
+                       total_rows,
+                       new_rows,
+                       duplicate_rows,
+                       invalid_rows,
+                       matched_rows,
+                       unmatched_rows,
+                       created_at
+                FROM call_import_files
+                WHERE uploaded_by_user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], max(1, min(int(limit or 40), 200))),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [
+        {
+            "id": str(row.get("id") or ""),
+            "filename": str(row.get("source_filename") or ""),
+            "provider": str(row.get("source_provider") or ""),
+            "totalRows": int(row.get("total_rows") or 0),
+            "newRows": int(row.get("new_rows") or 0),
+            "duplicateRows": int(row.get("duplicate_rows") or 0),
+            "invalidRows": int(row.get("invalid_rows") or 0),
+            "matchedRows": int(row.get("matched_rows") or 0),
+            "unmatchedRows": int(row.get("unmatched_rows") or 0),
+            "createdAt": _iso(row.get("created_at")) or "",
+        }
+        for row in rows
+    ]
+
+
+def call_stats_extension_directory_payload() -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT extension, staff_name, is_active, notes, updated_at
+                FROM call_extension_directory
+                ORDER BY extension ASC
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [
+        {
+            "extension": str(row.get("extension") or ""),
+            "staffName": str(row.get("staff_name") or ""),
+            "isActive": bool(row.get("is_active")),
+            "notes": str(row.get("notes") or ""),
+            "updatedAt": _iso(row.get("updated_at")) or "",
+        }
+        for row in rows
+    ]
+
+
+def call_stats_save_extension(user: dict, payload: dict) -> dict:
+    extension = str((payload or {}).get("extension") or "").strip()
+    staff_name = str((payload or {}).get("staffName") or "").strip()
+    notes = str((payload or {}).get("notes") or "").strip()
+    is_active = bool((payload or {}).get("isActive", True))
+    if not extension or not re.fullmatch(r"\d{2,6}", extension):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Extension must be numeric.")
+    if not staff_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Staff name is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO call_extension_directory (
+                    extension,
+                    staff_name,
+                    is_active,
+                    notes,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (extension)
+                DO UPDATE
+                SET staff_name = EXCLUDED.staff_name,
+                    is_active = EXCLUDED.is_active,
+                    notes = EXCLUDED.notes,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING extension, staff_name, is_active, notes, updated_at
+                """,
+                (extension, staff_name, is_active, notes, utcnow(), utcnow()),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    _ = user
+    return {
+        "extension": str(row.get("extension") or ""),
+        "staffName": str(row.get("staff_name") or ""),
+        "isActive": bool(row.get("is_active")),
+        "notes": str(row.get("notes") or ""),
+        "updatedAt": _iso(row.get("updated_at")) or "",
+    }
+
+
+def call_stats_resync(user: dict, trigger_source: str = "manual", reason: str = "") -> dict:
+    client_index = _call_stats_client_phone_index()
+    labels = _call_stats_number_labels(str(user.get("id") or ""))
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       external_number,
+                       client_id,
+                       client_name,
+                       client_manager,
+                       matched_status,
+                       match_source,
+                       number_tag,
+                       ignored
+                FROM call_records_processed
+                WHERE user_id = %s OR user_id IS NULL
+                ORDER BY updated_at DESC
+                """,
+                (user["id"],),
+            )
+            rows = cursor.fetchall() or []
+            updated_count = 0
+            for row in rows:
+                resolved = _call_stats_resolve_number_match(row.get("external_number"), client_index, labels)
+                before = (
+                    str(row.get("client_id") or ""),
+                    str(row.get("client_name") or ""),
+                    str(row.get("client_manager") or ""),
+                    str(row.get("matched_status") or ""),
+                    str(row.get("match_source") or ""),
+                    str(row.get("number_tag") or ""),
+                    bool(row.get("ignored")),
+                )
+                after = (
+                    str(resolved.get("clientId") or ""),
+                    str(resolved.get("clientName") or ""),
+                    str(resolved.get("clientManager") or ""),
+                    str(resolved.get("matchedStatus") or "unmatched"),
+                    str(resolved.get("matchSource") or ""),
+                    str(resolved.get("numberTag") or ""),
+                    bool(resolved.get("ignored")),
+                )
+                if before == after:
+                    continue
+                cursor.execute(
+                    """
+                    UPDATE call_records_processed
+                    SET client_id = %s,
+                        client_name = %s,
+                        client_manager = %s,
+                        matched_status = %s,
+                        match_source = %s,
+                        number_tag = %s,
+                        ignored = %s,
+                        last_resync_at = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        after[0],
+                        after[1],
+                        after[2],
+                        after[3],
+                        after[4],
+                        after[5],
+                        after[6],
+                        now,
+                        now,
+                        row.get("id"),
+                    ),
+                )
+                updated_count += 1
+            cursor.execute(
+                """
+                INSERT INTO call_resync_audit (
+                    triggered_by_user_id,
+                    trigger_source,
+                    reason,
+                    scanned_count,
+                    updated_count,
+                    details,
+                    created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+                """,
+                (
+                    user["id"],
+                    str(trigger_source or "manual"),
+                    str(reason or "").strip(),
+                    len(rows),
+                    updated_count,
+                    json.dumps({"triggerSource": trigger_source, "reason": reason}, default=_json_default),
+                    now,
+                ),
+            )
+        connection.commit()
+    return {
+        "scannedCount": len(rows),
+        "updatedCount": updated_count,
+        "triggerSource": trigger_source,
+        "reason": reason,
+        "createdAt": now.isoformat(),
+    }
+
+
+def call_stats_unmatched_numbers(user: dict, limit: int = 100) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT external_number,
+                       COUNT(*) AS total_calls,
+                       MAX(call_datetime) AS last_call_at,
+                       SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_calls,
+                       SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_calls
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND matched_status = 'unmatched'
+                  AND ignored = FALSE
+                GROUP BY external_number
+                ORDER BY COUNT(*) DESC, MAX(call_datetime) DESC
+                LIMIT %s
+                """,
+                (user["id"], max(1, min(int(limit or 100), 1000))),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [
+        {
+            "number": str(row.get("external_number") or ""),
+            "totalCalls": int(row.get("total_calls") or 0),
+            "lastCallAt": _iso(row.get("last_call_at")) or "",
+            "inboundCalls": int(row.get("inbound_calls") or 0),
+            "outboundCalls": int(row.get("outbound_calls") or 0),
+        }
+        for row in rows
+        if str(row.get("external_number") or "").strip()
+    ]
+
+
+def call_stats_apply_number_action(user: dict, payload: dict) -> dict:
+    number = _call_stats_normalise_phone((payload or {}).get("number"))
+    action = str((payload or {}).get("action") or "").strip().lower()
+    notes = str((payload or {}).get("notes") or "").strip()
+    if not number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Telephone number is required.")
+    valid_actions = {"assign_client", "supplier", "hmrc", "spam", "ignore", "clear"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid action.")
+
+    client_payload = {}
+    if action == "assign_client":
+        requested_client_id = str((payload or {}).get("clientId") or "").strip()
+        client_payload = _call_stats_lookup_client_by_id(requested_client_id)
+        if not client_payload.get("clientId"):
+            client_payload = {
+                "clientId": requested_client_id,
+                "clientName": str((payload or {}).get("clientName") or "").strip(),
+                "clientManager": str((payload or {}).get("clientManager") or "").strip(),
+            }
+        if not client_payload.get("clientName"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client details are required for manual assignment.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if action == "clear":
+                cursor.execute(
+                    "DELETE FROM call_number_labels WHERE number_value = %s AND (user_id = %s OR user_id IS NULL)",
+                    (number, user["id"]),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO call_number_labels (
+                        user_id,
+                        number_value,
+                        label_type,
+                        assigned_client_id,
+                        assigned_client_name,
+                        assigned_client_manager,
+                        notes,
+                        created_by_user_id,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (number_value)
+                    DO UPDATE
+                    SET user_id = EXCLUDED.user_id,
+                        label_type = EXCLUDED.label_type,
+                        assigned_client_id = EXCLUDED.assigned_client_id,
+                        assigned_client_name = EXCLUDED.assigned_client_name,
+                        assigned_client_manager = EXCLUDED.assigned_client_manager,
+                        notes = EXCLUDED.notes,
+                        created_by_user_id = EXCLUDED.created_by_user_id,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        user["id"],
+                        number,
+                        action,
+                        str(client_payload.get("clientId") or ""),
+                        str(client_payload.get("clientName") or ""),
+                        str(client_payload.get("clientManager") or ""),
+                        notes,
+                        user["id"],
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+        connection.commit()
+    resync = call_stats_resync(user, trigger_source="label_action", reason=f"{action}:{number}")
+    return {"number": number, "action": action, "resync": resync}
+
+
+def _call_stats_filter_clause(filters: dict | None = None) -> tuple[str, list]:
+    clean_filters = filters if isinstance(filters, dict) else {}
+    clauses = ["1=1"]
+    params: list = []
+    date_from = _parse_any_date(clean_filters.get("dateFrom"))
+    date_to = _parse_any_date(clean_filters.get("dateTo"))
+    if date_from:
+        clauses.append("call_date >= %s")
+        params.append(date_from)
+    if date_to:
+        clauses.append("call_date <= %s")
+        params.append(date_to)
+    staff_member = str(clean_filters.get("staffMember") or "").strip()
+    if staff_member:
+        clauses.append("LOWER(staff_member) = LOWER(%s)")
+        params.append(staff_member)
+    client_manager = str(clean_filters.get("clientManager") or "").strip()
+    if client_manager:
+        clauses.append("LOWER(client_manager) = LOWER(%s)")
+        params.append(client_manager)
+    client_id = str(clean_filters.get("clientId") or "").strip()
+    if client_id:
+        clauses.append("client_id = %s")
+        params.append(client_id)
+    direction = str(clean_filters.get("direction") or "").strip().lower()
+    if direction:
+        clauses.append("direction = %s")
+        params.append(direction)
+    outcome = str(clean_filters.get("outcome") or "").strip().lower()
+    if outcome:
+        clauses.append("LOWER(outcome) LIKE %s")
+        params.append(f"%{outcome}%")
+    match_status = str(clean_filters.get("matchStatus") or "").strip().lower()
+    if match_status in {"matched", "unmatched", "ignored"}:
+        clauses.append("matched_status = %s")
+        params.append(match_status)
+    import_file_id = str(clean_filters.get("importFileId") or "").strip()
+    if import_file_id:
+        clauses.append("import_file_id::text = %s")
+        params.append(import_file_id)
+    search = str(clean_filters.get("search") or "").strip()
+    if search:
+        like = f"%{search.lower()}%"
+        clauses.append(
+            "("
+            "LOWER(COALESCE(external_number, '')) LIKE %s OR "
+            "LOWER(COALESCE(from_number, '')) LIKE %s OR "
+            "LOWER(COALESCE(to_number, '')) LIKE %s OR "
+            "LOWER(COALESCE(staff_member, '')) LIKE %s OR "
+            "LOWER(COALESCE(outcome, '')) LIKE %s OR "
+            "CAST(call_date AS TEXT) LIKE %s"
+            ")"
+        )
+        params.extend([like, like, like, like, like, like])
+    return " AND ".join(clauses), params
+
+
+def _call_stats_fetch_rows(user: dict, filters: dict | None = None, row_limit: int = 20000) -> list[dict]:
+    where_clause, params = _call_stats_filter_clause(filters)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT id,
+                       import_file_id,
+                       call_datetime,
+                       call_date,
+                       call_time,
+                       direction,
+                       duration_seconds,
+                       outcome,
+                       from_number,
+                       to_number,
+                       external_number,
+                       internal_extension,
+                       staff_member,
+                       client_id,
+                       client_name,
+                       client_manager,
+                       matched_status,
+                       number_tag
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND {where_clause}
+                ORDER BY call_datetime DESC NULLS LAST
+                LIMIT %s
+                """,
+                (user["id"], *params, max(1, min(int(row_limit or 20000), 50000))),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return rows
+
+
+def _call_stats_average_duration(rows: list[dict]) -> float:
+    if not rows:
+        return 0.0
+    durations = [max(0, int(row.get("duration_seconds") or 0)) for row in rows]
+    return round(sum(durations) / max(1, len(durations)), 2)
+
+
+def _call_stats_group_counts(rows: list[dict], key_fn, limit: int = 20) -> list[dict]:
+    grouped: dict[str, int] = defaultdict(int)
+    for row in rows:
+        key = str(key_fn(row) or "").strip()
+        if not key:
+            continue
+        grouped[key] += 1
+    return [
+        {"label": label, "count": count}
+        for label, count in sorted(grouped.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ]
+
+
+def _call_stats_group_avg_duration_by_staff(rows: list[dict], limit: int = 20) -> list[dict]:
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for row in rows:
+        staff = str(row.get("staff_member") or "").strip()
+        if not staff:
+            continue
+        grouped[staff].append(max(0, int(row.get("duration_seconds") or 0)))
+    items = []
+    for staff, durations in grouped.items():
+        items.append({"label": staff, "avgDurationSeconds": round(sum(durations) / max(1, len(durations)), 2)})
+    return sorted(items, key=lambda item: (-item["avgDurationSeconds"], item["label"]))[:limit]
+
+
+def _call_stats_local_insight_summary(rows: list[dict], summary_cards: dict) -> dict:
+    top_clients = _call_stats_group_counts(rows, lambda row: row.get("client_name") or "", limit=3)
+    top_staff = _call_stats_group_counts(rows, lambda row: row.get("staff_member") or "", limit=3)
+    insights = []
+    if top_clients:
+        insights.append(f"Top client by call volume: {top_clients[0]['label']} ({top_clients[0]['count']} calls).")
+    if top_staff:
+        insights.append(f"Highest handling staff member: {top_staff[0]['label']} ({top_staff[0]['count']} calls).")
+    unmatched = int(summary_cards.get("unmatchedCalls") or 0)
+    total = int(summary_cards.get("totalCalls") or 0)
+    unmatched_rate = (unmatched / total * 100.0) if total else 0.0
+    insights.append(f"Unmatched call rate is {unmatched_rate:.1f}% ({unmatched} of {total}).")
+    return {
+        "headline": "Client call statistics generated from imported provider logs.",
+        "insights": insights,
+        "risks": ["High unmatched rate can hide client-demand trends."] if unmatched_rate > 20 else [],
+        "actions": [
+            "Review unmatched numbers and assign persistent labels.",
+            "Run Re-Sync after any client phone updates.",
+        ],
+        "engine": "local",
+    }
+
+
+def _call_stats_practice_summary(rows: list[dict]) -> dict:
+    total_calls = len(rows)
+    inbound_calls = sum(1 for row in rows if str(row.get("direction") or "").strip() == "inbound")
+    outbound_calls = sum(1 for row in rows if str(row.get("direction") or "").strip() == "outbound")
+    missed_calls = sum(
+        1
+        for row in rows
+        if "miss" in str(row.get("outcome") or "").strip().lower()
+        or (
+            str(row.get("direction") or "").strip() in {"inbound", "outbound"}
+            and int(row.get("duration_seconds") or 0) <= 0
+        )
+    )
+    matched_calls = sum(1 for row in rows if str(row.get("matched_status") or "").strip() == "matched")
+    ignored_calls = sum(1 for row in rows if str(row.get("matched_status") or "").strip() == "ignored")
+    unmatched_calls = max(0, total_calls - matched_calls - ignored_calls)
+    answered_calls = max(0, total_calls - missed_calls)
+    average_duration_seconds = _call_stats_average_duration(rows)
+    return {
+        "totalCalls": total_calls,
+        "inboundCalls": inbound_calls,
+        "outboundCalls": outbound_calls,
+        "missedCalls": missed_calls,
+        "answeredCalls": answered_calls,
+        "averageDurationSeconds": average_duration_seconds,
+        "matchedCalls": matched_calls,
+        "unmatchedCalls": unmatched_calls,
+    }
+
+
+def call_stats_dashboard_payload(user: dict, filters: dict | None = None) -> dict:
+    rows = _call_stats_fetch_rows(user, filters, row_limit=20000)
+    summary = _call_stats_practice_summary(rows)
+    by_day = _call_stats_group_counts(rows, lambda row: (row.get("call_date").isoformat() if row.get("call_date") else ""))
+    by_week = _call_stats_group_counts(
+        rows,
+        lambda row: (
+            f"{row.get('call_date').isocalendar().year}-W{str(row.get('call_date').isocalendar().week).zfill(2)}"
+            if row.get("call_date")
+            else ""
+        ),
+    )
+    by_month = _call_stats_group_counts(rows, lambda row: (row.get("call_date").strftime("%Y-%m") if row.get("call_date") else ""))
+    inbound_vs_outbound = [
+        {"label": "Inbound", "count": summary["inboundCalls"]},
+        {"label": "Outbound", "count": summary["outboundCalls"]},
+    ]
+    by_staff = _call_stats_group_counts(rows, lambda row: row.get("staff_member") or "")
+    by_manager = _call_stats_group_counts(rows, lambda row: row.get("client_manager") or "")
+    top_clients = _call_stats_group_counts(rows, lambda row: row.get("client_name") or "")
+    top_external = _call_stats_group_counts(rows, lambda row: row.get("external_number") or "")
+    unmatched = call_stats_unmatched_numbers(user, limit=50)
+    avg_by_staff = _call_stats_group_avg_duration_by_staff(rows)
+    recent_rows = [
+        {
+            "id": str(row.get("id") or ""),
+            "callDate": row.get("call_date").isoformat() if row.get("call_date") else "",
+            "callTime": str(row.get("call_time") or ""),
+            "direction": str(row.get("direction") or ""),
+            "staffMember": str(row.get("staff_member") or ""),
+            "clientManager": str(row.get("client_manager") or ""),
+            "fromNumber": str(row.get("from_number") or ""),
+            "toNumber": str(row.get("to_number") or ""),
+            "externalNumber": str(row.get("external_number") or ""),
+            "durationSeconds": int(row.get("duration_seconds") or 0),
+            "outcome": str(row.get("outcome") or ""),
+            "clientId": str(row.get("client_id") or ""),
+            "clientName": str(row.get("client_name") or ""),
+            "matchedStatus": str(row.get("matched_status") or ""),
+            "importFileId": str(row.get("import_file_id") or ""),
+        }
+        for row in rows[:400]
+    ]
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT trigger_source, reason, scanned_count, updated_count, created_at
+                FROM call_resync_audit
+                WHERE triggered_by_user_id = %s OR triggered_by_user_id IS NULL
+                ORDER BY created_at DESC
+                LIMIT 20
+                """,
+                (user["id"],),
+            )
+            resync_rows = cursor.fetchall() or []
+        connection.commit()
+    resync_audit = [
+        {
+            "triggerSource": str(row.get("trigger_source") or ""),
+            "reason": str(row.get("reason") or ""),
+            "scannedCount": int(row.get("scanned_count") or 0),
+            "updatedCount": int(row.get("updated_count") or 0),
+            "createdAt": _iso(row.get("created_at")) or "",
+        }
+        for row in resync_rows
+    ]
+    return {
+        "summary": summary,
+        "charts": {
+            "callsByDay": by_day,
+            "callsByWeek": by_week,
+            "callsByMonth": by_month,
+            "inboundVsOutbound": inbound_vs_outbound,
+            "callsByStaff": by_staff,
+            "callsByClientManager": by_manager,
+            "topCallingClients": top_clients,
+            "topExternalNumbers": top_external,
+            "unmatchedNumbers": unmatched,
+            "avgDurationByStaff": avg_by_staff,
+        },
+        "rows": recent_rows,
+        "imports": call_stats_import_files(user),
+        "extensions": call_stats_extension_directory_payload(),
+        "unmatchedNumbers": unmatched,
+        "resyncAudit": resync_audit,
+        "aiSummary": _call_stats_local_insight_summary(rows, summary),
+    }
+
+
+def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | None = None) -> dict:
+    clean_client_id = str(client_id or "").strip()
+    if not clean_client_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client id is required.")
+    scoped_filters = dict(filters or {})
+    scoped_filters["clientId"] = clean_client_id
+    rows = _call_stats_fetch_rows(user, scoped_filters, row_limit=10000)
+    summary = _call_stats_practice_summary(rows)
+    month_start = _month_start()
+    last_month_start = _add_months(month_start, 0) - timedelta(days=1)
+    last_month_start = last_month_start.replace(day=1)
+    calls_this_month = sum(1 for row in rows if row.get("call_date") and row.get("call_date") >= month_start)
+    calls_last_month = sum(
+        1
+        for row in rows
+        if row.get("call_date") and last_month_start <= row.get("call_date") < month_start
+    )
+    last_call_date = ""
+    if rows and rows[0].get("call_date"):
+        last_call_date = rows[0]["call_date"].isoformat()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS total_calls,
+                       COUNT(DISTINCT NULLIF(client_id, '')) AS active_clients,
+                       SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_calls,
+                       SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_calls
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND call_date >= %s
+                  AND call_date <= %s
+                  AND matched_status = 'matched'
+                """,
+                (user["id"], month_start, utcnow().date()),
+            )
+            benchmark_row = cursor.fetchone() or {}
+        connection.commit()
+    active_clients = max(1, int(benchmark_row.get("active_clients") or 0))
+    practice_avg_monthly = round((int(benchmark_row.get("total_calls") or 0) / active_clients), 2)
+    practice_avg_inbound = round((int(benchmark_row.get("inbound_calls") or 0) / active_clients), 2)
+    practice_avg_outbound = round((int(benchmark_row.get("outbound_calls") or 0) / active_clients), 2)
+    return {
+        "clientId": clean_client_id,
+        "summary": {
+            **summary,
+            "callsThisMonth": calls_this_month,
+            "callsLastMonth": calls_last_month,
+            "lastCallDate": last_call_date,
+        },
+        "benchmark": {
+            "callsThisMonth": {"client": calls_this_month, "practiceAverage": practice_avg_monthly},
+            "inboundCalls": {"client": summary["inboundCalls"], "practiceAverage": practice_avg_inbound},
+            "outboundCalls": {"client": summary["outboundCalls"], "practiceAverage": practice_avg_outbound},
+        },
+        "rows": [
+            {
+                "id": str(row.get("id") or ""),
+                "date": row.get("call_date").isoformat() if row.get("call_date") else "",
+                "time": str(row.get("call_time") or ""),
+                "direction": str(row.get("direction") or ""),
+                "staffMember": str(row.get("staff_member") or ""),
+                "clientManager": str(row.get("client_manager") or ""),
+                "fromNumber": str(row.get("from_number") or ""),
+                "toNumber": str(row.get("to_number") or ""),
+                "durationSeconds": int(row.get("duration_seconds") or 0),
+                "outcome": str(row.get("outcome") or ""),
+            }
+            for row in rows[:2000]
+        ],
+    }
+
+
+async def call_stats_generate_ai_report(user: dict, payload: dict | None = None) -> dict:
+    clean_payload = payload if isinstance(payload, dict) else {}
+    month_value = str(clean_payload.get("month") or "").strip()
+    if month_value and not re.fullmatch(r"\d{4}-\d{2}", month_value):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month must be YYYY-MM.")
+    if not month_value:
+        month_value = utcnow().strftime("%Y-%m")
+    report_scope = str(clean_payload.get("scope") or "practice").strip().lower()
+    client_id = str(clean_payload.get("clientId") or "").strip()
+
+    month_year = int(month_value[:4])
+    month_number = int(month_value[5:7])
+    month_end_day = monthrange(month_year, month_number)[1]
+    filters = {"dateFrom": f"{month_value}-01", "dateTo": f"{month_value}-{month_end_day:02d}"}
+    if report_scope == "client" and client_id:
+        filters["clientId"] = client_id
+    rows = _call_stats_fetch_rows(user, filters, row_limit=25000)
+    summary = _call_stats_practice_summary(rows)
+    top_clients = _call_stats_group_counts(rows, lambda row: row.get("client_name") or "", limit=8)
+    top_staff = _call_stats_group_counts(rows, lambda row: row.get("staff_member") or "", limit=8)
+    unmatched = _call_stats_group_counts(
+        [row for row in rows if str(row.get("matched_status") or "") == "unmatched"],
+        lambda row: row.get("external_number") or "",
+        limit=8,
+    )
+
+    report_payload = {
+        "month": month_value,
+        "scope": report_scope,
+        "clientId": client_id,
+        "summary": summary,
+        "topClients": top_clients,
+        "topStaff": top_staff,
+        "unmatchedNumbers": unmatched,
+    }
+    ai_report = _call_stats_local_insight_summary(rows, summary)
+    settings = get_settings()
+    if settings.openai_api_key and rows:
+        request_body = {
+            "input": [
+                {
+                    "role": "system",
+                    "content": "You are a UK accountancy operations analyst. Return concise JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Generate monthly call-report insights for {month_value}. "
+                        f"Data: {json.dumps(report_payload, default=_json_default)}"
+                    ),
+                },
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "call_stats_report",
+                    "schema": CALL_STATS_AI_SCHEMA,
+                    "strict": True,
+                }
+            },
+        }
+        try:
+            openai_response = await _post_openai_responses(
+                request_body,
+                "Client Call Stats monthly report",
+                user_id=user["id"],
+                feature="client-call-stats",
+                page="client-call-stats",
+            )
+            parsed = _load_openai_json_response(openai_response, "OpenAI returned invalid Client Call Stats JSON.")
+            ai_report = {
+                "headline": str(parsed.get("headline") or "").strip(),
+                "insights": [str(item).strip() for item in (parsed.get("insights") or []) if str(item).strip()][:8],
+                "risks": [str(item).strip() for item in (parsed.get("risks") or []) if str(item).strip()][:8],
+                "actions": [str(item).strip() for item in (parsed.get("actions") or []) if str(item).strip()][:8],
+                "engine": "openai",
+            }
+        except Exception as exc:
+            logger.exception("Client Call Stats AI report failed: %s", exc)
+            ai_report["engine"] = "local_error"
+            ai_report["error"] = str(exc)[:500]
+
+    title = f"Client Call Stats Report {month_value}"
+    if report_scope == "client" and client_id:
+        title = f"Client Call Stats Report {month_value} ({client_id})"
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO call_ai_reports (
+                    user_id,
+                    report_scope,
+                    period_month,
+                    client_id,
+                    title,
+                    report_json,
+                    generated_by,
+                    created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                RETURNING id, created_at
+                """,
+                (
+                    user["id"],
+                    report_scope,
+                    month_value,
+                    client_id,
+                    title,
+                    json.dumps({"summary": summary, "report": ai_report, "payload": report_payload}, default=_json_default),
+                    ai_report.get("engine") or "local",
+                    utcnow(),
+                ),
+            )
+            created_row = cursor.fetchone() or {}
+        connection.commit()
+    history = call_stats_ai_reports_history(user, limit=24)
+    return {
+        "reportId": str(created_row.get("id") or ""),
+        "createdAt": _iso(created_row.get("created_at")) or "",
+        "month": month_value,
+        "scope": report_scope,
+        "clientId": client_id,
+        "summary": summary,
+        "report": ai_report,
+        "history": history,
+    }
+
+
+def _call_stats_default_filter_suggestions(today: date | None = None, limit: int = 6) -> list[dict]:
+    now = today or utcnow().date()
+    in_30_days = now + timedelta(days=30)
+    current_year = now.year
+    items = [
+        {
+            "name": "VAT Returns in next 30 days",
+            "description": "Focus date window for upcoming VAT-return operational call activity.",
+            "filters": {
+                "dateFrom": now.isoformat(),
+                "dateTo": in_30_days.isoformat(),
+                "staffMember": "",
+                "clientManager": "",
+                "direction": "",
+                "matchStatus": "matched",
+            },
+        },
+        {
+            "name": f"{current_year} Self Assessments",
+            "description": f"Year-wide call trend view for Self Assessment season ({current_year}).",
+            "filters": {
+                "dateFrom": f"{current_year}-01-01",
+                "dateTo": f"{current_year}-12-31",
+                "staffMember": "",
+                "clientManager": "",
+                "direction": "",
+                "matchStatus": "",
+            },
+        },
+        {
+            "name": "Unmatched calls this month",
+            "description": "Prioritise number cleanup and matching accuracy in the current month.",
+            "filters": {
+                "dateFrom": now.replace(day=1).isoformat(),
+                "dateTo": now.isoformat(),
+                "staffMember": "",
+                "clientManager": "",
+                "direction": "",
+                "matchStatus": "unmatched",
+            },
+        },
+        {
+            "name": "Outbound service pressure (30d)",
+            "description": "Review outbound effort and follow-up load over the last 30 days.",
+            "filters": {
+                "dateFrom": (now - timedelta(days=30)).isoformat(),
+                "dateTo": now.isoformat(),
+                "staffMember": "",
+                "clientManager": "",
+                "direction": "outbound",
+                "matchStatus": "",
+            },
+        },
+    ]
+    return items[: max(1, min(int(limit or 6), 10))]
+
+
+def _call_stats_sanitise_filter_preset(candidate: dict) -> dict | None:
+    if not isinstance(candidate, dict):
+        return None
+    name = str(candidate.get("name") or "").strip()
+    if not name:
+        return None
+    description = str(candidate.get("description") or "").strip()
+    filters_raw = candidate.get("filters") if isinstance(candidate.get("filters"), dict) else {}
+    date_from = str(filters_raw.get("dateFrom") or "").strip()
+    date_to = str(filters_raw.get("dateTo") or "").strip()
+    if date_from and not _parse_any_date(date_from):
+        date_from = ""
+    if date_to and not _parse_any_date(date_to):
+        date_to = ""
+    direction = str(filters_raw.get("direction") or "").strip().lower()
+    if direction not in {"", "inbound", "outbound"}:
+        direction = ""
+    match_status = str(filters_raw.get("matchStatus") or "").strip().lower()
+    if match_status not in {"", "matched", "unmatched", "ignored"}:
+        match_status = ""
+    return {
+        "name": name[:80],
+        "description": description[:240],
+        "filters": {
+            "dateFrom": date_from,
+            "dateTo": date_to,
+            "staffMember": str(filters_raw.get("staffMember") or "").strip()[:80],
+            "clientManager": str(filters_raw.get("clientManager") or "").strip()[:80],
+            "direction": direction,
+            "matchStatus": match_status,
+        },
+    }
+
+
+async def call_stats_suggest_filter_presets(user: dict, payload: dict | None = None) -> dict:
+    clean_payload = payload if isinstance(payload, dict) else {}
+    prompt = str(clean_payload.get("prompt") or "").strip()
+    limit = max(1, min(int(clean_payload.get("limit") or 6), 10))
+    suggestions = _call_stats_default_filter_suggestions(limit=limit)
+    used_openai = False
+    settings = get_settings()
+    if settings.openai_api_key:
+        rows = _call_stats_fetch_rows(
+            user,
+            {"dateFrom": (utcnow().date() - timedelta(days=90)).isoformat(), "dateTo": utcnow().date().isoformat()},
+            row_limit=8000,
+        )
+        summary = _call_stats_practice_summary(rows)
+        top_clients = _call_stats_group_counts(rows, lambda row: row.get("client_name") or "", limit=5)
+        top_staff = _call_stats_group_counts(rows, lambda row: row.get("staff_member") or "", limit=5)
+        goal = prompt or "Suggest useful operational filters for call analytics."
+        request_body = {
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You create practical filter presets for a UK accountancy call analytics dashboard. "
+                        "Keep names short, use date ranges that are valid dates, and only use allowed filter fields."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"User goal: {goal}. "
+                        "Return between 3 and 6 presets. "
+                        f"Current date: {utcnow().date().isoformat()}. "
+                        f"Recent summary: {json.dumps(summary, default=_json_default)}. "
+                        f"Top clients: {json.dumps(top_clients, default=_json_default)}. "
+                        f"Top staff: {json.dumps(top_staff, default=_json_default)}."
+                    ),
+                },
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "call_stats_filter_presets",
+                    "schema": CALL_STATS_FILTER_PRESET_SCHEMA,
+                    "strict": True,
+                }
+            },
+        }
+        try:
+            openai_response = await _post_openai_responses(
+                request_body,
+                "Client Call Stats filter presets",
+                user_id=user["id"],
+                feature="client-call-stats",
+                page="client-call-stats",
+            )
+            parsed = _load_openai_json_response(openai_response, "OpenAI returned invalid Client Call Stats preset JSON.")
+            ai_candidates = parsed.get("presets") if isinstance(parsed.get("presets"), list) else []
+            cleaned = [_call_stats_sanitise_filter_preset(item) for item in ai_candidates]
+            ai_suggestions = [item for item in cleaned if item][:limit]
+            if ai_suggestions:
+                suggestions = ai_suggestions
+                used_openai = True
+        except Exception as exc:
+            logger.exception("Client Call Stats AI preset suggestions failed: %s", exc)
+    cleaned_fallback = [_call_stats_sanitise_filter_preset(item) for item in suggestions]
+    return {
+        "presets": [item for item in cleaned_fallback if item][:limit],
+        "source": "openai" if used_openai else "local",
+        "prompt": prompt,
+    }
+
+
+def call_stats_ai_reports_history(user: dict, limit: int = 24) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       report_scope,
+                       period_month,
+                       client_id,
+                       title,
+                       generated_by,
+                       report_json,
+                       created_at
+                FROM call_ai_reports
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], max(1, min(int(limit or 24), 100))),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [
+        {
+            "id": str(row.get("id") or ""),
+            "scope": str(row.get("report_scope") or ""),
+            "month": str(row.get("period_month") or ""),
+            "clientId": str(row.get("client_id") or ""),
+            "title": str(row.get("title") or ""),
+            "engine": str(row.get("generated_by") or ""),
+            "headline": str((row.get("report_json") or {}).get("report", {}).get("headline") or ""),
+            "createdAt": _iso(row.get("created_at")) or "",
+        }
+        for row in rows
+    ]
 
 
 def _pi_month_bounds(month_value: str | None = None) -> tuple[date, date]:

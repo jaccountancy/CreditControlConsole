@@ -2535,6 +2535,260 @@ ALTER TABLE juksib_automation_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTA
 CREATE INDEX IF NOT EXISTS juksib_automation_runs_user_started_idx
 ON juksib_automation_runs (user_id, started_at DESC);
 
+CREATE TABLE IF NOT EXISTS call_extension_directory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    extension TEXT NOT NULL,
+    staff_name TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (extension)
+);
+
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS extension TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS staff_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE call_extension_directory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_extension_directory_staff_idx
+ON call_extension_directory (LOWER(staff_name));
+
+CREATE TABLE IF NOT EXISTS call_import_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    source_filename TEXT NOT NULL DEFAULT '',
+    source_file_hash TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    new_rows INTEGER NOT NULL DEFAULT 0,
+    duplicate_rows INTEGER NOT NULL DEFAULT 0,
+    invalid_rows INTEGER NOT NULL DEFAULT 0,
+    matched_rows INTEGER NOT NULL DEFAULT 0,
+    unmatched_rows INTEGER NOT NULL DEFAULT 0,
+    mapping_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    import_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS source_filename TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS source_file_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS source_provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS total_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS new_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS duplicate_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS invalid_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS matched_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS unmatched_rows INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS mapping_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS import_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE call_import_files ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_import_files_created_idx
+ON call_import_files (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS call_import_rows_raw (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_file_id UUID NOT NULL REFERENCES call_import_files(id) ON DELETE CASCADE,
+    row_number INTEGER NOT NULL DEFAULT 0,
+    original_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fingerprint TEXT NOT NULL DEFAULT '',
+    is_duplicate BOOLEAN NOT NULL DEFAULT FALSE,
+    is_valid BOOLEAN NOT NULL DEFAULT TRUE,
+    validation_errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    processed_call_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS import_file_id UUID REFERENCES call_import_files(id) ON DELETE CASCADE;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS row_number INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS original_row JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS is_duplicate BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS is_valid BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS validation_errors JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS processed_call_id UUID;
+ALTER TABLE call_import_rows_raw ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_import_rows_raw_import_idx
+ON call_import_rows_raw (import_file_id, row_number ASC);
+
+CREATE INDEX IF NOT EXISTS call_import_rows_raw_fingerprint_idx
+ON call_import_rows_raw (fingerprint);
+
+CREATE TABLE IF NOT EXISTS call_records_processed (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    import_file_id UUID REFERENCES call_import_files(id) ON DELETE SET NULL,
+    raw_row_id UUID REFERENCES call_import_rows_raw(id) ON DELETE SET NULL,
+    call_fingerprint TEXT NOT NULL,
+    direction TEXT NOT NULL DEFAULT '',
+    call_datetime TIMESTAMPTZ,
+    call_date DATE,
+    call_time TEXT NOT NULL DEFAULT '',
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    cost NUMERIC(12, 4) NOT NULL DEFAULT 0,
+    outcome TEXT NOT NULL DEFAULT '',
+    from_number TEXT NOT NULL DEFAULT '',
+    to_number TEXT NOT NULL DEFAULT '',
+    external_number TEXT NOT NULL DEFAULT '',
+    internal_extension TEXT NOT NULL DEFAULT '',
+    staff_member TEXT NOT NULL DEFAULT '',
+    client_id TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    client_manager TEXT NOT NULL DEFAULT '',
+    matched_status TEXT NOT NULL DEFAULT 'unmatched',
+    match_source TEXT NOT NULL DEFAULT '',
+    number_tag TEXT NOT NULL DEFAULT '',
+    ignored BOOLEAN NOT NULL DEFAULT FALSE,
+    last_resync_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (call_fingerprint)
+);
+
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS import_file_id UUID REFERENCES call_import_files(id) ON DELETE SET NULL;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS raw_row_id UUID REFERENCES call_import_rows_raw(id) ON DELETE SET NULL;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS call_fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS call_datetime TIMESTAMPTZ;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS call_date DATE;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS call_time TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS cost NUMERIC(12, 4) NOT NULL DEFAULT 0;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS outcome TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS from_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS to_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS external_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS internal_extension TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS staff_member TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS client_manager TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS matched_status TEXT NOT NULL DEFAULT 'unmatched';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS match_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS number_tag TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS ignored BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS last_resync_at TIMESTAMPTZ;
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE call_records_processed ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS call_records_processed_fingerprint_uidx
+ON call_records_processed (call_fingerprint);
+
+CREATE INDEX IF NOT EXISTS call_records_processed_date_idx
+ON call_records_processed (call_date DESC, call_datetime DESC);
+
+CREATE INDEX IF NOT EXISTS call_records_processed_match_idx
+ON call_records_processed (matched_status, client_id);
+
+CREATE INDEX IF NOT EXISTS call_records_processed_user_date_idx
+ON call_records_processed (user_id, call_date DESC, call_datetime DESC);
+
+CREATE INDEX IF NOT EXISTS call_records_processed_staff_idx
+ON call_records_processed (LOWER(staff_member), call_date DESC);
+
+CREATE INDEX IF NOT EXISTS call_records_processed_external_idx
+ON call_records_processed (external_number, call_date DESC);
+
+CREATE TABLE IF NOT EXISTS call_number_labels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    number_value TEXT NOT NULL,
+    label_type TEXT NOT NULL DEFAULT '',
+    assigned_client_id TEXT NOT NULL DEFAULT '',
+    assigned_client_name TEXT NOT NULL DEFAULT '',
+    assigned_client_manager TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (number_value)
+);
+
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS number_value TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS label_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS assigned_client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS assigned_client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS assigned_client_manager TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE call_number_labels ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_number_labels_type_idx
+ON call_number_labels (label_type, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS call_number_labels_user_idx
+ON call_number_labels (user_id, number_value);
+
+CREATE TABLE IF NOT EXISTS call_resync_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    triggered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    trigger_source TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    scanned_count INTEGER NOT NULL DEFAULT 0,
+    updated_count INTEGER NOT NULL DEFAULT 0,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS triggered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS trigger_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS scanned_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS updated_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE call_resync_audit ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_resync_audit_created_idx
+ON call_resync_audit (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS call_ai_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    report_scope TEXT NOT NULL DEFAULT 'practice',
+    period_month TEXT NOT NULL DEFAULT '',
+    client_id TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    report_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    generated_by TEXT NOT NULL DEFAULT 'local',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS report_scope TEXT NOT NULL DEFAULT 'practice';
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS period_month TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS report_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS generated_by TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE call_ai_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS call_ai_reports_scope_period_idx
+ON call_ai_reports (user_id, report_scope, period_month DESC, created_at DESC);
+
+INSERT INTO call_extension_directory (extension, staff_name, notes)
+VALUES
+    ('200', 'Martha', ''),
+    ('203', 'Tom', ''),
+    ('204', 'Office Spare', ''),
+    ('205', 'Jay', ''),
+    ('206', 'T Room', ''),
+    ('207', 'Dean H', ''),
+    ('208', 'Hannah', ''),
+    ('209', 'Lauren', ''),
+    ('210', 'Boardroom', ''),
+    ('211', 'Mia', ''),
+    ('212', 'Gracie', ''),
+    ('213', 'Amie', '')
+ON CONFLICT (extension) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS snack_products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sku TEXT NOT NULL UNIQUE,

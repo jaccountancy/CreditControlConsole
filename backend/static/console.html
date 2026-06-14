@@ -33587,9 +33587,9 @@
                                     <table class="ch-table" aria-label="Client call CSV mapping and preview">
                                         <thead>
                                             <tr>
-                                                <th>CSV column</th>
-                                                <th>Mapped field</th>
-                                                <th>Sample</th>
+                                                <th>Row</th>
+                                                <th>Direction</th>
+                                                <th>External number</th>
                                                 <th>Status</th>
                                             </tr>
                                         </thead>
@@ -33620,8 +33620,49 @@
                                             <option value="ignored">Ignored</option>
                                         </select>
                                     </label>
+                                    <button class="ghost-button" id="clientCallStatsPreset7DaysButton" type="button">Last 7 days</button>
+                                    <button class="ghost-button" id="clientCallStatsPreset30DaysButton" type="button">Last 30 days</button>
+                                    <button class="ghost-button" id="clientCallStatsPresetMonthButton" type="button">This month</button>
                                     <button class="ghost-button" id="clientCallStatsApplyFiltersButton" type="button">Apply filters</button>
+                                    <button class="ghost-button" id="clientCallStatsResetFiltersButton" type="button">Reset filters</button>
                                 </div>
+                                <div class="detail-actions">
+                                    <label class="field-inline" for="clientCallStatsSavedPresetsSelect">
+                                        <span>Saved presets</span>
+                                        <select id="clientCallStatsSavedPresetsSelect">
+                                            <option value="">Select preset</option>
+                                        </select>
+                                    </label>
+                                    <label class="field-inline" for="clientCallStatsPresetNameInput">
+                                        <span>Preset name</span>
+                                        <input id="clientCallStatsPresetNameInput" type="text" placeholder="e.g. VAT Returns in next 30 days" />
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsApplySavedPresetButton" type="button">Apply saved</button>
+                                    <button class="ghost-button" id="clientCallStatsSavePresetButton" type="button">Save current</button>
+                                    <button class="ghost-button" id="clientCallStatsDeletePresetButton" type="button">Delete saved</button>
+                                </div>
+                                <div class="detail-actions">
+                                    <label class="field-inline" for="clientCallStatsAiPresetPromptInput">
+                                        <span>AI preset brief</span>
+                                        <input id="clientCallStatsAiPresetPromptInput" type="text" placeholder="e.g. VAT Returns in the next 30 days or 2026 Self Assessments" />
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsSuggestPresetsButton" type="button">AI suggest presets</button>
+                                </div>
+                                <p class="detail-meta" id="clientCallStatsPresetStatus">Saved presets and AI suggestions will appear here.</p>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Client Call Stats AI filter preset suggestions">
+                                        <thead>
+                                            <tr>
+                                                <th>Preset</th>
+                                                <th>Description</th>
+                                                <th>Date range</th>
+                                                <th>Filters</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsAiPresetSuggestionsBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
 
                             <section class="detail-card">
@@ -33635,7 +33676,10 @@
 
                             <section class="detail-card">
                                 <h4>Unmatched Number Management</h4>
-                                <p class="detail-meta">Assign unmatched numbers to clients or classify as supplier/HMRC/spam/ignore.</p>
+                                <div class="detail-actions">
+                                    <p class="detail-meta">Assign unmatched numbers to clients or classify as supplier/HMRC/spam/ignore.</p>
+                                    <button class="ghost-button" id="clientCallStatsExportUnmatchedButton" type="button">Export unmatched CSV</button>
+                                </div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Unmatched telephone numbers">
                                         <thead>
@@ -33649,6 +33693,43 @@
                                             </tr>
                                         </thead>
                                         <tbody id="clientCallStatsUnmatchedBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Import History</h4>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Call import history">
+                                        <thead>
+                                            <tr>
+                                                <th>Imported</th>
+                                                <th>File</th>
+                                                <th>Total</th>
+                                                <th>New</th>
+                                                <th>Duplicates</th>
+                                                <th>Invalid</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsImportHistoryBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Re-Sync Audit</h4>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Call stats resync audit">
+                                        <thead>
+                                            <tr>
+                                                <th>When</th>
+                                                <th>Source</th>
+                                                <th>Reason</th>
+                                                <th>Scanned</th>
+                                                <th>Updated</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsResyncAuditBody"></tbody>
                                     </table>
                                 </section>
                             </section>
@@ -35293,6 +35374,9 @@
             let clientCallStatsAiReports = [];
             let clientCallStatsLatestAiReport = null;
             let clientCallStatsEventsBound = false;
+            const clientCallStatsFilterPresetStorageKey = `${STORAGE_KEY}:client-call-stats-filter-presets:v1`;
+            let clientCallStatsSavedFilterPresets = loadClientCallStatsFilterPresets();
+            let clientCallStatsAiFilterPresets = [];
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
             const CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP = 2;
             const CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT = 3;
@@ -36615,6 +36699,7 @@
                         clientCallStatsClientLogs: config.endpoints?.clientCallStatsClientLogs || "/api/client-call-stats/clients/:clientId",
                         clientCallStatsAiReport: config.endpoints?.clientCallStatsAiReport || "/api/client-call-stats/ai-report",
                         clientCallStatsAiReports: config.endpoints?.clientCallStatsAiReports || "/api/client-call-stats/ai-reports",
+                        clientCallStatsFilterPresetSuggestions: config.endpoints?.clientCallStatsFilterPresetSuggestions || "/api/client-call-stats/filter-presets/suggest",
                         piClearingAccount: config.endpoints?.piClearingAccount || "/api/pi-clearing-account",
                         piClearingAccountRun: config.endpoints?.piClearingAccountRun || "/api/pi-clearing-account/run",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
@@ -44029,9 +44114,159 @@
                 }
             }
 
+            function defaultClientCallStatsFilterPresetTemplates() {
+                const now = new Date();
+                const dateIso = (date) => date.toISOString().slice(0, 10);
+                const in30Days = new Date(now);
+                in30Days.setDate(now.getDate() + 30);
+                return [
+                    {
+                        name: "VAT Returns in next 30 days",
+                        description: "Review likely VAT-return support demand over the next 30 days.",
+                        filters: { dateFrom: dateIso(now), dateTo: dateIso(in30Days), staffMember: "", clientManager: "", direction: "", matchStatus: "matched" },
+                    },
+                    {
+                        name: "2026 Self Assessments",
+                        description: "Track Self Assessment communication trends across 2026.",
+                        filters: { dateFrom: "2026-01-01", dateTo: "2026-12-31", staffMember: "", clientManager: "", direction: "", matchStatus: "" },
+                    },
+                    {
+                        name: "Unmatched calls this month",
+                        description: "Surface unmatched numbers to improve client linkage quality.",
+                        filters: { dateFrom: dateIso(new Date(now.getFullYear(), now.getMonth(), 1)), dateTo: dateIso(now), staffMember: "", clientManager: "", direction: "", matchStatus: "unmatched" },
+                    },
+                ];
+            }
+
+            function normaliseClientCallStatsFilters(payload = {}) {
+                const normaliseDate = (value) => {
+                    const text = String(value || "").trim();
+                    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+                };
+                const direction = String(payload.direction || "").trim().toLowerCase();
+                const matchStatus = String(payload.matchStatus || "").trim().toLowerCase();
+                return {
+                    dateFrom: normaliseDate(payload.dateFrom),
+                    dateTo: normaliseDate(payload.dateTo),
+                    staffMember: String(payload.staffMember || "").trim(),
+                    clientManager: String(payload.clientManager || "").trim(),
+                    direction: ["inbound", "outbound"].includes(direction) ? direction : "",
+                    matchStatus: ["matched", "unmatched", "ignored"].includes(matchStatus) ? matchStatus : "",
+                };
+            }
+
+            function normaliseClientCallStatsPreset(payload = {}) {
+                const name = String(payload.name || "").trim();
+                if (!name) return null;
+                return {
+                    name: name.slice(0, 80),
+                    description: String(payload.description || "").trim().slice(0, 240),
+                    filters: normaliseClientCallStatsFilters(payload.filters || {}),
+                };
+            }
+
+            function loadClientCallStatsFilterPresets() {
+                try {
+                    const raw = window.localStorage.getItem(clientCallStatsFilterPresetStorageKey);
+                    if (!raw) return defaultClientCallStatsFilterPresetTemplates();
+                    const parsed = JSON.parse(raw);
+                    if (!Array.isArray(parsed)) return defaultClientCallStatsFilterPresetTemplates();
+                    const cleaned = parsed.map((item) => normaliseClientCallStatsPreset(item)).filter(Boolean);
+                    return cleaned.length ? cleaned : defaultClientCallStatsFilterPresetTemplates();
+                } catch (_error) {
+                    return defaultClientCallStatsFilterPresetTemplates();
+                }
+            }
+
+            function persistClientCallStatsFilterPresets() {
+                try {
+                    const cleaned = (Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets : [])
+                        .map((item) => normaliseClientCallStatsPreset(item))
+                        .filter(Boolean)
+                        .slice(0, 24);
+                    clientCallStatsSavedFilterPresets = cleaned;
+                    window.localStorage.setItem(clientCallStatsFilterPresetStorageKey, JSON.stringify(cleaned));
+                } catch (_error) {
+                    // Non-blocking local storage failures are safe to ignore.
+                }
+            }
+
+            function readClientCallStatsFiltersFromInputs() {
+                return normaliseClientCallStatsFilters({
+                    dateFrom: document.getElementById("clientCallStatsFilterDateFrom")?.value || "",
+                    dateTo: document.getElementById("clientCallStatsFilterDateTo")?.value || "",
+                    staffMember: document.getElementById("clientCallStatsFilterStaff")?.value || "",
+                    clientManager: document.getElementById("clientCallStatsFilterClientManager")?.value || "",
+                    direction: document.getElementById("clientCallStatsFilterDirection")?.value || "",
+                    matchStatus: document.getElementById("clientCallStatsFilterMatchStatus")?.value || "",
+                });
+            }
+
+            function writeClientCallStatsFiltersToInputs(filters = {}) {
+                const clean = normaliseClientCallStatsFilters(filters);
+                const fromNode = document.getElementById("clientCallStatsFilterDateFrom");
+                const toNode = document.getElementById("clientCallStatsFilterDateTo");
+                const staffNode = document.getElementById("clientCallStatsFilterStaff");
+                const managerNode = document.getElementById("clientCallStatsFilterClientManager");
+                const directionNode = document.getElementById("clientCallStatsFilterDirection");
+                const matchNode = document.getElementById("clientCallStatsFilterMatchStatus");
+                if (fromNode) fromNode.value = clean.dateFrom;
+                if (toNode) toNode.value = clean.dateTo;
+                if (staffNode) staffNode.value = clean.staffMember;
+                if (managerNode) managerNode.value = clean.clientManager;
+                if (directionNode) directionNode.value = clean.direction;
+                if (matchNode) matchNode.value = clean.matchStatus;
+            }
+
+            function renderClientCallStatsPresetControls() {
+                const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
+                const status = document.getElementById("clientCallStatsPresetStatus");
+                if (presetSelect) {
+                    const current = String(presetSelect.value || "").trim();
+                    const rows = Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets : [];
+                    presetSelect.innerHTML = `<option value="">Select preset</option>${rows.map((preset) => `<option value="${escapeHTML(preset.name)}">${escapeHTML(preset.name)}</option>`).join("")}`;
+                    if (current && rows.some((preset) => preset.name === current)) presetSelect.value = current;
+                }
+                if (status) {
+                    const savedCount = Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets.length : 0;
+                    const aiCount = Array.isArray(clientCallStatsAiFilterPresets) ? clientCallStatsAiFilterPresets.length : 0;
+                    status.textContent = `Saved presets: ${savedCount.toLocaleString("en-GB")} · AI suggestions: ${aiCount.toLocaleString("en-GB")}.`;
+                }
+                const aiBody = document.getElementById("clientCallStatsAiPresetSuggestionsBody");
+                if (aiBody) {
+                    const rows = Array.isArray(clientCallStatsAiFilterPresets) ? clientCallStatsAiFilterPresets : [];
+                    aiBody.innerHTML = rows.length
+                        ? rows.map((preset, index) => {
+                            const filters = normaliseClientCallStatsFilters(preset?.filters || {});
+                            const dateRange = [filters.dateFrom || "Any", filters.dateTo || "Any"].join(" to ");
+                            const filterSummary = [
+                                filters.direction ? `Direction: ${filters.direction}` : "",
+                                filters.matchStatus ? `Match: ${filters.matchStatus}` : "",
+                                filters.staffMember ? `Staff: ${filters.staffMember}` : "",
+                                filters.clientManager ? `Manager: ${filters.clientManager}` : "",
+                            ].filter(Boolean).join(" · ") || "No extra filter constraints";
+                            return `
+                                <tr>
+                                    <td>${escapeHTML(String(preset?.name || `Preset ${index + 1}`))}</td>
+                                    <td>${escapeHTML(String(preset?.description || ""))}</td>
+                                    <td>${escapeHTML(dateRange)}</td>
+                                    <td>${escapeHTML(filterSummary)}</td>
+                                    <td>
+                                        <button class="ghost-button" type="button" data-call-ai-preset-apply="${index}">Apply</button>
+                                        <button class="ghost-button" type="button" data-call-ai-preset-save="${index}">Save</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : `<tr><td colspan="5">No AI suggestions yet. Enter a brief and click “AI suggest presets”.</td></tr>`;
+                }
+            }
+
             function renderClientCallStatsScreen() {
                 const summary = document.getElementById("clientCallStatsSummary");
                 if (!summary) return;
+                writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
+                renderClientCallStatsPresetControls();
                 const totalCalls = Number(clientCallStatsData?.summary?.totalCalls || 0).toLocaleString("en-GB");
                 const matchedCalls = Number(clientCallStatsData?.summary?.matchedCalls || 0).toLocaleString("en-GB");
                 const unmatchedCalls = Number(clientCallStatsData?.summary?.unmatchedCalls || 0).toLocaleString("en-GB");
@@ -44103,6 +44338,11 @@
                         <article class="metric-card">
                             <p class="metric-label">AI insight snapshot</p>
                             <p style="font-size:12px;line-height:1.45;margin-top:8px;">${escapeHTML(String(aiSummary?.headline || "Insights will appear after refresh/import."))}</p>
+                            ${
+                                Array.isArray(aiSummary?.insights) && aiSummary.insights.length
+                                    ? `<ul style="margin:8px 0 0 16px;font-size:12px;line-height:1.4;">${aiSummary.insights.slice(0, 3).map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("")}</ul>`
+                                    : ""
+                            }
                         </article>
                     `;
                 }
@@ -44176,6 +44416,39 @@
                             </tr>
                         `).join("")
                         : `<tr><td colspan="3">No extensions configured.</td></tr>`;
+                }
+
+                const importHistoryBody = document.getElementById("clientCallStatsImportHistoryBody");
+                if (importHistoryBody) {
+                    const rows = Array.isArray(clientCallStatsData?.imports) ? clientCallStatsData.imports : [];
+                    importHistoryBody.innerHTML = rows.length
+                        ? rows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(row.createdAt) || "--")}</td>
+                                <td>${escapeHTML(String(row.filename || ""))}</td>
+                                <td>${escapeHTML(Number(row.totalRows || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.newRows || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.duplicateRows || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.invalidRows || 0).toLocaleString("en-GB"))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="6">No imports yet.</td></tr>`;
+                }
+
+                const resyncAuditBody = document.getElementById("clientCallStatsResyncAuditBody");
+                if (resyncAuditBody) {
+                    const rows = Array.isArray(clientCallStatsData?.resyncAudit) ? clientCallStatsData.resyncAudit : [];
+                    resyncAuditBody.innerHTML = rows.length
+                        ? rows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(row.createdAt) || "--")}</td>
+                                <td>${escapeHTML(String(row.triggerSource || ""))}</td>
+                                <td>${escapeHTML(String(row.reason || ""))}</td>
+                                <td>${escapeHTML(Number(row.scannedCount || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.updatedCount || 0).toLocaleString("en-GB"))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="5">No re-sync activity yet.</td></tr>`;
                 }
 
                 const callRowsBody = document.getElementById("clientCallStatsRowsBody");
@@ -44362,7 +44635,8 @@
                 if (action === "assign_client") {
                     const clientId = window.prompt("Enter the client ID to assign this number:");
                     if (!clientId) return;
-                    payload = { ...payload, clientId: String(clientId).trim() };
+                    const clientName = window.prompt("Optional: enter client name for this assignment (leave blank if unknown):");
+                    payload = { ...payload, clientId: String(clientId).trim(), clientName: String(clientName || "").trim() };
                 }
                 try {
                     const response = await requestJSON(api.endpoints.clientCallStatsUnmatchedAction, {
@@ -44423,20 +44697,49 @@
                 document.getElementById("clientCallStatsLoadClientLogsButton")?.addEventListener("click", () => loadClientCallLogs());
                 document.getElementById("clientCallStatsGenerateAiReportButton")?.addEventListener("click", () => generateClientCallStatsAiReport());
                 document.getElementById("clientCallStatsExportDashboardButton")?.addEventListener("click", () => exportClientCallStatsDashboardCSV());
+                document.getElementById("clientCallStatsExportUnmatchedButton")?.addEventListener("click", () => exportClientCallStatsUnmatchedCSV());
                 document.getElementById("clientCallStatsExportClientLogsButton")?.addEventListener("click", () => exportClientCallStatsClientCSV());
                 document.getElementById("clientCallStatsExportAiReportsButton")?.addEventListener("click", () => exportClientCallStatsAiReportsCSV());
                 document.getElementById("clientCallStatsExportLatestAiTextButton")?.addEventListener("click", () => exportClientCallStatsLatestAiText());
+                document.getElementById("clientCallStatsClientIdInput")?.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        loadClientCallLogs();
+                    }
+                });
                 document.getElementById("clientCallStatsApplyFiltersButton")?.addEventListener("click", () => {
-                    clientCallStatsFilters = {
-                        ...clientCallStatsFilters,
-                        dateFrom: String(document.getElementById("clientCallStatsFilterDateFrom")?.value || "").trim(),
-                        dateTo: String(document.getElementById("clientCallStatsFilterDateTo")?.value || "").trim(),
-                        staffMember: String(document.getElementById("clientCallStatsFilterStaff")?.value || "").trim(),
-                        clientManager: String(document.getElementById("clientCallStatsFilterClientManager")?.value || "").trim(),
-                        direction: String(document.getElementById("clientCallStatsFilterDirection")?.value || "").trim(),
-                        matchStatus: String(document.getElementById("clientCallStatsFilterMatchStatus")?.value || "").trim(),
-                    };
+                    clientCallStatsFilters = readClientCallStatsFiltersFromInputs();
                     loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsResetFiltersButton")?.addEventListener("click", () => {
+                    clientCallStatsFilters = normaliseClientCallStatsFilters({});
+                    writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
+                    loadClientCallStats({ silent: true });
+                    showToast("Client Call Stats filters reset.", "info");
+                });
+                document.getElementById("clientCallStatsSavePresetButton")?.addEventListener("click", () => saveClientCallStatsFilterPreset());
+                document.getElementById("clientCallStatsApplySavedPresetButton")?.addEventListener("click", () => applyClientCallStatsSavedPreset());
+                document.getElementById("clientCallStatsDeletePresetButton")?.addEventListener("click", () => deleteClientCallStatsSavedPreset());
+                document.getElementById("clientCallStatsSuggestPresetsButton")?.addEventListener("click", () => suggestClientCallStatsFilterPresets());
+                document.getElementById("clientCallStatsPreset7DaysButton")?.addEventListener("click", () => applyClientCallStatsDatePreset(7));
+                document.getElementById("clientCallStatsPreset30DaysButton")?.addEventListener("click", () => applyClientCallStatsDatePreset(30));
+                document.getElementById("clientCallStatsPresetMonthButton")?.addEventListener("click", () => applyClientCallStatsMonthPreset());
+                document.getElementById("clientCallStatsAiPresetSuggestionsBody")?.addEventListener("click", (event) => {
+                    const applyButton = event.target?.closest?.("button[data-call-ai-preset-apply]");
+                    if (applyButton) {
+                        const index = Number(applyButton.getAttribute("data-call-ai-preset-apply"));
+                        const preset = Array.isArray(clientCallStatsAiFilterPresets) ? clientCallStatsAiFilterPresets[index] : null;
+                        if (preset) applyClientCallStatsPreset(preset, { saveAsCurrent: false });
+                        return;
+                    }
+                    const saveButton = event.target?.closest?.("button[data-call-ai-preset-save]");
+                    if (!saveButton) return;
+                    const index = Number(saveButton.getAttribute("data-call-ai-preset-save"));
+                    const preset = Array.isArray(clientCallStatsAiFilterPresets) ? clientCallStatsAiFilterPresets[index] : null;
+                    if (!preset) return;
+                    const nameInput = document.getElementById("clientCallStatsPresetNameInput");
+                    if (nameInput && !String(nameInput.value || "").trim()) nameInput.value = String(preset.name || "");
+                    saveClientCallStatsFilterPreset(preset);
                 });
                 document.getElementById("clientCallStatsUnmatchedBody")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("button[data-call-number-action]");
@@ -44446,6 +44749,134 @@
                     if (!action || !number) return;
                     applyClientCallStatsNumberAction(action, number);
                 });
+            }
+
+            function applyClientCallStatsDatePreset(daysBack = 7) {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - Math.max(1, Number(daysBack || 7)));
+                const endValue = end.toISOString().slice(0, 10);
+                const startValue = start.toISOString().slice(0, 10);
+                const fromInput = document.getElementById("clientCallStatsFilterDateFrom");
+                const toInput = document.getElementById("clientCallStatsFilterDateTo");
+                if (fromInput) fromInput.value = startValue;
+                if (toInput) toInput.value = endValue;
+                clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
+                loadClientCallStats({ silent: true });
+            }
+
+            function applyClientCallStatsMonthPreset() {
+                const now = new Date();
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const startValue = monthStart.toISOString().slice(0, 10);
+                const endValue = now.toISOString().slice(0, 10);
+                const fromInput = document.getElementById("clientCallStatsFilterDateFrom");
+                const toInput = document.getElementById("clientCallStatsFilterDateTo");
+                if (fromInput) fromInput.value = startValue;
+                if (toInput) toInput.value = endValue;
+                clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
+                loadClientCallStats({ silent: true });
+            }
+
+            function applyClientCallStatsPreset(preset, { saveAsCurrent = true } = {}) {
+                const cleanPreset = normaliseClientCallStatsPreset(preset || {});
+                if (!cleanPreset) return;
+                clientCallStatsFilters = { ...normaliseClientCallStatsFilters(cleanPreset.filters || {}) };
+                writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
+                if (saveAsCurrent) {
+                    const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
+                    if (presetSelect) presetSelect.value = cleanPreset.name;
+                }
+                loadClientCallStats({ silent: true });
+                showToast(`Applied preset: ${cleanPreset.name}.`, "success");
+            }
+
+            function saveClientCallStatsFilterPreset(sourcePreset = null) {
+                const presetNameInput = document.getElementById("clientCallStatsPresetNameInput");
+                const requestedName = String(presetNameInput?.value || sourcePreset?.name || "").trim();
+                if (!requestedName) {
+                    showToast("Enter a preset name first.", "info");
+                    return;
+                }
+                const targetPreset = normaliseClientCallStatsPreset({
+                    name: requestedName,
+                    description: String(sourcePreset?.description || "").trim(),
+                    filters: sourcePreset?.filters || readClientCallStatsFiltersFromInputs(),
+                });
+                if (!targetPreset) return;
+                const existing = Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets : [];
+                const index = existing.findIndex((item) => String(item?.name || "").toLowerCase() === targetPreset.name.toLowerCase());
+                if (index >= 0) existing[index] = targetPreset;
+                else existing.push(targetPreset);
+                clientCallStatsSavedFilterPresets = existing;
+                persistClientCallStatsFilterPresets();
+                renderClientCallStatsPresetControls();
+                const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
+                if (presetSelect) presetSelect.value = targetPreset.name;
+                if (presetNameInput) presetNameInput.value = targetPreset.name;
+                showToast(`Saved preset: ${targetPreset.name}.`, "success");
+            }
+
+            function applyClientCallStatsSavedPreset() {
+                const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
+                const selectedName = String(presetSelect?.value || "").trim();
+                if (!selectedName) {
+                    showToast("Choose a saved preset first.", "info");
+                    return;
+                }
+                const preset = (Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets : [])
+                    .find((item) => String(item?.name || "") === selectedName);
+                if (!preset) {
+                    showToast("Saved preset no longer exists.", "error");
+                    return;
+                }
+                applyClientCallStatsPreset(preset);
+            }
+
+            function deleteClientCallStatsSavedPreset() {
+                const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
+                const selectedName = String(presetSelect?.value || "").trim();
+                if (!selectedName) {
+                    showToast("Choose a saved preset to delete.", "info");
+                    return;
+                }
+                const before = Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets.length : 0;
+                clientCallStatsSavedFilterPresets = (Array.isArray(clientCallStatsSavedFilterPresets) ? clientCallStatsSavedFilterPresets : [])
+                    .filter((item) => String(item?.name || "") !== selectedName);
+                if (clientCallStatsSavedFilterPresets.length === before) {
+                    showToast("Preset not found.", "error");
+                    return;
+                }
+                persistClientCallStatsFilterPresets();
+                renderClientCallStatsPresetControls();
+                if (presetSelect) presetSelect.value = "";
+                showToast(`Deleted preset: ${selectedName}.`, "success");
+            }
+
+            async function suggestClientCallStatsFilterPresets() {
+                const promptInput = document.getElementById("clientCallStatsAiPresetPromptInput");
+                const prompt = String(promptInput?.value || "").trim();
+                try {
+                    const payload = await requestJSON(api.endpoints.clientCallStatsFilterPresetSuggestions, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            prompt,
+                            limit: 8,
+                            currentFilters: clientCallStatsFilters,
+                        }),
+                    });
+                    const suggestions = Array.isArray(payload?.presets) ? payload.presets : [];
+                    clientCallStatsAiFilterPresets = suggestions.map((item) => normaliseClientCallStatsPreset(item)).filter(Boolean);
+                    if (!clientCallStatsAiFilterPresets.length) {
+                        clientCallStatsAiFilterPresets = defaultClientCallStatsFilterPresetTemplates();
+                    }
+                    renderClientCallStatsPresetControls();
+                    showToast(`Loaded ${clientCallStatsAiFilterPresets.length.toLocaleString("en-GB")} AI preset suggestion${clientCallStatsAiFilterPresets.length === 1 ? "" : "s"}.`, "success");
+                } catch (error) {
+                    clientCallStatsAiFilterPresets = defaultClientCallStatsFilterPresetTemplates();
+                    renderClientCallStatsPresetControls();
+                    showToast(error?.message || "Unable to fetch AI preset suggestions.", "error");
+                }
             }
 
             function clientCallStatsCsvEscape(value) {
@@ -44539,6 +44970,26 @@
                 const clientId = String(payload.clientId || document.getElementById("clientCallStatsClientIdInput")?.value || "client").replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
                 clientCallStatsCsvDownload(`client-call-logs-${clientId}-${clientCallStatsStamp()}.csv`, csvRows);
                 showToast("Client call log CSV exported.", "success");
+            }
+
+            function exportClientCallStatsUnmatchedCSV() {
+                const rows = Array.isArray(clientCallStatsData?.unmatchedNumbers) ? clientCallStatsData.unmatchedNumbers : [];
+                if (!rows.length) {
+                    showToast("No unmatched numbers to export.", "info");
+                    return;
+                }
+                const csvRows = [
+                    ["Number", "Total Calls", "Inbound Calls", "Outbound Calls", "Last Call At"],
+                    ...rows.map((row) => [
+                        row.number || "",
+                        row.totalCalls || 0,
+                        row.inboundCalls || 0,
+                        row.outboundCalls || 0,
+                        row.lastCallAt || "",
+                    ]),
+                ];
+                clientCallStatsCsvDownload(`client-call-unmatched-${clientCallStatsStamp()}.csv`, csvRows);
+                showToast("Unmatched numbers CSV exported.", "success");
             }
 
             function exportClientCallStatsAiReportsCSV() {

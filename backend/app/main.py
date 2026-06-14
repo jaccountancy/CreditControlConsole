@@ -167,6 +167,18 @@ from .services import (
     run_pi_clearing_workflow,
     override_bank_statement_transaction,
     payroll_headcount_payload,
+    call_stats_dashboard_payload,
+    call_stats_import_preview,
+    call_stats_import_commit,
+    call_stats_resync,
+    call_stats_extension_directory_payload,
+    call_stats_save_extension,
+    call_stats_unmatched_numbers,
+    call_stats_apply_number_action,
+    call_stats_client_logs_payload,
+    call_stats_generate_ai_report,
+    call_stats_ai_reports_history,
+    call_stats_suggest_filter_presets,
     bank_statement_upload_source_file,
     get_sync_run,
     me_report_payload,
@@ -2757,6 +2769,160 @@ async def api_juksib_batch_excel(batch_id: str, user: dict = Depends(require_pan
 @app.get("/api/me-report")
 def api_me_report(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": me_report_payload(user)}
+
+
+@app.get("/api/client-call-stats")
+def api_client_call_stats(
+    date_from: str = Query("", alias="dateFrom"),
+    date_to: str = Query("", alias="dateTo"),
+    staff_member: str = Query("", alias="staffMember"),
+    client_manager: str = Query("", alias="clientManager"),
+    client_id: str = Query("", alias="clientId"),
+    direction: str = Query("", alias="direction"),
+    outcome: str = Query("", alias="outcome"),
+    match_status: str = Query("", alias="matchStatus"),
+    import_file_id: str = Query("", alias="importFileId"),
+    user: dict = Depends(require_panel_user),
+):
+    filters = {
+        "dateFrom": date_from,
+        "dateTo": date_to,
+        "staffMember": staff_member,
+        "clientManager": client_manager,
+        "clientId": client_id,
+        "direction": direction,
+        "outcome": outcome,
+        "matchStatus": match_status,
+        "importFileId": import_file_id,
+    }
+    return {"status": "ok", "clientCallStats": call_stats_dashboard_payload(user, filters)}
+
+
+@app.post("/api/client-call-stats/import/preview")
+async def api_client_call_stats_import_preview(
+    file: UploadFile = File(...),
+    mapping: str = Form(""),
+    user: dict = Depends(require_panel_user),
+):
+    parsed_mapping = {}
+    if str(mapping or "").strip():
+        try:
+            payload = json.loads(mapping)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mapping must be valid JSON.") from exc
+        parsed_mapping = payload if isinstance(payload, dict) else {}
+    content = await file.read()
+    return {
+        "status": "ok",
+        "preview": call_stats_import_preview(user, content, mapping=parsed_mapping),
+    }
+
+
+@app.post("/api/client-call-stats/import/commit")
+async def api_client_call_stats_import_commit(
+    file: UploadFile = File(...),
+    mapping: str = Form(""),
+    source_provider: str = Form("", alias="sourceProvider"),
+    user: dict = Depends(require_panel_user),
+):
+    require_panel_write_user(user, "import client call logs")
+    parsed_mapping = {}
+    if str(mapping or "").strip():
+        try:
+            payload = json.loads(mapping)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mapping must be valid JSON.") from exc
+        parsed_mapping = payload if isinstance(payload, dict) else {}
+    content = await file.read()
+    commit_result = call_stats_import_commit(
+        user,
+        content,
+        file.filename or "call-log.csv",
+        source_provider=source_provider,
+        mapping=parsed_mapping,
+    )
+    return {
+        "status": "ok",
+        "result": commit_result,
+        "clientCallStats": call_stats_dashboard_payload(user, {}),
+    }
+
+
+@app.post("/api/client-call-stats/resync")
+async def api_client_call_stats_resync(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "re-sync call stats")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    trigger_source = str((payload or {}).get("triggerSource") or "manual").strip() if isinstance(payload, dict) else "manual"
+    reason = str((payload or {}).get("reason") or "Manual Re-Sync").strip() if isinstance(payload, dict) else "Manual Re-Sync"
+    result = call_stats_resync(user, trigger_source=trigger_source, reason=reason)
+    return {"status": "ok", "result": result, "clientCallStats": call_stats_dashboard_payload(user, {})}
+
+
+@app.get("/api/client-call-stats/extensions")
+def api_client_call_stats_extensions(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "extensions": call_stats_extension_directory_payload()}
+
+
+@app.post("/api/client-call-stats/extensions")
+async def api_client_call_stats_save_extension(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "edit internal extension directory")
+    payload = await request.json()
+    row = call_stats_save_extension(user, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", "extension": row, "extensions": call_stats_extension_directory_payload()}
+
+
+@app.get("/api/client-call-stats/unmatched")
+def api_client_call_stats_unmatched(limit: int = Query(100, ge=1, le=1000), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "unmatchedNumbers": call_stats_unmatched_numbers(user, limit=limit)}
+
+
+@app.post("/api/client-call-stats/unmatched/action")
+async def api_client_call_stats_unmatched_action(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "manage unmatched call numbers")
+    payload = await request.json()
+    result = call_stats_apply_number_action(user, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", "result": result, "clientCallStats": call_stats_dashboard_payload(user, {})}
+
+
+@app.get("/api/client-call-stats/clients/{client_id}")
+def api_client_call_stats_client_logs(
+    client_id: str,
+    date_from: str = Query("", alias="dateFrom"),
+    date_to: str = Query("", alias="dateTo"),
+    staff_member: str = Query("", alias="staffMember"),
+    direction: str = Query("", alias="direction"),
+    outcome: str = Query("", alias="outcome"),
+    search: str = Query("", alias="search"),
+    user: dict = Depends(require_panel_user),
+):
+    filters = {
+        "dateFrom": date_from,
+        "dateTo": date_to,
+        "staffMember": staff_member,
+        "direction": direction,
+        "outcome": outcome,
+        "search": search,
+    }
+    return {"status": "ok", "clientCallLogs": call_stats_client_logs_payload(user, client_id, filters)}
+
+
+@app.post("/api/client-call-stats/ai-report")
+async def api_client_call_stats_ai_report(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    report = await call_stats_generate_ai_report(user, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", "report": report}
+
+
+@app.get("/api/client-call-stats/ai-reports")
+def api_client_call_stats_ai_reports(limit: int = Query(24, ge=1, le=100), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "reports": call_stats_ai_reports_history(user, limit=limit)}
+
+
+@app.post("/api/client-call-stats/filter-presets/suggest")
+async def api_client_call_stats_filter_presets_suggest(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    result = await call_stats_suggest_filter_presets(user, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", **result}
 
 
 @app.get("/api/pi-clearing-account")
