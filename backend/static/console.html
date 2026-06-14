@@ -24545,20 +24545,30 @@
                 border-radius: 14px;
                 padding: 14px;
                 background: linear-gradient(145deg, rgba(18, 78, 140, 0.06), rgba(255, 255, 255, 0.95));
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 10px;
-                flex-wrap: wrap;
+                display: grid;
+                grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr);
+                grid-template-areas:
+                    "identity actions"
+                    "identity tabs";
+                align-items: start;
+                column-gap: 14px;
+                row-gap: 10px;
+                box-shadow: 0 8px 24px rgba(31, 59, 104, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.88);
             }
             .ch-register-client-page-topbar h3 {
                 margin: 0;
             }
             .ch-register-client-page-identity {
+                grid-area: identity;
                 display: grid;
                 grid-template-columns: minmax(0, 1fr);
                 gap: 6px;
                 align-items: start;
+            }
+            .ch-register-client-page-topbar > .detail-actions {
+                grid-area: actions;
+                justify-self: end;
+                align-self: start;
             }
             #chRegisterClientPageEyebrow,
             #chRegisterClientPageTitle,
@@ -24584,8 +24594,18 @@
                 order: 2;
             }
             @media (max-width: 980px) {
+                .ch-register-client-page-topbar {
+                    grid-template-columns: 1fr;
+                    grid-template-areas:
+                        "identity"
+                        "actions"
+                        "tabs";
+                }
                 .ch-register-client-page-identity {
                     gap: 8px;
+                }
+                .ch-register-client-page-topbar > .detail-actions {
+                    justify-self: start;
                 }
             }
             .ch-register-client-page-tabs {
@@ -24599,11 +24619,13 @@
                 scrollbar-width: thin;
             }
             .ch-register-client-page-tabs.is-topbar-tabs {
-                flex: 1 1 100%;
-                margin-top: 2px !important;
+                grid-area: tabs;
+                width: 100%;
+                margin-top: 0 !important;
                 padding: 8px;
                 border-radius: 16px;
                 background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(226, 238, 255, 0.84));
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 4px 14px rgba(25, 56, 103, 0.08);
             }
             .ch-register-client-page-tabs .page-pill {
                 display: inline-flex;
@@ -24678,6 +24700,56 @@
             }
             .ch-register-service-card {
                 margin-top: 0;
+            }
+            .ch-register-hmrc648-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                gap: 10px;
+            }
+            .ch-register-hmrc648-card {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 12px;
+                background: var(--surface-strong);
+                display: grid;
+                gap: 8px;
+                text-align: left;
+                color: var(--ink);
+                transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .ch-register-hmrc648-card:hover {
+                border-color: color-mix(in srgb, var(--blue) 28%, var(--line));
+                box-shadow: 0 8px 20px rgba(30, 47, 77, 0.08);
+                transform: translateY(-1px);
+            }
+            .ch-register-hmrc648-card h5 {
+                margin: 0;
+                font-size: 0.96rem;
+                font-weight: 800;
+            }
+            .ch-register-hmrc648-card p {
+                margin: 0;
+                font-size: 0.82rem;
+                color: var(--muted);
+            }
+            .ch-register-hmrc648-card .ch-pill {
+                justify-self: start;
+            }
+            .ch-register-hmrc648-card.is-enabled {
+                border-color: rgba(44, 162, 79, 0.34);
+                background: linear-gradient(145deg, #ffffff, rgba(231, 250, 238, 0.92));
+            }
+            .ch-register-hmrc648-card.is-disabled {
+                border-color: rgba(229, 111, 22, 0.32);
+                background: linear-gradient(145deg, #ffffff, rgba(255, 245, 231, 0.92));
+            }
+            .ch-register-hmrc648-modal-copy {
+                display: grid;
+                gap: 10px;
+                margin-top: 8px;
+            }
+            .ch-register-hmrc648-modal-copy p {
+                margin: 0;
             }
             .ch-register-services-grid {
                 display: grid;
@@ -30629,7 +30701,7 @@
                                 <div>
                                     <p class="eyebrow">HMRC authority workspace</p>
                                     <h3>HMRC 64-8 Authorisations</h3>
-                                    <p class="detail-meta">Create 64-8 submissions for SA, PAYE and CT, track HMRC letter turnaround, and capture authority codes before activation in Agent Gateway.</p>
+                                    <p class="detail-meta">Create submissions for SA, PAYE, CT, VAT MTD, SA MTD and CIS, track HMRC letter turnaround, and capture authority codes before activation in Agent Gateway.</p>
                                     <article class="hmrc648-top-pill">
                                         <p class="late-charge-summary" id="hmrc648StatusMeta">Loading HMRC 64-8 requests…</p>
                                         <div class="hmrc648-kpi-grid" id="hmrc648KpiGrid"></div>
@@ -30783,7 +30855,7 @@
                                         </div>
                                         <div class="detail-actions">
                                             <button class="ghost-button" type="button" id="chRegisterClientPageBackButton">Back to register</button>
-                                            <button class="primary-button" type="button" id="chRegisterClientPageSaveButton">Save changes</button>
+                                            <button class="primary-button" type="button" id="chRegisterClientPageSaveButton">Edit / Save Changes</button>
                                         </div>
                                         <div class="page-pills ch-register-client-page-tabs is-topbar-tabs" id="chRegisterClientPageTabs">
                                             <button class="page-pill is-active" type="button" data-client-page-tab="client-info"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"></path></svg></span><span>Client Info</span></button>
@@ -30792,6 +30864,7 @@
                                             <button class="page-pill" type="button" data-client-page-tab="notes"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v12H8l-3 3V4z"></path><path d="M9 8h6"></path><path d="M9 11h6"></path></svg></span><span>Notes</span></button>
                                             <button class="page-pill" type="button" data-client-page-tab="risk"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.6-7 10-3.8-1.4-7-5-7-10V6l7-3z"></path><path d="M9 12h6"></path></svg></span><span>Risk Assessment</span></button>
                                             <button class="page-pill" type="button" data-client-page-tab="call-stats"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18h16"></path><path d="M7 18V9"></path><path d="M12 18V6"></path><path d="M17 18V12"></path></svg></span><span>Call Stats</span></button>
+                                            <button class="page-pill" type="button" data-client-page-tab="hmrc-64-8"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"></path><path d="M8 9h8"></path><path d="M8 13h6"></path></svg></span><span>HMRC 64-8</span></button>
                                             <button class="page-pill" type="button" data-client-page-tab="companies-house"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg></span><span>Companies House</span></button>
                                             <button class="page-pill" type="button" data-client-page-tab="juk-invoices"><span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg></span><span>JUK Invoices</span></button>
                                         </div>
@@ -31077,6 +31150,15 @@
                                             </table>
                                         </div>
                                     </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="hmrc-64-8" hidden>
+                                        <div class="ch-settings-head">
+                                            <div>
+                                                <h4>HMRC 64-8 Authorisations</h4>
+                                                <p class="detail-meta">Select a card to check if authority can be requested for that service.</p>
+                                            </div>
+                                        </div>
+                                        <div class="ch-register-hmrc648-grid" id="chRegisterClientPageHmrc648Cards"></div>
+                                    </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="companies-house" hidden>
                                         <div class="ch-client-page-ch-dashboard">
                                             <div class="ch-client-page-ch-hero">
@@ -31220,6 +31302,96 @@
                                 </div>
                                 <p class="settings-help is-muted" id="chBmTasksStatus">Upload a BM tasks CSV to extract task rows.</p>
                             </section>
+                            <div class="company-secretarial-modal" id="chRegisterHmrc648ServiceModal" hidden>
+                                <section class="company-secretarial-modal-panel hmrc648-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterHmrc648ServiceModalTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client Page</p>
+                                            <h4 id="chRegisterHmrc648ServiceModalTitle">HMRC service</h4>
+                                            <p class="detail-meta" id="chRegisterHmrc648ServiceModalMeta">Service status</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="chRegisterHmrc648ServiceModalCloseButton" type="button">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="ch-register-hmrc648-modal-copy">
+                                        <span class="ch-pill is-info" id="chRegisterHmrc648ServiceModalStatus">Status</span>
+                                        <p id="chRegisterHmrc648ServiceModalBody">Status details.</p>
+                                    </div>
+                                    <form class="hmrc648-form-grid" id="chRegisterHmrc648ServiceForm">
+                                        <input id="chRegisterHmrc648ServiceFormServiceId" type="hidden">
+                                        <label>
+                                            Client name
+                                            <input id="chRegisterHmrc648ServiceFormClientName" type="text" required>
+                                        </label>
+                                        <label>
+                                            Client ID
+                                            <input id="chRegisterHmrc648ServiceFormClientId" type="text">
+                                        </label>
+                                        <label>
+                                            Contact name
+                                            <input id="chRegisterHmrc648ServiceFormContactName" type="text">
+                                        </label>
+                                        <label>
+                                            Contact email
+                                            <input id="chRegisterHmrc648ServiceFormContactEmail" type="email">
+                                        </label>
+                                        <label>
+                                            Contact phone
+                                            <input id="chRegisterHmrc648ServiceFormContactPhone" type="text">
+                                        </label>
+                                        <label>
+                                            Company number
+                                            <input id="chRegisterHmrc648ServiceFormCompanyNumber" type="text">
+                                        </label>
+                                        <label>
+                                            SA UTR
+                                            <input id="chRegisterHmrc648ServiceFormSaUtr" type="text">
+                                        </label>
+                                        <label>
+                                            SA NINO
+                                            <input id="chRegisterHmrc648ServiceFormSaNino" type="text">
+                                        </label>
+                                        <label>
+                                            CT UTR
+                                            <input id="chRegisterHmrc648ServiceFormCtUtr" type="text">
+                                        </label>
+                                        <label>
+                                            Postcode
+                                            <input id="chRegisterHmrc648ServiceFormPostcode" type="text">
+                                        </label>
+                                        <label>
+                                            PAYE reference
+                                            <input id="chRegisterHmrc648ServiceFormPayeRef" type="text">
+                                        </label>
+                                        <label>
+                                            Tax office number
+                                            <input id="chRegisterHmrc648ServiceFormTaxOfficeNumber" type="text">
+                                        </label>
+                                        <label>
+                                            Tax office reference
+                                            <input id="chRegisterHmrc648ServiceFormTaxOfficeReference" type="text">
+                                        </label>
+                                        <label>
+                                            Accounts office reference
+                                            <input id="chRegisterHmrc648ServiceFormAccountsOfficeReference" type="text">
+                                        </label>
+                                        <label class="is-wide">
+                                            Postal address
+                                            <textarea id="chRegisterHmrc648ServiceFormPostalAddress" rows="3"></textarea>
+                                        </label>
+                                        <label class="is-wide">
+                                            Notes
+                                            <textarea id="chRegisterHmrc648ServiceFormNotes" rows="3"></textarea>
+                                        </label>
+                                        <div class="detail-actions is-wide">
+                                            <button class="primary-button" id="chRegisterHmrc648ServiceSubmitButton" type="submit">Submit to HMRC</button>
+                                            <button class="ghost-button" id="chRegisterHmrc648ServiceOpenWorkspaceButton" type="button">Open HMRC 64-8 queue</button>
+                                        </div>
+                                    </form>
+                                </section>
+                            </div>
+
                             <div class="company-secretarial-modal" id="chRegisterUploadModal" hidden>
                                 <section class="company-secretarial-modal-panel ch-register-upload-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterUploadModalTitle">
                                     <div class="company-secretarial-modal-head">
@@ -31681,12 +31853,32 @@
                                     <input id="hmrc648CreateSaUtr" type="text" placeholder="Self Assessment UTR">
                                 </label>
                                 <label>
+                                    SA NINO
+                                    <input id="hmrc648CreateSaNino" type="text" placeholder="AB123456D">
+                                </label>
+                                <label>
                                     CT UTR
                                     <input id="hmrc648CreateCtUtr" type="text" placeholder="Corporation Tax UTR">
                                 </label>
                                 <label>
+                                    Postcode
+                                    <input id="hmrc648CreatePostcode" type="text" placeholder="BD98 8AA">
+                                </label>
+                                <label>
                                     PAYE reference
                                     <input id="hmrc648CreatePayeRef" type="text" placeholder="123/AB45678">
+                                </label>
+                                <label>
+                                    Tax office number
+                                    <input id="hmrc648CreateTaxOfficeNumber" type="text" placeholder="516">
+                                </label>
+                                <label>
+                                    Tax office reference
+                                    <input id="hmrc648CreateTaxOfficeReference" type="text" placeholder="A516">
+                                </label>
+                                <label>
+                                    Accounts office reference
+                                    <input id="hmrc648CreateAccountsOfficeReference" type="text" placeholder="516PA45678">
                                 </label>
                                 <label>
                                     Submission channel
@@ -31707,6 +31899,9 @@
                                     <label><input id="hmrc648CreateIncludeSa" type="checkbox" checked> SA</label>
                                     <label><input id="hmrc648CreateIncludePaye" type="checkbox"> PAYE</label>
                                     <label><input id="hmrc648CreateIncludeCt" type="checkbox"> CT</label>
+                                    <label><input id="hmrc648CreateIncludeVatMtd" type="checkbox"> VAT MTD</label>
+                                    <label><input id="hmrc648CreateIncludeSaMtd" type="checkbox"> SA MTD</label>
+                                    <label><input id="hmrc648CreateIncludeCis" type="checkbox"> CIS</label>
                                 </div>
                                 <div class="detail-actions is-wide">
                                     <button class="primary-button" type="submit">Create request</button>
@@ -37551,6 +37746,9 @@
                         companySecretarialSubmit: config.endpoints?.companySecretarialSubmit || "/api/company-secretarial/filings/:filingId/submit",
                         companySecretarialComplete: config.endpoints?.companySecretarialComplete || "/api/company-secretarial/filings/:filingId/complete",
                         hmrc648: config.endpoints?.hmrc648 || "/api/hmrc-64-8",
+                        hmrc648OauthStatus: config.endpoints?.hmrc648OauthStatus || "/api/hmrc-64-8/oauth/status",
+                        hmrc648OauthStart: config.endpoints?.hmrc648OauthStart || "/api/hmrc-64-8/oauth/start",
+                        hmrc648OauthDisconnect: config.endpoints?.hmrc648OauthDisconnect || "/api/hmrc-64-8/oauth/disconnect",
                         hmrc648History: config.endpoints?.hmrc648History || "/api/hmrc-64-8/history",
                         hmrc648Export: config.endpoints?.hmrc648Export || "/api/hmrc-64-8/export.csv",
                         hmrc648Requests: config.endpoints?.hmrc648Requests || "/api/hmrc-64-8/requests",
@@ -51444,14 +51642,22 @@
                     clientContactPhone: document.getElementById("hmrc648CreateContactPhone")?.value || "",
                     companyNumber: document.getElementById("hmrc648CreateCompanyNumber")?.value || "",
                     saUtr: document.getElementById("hmrc648CreateSaUtr")?.value || "",
+                    saNino: document.getElementById("hmrc648CreateSaNino")?.value || "",
                     ctUtr: document.getElementById("hmrc648CreateCtUtr")?.value || "",
+                    postcode: document.getElementById("hmrc648CreatePostcode")?.value || "",
                     payeReference: document.getElementById("hmrc648CreatePayeRef")?.value || "",
+                    taxOfficeNumber: document.getElementById("hmrc648CreateTaxOfficeNumber")?.value || "",
+                    taxOfficeReference: document.getElementById("hmrc648CreateTaxOfficeReference")?.value || "",
+                    accountsOfficeReference: document.getElementById("hmrc648CreateAccountsOfficeReference")?.value || "",
                     postalAddress: document.getElementById("hmrc648CreatePostalAddress")?.value || "",
                     notes: document.getElementById("hmrc648CreateNotes")?.value || "",
                     submissionChannel: document.getElementById("hmrc648CreateChannel")?.value || "online",
                     includeSa: !!document.getElementById("hmrc648CreateIncludeSa")?.checked,
                     includePaye: !!document.getElementById("hmrc648CreateIncludePaye")?.checked,
                     includeCt: !!document.getElementById("hmrc648CreateIncludeCt")?.checked,
+                    includeVatMtd: !!document.getElementById("hmrc648CreateIncludeVatMtd")?.checked,
+                    includeSaMtd: !!document.getElementById("hmrc648CreateIncludeSaMtd")?.checked,
+                    includeCis: !!document.getElementById("hmrc648CreateIncludeCis")?.checked,
                 };
                 hmrc648SetCreateStatus("Creating request…", "muted");
                 try {
@@ -98407,6 +98613,7 @@
                     open: false,
                     loading: false,
                     saving: false,
+                    editMode: false,
                     rowId: "",
                     payload: null,
                     activeTab: "client-info",
@@ -98425,6 +98632,7 @@
                 if (panel) panel.hidden = true;
                 if (tableWrap) tableWrap.hidden = false;
                 if (toolbar) toolbar.hidden = false;
+                closeClientRegisterHmrc648ServiceModal();
                 setClientRegisterClientPageTab("client-info");
                 renderTopbarIdentity();
             }
@@ -98466,6 +98674,182 @@
 
             function clientRegisterServiceTabId(serviceKey) {
                 return `service-${String(serviceKey || "").trim()}`;
+            }
+
+            function clientRegisterHmrc648Cards(services = {}) {
+                const saEnabled = !!services?.selfAssessmentReturn;
+                const ctEnabled = !!services?.ct600Return || !!services?.accounts;
+                const vatEnabled = !!services?.vatReturns;
+                const cisEnabled = !!services?.cis;
+                const payeEnabled = !!services?.payroll;
+                return [
+                    { id: "self-assessment-64-8", label: "Self Assessment 64-8", enabled: saEnabled },
+                    { id: "corporation-tax-64-8", label: "Corporation Tax 64-8", enabled: ctEnabled },
+                    { id: "vat-mtd-authorisation", label: "VAT MTD Authorisation", enabled: vatEnabled },
+                    { id: "self-assessment-mtd-authorisation", label: "Self Assessment MTD Authorisation", enabled: saEnabled },
+                    { id: "cis-64-8", label: "CIS 64-8", enabled: cisEnabled },
+                    { id: "paye-64-8", label: "PAYE 64-8", enabled: payeEnabled },
+                ];
+            }
+
+            function clientRegisterHmrc648ServicePayloadFlags(serviceId) {
+                const flags = {
+                    includeSa: false,
+                    includePaye: false,
+                    includeCt: false,
+                    includeVatMtd: false,
+                    includeSaMtd: false,
+                    includeCis: false,
+                };
+                if (serviceId === "self-assessment-64-8") flags.includeSa = true;
+                else if (serviceId === "corporation-tax-64-8") flags.includeCt = true;
+                else if (serviceId === "vat-mtd-authorisation") flags.includeVatMtd = true;
+                else if (serviceId === "self-assessment-mtd-authorisation") flags.includeSaMtd = true;
+                else if (serviceId === "cis-64-8") flags.includeCis = true;
+                else if (serviceId === "paye-64-8") flags.includePaye = true;
+                return flags;
+            }
+
+            function closeClientRegisterHmrc648ServiceModal() {
+                const modal = document.getElementById("chRegisterHmrc648ServiceModal");
+                if (!modal) return;
+                modal.hidden = true;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function openClientRegisterHmrc648ServiceModal(serviceId) {
+                const payload = clientPagePayload();
+                const row = payload?.row || {};
+                const profile = payload?.profile || {};
+                const services = clientRegisterApplyLinkedServiceRules(profile?.services || {});
+                const service = clientRegisterHmrc648Cards(services).find((item) => item.id === serviceId);
+                if (!service) return;
+                const modal = document.getElementById("chRegisterHmrc648ServiceModal");
+                const form = document.getElementById("chRegisterHmrc648ServiceForm");
+                const serviceField = document.getElementById("chRegisterHmrc648ServiceFormServiceId");
+                const title = document.getElementById("chRegisterHmrc648ServiceModalTitle");
+                const meta = document.getElementById("chRegisterHmrc648ServiceModalMeta");
+                const status = document.getElementById("chRegisterHmrc648ServiceModalStatus");
+                const body = document.getElementById("chRegisterHmrc648ServiceModalBody");
+                const submitButton = document.getElementById("chRegisterHmrc648ServiceSubmitButton");
+                if (!modal || !form || !serviceField || !title || !meta || !status || !body || !submitButton) return;
+                const clientName = clientRegisterClientDisplayName(row);
+                const chDetails = profile?.companiesHouse?.serviceDetails || {};
+                const payrollDetails = chDetails?.payroll || {};
+                const selfAssessmentDetails = chDetails?.selfAssessment || {};
+                const payeReference = String(payrollDetails?.employersPayeReference || "").trim();
+                const payeMatch = payeReference.match(/^(\d{1,3})\/([A-Za-z0-9]{1,10})$/);
+                const assign = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (!node) return;
+                    node.value = value == null ? "" : String(value);
+                };
+                serviceField.value = service.id;
+                assign("chRegisterHmrc648ServiceFormClientName", clientName);
+                assign("chRegisterHmrc648ServiceFormClientId", row?.clientId || "");
+                assign("chRegisterHmrc648ServiceFormContactName", row?.clientContactName || "");
+                assign("chRegisterHmrc648ServiceFormContactEmail", row?.clientEmail || "");
+                assign("chRegisterHmrc648ServiceFormContactPhone", row?.clientPhone || "");
+                assign("chRegisterHmrc648ServiceFormCompanyNumber", row?.companyNumber || "");
+                assign("chRegisterHmrc648ServiceFormSaUtr", selfAssessmentDetails?.utr || row?.personalUtr || "");
+                assign("chRegisterHmrc648ServiceFormSaNino", selfAssessmentDetails?.nino || row?.nino || "");
+                assign("chRegisterHmrc648ServiceFormCtUtr", row?.companyUtr || "");
+                assign("chRegisterHmrc648ServiceFormPostcode", row?.postcode || "");
+                assign("chRegisterHmrc648ServiceFormPayeRef", payeReference);
+                assign("chRegisterHmrc648ServiceFormTaxOfficeNumber", payeMatch ? payeMatch[1] : "");
+                assign("chRegisterHmrc648ServiceFormTaxOfficeReference", payeMatch ? payeMatch[2] : "");
+                assign("chRegisterHmrc648ServiceFormAccountsOfficeReference", payrollDetails?.accountsOfficeReference || "");
+                assign("chRegisterHmrc648ServiceFormPostalAddress", row?.clientAddress || "");
+                assign("chRegisterHmrc648ServiceFormNotes", "");
+                title.textContent = service.label;
+                meta.textContent = clientName;
+                status.className = `ch-pill ${service.enabled ? "is-good" : "is-warn"}`;
+                status.textContent = service.enabled ? "Enabled" : "Not enabled";
+                body.textContent = service.enabled
+                    ? `${service.label} is enabled for this client. You can proceed with HMRC authorisation activity.`
+                    : `${service.label} is not enabled for this client. Enable the service in Services Required before starting HMRC authorisation.`;
+                submitButton.disabled = !service.enabled;
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+            }
+
+            async function submitClientRegisterHmrc648ServiceRequest(event) {
+                event.preventDefault();
+                const serviceId = String(document.getElementById("chRegisterHmrc648ServiceFormServiceId")?.value || "").trim();
+                if (!serviceId) return;
+                const payload = clientPagePayload();
+                const row = payload?.row || {};
+                const profile = payload?.profile || {};
+                const enabledServices = clientRegisterHmrc648Cards(clientRegisterApplyLinkedServiceRules(profile?.services || {}));
+                const selectedService = enabledServices.find((item) => item.id === serviceId);
+                if (!selectedService?.enabled) {
+                    showToast("This service is not enabled for the selected client.", "error");
+                    return;
+                }
+                const submitButton = document.getElementById("chRegisterHmrc648ServiceSubmitButton");
+                const status = document.getElementById("chRegisterHmrc648ServiceModalStatus");
+                const body = document.getElementById("chRegisterHmrc648ServiceModalBody");
+                if (!submitButton || !status || !body) return;
+                const read = (id) => String(document.getElementById(id)?.value || "").trim();
+                const createBody = {
+                    clientId: read("chRegisterHmrc648ServiceFormClientId") || String(row?.clientId || "").trim(),
+                    clientName: read("chRegisterHmrc648ServiceFormClientName"),
+                    clientManager: String(row?.clientManager || "").trim(),
+                    clientContactName: read("chRegisterHmrc648ServiceFormContactName"),
+                    clientContactEmail: read("chRegisterHmrc648ServiceFormContactEmail"),
+                    clientContactPhone: read("chRegisterHmrc648ServiceFormContactPhone"),
+                    companyNumber: read("chRegisterHmrc648ServiceFormCompanyNumber"),
+                    saUtr: read("chRegisterHmrc648ServiceFormSaUtr"),
+                    saNino: read("chRegisterHmrc648ServiceFormSaNino"),
+                    ctUtr: read("chRegisterHmrc648ServiceFormCtUtr"),
+                    postcode: read("chRegisterHmrc648ServiceFormPostcode"),
+                    payeReference: read("chRegisterHmrc648ServiceFormPayeRef"),
+                    taxOfficeNumber: read("chRegisterHmrc648ServiceFormTaxOfficeNumber"),
+                    taxOfficeReference: read("chRegisterHmrc648ServiceFormTaxOfficeReference"),
+                    accountsOfficeReference: read("chRegisterHmrc648ServiceFormAccountsOfficeReference"),
+                    postalAddress: read("chRegisterHmrc648ServiceFormPostalAddress"),
+                    notes: read("chRegisterHmrc648ServiceFormNotes"),
+                    submissionChannel: "online",
+                    ...clientRegisterHmrc648ServicePayloadFlags(serviceId),
+                };
+                if (!createBody.clientName) {
+                    showToast("Client name is required before submitting HMRC authorisation.", "error");
+                    return;
+                }
+                submitButton.disabled = true;
+                submitButton.textContent = "Submitting…";
+                status.className = "ch-pill is-info";
+                status.textContent = "Submitting";
+                body.textContent = "Creating request and submitting to HMRC…";
+                try {
+                    const created = await requestJSON(api.endpoints.hmrc648Requests, { method: "POST", body: JSON.stringify(createBody) });
+                    const requestId = String(created?.request?.id || "").trim();
+                    if (!requestId) throw new Error("HMRC request ID missing from create response.");
+                    const submitted = await requestJSON(
+                        api.endpoints.hmrc648Submit,
+                        { method: "POST", body: JSON.stringify({ notes: createBody.notes || "", submissionChannel: "online" }) },
+                        { requestId }
+                    );
+                    const requestRow = submitted?.request || created?.request || {};
+                    const ref = String(requestRow?.hmrcSubmissionReference || "").trim();
+                    const due = String(requestRow?.expectedCodeBy || "").trim();
+                    status.className = "ch-pill is-good";
+                    status.textContent = "Submitted";
+                    body.textContent = `Submitted to HMRC${ref ? ` (ref: ${ref})` : ""}. ${due ? `Expected activation code by ${formatDate(due)}.` : "Awaiting activation code from client."}`;
+                    showToast("HMRC 64-8 request submitted.", "success");
+                    loadHmrc648Requests(true);
+                    loadHmrc648History(true);
+                } catch (error) {
+                    status.className = "ch-pill is-bad";
+                    status.textContent = "Submission failed";
+                    body.textContent = error?.message || "Unable to submit HMRC 64-8 request.";
+                    showToast(error?.message || "Unable to submit HMRC 64-8 request.", "error");
+                } finally {
+                    submitButton.disabled = !selectedService?.enabled;
+                    submitButton.textContent = "Submit to HMRC";
+                }
             }
 
             function clientRegisterClientMatchKey(row = {}) {
@@ -98964,6 +99348,7 @@
                     { id: "tasks", label: "Tasks", icon: `<svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"></path><rect x="3" y="4" width="18" height="16" rx="2"></rect></svg>` },
                     { id: "risk", label: "Risk Assessment", icon: `<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.6-7 10-3.8-1.4-7-5-7-10V6l7-3z"></path><path d="M9 12h6"></path></svg>` },
                     { id: "call-stats", label: "Call Stats", icon: `<svg viewBox="0 0 24 24"><path d="M4 18h16"></path><path d="M7 18V9"></path><path d="M12 18V6"></path><path d="M17 18V12"></path></svg>` },
+                    { id: "hmrc-64-8", label: "HMRC 64-8", icon: `<svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"></path><path d="M8 9h8"></path><path d="M8 13h6"></path></svg>` },
                     { id: "companies-house", label: "Companies House", icon: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg>` },
                     { id: "juk-invoices", label: "JUK Invoices", icon: `<svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg>` },
                 ];
@@ -99068,6 +99453,78 @@
                 return names.join("\n");
             }
 
+            function clientRegisterClientPageEditableControlIds() {
+                return [
+                    "chRegisterClientPageRiskLevel",
+                    "chRegisterClientPageRiskScore",
+                    "chRegisterClientPageRiskReviewedAt",
+                    "chRegisterClientPageRiskSummary",
+                    "chRegisterClientPageChStatus",
+                    "chRegisterClientPageChNextDate",
+                    "chRegisterClientPageChLastFiledDate",
+                    "chRegisterClientPageChAuthStatus",
+                    "chRegisterClientPageChNotes",
+                    "chRegisterClientPageAccountsYearEnd",
+                    "chRegisterClientPageAccountsNextDueDate",
+                    "chRegisterClientPageConfirmationStatementDate",
+                    "chRegisterClientPageConfirmationStatementDueDate",
+                    "chRegisterClientPageVatFrequency",
+                    "chRegisterClientPageVatPeriodEnd",
+                    "chRegisterClientPageVatNextDueDate",
+                    "chRegisterClientPageVatMemberState",
+                    "chRegisterClientPageVatNumber",
+                    "chRegisterClientPageVatAddress",
+                    "chRegisterClientPagePayrollPayeReference",
+                    "chRegisterClientPagePayrollAccountsOfficeReference",
+                    "chRegisterClientPagePayrollFirstPayday",
+                    "chRegisterClientPagePayrollRtiDeadline",
+                    "chRegisterClientPageP11dNextDueDate",
+                    "chRegisterClientPageP11dLatestSubmittedDate",
+                    "chRegisterClientPageSelfAssessmentUtr",
+                    "chRegisterClientPageSelfAssessmentNextDueDate",
+                    "chRegisterClientPageSelfAssessmentLatestSubmittedDate",
+                    "chRegisterClientPageJukBillingCycle",
+                    "chRegisterClientPageJukTemplate",
+                    "chRegisterClientPageJukLastInvoiceDate",
+                    "chRegisterClientPageJukOutstandingAmount",
+                    "chRegisterClientPageJukNotes",
+                ];
+            }
+
+            function setClientRegisterClientPageEditingState(isEditing) {
+                const disableInputs = !isEditing;
+                clientRegisterClientPageEditableControlIds().forEach((id) => {
+                    const node = document.getElementById(id);
+                    if (!node) return;
+                    node.disabled = disableInputs;
+                });
+                document.querySelectorAll("[data-client-page-service]").forEach((node) => {
+                    node.disabled = disableInputs;
+                });
+            }
+
+            function clientRegisterProfileSectionChanged(currentValue, nextValue) {
+                return JSON.stringify(currentValue || {}) !== JSON.stringify(nextValue || {});
+            }
+
+            function clientRegisterClientPageChangedAreas(profile, outbound) {
+                const areas = [];
+                const currentServices = clientRegisterApplyLinkedServiceRules(profile?.services || {});
+                if (clientRegisterProfileSectionChanged(currentServices, outbound?.services || {})) {
+                    areas.push("Services Required");
+                }
+                if (clientRegisterProfileSectionChanged(profile?.riskAssessment || {}, outbound?.riskAssessment || {})) {
+                    areas.push("Risk Assessment");
+                }
+                if (clientRegisterProfileSectionChanged(profile?.companiesHouse || {}, outbound?.companiesHouse || {})) {
+                    areas.push("Companies House");
+                }
+                if (clientRegisterProfileSectionChanged(profile?.jukInvoices || {}, outbound?.jukInvoices || {})) {
+                    areas.push("JUK Invoices");
+                }
+                return areas;
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -99113,7 +99570,14 @@
                         ? `Client Manager: ${manager}`
                         : "Client Manager: Unassigned";
                 }
-                if (saveButton) saveButton.disabled = !!pageState.saving || !!pageState.loading;
+                if (saveButton) {
+                    const isEditing = !!pageState.editMode;
+                    saveButton.disabled = !!pageState.saving || !!pageState.loading;
+                    saveButton.textContent = pageState.saving
+                        ? "Saving..."
+                        : (isEditing ? "Save Changes" : "Edit / Save Changes");
+                    saveButton.setAttribute("aria-pressed", String(isEditing));
+                }
                 const assignReadOnly = (id, value) => {
                     const node = document.getElementById(id);
                     if (!node) return;
@@ -99193,6 +99657,21 @@
                         </div>
                     `).join("");
                 }
+                const hmrc648CardsWrap = document.getElementById("chRegisterClientPageHmrc648Cards");
+                if (hmrc648CardsWrap) {
+                    hmrc648CardsWrap.innerHTML = clientRegisterHmrc648Cards(services).map((service) => `
+                        <button
+                            class="ch-register-hmrc648-card ${service.enabled ? "is-enabled" : "is-disabled"}"
+                            type="button"
+                            data-client-page-hmrc648-service="${escapeHTML(service.id)}"
+                        >
+                            <span class="ch-pill ${service.enabled ? "is-good" : "is-warn"}">${service.enabled ? "Enabled" : "Not enabled"}</span>
+                            <h5>${escapeHTML(service.label)}</h5>
+                            <p>${service.enabled ? "Open to continue 64-8/MTD authorisation." : "Enable this service first in Services Required."}</p>
+                        </button>
+                    `).join("");
+                }
+                setClientRegisterClientPageEditingState(!!pageState.editMode);
                 renderClientRegisterClientPageTabs();
                 const timelineWrap = document.getElementById("chRegisterClientPageTimeline");
                 if (timelineWrap) {
@@ -99444,6 +99923,7 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: true,
                     loading: true,
+                    editMode: false,
                     rowId: safeRowId,
                     activeTab: "client-info",
                     showCompletedTasks: false,
@@ -99482,6 +99962,15 @@
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId || pageState.saving) return;
+                if (!pageState.editMode) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...pageState,
+                        editMode: true,
+                    };
+                    renderClientRegisterClientPage();
+                    showToast("Edit mode enabled. Make your changes, then save.", "info");
+                    return;
+                }
                 const payload = clientPagePayload() || {};
                 const profile = payload.profile || {};
                 const currentRisk = profile.riskAssessment || {};
@@ -99562,6 +100051,16 @@
                         notes: String(document.getElementById("chRegisterClientPageJukNotes")?.value || currentJukInvoices.notes || ""),
                     },
                 };
+                const changedAreas = clientRegisterClientPageChangedAreas(profile, outbound);
+                if (!changedAreas.length) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...pageState,
+                        editMode: false,
+                    };
+                    renderClientRegisterClientPage();
+                    showToast("No changes detected.", "info");
+                    return;
+                }
                 companiesHouseSettings.authRegisterClientPage = {
                     ...pageState,
                     saving: true,
@@ -99572,14 +100071,24 @@
                         method: "PATCH",
                         body: JSON.stringify(outbound),
                     });
+                    const timelineEntry = {
+                        title: "Client page updated",
+                        body: `Updated ${changedAreas.join(", ")}.`,
+                        at: new Date().toISOString(),
+                    };
+                    const nextPayload = (next && typeof next === "object") ? { ...next } : {};
+                    const existingTimeline = Array.isArray(nextPayload.timeline) ? nextPayload.timeline : [];
+                    nextPayload.timeline = [timelineEntry, ...existingTimeline];
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         saving: false,
-                        payload: next,
+                        editMode: false,
+                        activeTab: "timeline",
+                        payload: nextPayload,
                     };
                     companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((row) => (
                         String(row?.id || "") === rowId
-                            ? { ...row, services: next?.profile?.services || row?.services || {} }
+                            ? { ...row, services: nextPayload?.profile?.services || row?.services || {} }
                             : row
                     ));
                     renderAuthCodeRegisterDirectory(
@@ -100604,6 +101113,22 @@
                     const tab = String(button.getAttribute("data-client-page-tab") || "");
                     if (!tab) return;
                     setClientRegisterClientPageTab(tab);
+                });
+                document.getElementById("chRegisterClientPageHmrc648Cards")?.addEventListener("click", (event) => {
+                    const button = event.target?.closest?.("[data-client-page-hmrc648-service]");
+                    if (!button) return;
+                    const serviceId = String(button.getAttribute("data-client-page-hmrc648-service") || "").trim();
+                    if (!serviceId) return;
+                    openClientRegisterHmrc648ServiceModal(serviceId);
+                });
+                document.getElementById("chRegisterHmrc648ServiceModalCloseButton")?.addEventListener("click", closeClientRegisterHmrc648ServiceModal);
+                document.getElementById("chRegisterHmrc648ServiceModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "chRegisterHmrc648ServiceModal") closeClientRegisterHmrc648ServiceModal();
+                });
+                document.getElementById("chRegisterHmrc648ServiceForm")?.addEventListener("submit", submitClientRegisterHmrc648ServiceRequest);
+                document.getElementById("chRegisterHmrc648ServiceOpenWorkspaceButton")?.addEventListener("click", () => {
+                    closeClientRegisterHmrc648ServiceModal();
+                    openHmrc648Screen();
                 });
                 document.getElementById("chRegisterClientPageServicesList")?.addEventListener("change", () => {
                     const accountsToggle = document.querySelector('[data-client-page-service="accounts"]');
