@@ -196,6 +196,7 @@ from .services import (
     run_invoice_operation_job,
     run_sync,
     run_sync_job,
+    save_pi_clearing_account_setup,
     save_posting_settings,
     save_xero_tenant_company_mapping,
     send_ignition_renewal_client_comms_email,
@@ -1713,6 +1714,13 @@ async def api_xero_posting_settings(request: Request, user: dict = Depends(requi
     payload = await request.json()
     settings_payload = await save_posting_settings(user, payload)
     return {"status": "ok", **settings_payload, "panel": panel_payload(user)}
+
+
+@app.post("/api/pi-clearing-account/setup")
+async def api_pi_clearing_account_setup(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    settings_payload = await save_pi_clearing_account_setup(user, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", **settings_payload}
 
 
 @app.get("/api/xero/lock-dates")

@@ -267,6 +267,7 @@ XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
+PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -3310,6 +3311,38 @@ def _pi_month_bounds(month_value: str | None = None) -> tuple[date, date]:
     return month_start, month_end
 
 
+def _pi_batch_bounds(payload: dict | None = None) -> tuple[date, date]:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    start_raw = (
+        safe_payload.get("batchStart")
+        or safe_payload.get("dateFrom")
+        or safe_payload.get("startDate")
+        or safe_payload.get("monthStart")
+    )
+    end_raw = (
+        safe_payload.get("batchEnd")
+        or safe_payload.get("dateTo")
+        or safe_payload.get("endDate")
+        or safe_payload.get("monthEnd")
+    )
+
+    start_date = _parse_any_date(start_raw) if str(start_raw or "").strip() else None
+    end_date = _parse_any_date(end_raw) if str(end_raw or "").strip() else None
+
+    today = utcnow().date()
+    if start_date is None:
+        start_date = PI_CLEARING_BATCH_HARD_START
+    if end_date is None:
+        end_date = today
+    if start_date < PI_CLEARING_BATCH_HARD_START:
+        start_date = PI_CLEARING_BATCH_HARD_START
+    if end_date < start_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Batch end date must be on or after the batch start date.")
+    if end_date > today:
+        end_date = today
+    return start_date, end_date
+
+
 def _pi_client_key(value: str) -> str:
     text = re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
     for suffix in ("limited", "ltd", "llp", "uk", "the"):
@@ -4126,6 +4159,123 @@ def _pi_daily_balance_analysis(xero_rows: list[dict]) -> dict:
     }
 
 
+def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
+    by_day: dict[str, dict] = {}
+    for row in xero_rows or []:
+        paid_on = str(row.get("paidOn") or "").strip()[:10]
+        if not paid_on:
+            continue
+        bucket = by_day.setdefault(
+            paid_on,
+            {
+                "date": paid_on,
+                "debits": [],
+                "credits": [],
+            },
+        )
+        amount = _money(row.get("amount"))
+        item = {
+            "paymentId": str(row.get("paymentId") or "").strip(),
+            "amount": amount,
+            "reference": str(row.get("reference") or "").strip(),
+            "clientName": str(row.get("clientName") or "").strip(),
+        }
+        if amount > Decimal("0.00"):
+            bucket["debits"].append(item)
+        elif amount < Decimal("0.00"):
+            bucket["credits"].append(item)
+
+    rows: list[dict] = []
+    missing_credit_payment_ids: list[str] = []
+    missing_total = Decimal("0.00")
+    balanced = 0
+    partial = 0
+    unmatched = 0
+
+    for day in sorted(by_day.keys()):
+        bucket = by_day.get(day) or {}
+        debit_pool = [
+            {
+                "paymentId": str(item.get("paymentId") or "").strip(),
+                "remaining": _money(item.get("amount")),
+                "reference": str(item.get("reference") or "").strip(),
+                "clientName": str(item.get("clientName") or "").strip(),
+            }
+            for item in (bucket.get("debits") or [])
+            if _money(item.get("amount")) > Decimal("0.00")
+        ]
+        credits = sorted(
+            (bucket.get("credits") or []),
+            key=lambda item: _money(item.get("amount")).copy_abs(),
+            reverse=True,
+        )
+        for credit in credits:
+            target = _money(credit.get("amount")).copy_abs()
+            if target <= Decimal("0.00"):
+                continue
+            matched_total = Decimal("0.00")
+            matched_debits: list[dict] = []
+            for debit in debit_pool:
+                remaining = _money(debit.get("remaining"))
+                if remaining <= Decimal("0.00"):
+                    continue
+                needed = target - matched_total
+                if needed <= Decimal("0.00"):
+                    break
+                consumed = min(remaining, needed)
+                if consumed <= Decimal("0.00"):
+                    continue
+                matched_total += consumed
+                debit["remaining"] = (remaining - consumed).quantize(Decimal("0.01"))
+                matched_debits.append(
+                    {
+                        "paymentId": str(debit.get("paymentId") or ""),
+                        "amountUsed": float(_money(consumed)),
+                        "reference": str(debit.get("reference") or ""),
+                        "clientName": str(debit.get("clientName") or ""),
+                    }
+                )
+            missing_amount = (target - matched_total).quantize(Decimal("0.01"))
+            if missing_amount <= Decimal("0.01"):
+                status = "balanced"
+                balanced += 1
+            elif matched_total > Decimal("0.00"):
+                status = "partial"
+                partial += 1
+                missing_total += missing_amount
+                if str(credit.get("paymentId") or "").strip():
+                    missing_credit_payment_ids.append(str(credit.get("paymentId") or "").strip())
+            else:
+                status = "missing_debits"
+                unmatched += 1
+                missing_total += missing_amount
+                if str(credit.get("paymentId") or "").strip():
+                    missing_credit_payment_ids.append(str(credit.get("paymentId") or "").strip())
+            rows.append(
+                {
+                    "date": day,
+                    "creditPaymentId": str(credit.get("paymentId") or ""),
+                    "creditReference": str(credit.get("reference") or ""),
+                    "creditClientName": str(credit.get("clientName") or ""),
+                    "creditAmount": float(_money(target)),
+                    "matchedDebitTotal": float(_money(matched_total)),
+                    "missingDebitAmount": float(_money(missing_amount if missing_amount > Decimal("0.00") else Decimal("0.00"))),
+                    "status": status,
+                    "matchedDebits": matched_debits,
+                }
+            )
+
+    return {
+        "creditCount": len(rows),
+        "balancedCreditCount": balanced,
+        "partialCreditCount": partial,
+        "missingCreditCount": unmatched + partial,
+        "missingDebitTotal": float(_money(missing_total)),
+        "missingCreditPaymentIds": missing_credit_payment_ids,
+        "rows": rows,
+    }
+
+
 def _pi_payout_batches_from_ignition_rows(ignition_rows: list[dict]) -> list[dict]:
     grouped: dict[str, dict] = {}
     for row in ignition_rows or []:
@@ -4317,6 +4467,7 @@ def pi_clearing_payload(user: dict) -> dict:
                             "riskScore": int(raw_payload.get("riskScore") or 0),
                             "explainer": str(raw_payload.get("explainer") or ""),
                             "payoutDate": str(raw_payload.get("payoutDate") or ""),
+                            "step1MissingDebitTotal": float(_money(raw_payload.get("step1MissingDebitTotal"))),
                             "differenceTotal": float(_money(row.get("difference_total"))),
                             "recommendation": str(row.get("recommendation") or ""),
                             "resolutionStatus": str(row.get("resolution_status") or "pending"),
@@ -4356,22 +4507,29 @@ def pi_clearing_payload(user: dict) -> dict:
 
 def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) -> str:
     requested = str((payload or {}).get("accountCode") or "").strip()
-    if requested:
-        return requested
     configured = ""
+    locked = False
     try:
         connection_row = get_master_xero_connection_for_user(user["id"])
         settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
         configured = str(settings.get("piClearingAccountCode") or "").strip()
+        locked = bool(settings.get("piClearingAccountLocked"))
     except HTTPException:
         configured = ""
+        locked = False
+    if locked and configured:
+        if requested and requested.lower() != configured.lower():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"PI nominal is locked to {configured} and cannot be changed.")
+        return configured
+    if requested:
+        return requested
     return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
 
 
 async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
     safe_payload = payload if isinstance(payload, dict) else {}
-    month_start, month_end = _pi_month_bounds(str(safe_payload.get("month") or safe_payload.get("monthStart") or ""))
-    month_label = month_start.strftime("%Y-%m")
+    month_start, month_end = _pi_batch_bounds(safe_payload)
+    month_label = f"{month_start.isoformat()} to {month_end.isoformat()}"
     account_code = _pi_clearing_account_code_for_user(user, safe_payload)
     force_refresh_xero = bool(safe_payload.get("refreshXero"))
     force_refresh_ignition = bool(safe_payload.get("refreshIgnition"))
@@ -4396,6 +4554,12 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         # Backfill historical caches created before PI clearing ingested ACCPAY rows.
         xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
         xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    xero_step1 = _pi_step1_xero_credit_debit_check(xero_rows)
+    missing_credit_payment_ids = {
+        str(item).strip()
+        for item in (xero_step1.get("missingCreditPaymentIds") or [])
+        if str(item).strip()
+    }
 
     ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
     if force_refresh_ignition or not ignition_rows:
@@ -4475,6 +4639,15 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         raw_difference = (group["xeroTotal"] - group["ignitionTotal"]).quantize(Decimal("0.01"))
         difference = (raw_difference - existing_credit_note_total).quantize(Decimal("0.01"))
         payout_date = _pi_group_effective_date(group.get("ignitionRows") or [], group.get("xeroRows") or [], month_end)
+        step1_missing_debit_total = sum(
+            (
+                _money(item.get("amount")).copy_abs()
+                for item in (group.get("xeroRows") or [])
+                if _money(item.get("amount")) < Decimal("0.00")
+                and str(item.get("paymentId") or "").strip() in missing_credit_payment_ids
+            ),
+            start=Decimal("0.00"),
+        )
         risk_level, risk_score, explainer = _pi_row_risk_and_explainer(
             difference=difference,
             raw_difference=raw_difference,
@@ -4496,6 +4669,9 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         elif difference < 0:
             recommendation = "Investigate Ignition payout with no matching Xero payment."
             resolution_status = "investigate"
+        if step1_missing_debit_total > Decimal("0.00"):
+            recommendation = "Step 1 detected Xero payout credit(s) with missing same-date debit entries. Investigate Xero posting sequence before credit note creation."
+            resolution_status = "step1_xero_check_required"
         rows_to_store.append(
             {
                 "matchKey": key,
@@ -4515,6 +4691,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "riskScore": risk_score,
                 "explainer": explainer,
                 "payoutDate": payout_date,
+                "step1MissingDebitTotal": step1_missing_debit_total,
                 "xeroPaymentIds": [item for item in group.get("xeroPaymentIds") or [] if item],
                 "ignitionPaymentIds": [item for item in group.get("ignitionPaymentIds") or [] if item],
                 "raw": {
@@ -4528,6 +4705,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                     "riskScore": risk_score,
                     "explainer": explainer,
                     "payoutDate": payout_date.isoformat(),
+                    "step1MissingDebitTotal": float(_money(step1_missing_debit_total)),
                 },
             }
         )
@@ -4558,6 +4736,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         {
             "payoutMatching": payout_matching,
             "dailyBalance": daily_balance,
+            "xeroStep1": xero_step1,
         },
     )
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
@@ -4581,6 +4760,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "differenceTotal": float(sum((_money(row.get("difference")) for row in rows_to_store), start=Decimal("0.00"))),
         "payoutMatching": payout_matching,
         "dailyBalance": daily_balance,
+        "xeroStep1": xero_step1,
     }
     status_value = "ready" if rows_to_store else "empty"
     now = utcnow()
@@ -4684,7 +4864,7 @@ def pi_clearing_dry_run_pdf(
                 WHERE run_id = %s
                   AND user_id = %s
                   AND difference_total > 0
-                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note', 'step1_xero_check_required')
             """
             params: list = [run_id, user["id"]]
             if selected:
@@ -4799,7 +4979,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 WHERE run_id = %s
                   AND user_id = %s
                   AND difference_total > 0
-                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note', 'step1_xero_check_required')
             """
             params: list = [run_id, user["id"]]
             if selected_row_ids:
@@ -4828,6 +5008,9 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
             continue
         raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        if _money(raw_payload.get("step1MissingDebitTotal")) > Decimal("0.00"):
+            skipped.append({"runRowId": row_id, "reason": "Step 1 failed: same-date Xero debit entries are missing for payout credit(s)."})
+            continue
         payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
         note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
         credit_note_payload = {
@@ -5138,6 +5321,7 @@ def _default_posting_settings(tenant_id: str | None = None) -> dict:
         "badDebtWriteOffAccountCode": str(settings.bad_debt_write_off_account_code or "402").strip(),
         "badDebtWriteOffAccountName": "",
         "piClearingAccountCode": PI_CLEARING_DEFAULT_ACCOUNT_CODE,
+        "piClearingAccountLocked": False,
         "updatedAt": "",
     }
 
@@ -5154,6 +5338,7 @@ def _serialize_posting_settings(row: dict | None, tenant_id: str | None = None) 
         "badDebtWriteOffAccountCode": row.get("bad_debt_write_off_account_code") or defaults["badDebtWriteOffAccountCode"],
         "badDebtWriteOffAccountName": row.get("bad_debt_write_off_account_name") or "",
         "piClearingAccountCode": row.get("pi_clearing_account_code") or defaults["piClearingAccountCode"],
+        "piClearingAccountLocked": bool(row.get("pi_clearing_account_locked")),
         "updatedAt": _iso(row.get("updated_at")) or "",
     }
 
@@ -5822,11 +6007,8 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
     account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
     late_payment_code = str(payload.get("latePaymentChargeAccountCode") or "").strip()
     bad_debt_code = str(payload.get("badDebtWriteOffAccountCode") or "").strip()
-    pi_clearing_code = str(payload.get("piClearingAccountCode") or "").strip()
     if not late_payment_code or not bad_debt_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose both Xero posting accounts before saving.")
-    if not pi_clearing_code:
-        pi_clearing_code = PI_CLEARING_DEFAULT_ACCOUNT_CODE
     late_payment_account = account_by_code.get(late_payment_code.lower())
     bad_debt_account = account_by_code.get(bad_debt_code.lower())
     if late_payment_account is None:
@@ -5848,19 +6030,17 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
                     late_payment_charge_tax_type,
                     bad_debt_write_off_account_code,
                     bad_debt_write_off_account_name,
-                    pi_clearing_account_code,
                     updated_by_user_id,
                     created_at,
                     updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE
                 SET late_payment_charge_account_code = EXCLUDED.late_payment_charge_account_code,
                     late_payment_charge_account_name = EXCLUDED.late_payment_charge_account_name,
                     late_payment_charge_tax_type = EXCLUDED.late_payment_charge_tax_type,
                     bad_debt_write_off_account_code = EXCLUDED.bad_debt_write_off_account_code,
                     bad_debt_write_off_account_name = EXCLUDED.bad_debt_write_off_account_name,
-                    pi_clearing_account_code = EXCLUDED.pi_clearing_account_code,
                     updated_by_user_id = EXCLUDED.updated_by_user_id,
                     updated_at = EXCLUDED.updated_at
                 """,
@@ -5871,7 +6051,6 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
                     tax_type,
                     bad_debt_account["code"],
                     bad_debt_account.get("name") or "",
-                    pi_clearing_code,
                     user["id"],
                     now,
                     now,
@@ -5890,7 +6069,69 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
             "late_payment_charge_tax_type": tax_type,
             "bad_debt_write_off_account_code": bad_debt_account["code"],
             "bad_debt_write_off_account_name": bad_debt_account.get("name") or "",
-            "pi_clearing_account_code": pi_clearing_code,
+        },
+        user["id"],
+    )
+    return {"postingSettings": settings, "xeroAccounts": accounts}
+
+
+async def save_pi_clearing_account_setup(user: dict, payload: dict) -> dict:
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    selected_code = str(payload.get("piClearingAccountCode") or payload.get("accountCode") or "").strip()
+    if not selected_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a PI nominal account before starting the batch.")
+
+    accounts = await _fetch_xero_chart_of_accounts(connection_row)
+    account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
+    selected_account = account_by_code.get(selected_code.lower())
+    if selected_account is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a PI nominal account from the connected Jaccountancy chart of accounts.")
+
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM xero_posting_settings WHERE tenant_id = %s", (tenant_id,))
+            current_row = cursor.fetchone() or {}
+            current_code = str(current_row.get("pi_clearing_account_code") or "").strip()
+            is_locked = bool(current_row.get("pi_clearing_account_locked"))
+            if is_locked and current_code and current_code.lower() != selected_account["code"].lower():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"PI nominal is locked to {current_code}. It cannot be changed.",
+                )
+            cursor.execute(
+                """
+                INSERT INTO xero_posting_settings (
+                    tenant_id,
+                    pi_clearing_account_code,
+                    pi_clearing_account_locked,
+                    updated_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET pi_clearing_account_code = EXCLUDED.pi_clearing_account_code,
+                    pi_clearing_account_locked = CASE
+                        WHEN xero_posting_settings.pi_clearing_account_locked THEN TRUE
+                        ELSE EXCLUDED.pi_clearing_account_locked
+                    END,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (tenant_id, selected_account["code"], True, user["id"], now, now),
+            )
+            settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
+        connection.commit()
+
+    record_audit_event(
+        "xero_posting_settings",
+        tenant_id,
+        "pi_clearing_account.locked",
+        {
+            "pi_clearing_account_code": selected_account["code"],
+            "pi_clearing_account_name": selected_account.get("name") or "",
         },
         user["id"],
     )

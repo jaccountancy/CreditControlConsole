@@ -28152,6 +28152,22 @@
                 gap: 8px;
                 margin: 0 0 4px;
             }
+            .pi-clearing-progress-track {
+                width: 100%;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(218, 230, 248, 0.9);
+                border: 1px solid rgba(30, 63, 124, 0.12);
+                overflow: hidden;
+                margin: 0 0 8px;
+            }
+            .pi-clearing-progress-fill {
+                height: 100%;
+                width: 0%;
+                background: linear-gradient(90deg, #2f7cff 0%, #79b0ff 100%);
+                border-radius: inherit;
+                transition: width 0.34s ease;
+            }
             .pi-clearing-wizard-context-chip {
                 display: inline-flex;
                 align-items: center;
@@ -28222,6 +28238,7 @@
                 color: #0f3e95;
                 box-shadow: 0 8px 14px rgba(20, 69, 150, 0.12);
                 transform: translateY(-1px);
+                animation: pi-clearing-stage-pulse 1.2s ease-in-out infinite;
             }
             .pi-clearing-workflow-stage-chip.is-complete {
                 border-color: rgba(39, 176, 95, 0.3);
@@ -28297,6 +28314,39 @@
                 font-size: 12px;
                 line-height: 1.45;
             }
+            .pi-step1-status-badge {
+                display: inline-flex;
+                align-items: center;
+                border-radius: 999px;
+                padding: 2px 9px;
+                font-size: 11px;
+                font-weight: 700;
+                border: 1px solid transparent;
+            }
+            .pi-step1-status-badge.is-balanced {
+                background: rgba(20, 128, 79, 0.12);
+                color: #0f6e45;
+                border-color: rgba(20, 128, 79, 0.22);
+            }
+            .pi-step1-status-badge.is-partial {
+                background: rgba(206, 128, 10, 0.12);
+                color: #8b5600;
+                border-color: rgba(206, 128, 10, 0.23);
+            }
+            .pi-step1-status-badge.is-missing {
+                background: rgba(200, 33, 33, 0.12);
+                color: #9e1717;
+                border-color: rgba(200, 33, 33, 0.25);
+            }
+            .pi-step1-row.is-balanced {
+                background: rgba(237, 249, 242, 0.65);
+            }
+            .pi-step1-row.is-partial {
+                background: rgba(255, 246, 230, 0.72);
+            }
+            .pi-step1-row.is-missing_debits {
+                background: rgba(255, 236, 236, 0.76);
+            }
             [data-pi-payout-key] {
                 cursor: pointer;
             }
@@ -28312,6 +28362,20 @@
             @keyframes pi-clearing-enter {
                 from { opacity: 0; transform: translateY(6px); }
                 to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes pi-clearing-stage-pulse {
+                0% { box-shadow: 0 8px 14px rgba(20, 69, 150, 0.12); }
+                50% { box-shadow: 0 10px 20px rgba(20, 69, 150, 0.22); }
+                100% { box-shadow: 0 8px 14px rgba(20, 69, 150, 0.12); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .pi-clearing-wizard-section,
+                .pi-clearing-step-chip,
+                .pi-clearing-workflow-stage-chip,
+                .pi-clearing-progress-fill {
+                    animation: none !important;
+                    transition: none !important;
+                }
             }
             @media (max-width: 1180px) {
                 .juk-wizard-modal {
@@ -29692,10 +29756,6 @@
                                         <label class="posting-settings-field" for="badDebtWriteOffAccountSelect">
                                             <span>Bad debt write-offs</span>
                                             <select id="badDebtWriteOffAccountSelect"></select>
-                                        </label>
-                                        <label class="posting-settings-field" for="piClearingAccountCodeInput">
-                                            <span>PI clearing nominal</span>
-                                            <input id="piClearingAccountCodeInput" type="text" placeholder="Account code or name (e.g. 700 / PI Clearing)">
                                         </label>
                                     </div>
                                     <div class="posting-settings-status" id="postingSettingsStatus">
@@ -35157,30 +35217,22 @@
                                 <div>
                                     <p class="eyebrow">Practice Tools</p>
                                     <h3>PI Clearing Account</h3>
-                                    <p class="detail-meta">Monthly reconciliation workspace between Xero PI Clearing transactions and Ignition payouts.</p>
+                                    <p class="detail-meta">Batch reconciliation workspace between Xero PI Clearing transactions and Ignition payouts.</p>
                                 </div>
                                 <div class="detail-actions">
-                                    <label class="field-inline" for="piClearingMonthInput">
-                                        <span>Month</span>
-                                        <input type="month" id="piClearingMonthInput" />
-                                    </label>
-                                    <label class="field-inline" for="piClearingAccountCodeInputInline">
-                                        <span>PI nominal</span>
-                                        <input id="piClearingAccountCodeInputInline" type="text" placeholder="PI clearing account code/name" />
-                                    </label>
                                     <button class="primary-button" id="piClearingStartWorkflowButton" type="button">Start workflow</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="piClearingAccountSummary">Loading PI Clearing Account workspace…</p>
                             <section class="ch-companies-table-wrap pi-clearing-table-section">
                                 <div class="pi-clearing-table-head">
-                                    <h4>Monthly runs</h4>
-                                    <p>Open a completed run or start a new month workflow.</p>
+                                    <h4>Batch runs</h4>
+                                    <p>Open a completed run or start a new batch workflow.</p>
                                 </div>
-                                <table class="ch-table" aria-label="PI clearing monthly runs">
+                                <table class="ch-table" aria-label="PI clearing batch runs">
                                     <thead>
                                         <tr>
-                                            <th>Month</th>
+                                            <th>Batch period</th>
                                             <th>Status</th>
                                             <th>Xero total</th>
                                             <th>Ignition total</th>
@@ -35197,7 +35249,7 @@
                                     <h4>Reconciliation rows</h4>
                                     <p>Review client-level variances between Xero and Ignition.</p>
                                 </div>
-                                <table class="ch-table" aria-label="PI clearing reconciliation rows for selected month">
+                                <table class="ch-table" aria-label="PI clearing reconciliation rows for selected batch">
                                     <thead>
                                         <tr>
                                             <th>Client</th>
@@ -35215,7 +35267,7 @@
                             </section>
                             <div class="empty-state" id="piClearingEmptyState" hidden>
                                 <p class="eyebrow">No run selected</p>
-                                <h4>Run monthly PI workflow to generate differences</h4>
+                                <h4>Run PI workflow to generate differences</h4>
                                 <p>The wizard loads Xero and Ignition transactions, runs AI analysis, and prepares Xero credit notes for any missing payments.</p>
                             </div>
                         </section>
@@ -35225,7 +35277,7 @@
                             <div class="company-secretarial-modal-head">
                                 <div>
                                     <p class="eyebrow">PI Clearing Account</p>
-                                    <h4 id="piClearingWizardTitle">Monthly reconciliation wizard</h4>
+                                    <h4 id="piClearingWizardTitle">Batch reconciliation wizard</h4>
                                     <p class="detail-meta" id="piClearingWizardMeta">Load transactions, analyse mismatches, and raise corrective credit notes.</p>
                                 </div>
                                 <div class="detail-actions">
@@ -35233,9 +35285,13 @@
                                 </div>
                             </div>
                             <div class="pi-clearing-wizard-steps">
+                                <span class="pi-clearing-step-chip" data-pi-step-chip="0">0. Batch setup</span>
                                 <span class="pi-clearing-step-chip" data-pi-step-chip="1">1. Transactions</span>
-                                <span class="pi-clearing-step-chip" data-pi-step-chip="2">2. AI analysis</span>
+                                <span class="pi-clearing-step-chip" data-pi-step-chip="2">2. Ignition + AI</span>
                                 <span class="pi-clearing-step-chip" data-pi-step-chip="3">3. Credit notes</span>
+                            </div>
+                            <div class="pi-clearing-progress-track" aria-hidden="true">
+                                <span class="pi-clearing-progress-fill" id="piClearingProgressFill"></span>
                             </div>
                             <div class="pi-clearing-wizard-context" aria-live="polite">
                                 <span class="pi-clearing-wizard-context-chip" id="piClearingWizardContextMonth">Month --</span>
@@ -35248,29 +35304,57 @@
                                 <span class="pi-clearing-workflow-stage-chip" data-pi-workflow-stage-chip="3">4. AI analysis</span>
                             </div>
                             <div class="pi-clearing-wizard-body">
+                            <section class="pi-clearing-wizard-section" data-pi-wizard-section="0">
+                                <p class="detail-meta">Confirm this batch date range before starting. Earliest allowed start date is 1 Jan 2026.</p>
+                                <section class="ch-companies-table-wrap">
+                                    <div class="settings-form-grid" style="padding: 0 2px;">
+                                        <label>
+                                            Batch start date
+                                            <input id="piClearingBatchStartInput" type="date" min="2026-01-01">
+                                        </label>
+                                        <label>
+                                            Batch end date
+                                            <input id="piClearingBatchEndInput" type="date" min="2026-01-01">
+                                        </label>
+                                        <label class="is-wide">
+                                            Last batch run
+                                            <input id="piClearingLastRunInput" type="text" readonly>
+                                        </label>
+                                        <label class="is-wide">
+                                            PI nominal account (Jaccountancy COA)
+                                            <select id="piClearingBatchNominalSelect"></select>
+                                        </label>
+                                        <p class="detail-meta is-wide" id="piClearingBatchNominalMeta">Select the PI nominal account once. This setting will lock after first save.</p>
+                                    </div>
+                                    <div class="detail-actions" style="padding: 6px 2px 0;">
+                                        <button class="primary-button" id="piClearingConfirmBatchButton" type="button">Confirm dates and run batch</button>
+                                    </div>
+                                </section>
+                            </section>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="1">
-                                <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this month appear below.</p>
+                                <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this batch appear below.</p>
                                 <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
+                                    <button class="ghost-button" id="piClearingToggleMatchedPairsButton" type="button">Show matched pairs</button>
                                 </div>
-                                <p class="detail-meta">Master Xero PI Clearing account activity (debits and credits) is loaded first.</p>
+                                <p class="detail-meta">Step 1 is Xero only. Each payout credit must net to same-date debit entries. Matched pairs are hidden by default.</p>
                                 <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="Master Xero PI clearing debits and credits">
+                                    <table class="ch-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
                                         <thead>
                                             <tr>
                                                 <th>Date</th>
-                                                <th>Source</th>
-                                                <th>Description</th>
-                                                <th>Client</th>
-                                                <th>Reference</th>
-                                                <th>Debit</th>
-                                                <th>Credit</th>
-                                                <th>Net movement</th>
+                                                <th>Payout credit</th>
+                                                <th>Matched debits</th>
+                                                <th>Missing debit</th>
+                                                <th>Status</th>
                                             </tr>
                                         </thead>
                                         <tbody id="piClearingWizardXeroBody"></tbody>
                                     </table>
                                 </section>
+                            </section>
+                            <section class="pi-clearing-wizard-section" data-pi-wizard-section="2" hidden>
+                                <p class="detail-meta" id="piClearingWizardAnalysisSummary">Ignition payout checks and AI findings appear here after Step 1 completes.</p>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI clearing wizard transaction rows">
                                         <thead>
@@ -35305,9 +35389,6 @@
                                         <tbody id="piClearingWizardPayoutBody"></tbody>
                                     </table>
                                 </section>
-                            </section>
-                            <section class="pi-clearing-wizard-section" data-pi-wizard-section="2" hidden>
-                                <p class="detail-meta" id="piClearingWizardAnalysisSummary">AI findings will appear here after the workflow runs.</p>
                                 <div class="pi-clearing-analysis-grid">
                                     <article class="pi-clearing-analysis-card">
                                         <h5>Findings</h5>
@@ -36565,6 +36646,7 @@
                 badDebtWriteOffAccountCode: "402",
                 badDebtWriteOffAccountName: "",
                 piClearingAccountCode: "PI Clearing Account",
+                piClearingAccountLocked: false,
                 updatedAt: ""
             };
             const emptyData = {
@@ -36694,16 +36776,19 @@
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
             const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account";
+            const PI_CLEARING_BATCH_HARD_START = "2026-01-01";
             let piClearingRuns = [];
             let piClearingLoading = false;
             let piClearingWorkflowRunning = false;
             let piClearingCreditNotesRunning = false;
             let piClearingSelectedRunId = "";
-            let piClearingSelectedMonth = "";
             let piClearingSelectedAccountCode = "";
+            let piClearingBatchStart = "";
+            let piClearingBatchEnd = "";
             let piClearingHydrated = false;
             let piClearingWizardOpen = false;
-            let piClearingWizardStep = 1;
+            let piClearingWizardStep = 0;
+            let piClearingShowMatchedStep1 = false;
             let piClearingSelectedRowIds = new Set();
             let piClearingStatusMessage = "";
             let piClearingStatusTone = "info";
@@ -38085,6 +38170,7 @@
                         clientCallStatsFilterPresetSuggestions: config.endpoints?.clientCallStatsFilterPresetSuggestions || "/api/client-call-stats/filter-presets/suggest",
                         piClearingAccount: config.endpoints?.piClearingAccount || "/api/pi-clearing-account",
                         piClearingAccountRun: config.endpoints?.piClearingAccountRun || "/api/pi-clearing-account/run",
+                        piClearingAccountSetup: config.endpoints?.piClearingAccountSetup || "/api/pi-clearing-account/setup",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
                         piClearingAccountVoidCreditNote: config.endpoints?.piClearingAccountVoidCreditNote || "/api/pi-clearing-account/runs/:runId/credit-notes/:creditNoteRecordId/void",
                         piClearingAccountDryRunPdf: config.endpoints?.piClearingAccountDryRunPdf || "/api/pi-clearing-account/runs/:runId/dry-run.pdf",
@@ -38175,6 +38261,7 @@
                     badDebtWriteOffAccountCode: String(settings?.badDebtWriteOffAccountCode || defaultPostingSettings.badDebtWriteOffAccountCode),
                     badDebtWriteOffAccountName: String(settings?.badDebtWriteOffAccountName || ""),
                     piClearingAccountCode: String(settings?.piClearingAccountCode || defaultPostingSettings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE),
+                    piClearingAccountLocked: Boolean(settings?.piClearingAccountLocked),
                     updatedAt: String(settings?.updatedAt || "")
                 };
             }
@@ -46563,12 +46650,53 @@
                 return "";
             }
 
+            function piClearingRunStart(run) {
+                return String(run?.monthStart || "").trim();
+            }
+
+            function piClearingRunEnd(run) {
+                return String(run?.monthEnd || "").trim();
+            }
+
+            function piClearingRunRangeLabel(run) {
+                const start = piClearingRunStart(run);
+                const end = piClearingRunEnd(run);
+                if (!start && !end) return "--";
+                if (start && end) return `${formatDate(start)} to ${formatDate(end)}`;
+                return formatDate(start || end);
+            }
+
+            function piClearingLastRun() {
+                if (!Array.isArray(piClearingRuns) || !piClearingRuns.length) return null;
+                return piClearingRuns[0];
+            }
+
+            function piClearingDefaultBatchStartISO() {
+                const lastRun = piClearingLastRun();
+                const lastEnd = String(lastRun?.monthEnd || "").trim();
+                const hardStart = new Date(`${PI_CLEARING_BATCH_HARD_START}T00:00:00`);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                if (!lastEnd) return PI_CLEARING_BATCH_HARD_START;
+                const dayAfter = new Date(`${lastEnd}T00:00:00`);
+                if (Number.isNaN(dayAfter.getTime())) return PI_CLEARING_BATCH_HARD_START;
+                dayAfter.setDate(dayAfter.getDate() + 1);
+                const start = dayAfter < hardStart ? hardStart : dayAfter;
+                if (start > today) return today.toISOString().slice(0, 10);
+                return start.toISOString().slice(0, 10);
+            }
+
+            function piClearingDefaultBatchEndISO() {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return today.toISOString().slice(0, 10);
+            }
+
             function currentPiClearingRun() {
                 if (!Array.isArray(piClearingRuns) || !piClearingRuns.length) return null;
                 const byId = piClearingRuns.find((run) => String(run?.id || "") === String(piClearingSelectedRunId || ""));
                 if (byId) return byId;
-                const byMonth = piClearingRuns.find((run) => piClearingRunMonth(run) === piClearingSelectedMonth);
-                return byMonth || piClearingRuns[0];
+                return piClearingRuns[0];
             }
 
             function currentPiClearingAccountCode() {
@@ -46744,7 +46872,7 @@
                     const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
                     if (difference <= 0) return;
                     if (!contactId) return;
-                    if (["credit_note_created", "balanced_by_existing_credit_note"].includes(resolution)) return;
+                    if (["credit_note_created", "balanced_by_existing_credit_note", "step1_xero_check_required"].includes(resolution)) return;
                     const key = `${contactId}|${String(row?.clientName || "").trim()}`;
                     const bucket = grouped.get(key) || {
                         contactId,
@@ -46778,6 +46906,10 @@
             }
 
             function piRowMatchState(row = {}) {
+                const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
+                if (resolution === "step1_xero_check_required") {
+                    return { key: "step1", label: "Step 1 check", className: "is-info" };
+                }
                 const difference = Math.abs(Number(row?.differenceTotal || 0));
                 const existingCredit = Math.abs(Number(row?.existingCreditNoteTotal || 0));
                 const reversals = Math.abs(Number(row?.ignitionReversalTotal || 0));
@@ -46806,10 +46938,12 @@
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const dailyBalance = summary?.dailyBalance && typeof summary.dailyBalance === "object" ? summary.dailyBalance : {};
                 const imbalanceDayCount = Number(dailyBalance?.imbalanceDayCount || 0);
+                const xeroStep1 = summary?.xeroStep1 && typeof summary.xeroStep1 === "object" ? summary.xeroStep1 : {};
                 return [
                     { label: "Xero total", value: formatCurrency(summary?.xeroTotal || 0) },
                     { label: "Xero debits", value: formatCurrency(summary?.xeroDebitTotal || 0) },
                     { label: "Xero credits", value: formatCurrency(summary?.xeroCreditTotal || 0) },
+                    { label: "Step 1 missing debits", value: formatInteger(xeroStep1?.missingCreditCount || 0) },
                     { label: "Ignition total", value: formatCurrency(summary?.ignitionTotal || 0) },
                     { label: "Reversals", value: formatCurrency(summary?.ignitionReversalTotal || 0) },
                     { label: "Existing CN", value: formatCurrency(summary?.existingCreditNoteTotal || 0) },
@@ -46841,13 +46975,10 @@
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccount);
                     piClearingRuns = Array.isArray(payload?.runs) ? payload.runs : [];
-                    if (!piClearingSelectedMonth) piClearingSelectedMonth = currentMonthKey();
-                    const matchedRun = piClearingRuns.find((run) => piClearingRunMonth(run) === piClearingSelectedMonth);
-                    if (matchedRun) piClearingSelectedRunId = String(matchedRun.id || "");
-                    else if (piClearingRuns[0]) piClearingSelectedRunId = String(piClearingRuns[0].id || "");
+                    if (!piClearingSelectedRunId && piClearingRuns[0]) piClearingSelectedRunId = String(piClearingRuns[0].id || "");
                     if (!preserveStatus && !piClearingStatusMessage) {
                         piClearingStatusMessage = piClearingRuns.length
-                            ? "Select a month or start a workflow to refresh PI reconciliation."
+                            ? "Select a batch run or start a new PI clearing batch."
                             : "No PI clearing run has been generated yet.";
                         piClearingStatusTone = "info";
                     }
@@ -46942,18 +47073,68 @@
                 }, 1000);
             }
 
+            async function ensurePiClearingNominalSetup() {
+                const selectedCode = String(piClearingSelectedAccountCode || "").trim();
+                if (!selectedCode) {
+                    throw new Error("Choose the PI nominal account before running this batch.");
+                }
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                if (settings.piClearingAccountLocked && String(settings.piClearingAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase()) {
+                    return;
+                }
+                const payload = await requestJSON(api.endpoints.piClearingAccountSetup, {
+                    method: "POST",
+                    body: JSON.stringify({ piClearingAccountCode: selectedCode }),
+                });
+                state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
+                xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || xeroAccounts);
+                xeroAccountsLoaded = true;
+                piClearingSelectedAccountCode = String(state.postingSettings?.piClearingAccountCode || selectedCode).trim();
+            }
+
+            async function openPiClearingWizardSetup() {
+                if (piClearingWorkflowRunning) return;
+                piClearingWizardOpen = true;
+                piClearingWizardStep = 0;
+                if (!xeroAccountsLoaded && !xeroAccountsLoading) {
+                    await loadXeroPostingSettings(true);
+                }
+                if (!piClearingBatchStart) piClearingBatchStart = piClearingDefaultBatchStartISO();
+                if (!piClearingBatchEnd) piClearingBatchEnd = piClearingDefaultBatchEndISO();
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                if (!piClearingSelectedAccountCode) {
+                    piClearingSelectedAccountCode = String(settings.piClearingAccountCode || "").trim();
+                }
+                renderPiClearingAccountScreen();
+            }
+
             async function runPiClearingWorkflow() {
                 if (piClearingWorkflowRunning) return;
+                if (!piClearingBatchStart || !piClearingBatchEnd) {
+                    showToast("Confirm batch start and end dates first.", "error");
+                    return;
+                }
+                if (piClearingBatchStart < PI_CLEARING_BATCH_HARD_START) {
+                    showToast(`Batch start date cannot be earlier than ${PI_CLEARING_BATCH_HARD_START}.`, "error");
+                    return;
+                }
+                if (piClearingBatchEnd < piClearingBatchStart) {
+                    showToast("Batch end date cannot be earlier than batch start date.", "error");
+                    return;
+                }
                 piClearingWorkflowRunning = true;
                 piClearingWizardOpen = true;
                 piClearingWizardStep = 1;
+                piClearingShowMatchedStep1 = false;
                 startPiClearingWorkflowStageTicker();
                 startPiClearingLivePolling();
                 try {
+                    await ensurePiClearingNominalSetup();
                     const payload = await requestJSON(api.endpoints.piClearingAccountRun, {
                         method: "POST",
                         body: JSON.stringify({
-                            month: piClearingSelectedMonth || currentMonthKey(),
+                            batchStart: piClearingBatchStart,
+                            batchEnd: piClearingBatchEnd,
                             accountCode: currentPiClearingAccountCode(),
                             refreshXero: true,
                             refreshIgnition: true,
@@ -47055,25 +47236,31 @@
             }
 
             function setPiClearingWizardStep(nextStep) {
-                const step = Math.max(1, Math.min(3, Number(nextStep || 1)));
+                const step = Math.max(0, Math.min(3, Number(nextStep || 0)));
                 piClearingWizardStep = step;
                 renderPiClearingAccountScreen();
             }
 
             function renderPiClearingAccountScreen() {
                 const summary = document.getElementById("piClearingAccountSummary");
-                const monthInput = document.getElementById("piClearingMonthInput");
-                const accountCodeInput = document.getElementById("piClearingAccountCodeInputInline");
                 const startButton = document.getElementById("piClearingStartWorkflowButton");
+                const batchStartInput = document.getElementById("piClearingBatchStartInput");
+                const batchEndInput = document.getElementById("piClearingBatchEndInput");
+                const lastRunInput = document.getElementById("piClearingLastRunInput");
+                const nominalSelect = document.getElementById("piClearingBatchNominalSelect");
+                const nominalMeta = document.getElementById("piClearingBatchNominalMeta");
+                const confirmBatchButton = document.getElementById("piClearingConfirmBatchButton");
                 const runsBody = document.getElementById("piClearingRunsBody");
                 const rowsBody = document.getElementById("piClearingRowsBody");
                 const emptyState = document.getElementById("piClearingEmptyState");
                 const modal = document.getElementById("piClearingWizardModal");
                 const wizardMeta = document.getElementById("piClearingWizardMeta");
                 const wizardSummary = document.getElementById("piClearingWizardSummary");
+                const wizardProgressFill = document.getElementById("piClearingProgressFill");
                 const wizardXeroBody = document.getElementById("piClearingWizardXeroBody");
                 const wizardRowsBody = document.getElementById("piClearingWizardRowsBody");
                 const wizardPayoutBody = document.getElementById("piClearingWizardPayoutBody");
+                const wizardToggleMatchedButton = document.getElementById("piClearingToggleMatchedPairsButton");
                 const wizardAnalysisSummary = document.getElementById("piClearingWizardAnalysisSummary");
                 const wizardFindings = document.getElementById("piClearingWizardFindings");
                 const wizardActions = document.getElementById("piClearingWizardActions");
@@ -47098,57 +47285,106 @@
                     loadPiClearingAccount();
                 }
 
-                if (!piClearingSelectedMonth) piClearingSelectedMonth = currentMonthKey();
-                if (monthInput) monthInput.value = piClearingSelectedMonth;
+                if (!piClearingBatchStart) piClearingBatchStart = piClearingDefaultBatchStartISO();
+                if (!piClearingBatchEnd) piClearingBatchEnd = piClearingDefaultBatchEndISO();
+                const settings = normalisePostingSettings(state.postingSettings || {});
                 if (!String(piClearingSelectedAccountCode || "").trim()) {
-                    piClearingSelectedAccountCode = String(state?.postingSettings?.piClearingAccountCode || "").trim()
+                    piClearingSelectedAccountCode = String(settings.piClearingAccountCode || "").trim()
                         || PI_CLEARING_DEFAULT_ACCOUNT_CODE;
-                }
-                if (accountCodeInput) {
-                    accountCodeInput.value = String(piClearingSelectedAccountCode || "").trim();
-                    accountCodeInput.disabled = piClearingWorkflowRunning || piClearingCreditNotesRunning;
                 }
                 if (startButton) {
                     startButton.disabled = piClearingWorkflowRunning;
                     startButton.textContent = piClearingWorkflowRunning ? "Running workflow..." : "Start workflow";
                 }
-                if (monthInput && monthInput.dataset.piWired !== "true") {
-                    monthInput.dataset.piWired = "true";
-                    monthInput.addEventListener("change", (event) => {
-                        const month = String(event.target.value || "").trim();
-                        if (!month) return;
-                        piClearingSelectedMonth = month;
-                        const matchingRun = piClearingRuns.find((run) => piClearingRunMonth(run) === month);
-                        if (matchingRun) piClearingSelectedRunId = String(matchingRun.id || "");
-                        renderPiClearingAccountScreen();
+                if (confirmBatchButton) {
+                    confirmBatchButton.disabled = piClearingWorkflowRunning;
+                    confirmBatchButton.textContent = piClearingWorkflowRunning ? "Running batch..." : "Confirm dates and run batch";
+                }
+                if (batchStartInput) {
+                    batchStartInput.value = piClearingBatchStart;
+                    batchStartInput.min = PI_CLEARING_BATCH_HARD_START;
+                    batchStartInput.disabled = piClearingWorkflowRunning;
+                }
+                if (batchEndInput) {
+                    batchEndInput.value = piClearingBatchEnd;
+                    batchEndInput.min = PI_CLEARING_BATCH_HARD_START;
+                    batchEndInput.disabled = piClearingWorkflowRunning;
+                }
+                const lastRun = piClearingLastRun();
+                if (lastRunInput) {
+                    lastRunInput.value = lastRun?.monthStart && lastRun?.monthEnd
+                        ? `${formatDate(lastRun.monthStart)} to ${formatDate(lastRun.monthEnd)}`
+                        : "No previous batch run";
+                }
+                if (nominalSelect) {
+                    const options = xeroAccounts
+                        .filter((account) => String(account?.code || "").trim())
+                        .map((account) => {
+                            const code = String(account.code || "").trim();
+                            const name = String(account.name || "").trim();
+                            const status = String(account.status || "").trim();
+                            const label = `${code}${name ? ` · ${name}` : ""}${status ? ` (${status})` : ""}`;
+                            return `<option value="${escapeHTML(code)}">${escapeHTML(label)}</option>`;
+                        });
+                    if (!options.length) {
+                        nominalSelect.innerHTML = `<option value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}">${escapeHTML(String(piClearingSelectedAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE).trim())}</option>`;
+                    } else if (!options.join("").includes(`value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}"`)) {
+                        nominalSelect.innerHTML = `<option value="${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}">${escapeHTML(String(piClearingSelectedAccountCode || "").trim())}</option>${options.join("")}`;
+                    } else {
+                        nominalSelect.innerHTML = options.join("");
+                    }
+                    nominalSelect.value = String(piClearingSelectedAccountCode || "").trim();
+                    nominalSelect.disabled = Boolean(settings.piClearingAccountLocked) || piClearingWorkflowRunning;
+                }
+                if (nominalMeta) {
+                    nominalMeta.textContent = settings.piClearingAccountLocked
+                        ? `PI nominal locked to ${String(settings.piClearingAccountCode || piClearingSelectedAccountCode || "").trim() || "saved code"}.`
+                        : "Select the PI nominal account once. This setting will lock after first save.";
+                }
+                if (batchStartInput && batchStartInput.dataset.piWired !== "true") {
+                    batchStartInput.dataset.piWired = "true";
+                    batchStartInput.addEventListener("change", (event) => {
+                        piClearingBatchStart = String(event.target.value || "").trim();
                     });
                 }
-                if (accountCodeInput && accountCodeInput.dataset.piWired !== "true") {
-                    accountCodeInput.dataset.piWired = "true";
-                    accountCodeInput.addEventListener("input", (event) => {
+                if (batchEndInput && batchEndInput.dataset.piWired !== "true") {
+                    batchEndInput.dataset.piWired = "true";
+                    batchEndInput.addEventListener("change", (event) => {
+                        piClearingBatchEnd = String(event.target.value || "").trim();
+                    });
+                }
+                if (nominalSelect && nominalSelect.dataset.piWired !== "true") {
+                    nominalSelect.dataset.piWired = "true";
+                    nominalSelect.addEventListener("change", (event) => {
                         piClearingSelectedAccountCode = String(event.target.value || "").trim();
                     });
-                    accountCodeInput.addEventListener("change", (event) => {
-                        piClearingSelectedAccountCode = String(event.target.value || "").trim();
+                }
+                if (confirmBatchButton && confirmBatchButton.dataset.piWired !== "true") {
+                    confirmBatchButton.dataset.piWired = "true";
+                    confirmBatchButton.addEventListener("click", async () => {
+                        piClearingBatchStart = String(batchStartInput?.value || piClearingBatchStart || "").trim();
+                        piClearingBatchEnd = String(batchEndInput?.value || piClearingBatchEnd || "").trim();
+                        piClearingSelectedAccountCode = String(nominalSelect?.value || piClearingSelectedAccountCode || "").trim();
+                        await runPiClearingWorkflow();
                     });
                 }
                 if (startButton && startButton.dataset.piWired !== "true") {
                     startButton.dataset.piWired = "true";
-                    startButton.addEventListener("click", runPiClearingWorkflow);
+                    startButton.addEventListener("click", openPiClearingWizardSetup);
                 }
 
                 const run = currentPiClearingRun();
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const summaryRows = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const differenceTotal = Number(summaryRows?.differenceTotal || 0);
-                const selectedMonthLabel = formatMonthKey(piClearingRunMonth(run) || piClearingSelectedMonth);
+                const selectedBatchLabel = piClearingRunRangeLabel(run) || (piClearingBatchStart && piClearingBatchEnd ? `${formatDate(piClearingBatchStart)} to ${formatDate(piClearingBatchEnd)}` : "--");
                 const summaryPrefix = piClearingStatusMessage || (piClearingLoading ? "Loading PI clearing data..." : "");
-                const monthLabel = run ? formatMonthKey(piClearingRunMonth(run)) : selectedMonthLabel;
+                const batchLabel = run ? piClearingRunRangeLabel(run) : selectedBatchLabel;
                 const accountLabel = currentPiClearingAccountCode();
-                summary.textContent = [summaryPrefix, monthLabel ? `Selected month: ${monthLabel}.` : "", `Nominal: ${accountLabel}.`].filter(Boolean).join(" ");
+                summary.textContent = [summaryPrefix, batchLabel ? `Batch: ${batchLabel}.` : "", `Nominal: ${accountLabel}.`].filter(Boolean).join(" ");
                 summary.dataset.tone = piClearingStatusTone || "info";
                 if (wizardContextMonth) {
-                    wizardContextMonth.textContent = selectedMonthLabel ? `Month ${selectedMonthLabel}` : "Month --";
+                    wizardContextMonth.textContent = selectedBatchLabel ? `Batch ${selectedBatchLabel}` : "Batch --";
                 }
                 if (wizardContextRows) {
                     wizardContextRows.textContent = `${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`;
@@ -47159,17 +47395,17 @@
                     if (!piClearingRuns.length) {
                         runsBody.innerHTML = `
                             <tr>
-                                <td colspan="7"><p class="detail-meta">No PI clearing runs yet. Pick a month and start workflow.</p></td>
+                                <td colspan="7"><p class="detail-meta">No PI clearing runs yet. Start a new batch workflow.</p></td>
                             </tr>
                         `;
                     } else {
                         runsBody.innerHTML = piClearingRuns.map((entry) => {
-                            const month = formatMonthKey(piClearingRunMonth(entry));
+                            const batch = piClearingRunRangeLabel(entry);
                             const entrySummary = entry?.summary && typeof entry.summary === "object" ? entry.summary : {};
                             const active = String(entry?.id || "") === String(run?.id || "");
                             return `
                                 <tr class="${active ? "is-selected" : ""}">
-                                    <td><strong>${escapeHTML(month || "--")}</strong></td>
+                                    <td><strong>${escapeHTML(batch || "--")}</strong></td>
                                     <td>${escapeHTML(String(entry?.status || "--"))}</td>
                                     <td>${escapeHTML(formatCurrency(entrySummary?.xeroTotal || 0))}</td>
                                     <td>${escapeHTML(formatCurrency(entrySummary?.ignitionTotal || 0))}</td>
@@ -47186,9 +47422,6 @@
                             const button = event.target.closest("[data-pi-run-id]");
                             if (!button) return;
                             piClearingSelectedRunId = String(button.dataset.piRunId || "");
-                            const selected = currentPiClearingRun();
-                            const selectedMonth = piClearingRunMonth(selected);
-                            if (selectedMonth) piClearingSelectedMonth = selectedMonth;
                             renderPiClearingAccountScreen();
                         });
                     }
@@ -47198,7 +47431,7 @@
                     if (!runRows.length) {
                         rowsBody.innerHTML = `
                             <tr>
-                                <td colspan="8"><p class="detail-meta">No difference rows for this month.</p></td>
+                                <td colspan="8"><p class="detail-meta">No difference rows for this batch.</p></td>
                             </tr>
                         `;
                     } else {
@@ -47226,8 +47459,12 @@
 
                 if (modal) modal.hidden = !piClearingWizardOpen;
                 if (wizardMeta) wizardMeta.textContent = run
-                    ? `Month ${formatMonthKey(piClearingRunMonth(run))} · ${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`
-                    : "Run workflow to load monthly transactions.";
+                    ? `Batch ${piClearingRunRangeLabel(run)} · ${formatInteger(runRows.length)} row${runRows.length === 1 ? "" : "s"}`
+                    : "Run workflow to load batch transactions.";
+                if (wizardProgressFill) {
+                    const progressPercent = Math.max(0, Math.min(100, (piClearingWizardStep / 3) * 100));
+                    wizardProgressFill.style.width = `${progressPercent}%`;
+                }
                 document.querySelectorAll("[data-pi-step-chip]").forEach((chip) => {
                     const chipStep = Number(chip.dataset.piStepChip || "0");
                     chip.classList.toggle("is-active", chipStep === piClearingWizardStep);
@@ -47251,10 +47488,11 @@
                 document.querySelectorAll("[data-pi-wizard-section]").forEach((section) => {
                     section.hidden = Number(section.dataset.piWizardSection || "0") !== piClearingWizardStep;
                 });
-                if (wizardBackButton) wizardBackButton.disabled = piClearingWizardStep <= 1;
+                if (wizardBackButton) wizardBackButton.disabled = piClearingWizardStep <= 0;
                 if (wizardNextButton) {
+                    const stepZeroBlocked = piClearingWizardStep === 0;
                     const stepOneBlocked = piClearingWizardStep === 1 && !runRows.length;
-                    wizardNextButton.disabled = piClearingWizardStep >= 3 || stepOneBlocked;
+                    wizardNextButton.disabled = piClearingWizardStep >= 3 || stepZeroBlocked || stepOneBlocked;
                     wizardNextButton.textContent = piClearingWizardStep >= 3 ? "Done" : "Next";
                 }
 
@@ -47267,6 +47505,10 @@
                     const missingPayoutCount = payoutMatches.filter((item) => !item.matched).length;
                     const dailyBalance = summaryRows?.dailyBalance && typeof summaryRows.dailyBalance === "object" ? summaryRows.dailyBalance : {};
                     const imbalanceDayCount = Number(dailyBalance?.imbalanceDayCount || 0);
+                    const xeroStep1 = summaryRows?.xeroStep1 && typeof summaryRows.xeroStep1 === "object" ? summaryRows.xeroStep1 : {};
+                    const step1MissingCount = Number(xeroStep1?.missingCreditCount || 0);
+                    const step1CreditCount = Number(xeroStep1?.creditCount || 0);
+                    const step1MissingTotal = Number(xeroStep1?.missingDebitTotal || 0);
                     if (piClearingWorkflowRunning) {
                         wizardSummary.textContent = matchProgress.total > 0
                             ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
@@ -47275,26 +47517,43 @@
                         wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
                     } else {
                         wizardSummary.textContent = runRows.length
-                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for ${formatMonthKey(piClearingRunMonth(run))}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Days not nil: ${formatInteger(imbalanceDayCount)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
-                            : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
+                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for batch ${piClearingRunRangeLabel(run)}. Step 1 (Xero only): ${formatInteger(step1CreditCount - step1MissingCount)} of ${formatInteger(step1CreditCount)} payout credit${step1CreditCount === 1 ? "" : "s"} balanced to same-date debits; ${formatInteger(step1MissingCount)} still missing ${formatCurrency(step1MissingTotal)}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Days not nil: ${formatInteger(imbalanceDayCount)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
+                            : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected batch.";
                     }
                 }
                 if (wizardXeroBody) {
-                    const xeroRows = buildPiClearingXeroBreakdown(runRows);
-                    wizardXeroBody.innerHTML = xeroRows.length
-                        ? xeroRows.map((row) => `
-                            <tr>
-                                <td>${escapeHTML(formatDate(row.paidOn || ""))}</td>
-                                <td>${escapeHTML(String(row.source || "--"))}</td>
-                                <td>${escapeHTML(String(row.description || "--"))}</td>
-                                <td>${escapeHTML(String(row.clientName || "Unknown client"))}</td>
-                                <td>${escapeHTML(String(row.reference || row.paymentId || "--"))}</td>
-                                <td>${escapeHTML(formatCurrency(row.debit || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(row.credit || 0))}</td>
-                                <td>${escapeHTML(formatCurrency(row.amount || 0))}</td>
-                            </tr>
-                        `).join("")
-                        : `<tr><td colspan="8"><p class="detail-meta">No PI Clearing debits or credits found in Master Xero for this month.</p></td></tr>`;
+                    const xeroStep1 = summaryRows?.xeroStep1 && typeof summaryRows.xeroStep1 === "object" ? summaryRows.xeroStep1 : {};
+                    const step1Rows = Array.isArray(xeroStep1?.rows) ? xeroStep1.rows : [];
+                    const visibleRows = piClearingShowMatchedStep1
+                        ? step1Rows
+                        : step1Rows.filter((row) => String(row?.status || "").toLowerCase() !== "balanced");
+                    wizardXeroBody.innerHTML = visibleRows.length
+                        ? visibleRows.map((row) => {
+                            const status = String(row?.status || "").toLowerCase();
+                            const badgeClass = status === "balanced" ? "is-balanced" : (status === "partial" ? "is-partial" : "is-missing");
+                            const badgeLabel = status === "balanced" ? "Matched" : (status === "partial" ? "Part-matched" : "Missing debit");
+                            const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
+                            const matchedCopy = matchedDebits.length
+                                ? matchedDebits.map((item) => `${formatCurrency(item?.amountUsed || 0)} · ${String(item?.reference || item?.paymentId || "debit")}`).join(" / ")
+                                : "No same-date debit match";
+                            return `
+                                <tr class="pi-step1-row is-${escapeHTML(status || "missing_debits")}">
+                                    <td>${escapeHTML(formatDate(row?.date || ""))}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.creditAmount || 0))} <small>${escapeHTML(String(row?.creditReference || row?.creditPaymentId || "--"))}</small></td>
+                                    <td>${escapeHTML(matchedCopy)}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.missingDebitAmount || 0))}</td>
+                                    <td><span class="pi-step1-status-badge ${badgeClass}">${escapeHTML(badgeLabel)}</span></td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : `<tr><td colspan="5"><p class="detail-meta">${step1Rows.length ? "All payout credits are matched to same-date debits. Step 1 is clean." : "No PI Clearing payout credit rows found in Master Xero for this batch."}</p></td></tr>`;
+                }
+                if (wizardToggleMatchedButton) {
+                    wizardToggleMatchedButton.textContent = piClearingShowMatchedStep1 ? "Hide matched pairs" : "Show matched pairs";
+                    wizardToggleMatchedButton.onclick = () => {
+                        piClearingShowMatchedStep1 = !piClearingShowMatchedStep1;
+                        renderPiClearingAccountScreen();
+                    };
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
@@ -47355,7 +47614,7 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No Ignition payout rows found for this month.</p></td></tr>`;
+                        : `<tr><td colspan="7"><p class="detail-meta">No Ignition payout rows found for this batch.</p></td></tr>`;
                     if (wizardPayoutBody.dataset.piWired !== "true") {
                         wizardPayoutBody.dataset.piWired = "true";
                         wizardPayoutBody.addEventListener("click", (event) => {
@@ -47371,7 +47630,15 @@
                 const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
                 if (wizardAnalysisSummary) {
                     const summaryText = String(analysis?.summary || "").trim();
-                    wizardAnalysisSummary.textContent = summaryText || "AI analysis will appear after the workflow run completes.";
+                    const payoutRows = buildPiClearingPayoutBreakdown(runRows);
+                    const payoutMatches = buildPiClearingPayoutMatches(runRows);
+                    const unmatchedPayoutCount = payoutMatches.filter((item) => !item.matched).length;
+                    const ignitionIntro = payoutRows.length
+                        ? `Step 2 loaded ${formatInteger(payoutRows.length)} Ignition payout batch${payoutRows.length === 1 ? "" : "es"}; ${formatInteger(unmatchedPayoutCount)} need attention before credit notes.`
+                        : "Step 2 has no Ignition payout rows for this batch.";
+                    wizardAnalysisSummary.textContent = summaryText
+                        ? `${ignitionIntro} ${summaryText}`
+                        : `${ignitionIntro} AI analysis will appear after the workflow run completes.`;
                 }
                 if (wizardFindings) {
                     const findings = Array.isArray(analysis?.findings) ? analysis.findings : [];
@@ -47389,7 +47656,7 @@
                 const creditRows = runRows.filter((row) => {
                     const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
                     return Number(row?.differenceTotal || 0) > 0
-                        && !["credit_note_created", "balanced_by_existing_credit_note"].includes(resolution);
+                        && !["credit_note_created", "balanced_by_existing_credit_note", "step1_xero_check_required"].includes(resolution);
                 });
                 if (step3BalanceGrid) {
                     const beforeBalance = Number(summaryRows?.differenceTotal || 0);
@@ -93205,7 +93472,6 @@
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 const lateSelect = document.getElementById("latePaymentChargeAccountSelect");
                 const badDebtSelect = document.getElementById("badDebtWriteOffAccountSelect");
-                const piClearingInput = document.getElementById("piClearingAccountCodeInput");
                 const status = document.getElementById("postingSettingsStatus");
                 const help = document.getElementById("postingSettingsHelp");
                 const saveButton = document.getElementById("savePostingSettingsButton");
@@ -93213,18 +93479,13 @@
 
                 renderPostingAccountSelect(lateSelect, settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
                 renderPostingAccountSelect(badDebtSelect, settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
-                if (piClearingInput) {
-                    piClearingInput.value = String(settings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE);
-                    piClearingInput.disabled = postingSettingsSaving;
-                }
 
                 if (help) {
-                    help.textContent = `Late payment charges use ${settings.latePaymentChargeTaxType || "OUTPUT2"} VAT. Bad debt write-offs create no-VAT credit notes and allocate them to the original invoice. PI clearing nominal controls which Xero account PI clearing workflow pulls from.`;
+                    help.textContent = `Late payment charges use ${settings.latePaymentChargeTaxType || "OUTPUT2"} VAT. Bad debt write-offs create no-VAT credit notes and allocate them to the original invoice.`;
                 }
                 if (status) {
                     const lateAccount = postingAccountDescription(settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
                     const badDebtAccount = postingAccountDescription(settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
-                    const piClearingAccount = String(settings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE).trim() || PI_CLEARING_DEFAULT_ACCOUNT_CODE;
                     const loadedCopy = xeroAccountsLoaded
                         ? `${xeroAccounts.length.toLocaleString("en-GB")} active Xero account${xeroAccounts.length === 1 ? "" : "s"} loaded.`
                         : isXeroConnected()
@@ -93235,7 +93496,6 @@
                         <span>Current codes</span>
                         <div>Late payment charges: ${escapeHTML(lateAccount)}</div>
                         <div>Bad debt write-offs: ${escapeHTML(badDebtAccount)}</div>
-                        <div>PI clearing nominal: ${escapeHTML(piClearingAccount)}</div>
                         <div>${escapeHTML(stateCopy)}</div>
                     `;
                 }
@@ -93283,12 +93543,8 @@
                 if (!isXeroConnected()) return showToast("Connect Xero before saving posting accounts", "error");
                 const latePaymentChargeAccountCode = document.getElementById("latePaymentChargeAccountSelect")?.value || "";
                 const badDebtWriteOffAccountCode = document.getElementById("badDebtWriteOffAccountSelect")?.value || "";
-                const piClearingAccountCode = String(document.getElementById("piClearingAccountCodeInput")?.value || "").trim();
                 if (!latePaymentChargeAccountCode || !badDebtWriteOffAccountCode) {
                     return showToast("Choose both Xero posting accounts before saving", "error");
-                }
-                if (!piClearingAccountCode) {
-                    return showToast("Enter the PI clearing nominal code or account name before saving", "error");
                 }
                 postingSettingsSaving = true;
                 postingSettingsError = "";
@@ -93305,7 +93561,6 @@
                         body: JSON.stringify({
                             latePaymentChargeAccountCode,
                             badDebtWriteOffAccountCode,
-                            piClearingAccountCode,
                             latePaymentChargeTaxType: state.postingSettings?.latePaymentChargeTaxType || defaultPostingSettings.latePaymentChargeTaxType
                         })
                     });
