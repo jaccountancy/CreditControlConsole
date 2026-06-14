@@ -23869,6 +23869,26 @@
                 background: currentColor;
                 box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 18%, transparent);
             }
+            .task-status-pill.is-good {
+                color: #0f6c39;
+                background: linear-gradient(180deg, #e8f9ef, #d6f2e2);
+                border: 1px solid #b6e5ca;
+            }
+            .task-status-pill.is-open {
+                color: #12559e;
+                background: linear-gradient(180deg, #ebf3ff, #dce9ff);
+                border: 1px solid #bfd4ff;
+            }
+            .task-status-pill.is-overdue {
+                color: #9f1f2d;
+                background: linear-gradient(180deg, #ffeef0, #ffdfe3);
+                border: 1px solid #ffc0c8;
+            }
+            .task-status-pill.is-due {
+                color: #8a5811;
+                background: linear-gradient(180deg, #fff5e6, #ffe9cc);
+                border: 1px solid #ffd8a3;
+            }
             .task-list-row-overdue {
                 background: rgba(255, 83, 83, 0.06);
             }
@@ -23959,9 +23979,9 @@
                 width: 28px;
                 height: 28px;
                 border-radius: 999px;
-                border: 1px solid rgba(61, 85, 130, 0.2);
-                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.95), rgba(176, 203, 255, 0.72) 48%, rgba(83, 137, 232, 0.64));
-                color: #153f8f;
+                border: 1px solid hsl(var(--task-manager-hue, 214), 62%, 76%);
+                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.96), hsla(var(--task-manager-hue, 214), 74%, 79%, 0.78) 48%, hsla(var(--task-manager-hue, 214), 58%, 58%, 0.66));
+                color: hsl(var(--task-manager-hue, 214), 68%, 31%);
                 font-size: 10px;
                 font-weight: 900;
                 letter-spacing: 0.02em;
@@ -24024,6 +24044,26 @@
                 justify-content: center;
                 font-size: 11px;
                 line-height: 1;
+            }
+            .task-complete-button.is-completing {
+                filter: saturate(1.08);
+                box-shadow: 0 8px 20px rgba(21, 128, 61, 0.3);
+                pointer-events: none;
+            }
+            .task-complete-button.is-completing .task-complete-icon {
+                animation: taskCompleteIconPop 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+                background: rgba(255, 255, 255, 0.32);
+            }
+            @keyframes taskCompleteIconPop {
+                0% {
+                    transform: scale(1);
+                }
+                55% {
+                    transform: scale(1.22);
+                }
+                100% {
+                    transform: scale(1);
+                }
             }
             .task-row-completing {
                 animation: taskRowCompleteOut 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
@@ -30666,6 +30706,7 @@
                                     <p class="detail-meta">Tasks awaiting approval or returned for follow-up.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" type="button" id="taskApprovalsOpenCompletedButton">View completed tasks</button>
                                     <button class="ghost-button" type="button" id="taskApprovalsReloadButton">Reload tasks</button>
                                 </div>
                             </div>
@@ -30703,6 +30744,7 @@
                                     <p class="detail-meta">Closed rows from the latest BM Task ingestion history.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" type="button" id="taskCompletedBackToListButton">Back to task list</button>
                                     <button class="ghost-button" type="button" id="taskCompletedReloadButton">Reload tasks</button>
                                 </div>
                             </div>
@@ -94982,6 +95024,17 @@
                 return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
             }
 
+            function bmTaskAssigneeHue(name = "") {
+                const text = String(name || "").trim().toLowerCase();
+                if (!text) return 214;
+                let hash = 0;
+                for (let index = 0; index < text.length; index += 1) {
+                    hash = ((hash << 5) - hash) + text.charCodeAt(index);
+                    hash |= 0;
+                }
+                return 190 + (Math.abs(hash) % 70);
+            }
+
             function bmTaskHistoryEntries(taskKey = "") {
                 if (!taskKey) return [];
                 const list = Array.isArray(companiesHouseSettings.bmTaskHistoryByKey?.[taskKey])
@@ -95617,6 +95670,7 @@
                     const statusPill = `<button class="task-list-status-trigger" type="button" data-task-status-trigger="${escapeHTML(rowId)}"><span class="lock-status-pill task-status-pill ${bmTaskStatusTone(row.status)}"><span>${escapeHTML(bmTaskStatusLabel(row.status))}</span></span></button>`;
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
+                    const assigneeHue = bmTaskAssigneeHue(assigneeName);
                     const deadlineDateLabel = row.deadlineISO ? formatDate(row.deadlineISO) : "—";
                     const deadlineMeta = bmTaskDeadlineDetailCopy(row);
                     const isCompleted = String(row?.status || "").trim().toLowerCase() === "completed";
@@ -95640,7 +95694,7 @@
                             <td>${statusPill}${statusSelect}</td>
                             <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>
                                 <span class="task-manager-identity">
-                                    <span class="task-manager-chip" title="${escapeHTML(assigneeName || "Unassigned")}" aria-label="${escapeHTML(assigneeName || "Unassigned")}">${escapeHTML(assigneeInitials)}</span>
+                                    <span class="task-manager-chip" style="--task-manager-hue:${escapeHTML(String(assigneeHue))};" title="${escapeHTML(assigneeName || "Unassigned")}" aria-label="${escapeHTML(assigneeName || "Unassigned")}">${escapeHTML(assigneeInitials)}</span>
                                     <small>${escapeHTML(assigneeName || "Unassigned")}</small>
                                 </span>
                             </td>
@@ -95720,6 +95774,9 @@
                         };
                         if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing")) {
                             rowNode.classList.add("task-row-completing");
+                            button.classList.add("is-completing");
+                            const icon = button.querySelector(".task-complete-icon");
+                            if (icon) icon.textContent = "✓";
                             button.disabled = true;
                             window.setTimeout(applyCompletion, 340);
                             return;
@@ -98232,9 +98289,15 @@
                     await loadBmTasksDirectory(true);
                     renderTaskSubpages();
                 });
+                document.getElementById("taskApprovalsOpenCompletedButton")?.addEventListener("click", () => {
+                    openTaskCompletedScreen();
+                });
                 document.getElementById("taskApprovalsReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
                     renderTaskSubpages();
+                });
+                document.getElementById("taskCompletedBackToListButton")?.addEventListener("click", () => {
+                    openTaskTrackerScreen();
                 });
                 document.getElementById("taskCompletedReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
