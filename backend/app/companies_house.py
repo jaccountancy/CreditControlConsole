@@ -161,7 +161,7 @@ CH_CONNECTION_TEST_GATEWAY_MAX_ELAPSED_SECONDS = 8.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
 CH_COMPANY_SNAPSHOT_CACHE_TTL = timedelta(hours=12)
-CH_GUIDANCE_VERSION = "ch-guidance-2026-06-08"
+CH_GUIDANCE_VERSION = "ch-guidance-2026-06-14"
 CH_GUIDANCE_URL = "https://www.gov.uk/government/publications/technical-interface-specifications-for-companies-house-software/important-information-for-software-developers-read-first"
 CH_SANDBOX_PACKAGE_REFERENCE = "0012"
 
@@ -181,7 +181,11 @@ def _mask(value: str) -> str:
 
 
 def _ch_md5_auth_value(value: str) -> str:
-    return hashlib.md5((value or "").strip().encode("utf-8")).hexdigest().upper()
+    return hashlib.md5((value or "").strip().encode("utf-8")).hexdigest()
+
+
+def _ch_sender_id(presenter_id: str) -> str:
+    return _ch_md5_auth_value(presenter_id)
 
 
 def _ch_auth_value(method: str, presenter_auth: str) -> str:
@@ -282,11 +286,12 @@ def _ch_guidance_payload() -> dict:
     return {
         "version": CH_GUIDANCE_VERSION,
         "sourceUrl": CH_GUIDANCE_URL,
-        "effectiveDate": "2026-06-08",
+        "effectiveDate": "2026-06-14",
         "auth": {
             "method": "clear",
-            "presenterAuthValueEncoding": "MD5# uppercase hex",
-            "notes": "Gateway method remains 'clear', but presenter authentication value is sent as MD5#.",
+            "senderIdEncoding": "MD5 lowercase hex of Presenter_ID",
+            "presenterAuthValueEncoding": "MD5 lowercase hex of presenter authentication",
+            "notes": "Gateway method is 'clear' while SenderID and Authentication Value are sent as lowercase MD5 hashes.",
         },
         "packageReference": {
             "sandbox": CH_SANDBOX_PACKAGE_REFERENCE,
@@ -356,7 +361,7 @@ def _validated_package_reference(*, package_reference: str, environment: str) ->
 
 
 def _ch_auth_method() -> str:
-    return "MD5"
+    return "clear"
 
 
 def _load_settings_row() -> dict | None:
@@ -616,7 +621,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                     company_number=probe_company_number,
                 )
                 gateway_request_debug = (
-                    f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_mask(_xml_text(presenter_auth))}, "
+                    f"Sent presenterId={_xml_text(presenter_id)}, senderId={_ch_sender_id(presenter_id)}, presenterAuth={_mask(_xml_text(presenter_auth))}, "
                     f"authMethod={_ch_auth_method()}, gatewayTest={_ch_gateway_test_flag(environment)}, "
                     f"class=GetSubmissionStatus, companyNumber={_xml_text(probe_company_number)}."
                 )
@@ -629,7 +634,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                     submission_number="ZZZZZZ",
                 )
                 gateway_request_debug = (
-                    f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_mask(_xml_text(presenter_auth))}, "
+                    f"Sent presenterId={_xml_text(presenter_id)}, senderId={_ch_sender_id(presenter_id)}, presenterAuth={_mask(_xml_text(presenter_auth))}, "
                     f"authMethod={_ch_auth_method()}, gatewayTest={_ch_gateway_test_flag(environment)}, "
                     "class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
                 )
@@ -2267,7 +2272,7 @@ def _build_ch_submission_xml(
     ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
     sender_details = ET.SubElement(header, "SenderDetails")
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
-    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    ET.SubElement(id_auth, "SenderID").text = _ch_sender_id(presenter_id)
     auth = ET.SubElement(id_auth, "Authentication")
     _ch_auth_method_value = _ch_auth_method()
     ET.SubElement(auth, "Method").text = _ch_auth_method_value
@@ -2421,7 +2426,7 @@ def _build_ch_status_xml(
     ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
     sender_details = ET.SubElement(header, "SenderDetails")
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
-    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    ET.SubElement(id_auth, "SenderID").text = _ch_sender_id(presenter_id)
     auth = ET.SubElement(id_auth, "Authentication")
     _ch_auth_method_value = _ch_auth_method()
     ET.SubElement(auth, "Method").text = _ch_auth_method_value
@@ -2472,7 +2477,7 @@ def _build_ch_status_ack_xml(
     ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
     sender_details = ET.SubElement(header, "SenderDetails")
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
-    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    ET.SubElement(id_auth, "SenderID").text = _ch_sender_id(presenter_id)
     auth = ET.SubElement(id_auth, "Authentication")
     _ch_auth_method_value = _ch_auth_method()
     ET.SubElement(auth, "Method").text = _ch_auth_method_value
@@ -2517,7 +2522,7 @@ def _build_ch_document_xml(
     ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
     sender_details = ET.SubElement(header, "SenderDetails")
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
-    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    ET.SubElement(id_auth, "SenderID").text = _ch_sender_id(presenter_id)
     auth = ET.SubElement(id_auth, "Authentication")
     _ch_auth_method_value = _ch_auth_method()
     ET.SubElement(auth, "Method").text = _ch_auth_method_value
@@ -2862,7 +2867,7 @@ def _enhance_authorisation_failure_reason(
     environment_text = _xml_text(environment, "sandbox").lower()
     context = (
         f"Authorisation check: environment={environment_text}, "
-        f"company={_xml_text(company_number)}, presenterId={_xml_text(presenter_id)}, "
+        f"company={_xml_text(company_number)}, presenterId={_xml_text(presenter_id)}, senderId={_ch_sender_id(presenter_id)}, "
         f"presenterAuth={_mask(_xml_text(presenter_auth))}, companyAuthCode={_mask(_xml_text(company_auth_code))}, "
         f"authMethod={_ch_auth_method()}. "
         "CH rejected credentials for this filing path."
@@ -6386,7 +6391,7 @@ def _build_secretarial_submission_xml(
     ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
     sender_details = ET.SubElement(header, "SenderDetails")
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
-    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    ET.SubElement(id_auth, "SenderID").text = _ch_sender_id(presenter_id)
     auth = ET.SubElement(id_auth, "Authentication")
     _ch_auth_method_value = _ch_auth_method()
     ET.SubElement(auth, "Method").text = _ch_auth_method_value

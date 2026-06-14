@@ -626,7 +626,7 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertEqual(key1, key2)
         self.assertNotEqual(key1, key3)
 
-    def test_build_status_xml_hashes_presenter_auth_with_md5(self):
+    def test_build_status_xml_hashes_sender_and_presenter_auth_with_md5(self):
         xml = ch._build_ch_status_xml(
             presenter_id="00046248000",
             presenter_auth="PLCTL2F87WL",
@@ -636,13 +636,16 @@ class CompaniesHouseTests(unittest.TestCase):
         )
         root = ET.fromstring(xml)
         method = root.find(".//{*}Method")
+        sender_id = root.find(".//{*}SenderID")
         value = root.find(".//{*}Value")
+        self.assertIsNotNone(sender_id)
         self.assertIsNotNone(method)
         self.assertIsNotNone(value)
-        self.assertEqual(method.text, "MD5")
+        self.assertEqual(sender_id.text, ch._ch_md5_auth_value("00046248000"))
+        self.assertEqual(method.text, "clear")
         self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
 
-    def test_build_submission_xml_hashes_presenter_auth_with_md5(self):
+    def test_build_submission_xml_hashes_sender_and_presenter_auth_with_md5(self):
         xml = ch._build_ch_submission_xml(
             presenter_id="00046248000",
             presenter_auth="PLCTL2F87WL",
@@ -659,10 +662,13 @@ class CompaniesHouseTests(unittest.TestCase):
         )
         root = ET.fromstring(xml)
         method = root.find(".//{*}Method")
+        sender_id = root.find(".//{*}SenderID")
         value = root.find(".//{*}Value")
+        self.assertIsNotNone(sender_id)
         self.assertIsNotNone(method)
         self.assertIsNotNone(value)
-        self.assertEqual(method.text, "MD5")
+        self.assertEqual(sender_id.text, ch._ch_md5_auth_value("00046248000"))
+        self.assertEqual(method.text, "clear")
         self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
 
     def test_authorisation_failure_reason_includes_uk_causes(self):
