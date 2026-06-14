@@ -23823,7 +23823,7 @@
             }
             .task-list-bulk-bar {
                 display: grid;
-                grid-template-columns: auto minmax(180px, 240px) minmax(260px, 1fr) auto auto;
+                grid-template-columns: auto auto auto;
                 gap: 8px;
                 align-items: center;
                 margin: 10px 0;
@@ -24000,6 +24000,16 @@
                 letter-spacing: 0.06em;
                 text-transform: uppercase;
                 color: var(--muted);
+            }
+            .task-detail-modal-card input,
+            .task-detail-modal-card select {
+                width: 100%;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 9px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+                font: inherit;
             }
             .task-detail-modal-card ul {
                 margin: 0;
@@ -30518,17 +30528,7 @@
                             <section class="ch-settings-card">
                                 <div class="task-list-bulk-bar" id="taskListBulkBar">
                                     <button class="ghost-button" type="button" id="taskListSelectVisibleButton">Select visible</button>
-                                    <select id="taskListBulkStatus" aria-label="Bulk status">
-                                        <option value="">Bulk status change…</option>
-                                        <option value="open">Open</option>
-                                        <option value="records_requested">Records requested</option>
-                                        <option value="awaiting_approval">Awaiting approval</option>
-                                        <option value="in_review">In review</option>
-                                        <option value="query">Query</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
-                                    <input id="taskListBulkNote" type="text" placeholder="Bulk note (added to selected client timelines)">
-                                    <button class="primary-button" type="button" id="taskListApplyBulkButton">Apply bulk update</button>
+                                    <button class="primary-button" type="button" id="taskListBulkEditsButton">Bulk edits</button>
                                     <button class="ghost-button" type="button" id="taskListClearSelectionButton">Clear selection</button>
                                 </div>
                                 <div class="ch-companies-table-wrap">
@@ -94915,7 +94915,7 @@
 
             function renderTaskSelectionMeta(rows = []) {
                 const selected = Number(companiesHouseSettings.bmTasksSelection?.size || 0);
-                const button = document.getElementById("taskListApplyBulkButton");
+                const button = document.getElementById("taskListBulkEditsButton");
                 if (button) button.disabled = selected <= 0;
                 const selectAll = document.getElementById("taskListSelectAll");
                 if (selectAll) {
@@ -94926,16 +94926,14 @@
                 }
             }
 
-            function applyBulkTaskUpdate() {
-                const statusSelect = document.getElementById("taskListBulkStatus");
-                const noteInput = document.getElementById("taskListBulkNote");
+            function applyBulkTaskUpdate(options = {}) {
                 const selectedIds = Array.from(companiesHouseSettings.bmTasksSelection || []);
                 if (!selectedIds.length) {
                     showToast("Select at least one task before bulk update.", "info");
                     return;
                 }
-                const status = String(statusSelect?.value || "").trim().toLowerCase();
-                const noteText = String(noteInput?.value || "").trim();
+                const status = String(options?.status || "").trim().toLowerCase();
+                const noteText = String(options?.noteText || "").trim();
                 if (!status && !noteText) {
                     showToast("Choose a status or enter a note for bulk update.", "info");
                     return;
@@ -94950,10 +94948,66 @@
                     });
                     updated += 1;
                 });
-                if (noteInput) noteInput.value = "";
-                if (statusSelect) statusSelect.value = "";
                 showToast(`Bulk update applied to ${updated.toLocaleString("en-GB")} task${updated === 1 ? "" : "s"}.`, "success");
                 renderTaskSubpages();
+            }
+
+            async function openTaskListBulkEditsDialog() {
+                const selectedCount = Number(companiesHouseSettings.bmTasksSelection?.size || 0);
+                if (selectedCount <= 0) {
+                    showToast("Select at least one task before opening bulk edits.", "info");
+                    return;
+                }
+                let nextStatus = "";
+                let noteText = "";
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "Task List",
+                    title: "Bulk edits",
+                    subtitle: "Apply status and note changes to selected tasks in one action.",
+                    confirmLabel: "Apply bulk update",
+                    cancelLabel: "Cancel",
+                    columns: [],
+                    rows: [{}],
+                    summaryChips: [`${selectedCount.toLocaleString("en-GB")} selected`],
+                    onRender: ({ body }) => {
+                        body.innerHTML = `
+                            <div class="task-detail-modal-grid">
+                                <article class="task-detail-modal-card">
+                                    <h5>Status update</h5>
+                                    <select id="taskListBulkModalStatus" aria-label="Bulk status">
+                                        <option value="">No status change</option>
+                                        ${bmTaskStatusOptions().map((option) => `<option value="${escapeHTML(option.value)}">${escapeHTML(option.label)}</option>`).join("")}
+                                    </select>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Task note</h5>
+                                    <p class="detail-meta">Applied to selected tasks and copied to each client timeline.</p>
+                                    <input id="taskListBulkModalNote" type="text" placeholder="Add a bulk note...">
+                                </article>
+                            </div>
+                        `;
+                        const statusInput = body.querySelector("#taskListBulkModalStatus");
+                        const noteInput = body.querySelector("#taskListBulkModalNote");
+                        if (statusInput) {
+                            statusInput.value = nextStatus;
+                            statusInput.addEventListener("change", (event) => {
+                                nextStatus = String(event?.target?.value || "").trim();
+                            });
+                        }
+                        if (noteInput) {
+                            noteInput.value = noteText;
+                            noteInput.addEventListener("input", (event) => {
+                                noteText = String(event?.target?.value || "");
+                            });
+                        }
+                    },
+                    resultProvider: () => ({
+                        status: String(nextStatus || "").trim().toLowerCase(),
+                        noteText: String(noteText || "").trim(),
+                    }),
+                });
+                if (!decision) return;
+                applyBulkTaskUpdate(decision);
             }
 
             function updateCompaniesHouseRawXmlExportButtonState() {
@@ -97294,7 +97348,7 @@
                     companiesHouseSettings.bmTasksSelection = new Set();
                     renderTaskSubpages();
                 });
-                document.getElementById("taskListApplyBulkButton")?.addEventListener("click", applyBulkTaskUpdate);
+                document.getElementById("taskListBulkEditsButton")?.addEventListener("click", openTaskListBulkEditsDialog);
                 document.getElementById("taskListReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
                     renderTaskSubpages();
