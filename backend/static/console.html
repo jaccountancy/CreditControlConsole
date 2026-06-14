@@ -23844,6 +23844,31 @@
                 font: inherit;
                 cursor: pointer;
             }
+            .task-status-pill {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                border-radius: 999px;
+                padding: 6px 11px;
+                font-weight: 800;
+                letter-spacing: 0.01em;
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 8px 16px rgba(27, 42, 72, 0.08);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .task-list-status-trigger:hover .task-status-pill,
+            .task-list-status-trigger:focus-visible .task-status-pill {
+                transform: translateY(-1px);
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 11px 20px rgba(27, 42, 72, 0.11);
+            }
+            .task-status-pill::before {
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: currentColor;
+                box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 18%, transparent);
+            }
             .task-list-row-overdue {
                 background: rgba(255, 83, 83, 0.06);
             }
@@ -23931,16 +23956,30 @@
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 24px;
-                height: 24px;
+                width: 28px;
+                height: 28px;
                 border-radius: 999px;
-                border: 1px solid rgba(61, 85, 130, 0.18);
-                background: linear-gradient(145deg, rgba(29, 103, 242, 0.12), rgba(29, 103, 242, 0.06));
-                color: #1f4ea3;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.95), rgba(176, 203, 255, 0.72) 48%, rgba(83, 137, 232, 0.64));
+                color: #153f8f;
                 font-size: 10px;
                 font-weight: 900;
                 letter-spacing: 0.02em;
                 text-transform: uppercase;
+                box-shadow: 0 7px 15px rgba(45, 95, 174, 0.18);
+                flex-shrink: 0;
+            }
+            .task-manager-identity {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+            }
+            .task-manager-identity small {
+                margin: 0;
+                font-size: 11px;
+                color: var(--ink);
+                font-weight: 700;
+                opacity: 0.86;
             }
             .task-complete-button {
                 min-width: 96px;
@@ -23952,6 +23991,7 @@
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
+                gap: 6px;
                 cursor: pointer;
                 font-size: 12px;
                 font-weight: 800;
@@ -23973,6 +24013,39 @@
                 border-color: #6cbf8f;
                 transform: none;
                 box-shadow: none;
+            }
+            .task-complete-button .task-complete-icon {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.22);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+                line-height: 1;
+            }
+            .task-row-completing {
+                animation: taskRowCompleteOut 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                transform-origin: center;
+                pointer-events: none;
+            }
+            @keyframes taskRowCompleteOut {
+                0% {
+                    opacity: 1;
+                    transform: translateX(0) scale(1);
+                    filter: saturate(1);
+                }
+                68% {
+                    opacity: 0.55;
+                    transform: translateX(8px) scale(0.994);
+                    filter: saturate(0.92);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateX(22px) scale(0.985);
+                    filter: saturate(0.82);
+                }
             }
             .task-row-clickable {
                 cursor: pointer;
@@ -30519,6 +30592,7 @@
                                     <p class="detail-meta">All task rows loaded from BM Tasks CSV.</p>
                                 </div>
                                 <div class="detail-actions" style="margin-left: auto;">
+                                    <button class="ghost-button" type="button" id="taskListOpenCompletedButton">View completed tasks</button>
                                     <button class="ghost-button" type="button" id="taskListReloadButton">Reload tasks</button>
                                 </div>
                             </div>
@@ -30545,7 +30619,6 @@
                                                             <option value="awaiting_approval">Awaiting approval</option>
                                                             <option value="in_review">In review</option>
                                                             <option value="query">Query</option>
-                                                            <option value="completed">Completed</option>
                                                         </select>
                                                         <select id="taskListDueFilter" aria-label="Filter by due state">
                                                             <option value="">All deadlines</option>
@@ -33445,13 +33518,187 @@
                                     <h3>Client Call Stats</h3>
                                     <p class="detail-meta">Review outbound and inbound client call performance across teams and time periods.</p>
                                 </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="clientCallStatsRefreshButton" type="button">Refresh</button>
+                                    <button class="primary-button" id="clientCallStatsResyncButton" type="button">Re-Sync Call Data</button>
+                                </div>
                             </div>
-                            <p class="late-charge-summary" id="clientCallStatsSummary">Client call statistics workspace is ready.</p>
-                            <div class="empty-state">
-                                <p class="eyebrow">No records loaded</p>
-                                <h4>Call performance data will appear here</h4>
-                                <p>Use this page to review contact volume, outcomes and follow-up conversion.</p>
-                            </div>
+                            <p class="late-charge-summary" id="clientCallStatsSummary">Loading call analytics workspace…</p>
+
+                            <section class="detail-card">
+                                <h4>CSV Import Wizard</h4>
+                                <p class="detail-meta">Upload provider call logs, preview mapping, and import only new records.</p>
+                                <form id="clientCallStatsImportForm" class="detail-actions" enctype="multipart/form-data">
+                                    <label class="field-inline" for="clientCallStatsImportFile">
+                                        <span>CSV file</span>
+                                        <input id="clientCallStatsImportFile" name="file" type="file" accept=".csv,text/csv" required />
+                                    </label>
+                                    <label class="field-inline" for="clientCallStatsImportProvider">
+                                        <span>Provider</span>
+                                        <input id="clientCallStatsImportProvider" name="sourceProvider" type="text" placeholder="Telephone provider name" />
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsPreviewButton" type="button">Preview</button>
+                                    <button class="primary-button" id="clientCallStatsImportButton" type="submit">Import CSV</button>
+                                </form>
+                                <div class="summary-grid" id="clientCallStatsImportSummaryCards"></div>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Client call CSV mapping and preview">
+                                        <thead>
+                                            <tr>
+                                                <th>CSV column</th>
+                                                <th>Mapped field</th>
+                                                <th>Sample</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsImportPreviewBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Dashboard Filters</h4>
+                                <div class="detail-actions">
+                                    <label class="field-inline" for="clientCallStatsFilterDateFrom"><span>Date from</span><input id="clientCallStatsFilterDateFrom" type="date" /></label>
+                                    <label class="field-inline" for="clientCallStatsFilterDateTo"><span>Date to</span><input id="clientCallStatsFilterDateTo" type="date" /></label>
+                                    <label class="field-inline" for="clientCallStatsFilterStaff"><span>Staff</span><input id="clientCallStatsFilterStaff" type="text" placeholder="Staff name" /></label>
+                                    <label class="field-inline" for="clientCallStatsFilterClientManager"><span>Client manager</span><input id="clientCallStatsFilterClientManager" type="text" placeholder="Client manager" /></label>
+                                    <label class="field-inline" for="clientCallStatsFilterDirection"><span>Direction</span>
+                                        <select id="clientCallStatsFilterDirection">
+                                            <option value="">All</option>
+                                            <option value="inbound">Inbound</option>
+                                            <option value="outbound">Outbound</option>
+                                        </select>
+                                    </label>
+                                    <label class="field-inline" for="clientCallStatsFilterMatchStatus"><span>Match status</span>
+                                        <select id="clientCallStatsFilterMatchStatus">
+                                            <option value="">All</option>
+                                            <option value="matched">Matched</option>
+                                            <option value="unmatched">Unmatched</option>
+                                            <option value="ignored">Ignored</option>
+                                        </select>
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsApplyFiltersButton" type="button">Apply filters</button>
+                                </div>
+                            </section>
+
+                            <section class="detail-card">
+                                <div class="detail-actions">
+                                    <h4>Summary</h4>
+                                    <button class="ghost-button" id="clientCallStatsExportDashboardButton" type="button">Export dashboard CSV</button>
+                                </div>
+                                <div class="summary-grid" id="clientCallStatsSummaryCards"></div>
+                                <div class="summary-grid" id="clientCallStatsChartCards"></div>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Unmatched Number Management</h4>
+                                <p class="detail-meta">Assign unmatched numbers to clients or classify as supplier/HMRC/spam/ignore.</p>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Unmatched telephone numbers">
+                                        <thead>
+                                            <tr>
+                                                <th>Number</th>
+                                                <th>Total calls</th>
+                                                <th>Inbound</th>
+                                                <th>Outbound</th>
+                                                <th>Last call</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsUnmatchedBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Internal Extension Directory</h4>
+                                <form class="detail-actions" id="clientCallStatsExtensionForm">
+                                    <label class="field-inline" for="clientCallStatsExtensionInput"><span>Extension</span><input id="clientCallStatsExtensionInput" type="text" required /></label>
+                                    <label class="field-inline" for="clientCallStatsStaffInput"><span>Staff member</span><input id="clientCallStatsStaffInput" type="text" required /></label>
+                                    <button class="primary-button" type="submit">Save extension</button>
+                                </form>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Internal call extension directory">
+                                        <thead>
+                                            <tr>
+                                                <th>Extension</th>
+                                                <th>Staff member</th>
+                                                <th>Active</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsExtensionsBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Recent Calls</h4>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Recent processed call records">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Time</th>
+                                                <th>Direction</th>
+                                                <th>Staff member</th>
+                                                <th>Client manager</th>
+                                                <th>From number</th>
+                                                <th>To number</th>
+                                                <th>Duration</th>
+                                                <th>Outcome</th>
+                                                <th>Client</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsRowsBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
+
+                            <section class="detail-card">
+                                <h4>Client Call Logs</h4>
+                                <div class="detail-actions">
+                                    <label class="field-inline" for="clientCallStatsClientIdInput"><span>Client ID</span><input id="clientCallStatsClientIdInput" type="text" placeholder="Client UUID / register id" /></label>
+                                    <button class="ghost-button" id="clientCallStatsLoadClientLogsButton" type="button">Load client call logs</button>
+                                    <button class="ghost-button" id="clientCallStatsGenerateAiReportButton" type="button">Generate monthly AI report</button>
+                                    <button class="ghost-button" id="clientCallStatsExportClientLogsButton" type="button">Export client CSV</button>
+                                    <button class="ghost-button" id="clientCallStatsExportAiReportsButton" type="button">Export AI reports CSV</button>
+                                    <button class="ghost-button" id="clientCallStatsExportLatestAiTextButton" type="button">Export latest AI summary</button>
+                                </div>
+                                <p class="detail-meta" id="clientCallStatsClientSummary">Client call logs will appear here.</p>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Client call log history">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Time</th>
+                                                <th>Direction</th>
+                                                <th>Staff</th>
+                                                <th>Manager</th>
+                                                <th>From</th>
+                                                <th>To</th>
+                                                <th>Duration</th>
+                                                <th>Outcome</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsClientRowsBody"></tbody>
+                                    </table>
+                                </section>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Client call monthly AI report history">
+                                        <thead>
+                                            <tr>
+                                                <th>Created</th>
+                                                <th>Month</th>
+                                                <th>Scope</th>
+                                                <th>Headline</th>
+                                                <th>Engine</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="clientCallStatsAiReportsBody"></tbody>
+                                    </table>
+                                </section>
+                            </section>
                         </section>
                     </section>
                     <section class="late-charges-screen detail-card" id="piClearingAccountScreen" hidden>
@@ -34980,6 +35227,30 @@
             let piClearingStatusTone = "info";
             let piClearingPayoutDetailOpen = false;
             let piClearingSelectedPayoutKey = "";
+            let clientCallStatsData = {
+                summary: {},
+                charts: {},
+                rows: [],
+                imports: [],
+                extensions: [],
+                unmatchedNumbers: [],
+                resyncAudit: [],
+                aiSummary: {},
+            };
+            let clientCallStatsLoading = false;
+            let clientCallStatsFilters = {
+                dateFrom: "",
+                dateTo: "",
+                staffMember: "",
+                clientManager: "",
+                direction: "",
+                matchStatus: "",
+            };
+            let clientCallStatsImportPreview = null;
+            let clientCallStatsClientLogs = null;
+            let clientCallStatsAiReports = [];
+            let clientCallStatsLatestAiReport = null;
+            let clientCallStatsEventsBound = false;
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
             const CODE_BREAKER_IMMATERIAL_TOLERANCE_GBP = 2;
             const CODE_BREAKER_WIZARD_FALLBACK_PAGE_LIMIT = 3;
@@ -36292,6 +36563,16 @@
                         payrollHeadcountWorkspaces: config.endpoints?.payrollHeadcountWorkspaces || "/api/payroll-headcount/workspaces",
                         payrollHeadcountWorkspaceSync: config.endpoints?.payrollHeadcountWorkspaceSync || "/api/payroll-headcount/workspaces/:tenantId/sync",
                         payrollHeadcountIgnitionSync: config.endpoints?.payrollHeadcountIgnitionSync || "/api/payroll-headcount/ignition-sync",
+                        clientCallStats: config.endpoints?.clientCallStats || "/api/client-call-stats",
+                        clientCallStatsImportPreview: config.endpoints?.clientCallStatsImportPreview || "/api/client-call-stats/import/preview",
+                        clientCallStatsImportCommit: config.endpoints?.clientCallStatsImportCommit || "/api/client-call-stats/import/commit",
+                        clientCallStatsResync: config.endpoints?.clientCallStatsResync || "/api/client-call-stats/resync",
+                        clientCallStatsExtensions: config.endpoints?.clientCallStatsExtensions || "/api/client-call-stats/extensions",
+                        clientCallStatsUnmatched: config.endpoints?.clientCallStatsUnmatched || "/api/client-call-stats/unmatched",
+                        clientCallStatsUnmatchedAction: config.endpoints?.clientCallStatsUnmatchedAction || "/api/client-call-stats/unmatched/action",
+                        clientCallStatsClientLogs: config.endpoints?.clientCallStatsClientLogs || "/api/client-call-stats/clients/:clientId",
+                        clientCallStatsAiReport: config.endpoints?.clientCallStatsAiReport || "/api/client-call-stats/ai-report",
+                        clientCallStatsAiReports: config.endpoints?.clientCallStatsAiReports || "/api/client-call-stats/ai-reports",
                         piClearingAccount: config.endpoints?.piClearingAccount || "/api/pi-clearing-account",
                         piClearingAccountRun: config.endpoints?.piClearingAccountRun || "/api/pi-clearing-account/run",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
@@ -39948,6 +40229,7 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                loadClientCallStats();
                 scrollConsoleToTop();
             }
 
@@ -43708,7 +43990,561 @@
             function renderClientCallStatsScreen() {
                 const summary = document.getElementById("clientCallStatsSummary");
                 if (!summary) return;
-                summary.textContent = "Client call statistics workspace is ready.";
+                const totalCalls = Number(clientCallStatsData?.summary?.totalCalls || 0).toLocaleString("en-GB");
+                const matchedCalls = Number(clientCallStatsData?.summary?.matchedCalls || 0).toLocaleString("en-GB");
+                const unmatchedCalls = Number(clientCallStatsData?.summary?.unmatchedCalls || 0).toLocaleString("en-GB");
+                summary.textContent = clientCallStatsLoading
+                    ? "Loading call analytics workspace…"
+                    : `Loaded ${totalCalls} calls · matched ${matchedCalls} · unmatched ${unmatchedCalls}.`;
+
+                const summaryCards = document.getElementById("clientCallStatsSummaryCards");
+                if (summaryCards) {
+                    const cards = [
+                        ["Total Calls", clientCallStatsData?.summary?.totalCalls || 0],
+                        ["Inbound Calls", clientCallStatsData?.summary?.inboundCalls || 0],
+                        ["Outbound Calls", clientCallStatsData?.summary?.outboundCalls || 0],
+                        ["Missed Calls", clientCallStatsData?.summary?.missedCalls || 0],
+                        ["Answered Calls", clientCallStatsData?.summary?.answeredCalls || 0],
+                        ["Average Duration", formatSyncDuration(Math.round(Number(clientCallStatsData?.summary?.averageDurationSeconds || 0)))],
+                        ["Matched Calls", clientCallStatsData?.summary?.matchedCalls || 0],
+                        ["Unmatched Calls", clientCallStatsData?.summary?.unmatchedCalls || 0],
+                    ];
+                    summaryCards.innerHTML = cards.map(([label, value]) => `
+                        <article class="metric-card">
+                            <p class="metric-label">${escapeHTML(String(label || ""))}</p>
+                            <p class="metric-value">${escapeHTML(typeof value === "number" ? Number(value).toLocaleString("en-GB") : String(value || "--"))}</p>
+                        </article>
+                    `).join("");
+                }
+
+                const chartCards = document.getElementById("clientCallStatsChartCards");
+                if (chartCards) {
+                    const topClients = Array.isArray(clientCallStatsData?.charts?.topCallingClients) ? clientCallStatsData.charts.topCallingClients.slice(0, 5) : [];
+                    const topStaff = Array.isArray(clientCallStatsData?.charts?.callsByStaff) ? clientCallStatsData.charts.callsByStaff.slice(0, 5) : [];
+                    const unmatched = Array.isArray(clientCallStatsData?.charts?.unmatchedNumbers) ? clientCallStatsData.charts.unmatchedNumbers.slice(0, 5) : [];
+                    const renderList = (items, valueKey = "count", labelKey = "label") => {
+                        if (!items.length) return "<p class=\"detail-meta\">No records.</p>";
+                        const maxValue = Math.max(1, ...items.map((item) => Number(item?.[valueKey] || 0)));
+                        return `<div style="display:grid;gap:8px;margin-top:8px;">
+                            ${items.map((item) => {
+                                const label = escapeHTML(String(item?.[labelKey] || "--"));
+                                const value = Number(item?.[valueKey] || 0);
+                                const percentage = Math.max(4, Math.min(100, (value / maxValue) * 100));
+                                return `
+                                    <div>
+                                        <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;">
+                                            <span>${label}</span>
+                                            <span>${escapeHTML(value.toLocaleString("en-GB"))}</span>
+                                        </div>
+                                        <div style="height:8px;background:rgba(20,61,130,0.10);border-radius:999px;overflow:hidden;">
+                                            <div style="height:100%;width:${percentage}%;background:linear-gradient(90deg,#2a66d9,#5b8ff2);"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join("")}
+                        </div>`;
+                    };
+                    const aiSummary = clientCallStatsData?.aiSummary || {};
+                    chartCards.innerHTML = `
+                        <article class="metric-card">
+                            <p class="metric-label">Top calling clients</p>
+                            ${renderList(topClients)}
+                        </article>
+                        <article class="metric-card">
+                            <p class="metric-label">Calls by staff member</p>
+                            ${renderList(topStaff)}
+                        </article>
+                        <article class="metric-card">
+                            <p class="metric-label">Unmatched numbers</p>
+                            ${renderList(unmatched, "totalCalls", "number")}
+                        </article>
+                        <article class="metric-card">
+                            <p class="metric-label">AI insight snapshot</p>
+                            <p style="font-size:12px;line-height:1.45;margin-top:8px;">${escapeHTML(String(aiSummary?.headline || "Insights will appear after refresh/import."))}</p>
+                        </article>
+                    `;
+                }
+
+                const importSummaryCards = document.getElementById("clientCallStatsImportSummaryCards");
+                if (importSummaryCards) {
+                    const importSummary = clientCallStatsImportPreview?.summary || {};
+                    const cards = [
+                        ["Total rows", importSummary.totalRows || 0],
+                        ["New rows", importSummary.newRows || 0],
+                        ["Duplicate rows", importSummary.duplicateRows || 0],
+                        ["Invalid rows", importSummary.invalidRows || 0],
+                        ["Matched client calls", importSummary.matchedClientCalls || 0],
+                        ["Unmatched calls", importSummary.unmatchedCalls || 0],
+                    ];
+                    importSummaryCards.innerHTML = cards.map(([label, value]) => `
+                        <article class="metric-card">
+                            <p class="metric-label">${escapeHTML(String(label || ""))}</p>
+                            <p class="metric-value">${escapeHTML(Number(value || 0).toLocaleString("en-GB"))}</p>
+                        </article>
+                    `).join("");
+                }
+
+                const importPreviewBody = document.getElementById("clientCallStatsImportPreviewBody");
+                if (importPreviewBody) {
+                    const previewRows = Array.isArray(clientCallStatsImportPreview?.previewRows) ? clientCallStatsImportPreview.previewRows : [];
+                    importPreviewBody.innerHTML = previewRows.length
+                        ? previewRows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(`Row ${row.rowNumber || 0}`)}</td>
+                                <td>${escapeHTML(String(row.direction || ""))}</td>
+                                <td>${escapeHTML(String(row.externalNumber || ""))}</td>
+                                <td>${(Array.isArray(row.errors) && row.errors.length) ? `<span class="status-chip danger">${escapeHTML(row.errors[0])}</span>` : '<span class="status-chip success">Valid</span>'}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="4">Upload a CSV and click Preview to inspect mappings and validation.</td></tr>`;
+                }
+
+                const unmatchedBody = document.getElementById("clientCallStatsUnmatchedBody");
+                if (unmatchedBody) {
+                    const rows = Array.isArray(clientCallStatsData?.unmatchedNumbers) ? clientCallStatsData.unmatchedNumbers : [];
+                    unmatchedBody.innerHTML = rows.length
+                        ? rows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(String(row.number || ""))}</td>
+                                <td>${escapeHTML(Number(row.totalCalls || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.inboundCalls || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(Number(row.outboundCalls || 0).toLocaleString("en-GB"))}</td>
+                                <td>${escapeHTML(formatDateTime(row.lastCallAt) || "--")}</td>
+                                <td>
+                                    <button class="ghost-button" type="button" data-call-number-action="assign_client" data-call-number="${escapeHTML(String(row.number || ""))}">Assign</button>
+                                    <button class="ghost-button" type="button" data-call-number-action="supplier" data-call-number="${escapeHTML(String(row.number || ""))}">Supplier</button>
+                                    <button class="ghost-button" type="button" data-call-number-action="hmrc" data-call-number="${escapeHTML(String(row.number || ""))}">HMRC</button>
+                                    <button class="ghost-button" type="button" data-call-number-action="spam" data-call-number="${escapeHTML(String(row.number || ""))}">Spam</button>
+                                    <button class="ghost-button" type="button" data-call-number-action="ignore" data-call-number="${escapeHTML(String(row.number || ""))}">Ignore</button>
+                                </td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="6">No unmatched numbers.</td></tr>`;
+                }
+
+                const extensionBody = document.getElementById("clientCallStatsExtensionsBody");
+                if (extensionBody) {
+                    const rows = Array.isArray(clientCallStatsData?.extensions) ? clientCallStatsData.extensions : [];
+                    extensionBody.innerHTML = rows.length
+                        ? rows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(String(row.extension || ""))}</td>
+                                <td>${escapeHTML(String(row.staffName || ""))}</td>
+                                <td>${row.isActive ? "Yes" : "No"}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="3">No extensions configured.</td></tr>`;
+                }
+
+                const callRowsBody = document.getElementById("clientCallStatsRowsBody");
+                if (callRowsBody) {
+                    const rows = Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : [];
+                    callRowsBody.innerHTML = rows.length
+                        ? rows.slice(0, 250).map((row) => `
+                            <tr>
+                                <td>${escapeHTML(String(row.callDate || ""))}</td>
+                                <td>${escapeHTML(String(row.callTime || ""))}</td>
+                                <td>${escapeHTML(String(row.direction || ""))}</td>
+                                <td>${escapeHTML(String(row.staffMember || ""))}</td>
+                                <td>${escapeHTML(String(row.clientManager || ""))}</td>
+                                <td>${escapeHTML(String(row.fromNumber || ""))}</td>
+                                <td>${escapeHTML(String(row.toNumber || ""))}</td>
+                                <td>${escapeHTML(formatSyncDuration(Number(row.durationSeconds || 0)))}</td>
+                                <td>${escapeHTML(String(row.outcome || ""))}</td>
+                                <td>${escapeHTML(String(row.clientName || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="10">No call records loaded for the selected filters.</td></tr>`;
+                }
+
+                const clientSummary = document.getElementById("clientCallStatsClientSummary");
+                const clientRowsBody = document.getElementById("clientCallStatsClientRowsBody");
+                if (clientSummary && clientRowsBody) {
+                    const payload = clientCallStatsClientLogs;
+                    if (!payload || !payload.summary) {
+                        clientSummary.textContent = "Client call logs will appear here.";
+                        clientRowsBody.innerHTML = `<tr><td colspan="9">Load a client to view call log history.</td></tr>`;
+                    } else {
+                        const summaryPayload = payload.summary || {};
+                        const benchmark = payload.benchmark || {};
+                        clientSummary.textContent = `Calls this month ${Number(summaryPayload.callsThisMonth || 0).toLocaleString("en-GB")} (practice avg ${Number(benchmark?.callsThisMonth?.practiceAverage || 0).toLocaleString("en-GB")}) · last call ${summaryPayload.lastCallDate || "--"}.`;
+                        const rows = Array.isArray(payload.rows) ? payload.rows : [];
+                        clientRowsBody.innerHTML = rows.length
+                            ? rows.slice(0, 300).map((row) => `
+                                <tr>
+                                    <td>${escapeHTML(String(row.date || ""))}</td>
+                                    <td>${escapeHTML(String(row.time || ""))}</td>
+                                    <td>${escapeHTML(String(row.direction || ""))}</td>
+                                    <td>${escapeHTML(String(row.staffMember || ""))}</td>
+                                    <td>${escapeHTML(String(row.clientManager || ""))}</td>
+                                    <td>${escapeHTML(String(row.fromNumber || ""))}</td>
+                                    <td>${escapeHTML(String(row.toNumber || ""))}</td>
+                                    <td>${escapeHTML(formatSyncDuration(Number(row.durationSeconds || 0)))}</td>
+                                    <td>${escapeHTML(String(row.outcome || ""))}</td>
+                                </tr>
+                            `).join("")
+                            : `<tr><td colspan="9">No matched calls for this client.</td></tr>`;
+                    }
+                }
+
+                const aiReportsBody = document.getElementById("clientCallStatsAiReportsBody");
+                if (aiReportsBody) {
+                    const rows = Array.isArray(clientCallStatsAiReports) ? clientCallStatsAiReports : [];
+                    aiReportsBody.innerHTML = rows.length
+                        ? rows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(row.createdAt) || "--")}</td>
+                                <td>${escapeHTML(String(row.month || ""))}</td>
+                                <td>${escapeHTML(String(row.scope || ""))}</td>
+                                <td>${escapeHTML(String(row.headline || ""))}</td>
+                                <td>${escapeHTML(String(row.engine || ""))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="5">No AI reports generated yet.</td></tr>`;
+                }
+            }
+
+            function clientCallStatsQueryString() {
+                const params = new URLSearchParams();
+                Object.entries(clientCallStatsFilters || {}).forEach(([key, value]) => {
+                    const text = String(value || "").trim();
+                    if (text) params.set(key, text);
+                });
+                const query = params.toString();
+                return query ? `?${query}` : "";
+            }
+
+            async function loadClientCallStats({ silent = false } = {}) {
+                if (clientCallStatsLoading) return;
+                clientCallStatsLoading = true;
+                renderClientCallStatsScreen();
+                try {
+                    const payload = await requestJSON(`${api.endpoints.clientCallStats}${clientCallStatsQueryString()}`, { method: "GET" });
+                    clientCallStatsData = payload?.clientCallStats || {
+                        summary: {},
+                        charts: {},
+                        rows: [],
+                        imports: [],
+                        extensions: [],
+                        unmatchedNumbers: [],
+                        resyncAudit: [],
+                        aiSummary: {},
+                    };
+                    const aiPayload = await requestJSON(api.endpoints.clientCallStatsAiReports, { method: "GET", suppressFailurePanel: true });
+                    clientCallStatsAiReports = Array.isArray(aiPayload?.reports) ? aiPayload.reports : [];
+                    if (!silent) showToast("Client Call Stats refreshed.", "success");
+                } catch (error) {
+                    if (!silent) showToast(error?.message || "Unable to load Client Call Stats.", "error");
+                } finally {
+                    clientCallStatsLoading = false;
+                    renderClientCallStatsScreen();
+                }
+            }
+
+            async function previewClientCallStatsImport() {
+                const form = document.getElementById("clientCallStatsImportForm");
+                if (!form) return;
+                const formData = new FormData(form);
+                try {
+                    const payload = await requestFormData(api.endpoints.clientCallStatsImportPreview, formData);
+                    clientCallStatsImportPreview = payload?.preview || null;
+                    showToast("CSV preview generated.", "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to preview call log CSV.", "error");
+                }
+            }
+
+            async function commitClientCallStatsImport(event) {
+                event?.preventDefault();
+                const form = document.getElementById("clientCallStatsImportForm");
+                if (!form) return;
+                const formData = new FormData(form);
+                if (clientCallStatsImportPreview?.mapping) {
+                    formData.set("mapping", JSON.stringify(clientCallStatsImportPreview.mapping));
+                }
+                try {
+                    const payload = await requestFormData(api.endpoints.clientCallStatsImportCommit, formData);
+                    clientCallStatsImportPreview = null;
+                    clientCallStatsData = payload?.clientCallStats || clientCallStatsData;
+                    const result = payload?.result || {};
+                    const imported = Number(result?.summary?.newRows || 0).toLocaleString("en-GB");
+                    showToast(`Call CSV imported. New rows: ${imported}.`, "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to import call log CSV.", "error");
+                }
+            }
+
+            async function runClientCallStatsResync() {
+                try {
+                    const payload = await requestJSON(api.endpoints.clientCallStatsResync, {
+                        method: "POST",
+                        body: JSON.stringify({ triggerSource: "manual", reason: "Manual Re-Sync button" }),
+                    });
+                    clientCallStatsData = payload?.clientCallStats || clientCallStatsData;
+                    showToast("Call data re-sync complete.", "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to re-sync call data.", "error");
+                }
+            }
+
+            async function saveClientCallStatsExtension(event) {
+                event?.preventDefault();
+                const extensionInput = document.getElementById("clientCallStatsExtensionInput");
+                const staffInput = document.getElementById("clientCallStatsStaffInput");
+                const extension = String(extensionInput?.value || "").trim();
+                const staffName = String(staffInput?.value || "").trim();
+                if (!extension || !staffName) {
+                    showToast("Extension and staff member are required.", "error");
+                    return;
+                }
+                try {
+                    const payload = await requestJSON(api.endpoints.clientCallStatsExtensions, {
+                        method: "POST",
+                        body: JSON.stringify({ extension, staffName, isActive: true }),
+                    });
+                    clientCallStatsData.extensions = payload?.extensions || clientCallStatsData.extensions || [];
+                    if (extensionInput) extensionInput.value = "";
+                    if (staffInput) staffInput.value = "";
+                    showToast("Extension saved.", "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to save extension.", "error");
+                }
+            }
+
+            async function applyClientCallStatsNumberAction(action, number) {
+                let payload = { action, number };
+                if (action === "assign_client") {
+                    const clientId = window.prompt("Enter the client ID to assign this number:");
+                    if (!clientId) return;
+                    payload = { ...payload, clientId: String(clientId).trim() };
+                }
+                try {
+                    const response = await requestJSON(api.endpoints.clientCallStatsUnmatchedAction, {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                    });
+                    clientCallStatsData = response?.clientCallStats || clientCallStatsData;
+                    showToast("Number action saved and history updated.", "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to apply unmatched number action.", "error");
+                }
+            }
+
+            async function loadClientCallLogs() {
+                const input = document.getElementById("clientCallStatsClientIdInput");
+                const clientId = String(input?.value || "").trim();
+                if (!clientId) return showToast("Enter a client ID first.", "info");
+                try {
+                    const payload = await requestJSON(api.endpoints.clientCallStatsClientLogs, { method: "GET" }, { clientId });
+                    clientCallStatsClientLogs = payload?.clientCallLogs || null;
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to load client call logs.", "error");
+                }
+            }
+
+            async function generateClientCallStatsAiReport() {
+                const clientId = String(document.getElementById("clientCallStatsClientIdInput")?.value || "").trim();
+                const month = currentMonthKey();
+                try {
+                    const payload = await requestJSON(api.endpoints.clientCallStatsAiReport, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            month,
+                            scope: clientId ? "client" : "practice",
+                            clientId,
+                        }),
+                    });
+                    const report = payload?.report || {};
+                    clientCallStatsLatestAiReport = report;
+                    clientCallStatsAiReports = Array.isArray(report?.history) ? report.history : clientCallStatsAiReports;
+                    showToast("Monthly AI report generated and saved.", "success");
+                    renderClientCallStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to generate AI report.", "error");
+                }
+            }
+
+            function bindClientCallStatsEvents() {
+                if (clientCallStatsEventsBound) return;
+                clientCallStatsEventsBound = true;
+                document.getElementById("clientCallStatsRefreshButton")?.addEventListener("click", () => loadClientCallStats());
+                document.getElementById("clientCallStatsResyncButton")?.addEventListener("click", () => runClientCallStatsResync());
+                document.getElementById("clientCallStatsPreviewButton")?.addEventListener("click", () => previewClientCallStatsImport());
+                document.getElementById("clientCallStatsImportForm")?.addEventListener("submit", (event) => commitClientCallStatsImport(event));
+                document.getElementById("clientCallStatsExtensionForm")?.addEventListener("submit", (event) => saveClientCallStatsExtension(event));
+                document.getElementById("clientCallStatsLoadClientLogsButton")?.addEventListener("click", () => loadClientCallLogs());
+                document.getElementById("clientCallStatsGenerateAiReportButton")?.addEventListener("click", () => generateClientCallStatsAiReport());
+                document.getElementById("clientCallStatsExportDashboardButton")?.addEventListener("click", () => exportClientCallStatsDashboardCSV());
+                document.getElementById("clientCallStatsExportClientLogsButton")?.addEventListener("click", () => exportClientCallStatsClientCSV());
+                document.getElementById("clientCallStatsExportAiReportsButton")?.addEventListener("click", () => exportClientCallStatsAiReportsCSV());
+                document.getElementById("clientCallStatsExportLatestAiTextButton")?.addEventListener("click", () => exportClientCallStatsLatestAiText());
+                document.getElementById("clientCallStatsApplyFiltersButton")?.addEventListener("click", () => {
+                    clientCallStatsFilters = {
+                        ...clientCallStatsFilters,
+                        dateFrom: String(document.getElementById("clientCallStatsFilterDateFrom")?.value || "").trim(),
+                        dateTo: String(document.getElementById("clientCallStatsFilterDateTo")?.value || "").trim(),
+                        staffMember: String(document.getElementById("clientCallStatsFilterStaff")?.value || "").trim(),
+                        clientManager: String(document.getElementById("clientCallStatsFilterClientManager")?.value || "").trim(),
+                        direction: String(document.getElementById("clientCallStatsFilterDirection")?.value || "").trim(),
+                        matchStatus: String(document.getElementById("clientCallStatsFilterMatchStatus")?.value || "").trim(),
+                    };
+                    loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsUnmatchedBody")?.addEventListener("click", (event) => {
+                    const button = event.target?.closest?.("button[data-call-number-action]");
+                    if (!button) return;
+                    const action = String(button.getAttribute("data-call-number-action") || "").trim();
+                    const number = String(button.getAttribute("data-call-number") || "").trim();
+                    if (!action || !number) return;
+                    applyClientCallStatsNumberAction(action, number);
+                });
+            }
+
+            function clientCallStatsCsvEscape(value) {
+                return `"${String(value ?? "").replace(/"/g, '""')}"`;
+            }
+
+            function clientCallStatsDownloadBlob(blob, filename) {
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+            }
+
+            function clientCallStatsCsvDownload(filename, rows) {
+                const csv = rows.map((row) => row.map((cell) => clientCallStatsCsvEscape(cell)).join(",")).join("\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+                clientCallStatsDownloadBlob(blob, filename);
+            }
+
+            function clientCallStatsTextDownload(filename, text) {
+                const blob = new Blob([`${String(text || "")}\n`], { type: "text/plain;charset=utf-8" });
+                clientCallStatsDownloadBlob(blob, filename);
+            }
+
+            function clientCallStatsStamp() {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, "0");
+                const day = String(now.getDate()).padStart(2, "0");
+                const hour = String(now.getHours()).padStart(2, "0");
+                const minute = String(now.getMinutes()).padStart(2, "0");
+                return `${year}${month}${day}-${hour}${minute}`;
+            }
+
+            function exportClientCallStatsDashboardCSV() {
+                const summary = clientCallStatsData?.summary || {};
+                const rows = Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : [];
+                const csvRows = [
+                    ["Section", "Metric", "Value"],
+                    ["Summary", "Total Calls", summary.totalCalls || 0],
+                    ["Summary", "Inbound Calls", summary.inboundCalls || 0],
+                    ["Summary", "Outbound Calls", summary.outboundCalls || 0],
+                    ["Summary", "Missed Calls", summary.missedCalls || 0],
+                    ["Summary", "Answered Calls", summary.answeredCalls || 0],
+                    ["Summary", "Average Duration Seconds", summary.averageDurationSeconds || 0],
+                    ["Summary", "Matched Calls", summary.matchedCalls || 0],
+                    ["Summary", "Unmatched Calls", summary.unmatchedCalls || 0],
+                    [],
+                    ["Date", "Time", "Direction", "Staff", "Client Manager", "From", "To", "Duration Seconds", "Outcome", "Client", "Matched Status"],
+                    ...rows.map((row) => [
+                        row.callDate || "",
+                        row.callTime || "",
+                        row.direction || "",
+                        row.staffMember || "",
+                        row.clientManager || "",
+                        row.fromNumber || "",
+                        row.toNumber || "",
+                        row.durationSeconds || 0,
+                        row.outcome || "",
+                        row.clientName || "",
+                        row.matchedStatus || "",
+                    ]),
+                ];
+                clientCallStatsCsvDownload(`client-call-stats-dashboard-${clientCallStatsStamp()}.csv`, csvRows);
+                showToast("Dashboard CSV exported.", "success");
+            }
+
+            function exportClientCallStatsClientCSV() {
+                const payload = clientCallStatsClientLogs;
+                if (!payload || !Array.isArray(payload.rows) || !payload.rows.length) {
+                    showToast("Load client call logs before exporting.", "info");
+                    return;
+                }
+                const csvRows = [
+                    ["Date", "Time", "Direction", "Staff", "Client Manager", "From", "To", "Duration Seconds", "Outcome"],
+                    ...payload.rows.map((row) => [
+                        row.date || "",
+                        row.time || "",
+                        row.direction || "",
+                        row.staffMember || "",
+                        row.clientManager || "",
+                        row.fromNumber || "",
+                        row.toNumber || "",
+                        row.durationSeconds || 0,
+                        row.outcome || "",
+                    ]),
+                ];
+                const clientId = String(payload.clientId || document.getElementById("clientCallStatsClientIdInput")?.value || "client").replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+                clientCallStatsCsvDownload(`client-call-logs-${clientId}-${clientCallStatsStamp()}.csv`, csvRows);
+                showToast("Client call log CSV exported.", "success");
+            }
+
+            function exportClientCallStatsAiReportsCSV() {
+                const rows = Array.isArray(clientCallStatsAiReports) ? clientCallStatsAiReports : [];
+                if (!rows.length) {
+                    showToast("No AI report history available yet.", "info");
+                    return;
+                }
+                const csvRows = [
+                    ["Created At", "Month", "Scope", "Client ID", "Headline", "Engine"],
+                    ...rows.map((row) => [
+                        row.createdAt || "",
+                        row.month || "",
+                        row.scope || "",
+                        row.clientId || "",
+                        row.headline || "",
+                        row.engine || "",
+                    ]),
+                ];
+                clientCallStatsCsvDownload(`client-call-ai-reports-${clientCallStatsStamp()}.csv`, csvRows);
+                showToast("AI report history CSV exported.", "success");
+            }
+
+            function exportClientCallStatsLatestAiText() {
+                const report = clientCallStatsLatestAiReport?.report || {};
+                if (!report || (!report.headline && !Array.isArray(report.insights))) {
+                    showToast("Generate an AI report first.", "info");
+                    return;
+                }
+                const lines = [
+                    `Client Call Stats AI Summary`,
+                    `Generated: ${formatDateTime(clientCallStatsLatestAiReport?.createdAt) || new Date().toLocaleString("en-GB")}`,
+                    `Month: ${clientCallStatsLatestAiReport?.month || currentMonthKey()}`,
+                    `Scope: ${clientCallStatsLatestAiReport?.scope || "practice"}`,
+                    "",
+                    `Headline: ${report.headline || ""}`,
+                    "",
+                    "Insights:",
+                    ...(Array.isArray(report.insights) ? report.insights.map((item) => `- ${item}`) : []),
+                    "",
+                    "Risks:",
+                    ...(Array.isArray(report.risks) ? report.risks.map((item) => `- ${item}`) : []),
+                    "",
+                    "Actions:",
+                    ...(Array.isArray(report.actions) ? report.actions.map((item) => `- ${item}`) : []),
+                ];
+                clientCallStatsTextDownload(`client-call-ai-summary-${clientCallStatsStamp()}.txt`, lines.join("\n"));
+                showToast("Latest AI summary exported.", "success");
             }
 
             function currentMonthKey(date = new Date()) {
@@ -94412,8 +95248,10 @@
                 return list
                 .map((row) => bmTaskRowWithOverrides(row))
                 .filter((row) => {
+                    const rowStatus = String(row?.status || "").trim().toLowerCase();
+                    if (rowStatus === "completed") return false;
                     if (assignee && String(row?.assigneeName || "").trim().toLowerCase() !== assignee) return false;
-                    if (status && String(row?.status || "").trim().toLowerCase() !== status) return false;
+                    if (status && rowStatus !== status) return false;
                     if (due && bmTaskDeadlineTraffic(row) !== due) return false;
                     if (!search) return true;
                     const pool = [
@@ -94776,7 +95614,7 @@
                         ? `${xero.tenantName || "Matched workspace"}${xero.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
                         : "No Xero workspace match";
                     const isSelected = companiesHouseSettings.bmTasksSelection?.has(rowId);
-                    const statusPill = `<button class="task-list-status-trigger" type="button" data-task-status-trigger="${escapeHTML(rowId)}"><span class="lock-status-pill ${bmTaskStatusTone(row.status)}">${escapeHTML(bmTaskStatusLabel(row.status))}</span></button>`;
+                    const statusPill = `<button class="task-list-status-trigger" type="button" data-task-status-trigger="${escapeHTML(rowId)}"><span class="lock-status-pill task-status-pill ${bmTaskStatusTone(row.status)}"><span>${escapeHTML(bmTaskStatusLabel(row.status))}</span></span></button>`;
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
                     const deadlineDateLabel = row.deadlineISO ? formatDate(row.deadlineISO) : "—";
@@ -94788,7 +95626,7 @@
                         </select>
                     `;
                     return `
-                        <tr class="${mode === "list" ? bmTaskRowClassByDeadline(row) : ""} task-row-clickable" data-task-open-detail="${escapeHTML(rowId)}">
+                        <tr class="${mode === "list" ? bmTaskRowClassByDeadline(row) : ""} task-row-clickable" data-task-open-detail="${escapeHTML(rowId)}" data-task-row-id="${escapeHTML(rowId)}">
                             <td class="task-list-select-col"><input type="checkbox" data-task-select="${escapeHTML(rowId)}" ${isSelected ? "checked" : ""}></td>
                             <td>
                                 <div class="task-list-client-cell">
@@ -94800,10 +95638,15 @@
                             <td>${escapeHTML(row.vatPeriodEndISO ? formatDate(row.vatPeriodEndISO) : "—")}</td>
                             <td><span class="task-deadline-chip ${bmTaskDeadlineToneClass(row)}">${escapeHTML(deadlineDateLabel)}</span><small>${escapeHTML(deadlineMeta)}</small></td>
                             <td>${statusPill}${statusSelect}</td>
-                            <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}><span class="task-manager-chip" title="${escapeHTML(assigneeName || "Unassigned")}" aria-label="${escapeHTML(assigneeName || "Unassigned")}">${escapeHTML(assigneeInitials)}</span></td>
+                            <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>
+                                <span class="task-manager-identity">
+                                    <span class="task-manager-chip" title="${escapeHTML(assigneeName || "Unassigned")}" aria-label="${escapeHTML(assigneeName || "Unassigned")}">${escapeHTML(assigneeInitials)}</span>
+                                    <small>${escapeHTML(assigneeName || "Unassigned")}</small>
+                                </span>
+                            </td>
                             <td data-task-col="register" ${hiddenColumns.has("register") ? "hidden" : ""}>${escapeHTML(registerLabel)}</td>
                             <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${escapeHTML(xeroLabel)}</td>
-                            <td><button class="task-complete-button" type="button" data-task-mark-completed="${escapeHTML(rowId)}" ${isCompleted ? "disabled" : ""} title="${isCompleted ? "Task already completed" : "Mark task completed"}" aria-label="${isCompleted ? "Task already completed" : "Mark task completed"}">${isCompleted ? "Completed" : "Complete"}</button></td>
+                            <td><button class="task-complete-button" type="button" data-task-mark-completed="${escapeHTML(rowId)}" ${isCompleted ? "disabled" : ""} title="${isCompleted ? "Task already completed" : "Mark task completed"}" aria-label="${isCompleted ? "Task already completed" : "Mark task completed"}"><span class="task-complete-icon" aria-hidden="true">${isCompleted ? "✓" : "•"}</span><span>${isCompleted ? "Completed" : "Complete"}</span></button></td>
                         </tr>
                     `;
                 }).join("");
@@ -94864,11 +95707,24 @@
                         const rowId = String(button.getAttribute("data-task-mark-completed") || "");
                         const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
                         if (!match) return;
-                        updateBmTaskStatus(match, "completed", "", {
-                            autoNote: "Task marked completed from task list.",
-                        });
-                        showToast("Task marked completed and timeline updated.", "success");
-                        renderTaskSubpages();
+                        const rowNode = button.closest("tr");
+                        const applyCompletion = () => {
+                            updateBmTaskStatus(match, "completed", "", {
+                                autoNote: "Task marked completed from task list.",
+                            });
+                            if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
+                                companiesHouseSettings.bmTasksSelection.delete(rowId);
+                            }
+                            showToast("Task completed. Review it in Completed Tasks.", "success");
+                            renderTaskSubpages();
+                        };
+                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing")) {
+                            rowNode.classList.add("task-row-completing");
+                            button.disabled = true;
+                            window.setTimeout(applyCompletion, 340);
+                            return;
+                        }
+                        applyCompletion();
                     });
                 });
                 body.querySelectorAll("[data-task-open-detail]").forEach((rowNode) => {
@@ -94915,7 +95771,10 @@
                     manager.innerHTML = `<option value="">All managers</option>${managers.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
                     manager.value = String(filters.assignee || "");
                 }
-                if (status) status.value = String(filters.status || "");
+                if (status) {
+                    const nextStatus = String(filters.status || "").toLowerCase() === "completed" ? "" : String(filters.status || "");
+                    status.value = nextStatus;
+                }
                 if (due) due.value = String(filters.due || "");
                 if (sort) sort.value = String(filters.sort || "deadline_asc");
             }
@@ -97314,9 +98173,19 @@
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListStatusFilter")?.addEventListener("change", (event) => {
+                    const requestedStatus = String(event?.target?.value || "");
+                    if (requestedStatus.toLowerCase() === "completed") {
+                        companiesHouseSettings.bmTasksFilters = {
+                            ...companiesHouseSettings.bmTasksFilters,
+                            status: "",
+                        };
+                        event.target.value = "";
+                        openTaskCompletedScreen();
+                        return;
+                    }
                     companiesHouseSettings.bmTasksFilters = {
                         ...companiesHouseSettings.bmTasksFilters,
-                        status: String(event?.target?.value || ""),
+                        status: requestedStatus,
                     };
                     renderTaskSubpages();
                 });
@@ -97356,6 +98225,9 @@
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListBulkEditsButton")?.addEventListener("click", openTaskListBulkEditsDialog);
+                document.getElementById("taskListOpenCompletedButton")?.addEventListener("click", () => {
+                    openTaskCompletedScreen();
+                });
                 document.getElementById("taskListReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
                     renderTaskSubpages();
@@ -100931,6 +101803,7 @@
                     wireCompaniesHouseUI,
                     wireContactArchiveUI,
                     wireSupplierReconciliationUI,
+                    bindClientCallStatsEvents,
                 ].forEach((wire) => {
                     try {
                         wire();
@@ -100958,6 +101831,9 @@
                 }
                 if (activeView === "supplier-reconciliation") {
                     loadSupplierReconciliation();
+                }
+                if (activeView === "client-call-stats") {
+                    loadClientCallStats({ silent: true });
                 }
                 if (activeView === "confirmation-statements") {
                     activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
