@@ -33,7 +33,7 @@ function normaliseAPI(config) {
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
             bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
-            login: config.endpoints?.login || "/auth/xero/start"
+            login: config.endpoints?.login || "/auth/xero/start?include_all_scopes=1"
         }
     };
 }

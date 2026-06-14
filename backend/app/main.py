@@ -631,7 +631,7 @@ def auth_xero_start(
     redirect_to: str = "/",
     force: int = 0,
     include_payroll: int = 0,
-    include_all_scopes: int = 0,
+    include_all_scopes: int = 1,
 ):
     redirect_to = normalise_oauth_redirect(redirect_to)
     if not force:
