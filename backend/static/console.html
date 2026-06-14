@@ -25914,6 +25914,12 @@
             #xeroLockFixProgressTableBody tr.is-failed {
                 background: rgba(255, 231, 231, 0.9);
             }
+            #microAnalyzerConnectionsTableBody tr.is-fixed {
+                background: rgba(232, 248, 238, 0.92);
+            }
+            #microAnalyzerConnectionsTableBody tr.is-failed {
+                background: rgba(255, 231, 231, 0.9);
+            }
             .xero-lock-fix-bg-chip {
                 position: fixed;
                 right: 22px;
@@ -88948,6 +88954,7 @@
                         const vatRegisteredRows = vatRegisteredByTenant.get(tenantId) || [];
                         const hiddenVatRegisteredCount = vatRegisteredRows.filter((item) => hiddenIds.has(String(item?.id || "").trim())).length;
                         const totalVatRegisteredCount = vatRegisteredRows.length;
+                        const nonVatRegisteredCount = Math.max(0, mappedClientRows.length - totalVatRegisteredCount);
                         return {
                             tenantId,
                             tenantName: xeroWorkspaceLabel(connection?.tenantName, connection?.tenantId, "Xero account"),
@@ -88957,6 +88964,7 @@
                             hiddenVatRegisteredCount,
                             totalVatRegisteredCount,
                             totalMappedClients: mappedClientRows.length,
+                            nonVatRegisteredCount,
                         };
                     })
                     .filter((connection) => {
@@ -89008,8 +89016,14 @@
                         const workspaceLabel = row.workspace
                             ? `<strong>${escapeHTML(row.workspace.workspaceName || "VAT workspace")}</strong>`
                             : '<span class="ch-pill is-bad">No workspace set up</span>';
+                        const hasNonVatRegisteredClients = Number(row.nonVatRegisteredCount || 0) > 0;
+                        const rowTone = hasNonVatRegisteredClients
+                            ? (Number.isFinite(row.tenantCount)
+                                ? (Number(row.tenantCount || 0) > 0 ? "is-failed" : Number(row.tenantCount || 0) === 0 ? "is-fixed" : "")
+                                : "")
+                            : "";
                         return `
-                        <tr>
+                        <tr class="micro-analyzer-tenant-row ${rowTone}">
                             <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button></td>
                             <td><strong>${escapeHTML(countLabel)}</strong></td>
                             <td>${workspaceLabel}</td>
