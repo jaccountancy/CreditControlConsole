@@ -33206,6 +33206,10 @@
                                 <div class="wizard-progress-fill" id="microAnalyzerNoVatWizardProgressFill"></div>
                             </div>
                             <p class="detail-meta" id="microAnalyzerNoVatWizardStatus">Ready to start VAT recoding.</p>
+                            <div id="microAnalyzerNoVatWizardDetailsWrap" hidden>
+                                <p class="detail-meta"><strong>Skipped/failed details</strong></p>
+                                <ul id="microAnalyzerNoVatWizardDetailsList"></ul>
+                            </div>
                             <div class="detail-actions">
                                 <button class="primary-button" id="microAnalyzerNoVatWizardStartButton" type="button">Start update</button>
                             </div>
@@ -36489,6 +36493,7 @@
                 appliedCount: 0,
                 skippedCount: 0,
                 status: "Ready to start VAT recoding.",
+                details: [],
             };
             let microAnalyzerLockInfoModalState = {
                 open: false,
@@ -88679,6 +88684,8 @@
                 const status = document.getElementById("microAnalyzerNoVatWizardStatus");
                 const progressFill = document.getElementById("microAnalyzerNoVatWizardProgressFill");
                 const startButton = document.getElementById("microAnalyzerNoVatWizardStartButton");
+                const detailsWrap = document.getElementById("microAnalyzerNoVatWizardDetailsWrap");
+                const detailsList = document.getElementById("microAnalyzerNoVatWizardDetailsList");
                 if (!modal || !meta || !total || !applied || !skipped || !status || !progressFill || !startButton) return;
                 const state = microAnalyzerNoVatWizardState || {};
                 modal.hidden = !Boolean(state.open);
@@ -88694,6 +88701,19 @@
                 progressFill.style.width = `${percent}%`;
                 startButton.disabled = Boolean(state.running) || Number(state.totalCount || 0) <= 0;
                 startButton.textContent = state.running ? "Updating..." : "Start update";
+                if (detailsWrap && detailsList) {
+                    const detailRows = Array.isArray(state.details) ? state.details : [];
+                    detailsWrap.hidden = detailRows.length === 0;
+                    detailsList.innerHTML = detailRows
+                        .slice(0, 30)
+                        .map((item) => {
+                            const kind = String(item?.kind || "Detail").trim();
+                            const label = String(item?.label || "").trim();
+                            const reason = String(item?.reason || "").trim();
+                            return `<li><strong>${escapeHTML(kind)}</strong>${label ? ` · ${escapeHTML(label)}` : ""}${reason ? ` — ${escapeHTML(reason)}` : ""}</li>`;
+                        })
+                        .join("");
+                }
             }
 
             function closeMicroAnalyzerNoVatWizard() {
@@ -88710,6 +88730,7 @@
                     appliedCount: 0,
                     skippedCount: 0,
                     status: "Ready to start VAT recoding.",
+                    details: [],
                 };
                 renderMicroAnalyzerNoVatWizard();
             }
@@ -88738,6 +88759,7 @@
                     appliedCount: 0,
                     skippedCount: 0,
                     status: "Ready to start VAT recoding.",
+                    details: [],
                 };
                 renderMicroAnalyzerNoVatWizard();
             }
@@ -88769,6 +88791,7 @@
                 microAnalyzerNoVatWizardState.appliedCount = 0;
                 microAnalyzerNoVatWizardState.skippedCount = 0;
                 microAnalyzerNoVatWizardState.status = "Preparing updates...";
+                microAnalyzerNoVatWizardState.details = [];
                 renderMicroAnalyzerNoVatWizard();
 
                 microAnalyzerNoVatWizardTimer = window.setInterval(() => {
@@ -88792,9 +88815,40 @@
                     stopMicroAnalyzerNoVatWizardTimer();
                     const appliedCount = Number(payload?.appliedCount || 0);
                     const skippedCount = Number((Array.isArray(payload?.skipped) ? payload.skipped.length : 0) + Number(payload?.errorCount || 0));
+                    const rowLookup = new Map(
+                        vatRows.map((row) => {
+                            const id = String(row?.id || vatTransactionId(row)).trim();
+                            const ref = String(row?.reference || id || "").trim();
+                            const dateText = row?.date ? formatDate(row.date) : "";
+                            const label = dateText ? `${dateText} · ${ref}` : ref;
+                            return [id, label];
+                        })
+                    );
+                    const detailRows = [];
+                    const skippedRows = Array.isArray(payload?.skipped) ? payload.skipped : [];
+                    const errorRows = Array.isArray(payload?.errors) ? payload.errors : [];
+                    skippedRows.forEach((item) => {
+                        const txId = String(item?.transactionId || "").trim();
+                        const label = rowLookup.get(txId) || txId || String(item?.invoiceId || item?.creditNoteId || item?.bankTransactionId || "").trim();
+                        detailRows.push({
+                            kind: "Skipped",
+                            label,
+                            reason: String(item?.reason || "").trim() || "No reason returned.",
+                        });
+                    });
+                    errorRows.forEach((item) => {
+                        const key = String(item?.invoiceId || item?.creditNoteId || item?.bankTransactionId || "").trim();
+                        const label = key || "Xero update";
+                        detailRows.push({
+                            kind: "Failed",
+                            label,
+                            reason: String(item?.message || "").trim() || "Unknown API error.",
+                        });
+                    });
                     microAnalyzerNoVatWizardState.appliedCount = appliedCount;
                     microAnalyzerNoVatWizardState.skippedCount = skippedCount;
                     microAnalyzerNoVatWizardState.status = `Completed. Updated ${appliedCount.toLocaleString("en-GB")} row${appliedCount === 1 ? "" : "s"}.`;
+                    microAnalyzerNoVatWizardState.details = detailRows;
                     microAnalyzerNoVatWizardState.running = false;
                     renderMicroAnalyzerNoVatWizard();
                     await loadMicroAnalyzerTenantWorkspace(tenantId, true);
@@ -88804,6 +88858,13 @@
                     stopMicroAnalyzerNoVatWizardTimer();
                     microAnalyzerNoVatWizardState.running = false;
                     microAnalyzerNoVatWizardState.status = error?.message || "Unable to complete the NO VAT update.";
+                    microAnalyzerNoVatWizardState.details = [
+                        {
+                            kind: "Failed",
+                            label: "Bulk NO VAT update",
+                            reason: String(error?.message || "Unknown error"),
+                        },
+                    ];
                     renderMicroAnalyzerNoVatWizard();
                     showToast(error?.message || "Unable to complete the NO VAT update.", "error");
                 }
@@ -89100,7 +89161,7 @@
                             ${row?.lockedByLockDate ? `<button class="ghost-button" type="button" data-micro-analyzer-lock-info="${escapeHTML(String(row?.id || "").trim())}" title="Locked by Xero period lock date">🔒</button>` : ""}
                         </td>
                         <td>${escapeHTML(row?.date ? formatDate(row.date) : "—")}</td>
-                        <td><strong>${escapeHTML(String(row?.reference || "—"))}</strong><small>${escapeHTML(String(row?.clientName || ""))}</small></td>
+                        <td><strong>${escapeHTML(String(row?.reference || "—"))}</strong></td>
                         <td title="${escapeHTML(String(row?.description || ""))}">${escapeHTML(codeBreakerCondenseWords(String(row?.description || ""), 14) || "Transaction")}</td>
                         <td>${escapeHTML(formatCurrency(Number(row?.netAmount || 0)))}</td>
                         <td>${escapeHTML(formatCurrency(Number(row?.taxAmount || 0)))}</td>
