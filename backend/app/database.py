@@ -1675,6 +1675,9 @@ ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS personal_utr TEXT NOT
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);
 
+CREATE INDEX IF NOT EXISTS ch_auth_code_register_uploaded_at_idx
+ON ch_auth_code_register (uploaded_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS ch_auth_register_client_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     register_row_id UUID NOT NULL UNIQUE REFERENCES ch_auth_code_register(id) ON DELETE CASCADE,

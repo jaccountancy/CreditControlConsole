@@ -5271,6 +5271,27 @@ def list_auth_code_register(limit: int = 300) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH limited_register AS (
+                    SELECT id,
+                           company_number,
+                           company_name,
+                           client_name,
+                           client_type,
+                           client_manager,
+                           client_id,
+                           vat_number,
+                           company_utr,
+                           personal_utr,
+                           contact_email,
+                           contact_phone,
+                           client_address,
+                           code_hint,
+                           source_filename,
+                           uploaded_at
+                    FROM ch_auth_code_register
+                    ORDER BY uploaded_at DESC, id DESC
+                    LIMIT %s
+                )
                 SELECT r.id,
                        r.company_number,
                        COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
@@ -5288,13 +5309,12 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.source_filename,
                        r.uploaded_at,
                        p.services
-                FROM ch_auth_code_register r
+                FROM limited_register r
                 LEFT JOIN ch_companies c
                   ON c.company_number = r.company_number
                 LEFT JOIN ch_auth_register_client_profiles p
                   ON p.register_row_id = r.id
-                ORDER BY r.uploaded_at DESC
-                LIMIT %s
+                ORDER BY r.uploaded_at DESC, r.id DESC
                 """,
                 (safe_limit,),
             )
