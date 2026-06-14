@@ -23700,6 +23700,154 @@
                 font-size: 12px;
                 font-weight: 700;
             }
+            .task-list-metrics {
+                min-width: 360px;
+                max-width: 520px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.9));
+            }
+            .task-list-metrics h4 {
+                margin: 0 0 8px;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--muted);
+            }
+            .task-list-metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 6px;
+            }
+            .task-list-metric {
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 7px 8px;
+                background: var(--surface-strong);
+            }
+            .task-list-metric label {
+                display: block;
+                margin: 0;
+                color: var(--muted);
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                font-weight: 700;
+            }
+            .task-list-metric strong {
+                display: block;
+                margin-top: 3px;
+                font-size: 15px;
+                line-height: 1.1;
+            }
+            .task-list-inline-controls {
+                display: grid;
+                grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(130px, 1fr)) auto;
+                gap: 8px;
+                align-items: center;
+            }
+            .task-list-inline-controls input,
+            .task-list-inline-controls select {
+                font: inherit;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .task-list-bulk-bar {
+                display: grid;
+                grid-template-columns: auto minmax(180px, 240px) minmax(260px, 1fr) auto auto;
+                gap: 8px;
+                align-items: center;
+                margin: 10px 0;
+            }
+            .task-list-bulk-bar input,
+            .task-list-bulk-bar select {
+                font: inherit;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .task-list-status-trigger {
+                border: 0;
+                background: transparent;
+                padding: 0;
+                font: inherit;
+                cursor: pointer;
+            }
+            .task-list-row-overdue {
+                background: rgba(255, 83, 83, 0.06);
+            }
+            .task-list-row-due-soon {
+                background: rgba(255, 159, 47, 0.08);
+            }
+            .task-list-row-on-track {
+                background: rgba(39, 176, 95, 0.06);
+            }
+            .task-deadline-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border: 1px solid transparent;
+                border-radius: 999px;
+                padding: 3px 8px;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .task-deadline-chip.is-overdue {
+                color: #b4232d;
+                background: #ffe7e7;
+                border-color: #ffcbcb;
+            }
+            .task-deadline-chip.is-due {
+                color: #8f5b10;
+                background: #fff3df;
+                border-color: #ffd9a7;
+            }
+            .task-deadline-chip.is-open {
+                color: #166742;
+                background: #e8f8ee;
+                border-color: #bde7ce;
+            }
+            .task-client-timeline-button {
+                border: 1px solid var(--line);
+                background: var(--surface-soft);
+                color: var(--ink);
+                border-radius: 999px;
+                width: 24px;
+                height: 24px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 6px;
+                cursor: pointer;
+            }
+            .task-list-select-col {
+                width: 34px;
+                text-align: center;
+            }
+            .task-list-client-cell {
+                display: flex;
+                align-items: center;
+            }
+            .task-list-client-label {
+                font-weight: 800;
+            }
+            @media (max-width: 1180px) {
+                .task-list-metrics-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .task-list-inline-controls {
+                    grid-template-columns: 1fr 1fr;
+                }
+                .task-list-bulk-bar {
+                    grid-template-columns: 1fr;
+                }
+            }
             .ch-register-client-page {
                 margin-top: 12px;
                 display: grid;
@@ -30139,23 +30287,75 @@
                                     <h3>Task List</h3>
                                     <p class="detail-meta">All task rows loaded from BM Tasks CSV.</p>
                                 </div>
-                                <div class="detail-actions">
+                                <div class="task-list-metrics" aria-live="polite">
+                                    <h4>Live Task Metrics Today</h4>
+                                    <div class="task-list-metrics-grid" id="taskListMetricsToday"></div>
+                                </div>
+                                <div class="detail-actions" style="margin-left: auto;">
                                     <button class="ghost-button" type="button" id="taskListReloadButton">Reload tasks</button>
                                 </div>
                             </div>
                             <section class="ch-settings-card">
+                                <div class="task-list-bulk-bar" id="taskListBulkBar">
+                                    <button class="ghost-button" type="button" id="taskListSelectVisibleButton">Select visible</button>
+                                    <select id="taskListBulkStatus" aria-label="Bulk status">
+                                        <option value="">Bulk status change…</option>
+                                        <option value="open">Open</option>
+                                        <option value="records_requested">Records requested</option>
+                                        <option value="awaiting_approval">Awaiting approval</option>
+                                        <option value="in_review">In review</option>
+                                        <option value="query">Query</option>
+                                        <option value="completed">Completed</option>
+                                    </select>
+                                    <input id="taskListBulkNote" type="text" placeholder="Bulk note (added to selected client timelines)">
+                                    <button class="primary-button" type="button" id="taskListApplyBulkButton">Apply bulk update</button>
+                                    <button class="ghost-button" type="button" id="taskListClearSelectionButton">Clear selection</button>
+                                </div>
                                 <div class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Task list table">
                                         <thead>
                                             <tr>
+                                                <th colspan="9">
+                                                    <div class="task-list-inline-controls">
+                                                        <input id="taskListSearch" type="search" placeholder="Search client, task, status, manager...">
+                                                        <select id="taskListManagerFilter" aria-label="Filter by manager">
+                                                            <option value="">All managers</option>
+                                                        </select>
+                                                        <select id="taskListStatusFilter" aria-label="Filter by status">
+                                                            <option value="">All statuses</option>
+                                                            <option value="open">Open</option>
+                                                            <option value="records_requested">Records requested</option>
+                                                            <option value="awaiting_approval">Awaiting approval</option>
+                                                            <option value="in_review">In review</option>
+                                                            <option value="query">Query</option>
+                                                            <option value="completed">Completed</option>
+                                                        </select>
+                                                        <select id="taskListDueFilter" aria-label="Filter by due state">
+                                                            <option value="">All deadlines</option>
+                                                            <option value="red">Red: due today or overdue</option>
+                                                            <option value="amber">Amber: due in 7 days</option>
+                                                            <option value="green">Green: due in more than 7 days</option>
+                                                        </select>
+                                                        <select id="taskListSort" aria-label="Sort tasks">
+                                                            <option value="deadline_asc">Sort: deadline (soonest)</option>
+                                                            <option value="deadline_desc">Sort: deadline (latest)</option>
+                                                            <option value="client_asc">Sort: client A-Z</option>
+                                                            <option value="status">Sort: status</option>
+                                                        </select>
+                                                        <button class="ghost-button" type="button" id="taskListColumnsButton">Columns</button>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th class="task-list-select-col"><input id="taskListSelectAll" type="checkbox" aria-label="Select all visible tasks"></th>
                                                 <th>Client</th>
                                                 <th>Task</th>
                                                 <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
-                                                <th>Assignee</th>
-                                                <th>Register match</th>
-                                                <th>Xero match</th>
+                                                <th data-task-col="assignee">Client Manager</th>
+                                                <th data-task-col="register">Register match</th>
+                                                <th data-task-col="xero">Xero match</th>
                                             </tr>
                                         </thead>
                                         <tbody id="taskListTableBody"></tbody>
@@ -30183,14 +30383,15 @@
                                     <table class="ch-table" aria-label="Approvals and bouncebacks table">
                                         <thead>
                                             <tr>
+                                                <th class="task-list-select-col">Select</th>
                                                 <th>Client</th>
                                                 <th>Task</th>
                                                 <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
-                                                <th>Assignee</th>
-                                                <th>Register match</th>
-                                                <th>Xero match</th>
+                                                <th data-task-col="assignee">Client Manager</th>
+                                                <th data-task-col="register">Register match</th>
+                                                <th data-task-col="xero">Xero match</th>
                                             </tr>
                                         </thead>
                                         <tbody id="taskApprovalsTableBody"></tbody>
@@ -30218,14 +30419,15 @@
                                     <table class="ch-table" aria-label="Completed tasks table">
                                         <thead>
                                             <tr>
+                                                <th class="task-list-select-col">Select</th>
                                                 <th>Client</th>
                                                 <th>Task</th>
                                                 <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
-                                                <th>Assignee</th>
-                                                <th>Register match</th>
-                                                <th>Xero match</th>
+                                                <th data-task-col="assignee">Client Manager</th>
+                                                <th data-task-col="register">Register match</th>
+                                                <th data-task-col="xero">Xero match</th>
                                             </tr>
                                         </thead>
                                         <tbody id="taskCompletedTableBody"></tbody>
@@ -93311,7 +93513,15 @@
                     searchTerm: "",
                     assignee: "",
                     status: "",
+                    due: "",
+                    sort: "deadline_asc",
                 },
+                bmTasksSelection: new Set(),
+                bmTasksColumnState: {
+                    hidden: ["register", "xero"],
+                },
+                bmTaskTimelineByClient: {},
+                bmTaskOverridesByKey: {},
                 authRegisterEdit: {
                     rowId: "",
                     saving: false,
@@ -93549,9 +93759,154 @@
 
             function bmTaskStatusTone(value) {
                 const key = String(value || "").trim().toLowerCase();
+                if (key === "completed") return "is-good";
                 if (key === "awaiting_approval" || key === "in_review") return "is-open";
                 if (key === "records_requested" || key === "query") return "is-overdue";
+                return "is-due";
+            }
+
+            function bmTaskIdentitySafe(row = {}, fallback = "") {
+                const id = bmTaskIdentityKey(row);
+                if (id) return id;
+                return String(fallback || `task-${Date.now()}`).trim();
+            }
+
+            function bmTaskClientTimelineKey(row = {}) {
+                const register = row?.matchedRegister || {};
+                const key = String(register?.id || row?.clientId || row?.clientName || "").trim().toLowerCase();
+                return key || "unknown-client";
+            }
+
+            function bmTaskClientDisplayName(value = "") {
+                return String(value || "Unknown client").replace(/\s*\d+\s*$/, "").trim() || "Unknown client";
+            }
+
+            function bmTaskDisplayName(row = {}) {
+                const raw = String(row?.taskName || "VAT task");
+                const progress = String(row?.taskProgress || "").trim();
+                let task = raw;
+                if (progress && raw.toLowerCase().endsWith(progress.toLowerCase())) {
+                    task = raw.slice(0, raw.length - progress.length);
+                }
+                return task.replace(/[\s\-–:|]+$/, "").trim() || "VAT task";
+            }
+
+            function bmTaskRowWithOverrides(row = {}) {
+                const key = bmTaskIdentitySafe(row);
+                const override = companiesHouseSettings.bmTaskOverridesByKey?.[key] || {};
+                return {
+                    ...row,
+                    id: key,
+                    status: String(override.status || row?.status || "open"),
+                    taskProgress: String(override.taskProgress || row?.taskProgress || ""),
+                    completedAt: override.completedAt || row?.completedAt || "",
+                };
+            }
+
+            function bmTaskDaysUntilDeadline(value) {
+                if (!value) return null;
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return null;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                date.setHours(0, 0, 0, 0);
+                return Math.round((date.getTime() - today.getTime()) / 86400000);
+            }
+
+            function bmTaskDeadlineTraffic(row = {}) {
+                const status = String(row?.status || "").trim().toLowerCase();
+                if (status === "completed") return "green";
+                const days = bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "");
+                if (days === null) return "green";
+                if (days <= 0) return "red";
+                if (days <= 7) return "amber";
+                return "green";
+            }
+
+            function bmTaskDeadlineToneClass(row = {}) {
+                const traffic = bmTaskDeadlineTraffic(row);
+                if (traffic === "red") return "is-overdue";
+                if (traffic === "amber") return "is-due";
                 return "is-open";
+            }
+
+            function bmTaskRowClassByDeadline(row = {}) {
+                const traffic = bmTaskDeadlineTraffic(row);
+                if (traffic === "red") return "task-list-row-overdue";
+                if (traffic === "amber") return "task-list-row-due-soon";
+                return "task-list-row-on-track";
+            }
+
+            function bmTaskDeadlineBadgeCopy(row = {}) {
+                const days = bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "");
+                if (days === null) return "No deadline";
+                if (days < 0) return `Overdue ${Math.abs(days)}d`;
+                if (days === 0) return "Due today";
+                if (days <= 7) return `Due in ${days}d`;
+                return `Due in ${days}d`;
+            }
+
+            function bmTaskStatusOptions() {
+                return [
+                    { value: "open", label: "Open" },
+                    { value: "records_requested", label: "Records requested" },
+                    { value: "awaiting_approval", label: "Awaiting approval" },
+                    { value: "in_review", label: "In review" },
+                    { value: "query", label: "Query" },
+                    { value: "completed", label: "Completed" },
+                ];
+            }
+
+            function bmTaskTimelineEntriesForClient(clientKey = "", rows = []) {
+                const entries = Array.isArray(companiesHouseSettings.bmTaskTimelineByClient?.[clientKey])
+                    ? [...companiesHouseSettings.bmTaskTimelineByClient[clientKey]]
+                    : [];
+                rows.forEach((row) => {
+                    if (!String(row?.taskProgress || "").trim()) return;
+                    entries.push({
+                        title: bmTaskDisplayName(row),
+                        body: String(row.taskProgress || "").trim(),
+                        stamp: row?.updatedAt || row?.deadlineISO || row?.vatPeriodEndISO || "",
+                    });
+                });
+                return entries
+                    .filter((item) => String(item?.title || item?.body || "").trim())
+                    .sort((left, right) => dateSortValue(right?.stamp || "") - dateSortValue(left?.stamp || ""));
+            }
+
+            function appendBmTaskTimeline(clientKey = "", event = {}) {
+                if (!clientKey) return;
+                if (!Array.isArray(companiesHouseSettings.bmTaskTimelineByClient[clientKey])) {
+                    companiesHouseSettings.bmTaskTimelineByClient[clientKey] = [];
+                }
+                companiesHouseSettings.bmTaskTimelineByClient[clientKey].push({
+                    title: String(event?.title || "Task update").trim() || "Task update",
+                    body: String(event?.body || "").trim(),
+                    stamp: event?.stamp || new Date().toISOString(),
+                });
+            }
+
+            function updateBmTaskStatus(row = {}, nextStatus = "", noteText = "", options = {}) {
+                const rowKey = bmTaskIdentitySafe(row);
+                if (!rowKey) return;
+                const current = bmTaskRowWithOverrides(row);
+                const status = String(nextStatus || current?.status || "open").trim().toLowerCase();
+                if (!status) return;
+                const patch = {
+                    ...(companiesHouseSettings.bmTaskOverridesByKey?.[rowKey] || {}),
+                    status,
+                };
+                if (status === "completed") patch.completedAt = new Date().toISOString();
+                if (noteText) patch.taskProgress = noteText;
+                companiesHouseSettings.bmTaskOverridesByKey[rowKey] = patch;
+                const clientKey = bmTaskClientTimelineKey(current);
+                const autoNote = options?.autoNote || `Status changed to ${bmTaskStatusLabel(status)}.`;
+                const fullNote = [autoNote, String(noteText || "").trim()].filter(Boolean).join(" ");
+                appendBmTaskTimeline(clientKey, {
+                    title: bmTaskDisplayName(current),
+                    body: fullNote,
+                    stamp: new Date().toISOString(),
+                });
             }
 
             function setClientRegisterDataTab(_tab) {
@@ -93694,24 +94049,156 @@
                 const search = String(filters.searchTerm || "").trim().toLowerCase();
                 const assignee = String(filters.assignee || "").trim().toLowerCase();
                 const status = String(filters.status || "").trim().toLowerCase();
-                return list.filter((row) => {
+                const due = String(filters.due || "").trim().toLowerCase();
+                const sort = String(filters.sort || "deadline_asc").trim().toLowerCase();
+                return list
+                .map((row) => bmTaskRowWithOverrides(row))
+                .filter((row) => {
                     if (assignee && String(row?.assigneeName || "").trim().toLowerCase() !== assignee) return false;
                     if (status && String(row?.status || "").trim().toLowerCase() !== status) return false;
+                    if (due && bmTaskDeadlineTraffic(row) !== due) return false;
                     if (!search) return true;
                     const pool = [
-                        row?.clientName,
+                        bmTaskClientDisplayName(row?.clientName),
                         row?.clientId,
                         row?.taskId,
-                        row?.taskName,
+                        bmTaskDisplayName(row),
                         row?.taskProgress,
                         row?.assigneeName,
+                        bmTaskStatusLabel(row?.status),
                         row?.vatPeriodEndISO,
                         row?.deadlineISO,
                         row?.matchedRegister?.displayName,
                         row?.xeroMatch?.tenantName,
                     ];
                     return pool.some((value) => String(value || "").toLowerCase().includes(search));
+                })
+                .sort((left, right) => {
+                    if (sort === "client_asc") {
+                        return bmTaskClientDisplayName(left?.clientName).localeCompare(bmTaskClientDisplayName(right?.clientName));
+                    }
+                    if (sort === "deadline_desc") {
+                        return dateSortValue(right?.deadlineISO || right?.xeroMatch?.deadlineISO || "") - dateSortValue(left?.deadlineISO || left?.xeroMatch?.deadlineISO || "");
+                    }
+                    if (sort === "status") {
+                        const statusOrder = ["open", "records_requested", "awaiting_approval", "in_review", "query", "completed"];
+                        return statusOrder.indexOf(String(left?.status || "open").toLowerCase()) - statusOrder.indexOf(String(right?.status || "open").toLowerCase());
+                    }
+                    return dateSortValue(left?.deadlineISO || left?.xeroMatch?.deadlineISO || "") - dateSortValue(right?.deadlineISO || right?.xeroMatch?.deadlineISO || "");
                 });
+            }
+
+            function openTaskClientTimeline(clientKey = "", clientName = "", rows = []) {
+                const timelineRows = bmTaskTimelineEntriesForClient(clientKey, rows);
+                showOperationReviewDialog({
+                    eyebrow: "Client timeline",
+                    title: clientName || "Client timeline",
+                    subtitle: "Task updates, notes, and status changes.",
+                    confirmLabel: "Close",
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body, summary, confirmButton, cancelButton }) => {
+                        if (summary) summary.innerHTML = `<span class="operation-review-chip">${timelineRows.length.toLocaleString("en-GB")} entries</span>`;
+                        if (cancelButton) cancelButton.hidden = true;
+                        if (confirmButton) confirmButton.textContent = "Close";
+                        if (!timelineRows.length) {
+                            body.innerHTML = `<div class="empty-state"><p class="eyebrow">No timeline</p><h4>No entries yet</h4><p>Status changes and notes will appear here.</p></div>`;
+                            return;
+                        }
+                        body.innerHTML = `
+                            <div class="mini-timeline">
+                                ${timelineRows.map((item) => `
+                                    <article class="timeline-item">
+                                        <div class="timeline-head"><span class="timeline-title">${escapeHTML(item?.title || "Update")}</span><span class="timeline-stamp">${escapeHTML(item?.stamp ? formatDateTime(item.stamp) : "—")}</span></div>
+                                        <div class="timeline-body">${escapeHTML(item?.body || "")}</div>
+                                    </article>
+                                `).join("")}
+                            </div>
+                        `;
+                    },
+                });
+            }
+
+            async function openTaskListColumnsDialog() {
+                const state = companiesHouseSettings.bmTasksColumnState || { hidden: ["register", "xero"] };
+                const hidden = new Set(Array.isArray(state.hidden) ? state.hidden : ["register", "xero"]);
+                const columns = [
+                    { key: "assignee", label: "Client Manager" },
+                    { key: "register", label: "Register match" },
+                    { key: "xero", label: "Xero match" },
+                ];
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "Task List",
+                    title: "Column Configuration",
+                    subtitle: "Choose which optional columns are visible.",
+                    confirmLabel: "Apply columns",
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body, summary }) => {
+                        const renderList = () => {
+                            if (summary) summary.innerHTML = `<span class="operation-review-chip">${Math.max(0, columns.length - hidden.size)} visible</span>`;
+                            body.innerHTML = `
+                                <div class="ch-column-editor-list">
+                                    ${columns.map((column) => `
+                                        <div class="ch-column-editor-row">
+                                            <label class="ch-checkbox-inline"><input type="checkbox" data-task-column-toggle="${escapeHTML(column.key)}" ${hidden.has(column.key) ? "" : "checked"}> ${escapeHTML(column.label)}</label>
+                                            <span class="operation-review-muted">${escapeHTML(column.key)}</span>
+                                        </div>
+                                    `).join("")}
+                                </div>
+                            `;
+                            body.querySelectorAll("[data-task-column-toggle]").forEach((input) => {
+                                input.addEventListener("change", (event) => {
+                                    const key = String(event?.target?.getAttribute("data-task-column-toggle") || "");
+                                    if (!key) return;
+                                    if (event.target.checked) hidden.delete(key);
+                                    else hidden.add(key);
+                                    renderList();
+                                });
+                            });
+                        };
+                        renderList();
+                    },
+                    resultProvider: () => ({ hidden: Array.from(hidden) }),
+                });
+                if (!decision) return;
+                companiesHouseSettings.bmTasksColumnState = { hidden: Array.from(new Set(decision.hidden || [])) };
+                renderTaskSubpages();
+            }
+
+            function renderTaskListMetrics(allRows = []) {
+                const target = document.getElementById("taskListMetricsToday");
+                if (!target) return;
+                const now = new Date();
+                const sevenDaysAgo = new Date(now);
+                sevenDaysAgo.setDate(now.getDate() - 7);
+                const openRows = allRows.filter((row) => String(row?.status || "").toLowerCase() !== "completed");
+                const overdueRows = openRows.filter((row) => bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "") !== null && bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "") <= 0);
+                const awaitingApprovalRows = openRows.filter((row) => String(row?.status || "").toLowerCase() === "awaiting_approval");
+                const awaitingRecordsRows = openRows.filter((row) => String(row?.status || "").toLowerCase() === "records_requested");
+                const completedThisWeek = allRows.filter((row) => {
+                    if (String(row?.status || "").toLowerCase() !== "completed") return false;
+                    const stamp = row?.completedAt || row?.updatedAt || "";
+                    const date = new Date(stamp);
+                    return !Number.isNaN(date.getTime()) && date >= sevenDaysAgo;
+                });
+                const noXero = openRows.filter((row) => !String(row?.xeroMatch?.tenantId || "").trim());
+                const noRegister = openRows.filter((row) => !String(row?.matchedRegister?.id || "").trim());
+                const metrics = [
+                    ["Open Tasks", openRows.length],
+                    ["Overdue", overdueRows.length],
+                    ["Awaiting Approval", awaitingApprovalRows.length],
+                    ["Awaiting Records", awaitingRecordsRows.length],
+                    ["Completed This Week", completedThisWeek.length],
+                    ["No Xero Match", noXero.length],
+                    ["No Register Match", noRegister.length],
+                ];
+                target.innerHTML = metrics.map(([label, value]) => `
+                    <article class="task-list-metric">
+                        <label>${escapeHTML(label)}</label>
+                        <strong>${Number(value || 0).toLocaleString("en-GB")}</strong>
+                    </article>
+                `).join("");
             }
 
             function renderBmTasksTable() {
@@ -93803,6 +94290,7 @@
                         await openBmTaskVatWorkspace(rowId);
                     });
                 });
+                renderTaskListMetrics(allRows.map((row) => bmTaskRowWithOverrides(row)));
                 renderTaskSubpages();
             }
 
@@ -93810,15 +94298,18 @@
                 const body = document.getElementById(bodyId);
                 const meta = document.getElementById(metaId);
                 if (!body) return;
-                const allRows = Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [];
-                const rows = allRows.filter((row) => {
+                const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                const rows = (mode === "list" ? filteredBmTasksRows(allRows) : allRows.filter((row) => {
                     const status = String(row?.status || "").trim().toLowerCase();
                     if (mode === "approvals") return ["awaiting_approval", "query", "records_requested"].includes(status);
                     if (mode === "completed") return status === "completed";
                     return true;
-                });
+                }));
+                const hiddenColumns = new Set(Array.isArray(companiesHouseSettings.bmTasksColumnState?.hidden)
+                    ? companiesHouseSettings.bmTasksColumnState.hidden
+                    : ["register", "xero"]);
                 if (!rows.length) {
-                    body.innerHTML = `<tr><td colspan="8" class="ch-empty-state">${
+                    body.innerHTML = `<tr><td colspan="9" class="ch-empty-state">${
                         allRows.length
                             ? (mode === "completed" ? "No completed tasks in the loaded dataset." : "No matching tasks for this view.")
                             : "No BM tasks loaded yet."
@@ -93829,32 +94320,167 @@
                 body.innerHTML = rows.map((row) => {
                     const register = row?.matchedRegister || {};
                     const xero = row?.xeroMatch || {};
+                    const rowId = bmTaskIdentitySafe(row);
+                    const clientKey = bmTaskClientTimelineKey(row);
+                    const clientName = bmTaskClientDisplayName(row.clientName);
+                    const taskName = bmTaskDisplayName(row);
                     const registerLabel = register?.id
-                        ? `${register.displayName || row.clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
+                        ? `${register.displayName || clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
                         : "No client-register match";
                     const xeroLabel = xero?.tenantId
                         ? `${xero.tenantName || "Matched workspace"}${xero.vatReturnKey ? " · VAT row matched" : " · workspace only"}`
                         : "No Xero workspace match";
+                    const isSelected = companiesHouseSettings.bmTasksSelection?.has(rowId);
+                    const statusPill = `<button class="task-list-status-trigger" type="button" data-task-status-trigger="${escapeHTML(rowId)}"><span class="lock-status-pill ${bmTaskStatusTone(row.status)}">${escapeHTML(bmTaskStatusLabel(row.status))}</span></button>`;
+                    const statusSelect = `
+                        <select data-task-status-select="${escapeHTML(rowId)}" hidden>
+                            ${bmTaskStatusOptions().map((option) => `<option value="${escapeHTML(option.value)}" ${String(row?.status || "").toLowerCase() === option.value ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
+                        </select>
+                    `;
                     return `
-                        <tr>
-                            <td><strong>${escapeHTML(row.clientName || "Unknown client")}</strong><small>${escapeHTML(row.clientId || "")}</small></td>
-                            <td><strong>${escapeHTML(row.taskName || "VAT task")}</strong><small>${escapeHTML(row.taskProgress || "No progress note")}</small></td>
+                        <tr class="${mode === "list" ? bmTaskRowClassByDeadline(row) : ""}">
+                            <td class="task-list-select-col"><input type="checkbox" data-task-select="${escapeHTML(rowId)}" ${isSelected ? "checked" : ""}></td>
+                            <td>
+                                <div class="task-list-client-cell">
+                                    <button class="task-client-timeline-button" type="button" title="Open client timeline" data-task-open-client-timeline="${escapeHTML(clientKey)}" data-task-open-client-name="${escapeHTML(clientName)}">◷</button>
+                                    <span class="task-list-client-label">${escapeHTML(clientName)}</span>
+                                </div>
+                            </td>
+                            <td><strong>${escapeHTML(taskName)}</strong></td>
                             <td>${escapeHTML(row.vatPeriodEndISO ? formatDate(row.vatPeriodEndISO) : "—")}</td>
-                            <td>${escapeHTML(row.deadlineISO ? formatDate(row.deadlineISO) : "—")}</td>
-                            <td><span class="lock-status-pill ${bmTaskStatusTone(row.status)}">${escapeHTML(bmTaskStatusLabel(row.status))}</span></td>
-                            <td>${escapeHTML(row.assigneeName || "Unassigned")}</td>
-                            <td>${escapeHTML(registerLabel)}</td>
-                            <td>${escapeHTML(xeroLabel)}</td>
+                            <td><span class="task-deadline-chip ${bmTaskDeadlineToneClass(row)}">${escapeHTML(row.deadlineISO ? formatDate(row.deadlineISO) : "—")} · ${escapeHTML(bmTaskDeadlineBadgeCopy(row))}</span></td>
+                            <td>${statusPill}${statusSelect}</td>
+                            <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>${escapeHTML(row.assigneeName || "Unassigned")}</td>
+                            <td data-task-col="register" ${hiddenColumns.has("register") ? "hidden" : ""}>${escapeHTML(registerLabel)}</td>
+                            <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${escapeHTML(xeroLabel)}</td>
                         </tr>
                     `;
                 }).join("");
                 if (meta) meta.textContent = `${rows.length.toLocaleString("en-GB")} shown of ${allRows.length.toLocaleString("en-GB")}`;
+
+                body.querySelectorAll("[data-task-select]").forEach((input) => {
+                    input.addEventListener("change", (event) => {
+                        const rowId = String(event?.target?.getAttribute("data-task-select") || "");
+                        if (!rowId) return;
+                        if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
+                        if (event.target.checked) companiesHouseSettings.bmTasksSelection.add(rowId);
+                        else companiesHouseSettings.bmTasksSelection.delete(rowId);
+                        renderTaskSelectionMeta(rows);
+                    });
+                });
+                body.querySelectorAll("[data-task-open-client-timeline]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const clientKey = String(button.getAttribute("data-task-open-client-timeline") || "");
+                        const clientName = String(button.getAttribute("data-task-open-client-name") || "");
+                        if (!clientKey) return;
+                        const clientRows = allRows.filter((row) => bmTaskClientTimelineKey(row) === clientKey);
+                        openTaskClientTimeline(clientKey, clientName, clientRows);
+                    });
+                });
+                body.querySelectorAll("[data-task-status-trigger]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const rowId = String(button.getAttribute("data-task-status-trigger") || "");
+                        const select = body.querySelector(`[data-task-status-select="${CSS.escape(rowId)}"]`);
+                        if (!select) return;
+                        select.hidden = !select.hidden;
+                        if (!select.hidden) select.focus();
+                    });
+                });
+                body.querySelectorAll("[data-task-status-select]").forEach((select) => {
+                    select.addEventListener("change", (event) => {
+                        const rowId = String(event?.target?.getAttribute("data-task-status-select") || "");
+                        const nextStatus = String(event?.target?.value || "").trim();
+                        const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
+                        if (!match || !nextStatus) return;
+                        updateBmTaskStatus(match, nextStatus, "", {
+                            autoNote: `Status set to ${bmTaskStatusLabel(nextStatus)} from task table.`,
+                        });
+                        showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
+                        renderTaskSubpages();
+                    });
+                    select.addEventListener("blur", () => {
+                        select.hidden = true;
+                    });
+                });
+
+                const table = body.closest("table");
+                if (table) {
+                    table.querySelectorAll("[data-task-col='assignee'],[data-task-col='register'],[data-task-col='xero']").forEach((cell) => {
+                        const col = String(cell.getAttribute("data-task-col") || "");
+                        if (!col) return;
+                        cell.hidden = hiddenColumns.has(col);
+                    });
+                }
+                renderTaskSelectionMeta(rows);
             }
 
             function renderTaskSubpages() {
+                renderTaskListToolbarControls();
                 renderTaskSubpageTable("list", "taskListTableBody", "taskListMeta");
                 renderTaskSubpageTable("approvals", "taskApprovalsTableBody", "taskApprovalsMeta");
                 renderTaskSubpageTable("completed", "taskCompletedTableBody", "taskCompletedMeta");
+            }
+
+            function renderTaskListToolbarControls() {
+                const rows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                const filters = companiesHouseSettings.bmTasksFilters || {};
+                const search = document.getElementById("taskListSearch");
+                const manager = document.getElementById("taskListManagerFilter");
+                const status = document.getElementById("taskListStatusFilter");
+                const due = document.getElementById("taskListDueFilter");
+                const sort = document.getElementById("taskListSort");
+                const managers = Array.from(new Set(rows.map((row) => String(row?.assigneeName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+                if (search && search.value !== String(filters.searchTerm || "")) search.value = String(filters.searchTerm || "");
+                if (manager) {
+                    manager.innerHTML = `<option value="">All managers</option>${managers.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
+                    manager.value = String(filters.assignee || "");
+                }
+                if (status) status.value = String(filters.status || "");
+                if (due) due.value = String(filters.due || "");
+                if (sort) sort.value = String(filters.sort || "deadline_asc");
+            }
+
+            function renderTaskSelectionMeta(rows = []) {
+                const selected = Number(companiesHouseSettings.bmTasksSelection?.size || 0);
+                const button = document.getElementById("taskListApplyBulkButton");
+                if (button) button.disabled = selected <= 0;
+                const selectAll = document.getElementById("taskListSelectAll");
+                if (selectAll) {
+                    const visibleIds = rows.map((row) => bmTaskIdentitySafe(row));
+                    const selectedVisible = visibleIds.filter((id) => companiesHouseSettings.bmTasksSelection?.has(id)).length;
+                    selectAll.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+                    selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+                }
+            }
+
+            function applyBulkTaskUpdate() {
+                const statusSelect = document.getElementById("taskListBulkStatus");
+                const noteInput = document.getElementById("taskListBulkNote");
+                const selectedIds = Array.from(companiesHouseSettings.bmTasksSelection || []);
+                if (!selectedIds.length) {
+                    showToast("Select at least one task before bulk update.", "info");
+                    return;
+                }
+                const status = String(statusSelect?.value || "").trim().toLowerCase();
+                const noteText = String(noteInput?.value || "").trim();
+                if (!status && !noteText) {
+                    showToast("Choose a status or enter a note for bulk update.", "info");
+                    return;
+                }
+                const rows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                let updated = 0;
+                rows.forEach((row) => {
+                    const rowId = bmTaskIdentitySafe(row);
+                    if (!selectedIds.includes(rowId)) return;
+                    updateBmTaskStatus(row, status || row.status, noteText, {
+                        autoNote: status ? `Bulk status change to ${bmTaskStatusLabel(status)}.` : "Bulk note added.",
+                    });
+                    updated += 1;
+                });
+                if (noteInput) noteInput.value = "";
+                if (statusSelect) statusSelect.value = "";
+                showToast(`Bulk update applied to ${updated.toLocaleString("en-GB")} task${updated === 1 ? "" : "s"}.`, "success");
+                renderTaskSubpages();
             }
 
             function updateCompaniesHouseRawXmlExportButtonState() {
@@ -96127,6 +96753,8 @@
                         searchTerm: "",
                         assignee: "",
                         status: "",
+                        due: "",
+                        sort: "deadline_asc",
                     };
                     const search = document.getElementById("chBmTasksSearch");
                     const assignee = document.getElementById("chBmTasksAssigneeFilter");
@@ -96136,6 +96764,63 @@
                     if (status) status.value = "";
                     renderBmTasksTable();
                 });
+                document.getElementById("taskListSearch")?.addEventListener("input", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        searchTerm: String(event?.target?.value || ""),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListManagerFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        assignee: String(event?.target?.value || ""),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListStatusFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        status: String(event?.target?.value || ""),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListDueFilter")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        due: String(event?.target?.value || ""),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListSort")?.addEventListener("change", (event) => {
+                    companiesHouseSettings.bmTasksFilters = {
+                        ...companiesHouseSettings.bmTasksFilters,
+                        sort: String(event?.target?.value || "deadline_asc"),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListColumnsButton")?.addEventListener("click", openTaskListColumnsDialog);
+                document.getElementById("taskListSelectAll")?.addEventListener("change", (event) => {
+                    const allRows = filteredBmTasksRows(Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []);
+                    if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
+                    if (event?.target?.checked) {
+                        allRows.forEach((row) => companiesHouseSettings.bmTasksSelection.add(bmTaskIdentitySafe(row)));
+                    } else {
+                        allRows.forEach((row) => companiesHouseSettings.bmTasksSelection.delete(bmTaskIdentitySafe(row)));
+                    }
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListSelectVisibleButton")?.addEventListener("click", () => {
+                    const visibleRows = filteredBmTasksRows(Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []);
+                    if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
+                    visibleRows.forEach((row) => companiesHouseSettings.bmTasksSelection.add(bmTaskIdentitySafe(row)));
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListClearSelectionButton")?.addEventListener("click", () => {
+                    companiesHouseSettings.bmTasksSelection = new Set();
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListApplyBulkButton")?.addEventListener("click", applyBulkTaskUpdate);
                 document.getElementById("taskListReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
                     renderTaskSubpages();
