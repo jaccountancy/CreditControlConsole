@@ -3510,7 +3510,7 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
                 if not payment_id:
                     continue
                 invoice_type = str(payment.get("invoice_type") or "").strip().upper()
-                if invoice_type and invoice_type != "ACCREC":
+                if invoice_type and invoice_type not in {"ACCREC", "ACCPAY"}:
                     continue
                 processed += 1
 
@@ -3649,9 +3649,17 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 token_match = bool(wanted_tokens) and all(token in name_lower or token in code_lower for token in wanted_tokens)
                 if not token_match:
                     continue
+        invoice_type = str(raw_invoice.get("Type") or raw.get("InvoiceType") or "").strip().upper()
         amount = _money(row.get("amount"))
-        if amount <= 0:
+        signed_amount = amount
+        if invoice_type == "ACCPAY":
+            signed_amount = -amount.copy_abs()
+        elif invoice_type == "ACCREC":
+            signed_amount = amount.copy_abs()
+        if signed_amount == 0:
             continue
+        debit_amount = signed_amount if signed_amount > 0 else Decimal("0.00")
+        credit_amount = signed_amount.copy_abs() if signed_amount < 0 else Decimal("0.00")
         raw_contact_name = str(raw_contact.get("Name") or "").strip()
         client_name = str(row.get("customer_name") or raw_contact_name or "Unknown client").strip()
         xero_contact_id = str(row.get("xero_contact_id") or raw_contact.get("ContactID") or "").strip()
@@ -3659,12 +3667,15 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
             {
                 "paymentId": str(row.get("xero_payment_id") or ""),
                 "paidOn": row.get("payment_date").isoformat() if row.get("payment_date") else "",
-                "amount": float(amount),
+                "amount": float(signed_amount),
+                "debitAmount": float(debit_amount),
+                "creditAmount": float(credit_amount),
                 "currencyCode": str(row.get("currency_code") or "GBP"),
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
                 "xeroContactId": xero_contact_id,
                 "reference": str(row.get("reference") or ""),
+                "invoiceType": invoice_type,
                 "accountCode": code,
                 "accountName": name,
                 "raw": raw,
@@ -3778,7 +3789,7 @@ def _pi_row_risk_and_explainer(
     return risk_level, risk_score, explainer
 
 
-async def _pi_ai_analysis(month_label: str, row_summaries: list[dict]) -> dict:
+async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_matching: dict | None = None) -> dict:
     settings = get_settings()
     if not settings.openai_api_key or not row_summaries:
         return {
@@ -3803,6 +3814,7 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict]) -> dict:
                 "content": (
                     f"Month: {month_label}\n"
                     f"Rows: {json.dumps(top_rows, default=_json_default)}\n"
+                    f"PayoutMatching: {json.dumps(payout_matching if isinstance(payout_matching, dict) else {}, default=_json_default)}\n"
                     "Return only JSON matching the schema."
                 ),
             },
@@ -3835,6 +3847,131 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict]) -> dict:
             "confidence": 0.0,
             "engine": "local_error",
         }
+
+
+def _pi_payout_batches_from_ignition_rows(ignition_rows: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for row in ignition_rows or []:
+        paid_on = str(row.get("paidOn") or "").strip()
+        payout_id = str(row.get("payoutId") or row.get("paymentId") or "").strip() or "unlabeled-batch"
+        key = f"{paid_on}|{payout_id}"
+        bucket = grouped.setdefault(
+            key,
+            {
+                "key": key,
+                "paidOn": paid_on,
+                "payoutId": payout_id,
+                "netPayout": Decimal("0.00"),
+                "grossCollections": Decimal("0.00"),
+                "reversals": Decimal("0.00"),
+            },
+        )
+        amount = _money(row.get("amount"))
+        bucket["netPayout"] += amount
+        if amount < Decimal("0.00"):
+            bucket["reversals"] += amount.copy_abs()
+        else:
+            bucket["grossCollections"] += amount
+    return list(grouped.values())
+
+
+def _pi_xero_credit_rows(xero_rows: list[dict]) -> list[dict]:
+    items: list[dict] = []
+    for row in xero_rows or []:
+        amount = _money(row.get("amount"))
+        if amount >= Decimal("0.00"):
+            continue
+        items.append(
+            {
+                "paymentId": str(row.get("paymentId") or "").strip(),
+                "paidOn": str(row.get("paidOn") or "").strip(),
+                "creditAmount": amount.copy_abs(),
+                "reference": str(row.get("reference") or "").strip(),
+            }
+        )
+    return items
+
+
+def _pi_match_ignition_payouts_to_xero_credits(ignition_rows: list[dict], xero_rows: list[dict]) -> dict:
+    payouts = sorted(
+        _pi_payout_batches_from_ignition_rows(ignition_rows),
+        key=lambda item: (
+            _parse_optional_iso_date(str(item.get("paidOn") or "")) or date.min,
+            str(item.get("payoutId") or ""),
+        ),
+    )
+    credits = sorted(
+        _pi_xero_credit_rows(xero_rows),
+        key=lambda item: _parse_optional_iso_date(str(item.get("paidOn") or "")) or date.min,
+    )
+    used_credit_indexes: set[int] = set()
+    tolerance = Decimal("0.01")
+    max_days = 7
+    matched = 0
+    missing: list[dict] = []
+    rows: list[dict] = []
+
+    for payout in payouts:
+        net_amount = _money(payout.get("netPayout"))
+        if net_amount <= Decimal("0.00"):
+            continue
+        payout_date = _parse_optional_iso_date(str(payout.get("paidOn") or ""))
+        best_index: int | None = None
+        best_distance: tuple[int, Decimal] | None = None
+        for index, credit in enumerate(credits):
+            if index in used_credit_indexes:
+                continue
+            credit_amount = _money(credit.get("creditAmount"))
+            if abs(credit_amount - net_amount) > tolerance:
+                continue
+            credit_date = _parse_optional_iso_date(str(credit.get("paidOn") or ""))
+            day_delta = abs((credit_date - payout_date).days) if credit_date and payout_date else 0
+            if day_delta > max_days:
+                continue
+            ranking = (day_delta, abs(credit_amount - net_amount))
+            if best_distance is None or ranking < best_distance:
+                best_distance = ranking
+                best_index = index
+        if best_index is None:
+            missing_item = {
+                "payoutId": str(payout.get("payoutId") or "unlabeled-batch"),
+                "paidOn": str(payout.get("paidOn") or ""),
+                "amount": float(net_amount),
+            }
+            missing.append(missing_item)
+            rows.append(
+                {
+                    "payoutId": missing_item["payoutId"],
+                    "paidOn": missing_item["paidOn"],
+                    "ignitionNetPayout": float(net_amount),
+                    "matched": False,
+                    "xeroCreditPaymentId": "",
+                    "xeroCreditPaidOn": "",
+                    "xeroCreditAmount": 0.0,
+                }
+            )
+            continue
+        used_credit_indexes.add(best_index)
+        credit = credits[best_index]
+        matched += 1
+        rows.append(
+            {
+                "payoutId": str(payout.get("payoutId") or "unlabeled-batch"),
+                "paidOn": str(payout.get("paidOn") or ""),
+                "ignitionNetPayout": float(net_amount),
+                "matched": True,
+                "xeroCreditPaymentId": str(credit.get("paymentId") or ""),
+                "xeroCreditPaidOn": str(credit.get("paidOn") or ""),
+                "xeroCreditAmount": float(_money(credit.get("creditAmount"))),
+            }
+        )
+    return {
+        "payoutCount": len(rows),
+        "matchedCount": matched,
+        "missingCount": len(missing),
+        "missing": missing,
+        "rows": rows,
+    }
 
 
 def _pi_run_payload(run_row: dict, rows: list[dict], credit_notes: list[dict]) -> dict:
@@ -3964,6 +4101,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             "source": "cache",
             "message": "Using cached historical Xero payments from local database.",
         }
+    if not force_refresh_xero and xero_rows and not any(_money(row.get("amount")) < Decimal("0.00") for row in xero_rows):
+        # Backfill historical caches created before PI clearing ingested ACCPAY rows.
+        xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
+        xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
 
     ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
     if force_refresh_ignition or not ignition_rows:
@@ -4101,6 +4242,8 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         )
     rows_to_store.sort(key=lambda row: abs(float(row.get("difference") or 0)), reverse=True)
 
+    payout_matching = _pi_match_ignition_payouts_to_xero_credits(ignition_rows, xero_rows)
+
     ai_analysis = await _pi_ai_analysis(
         month_label,
         [
@@ -4120,7 +4263,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             }
             for row in rows_to_store
         ],
+        payout_matching,
     )
+    xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
+    xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
     summary = {
         "refresh": {
             "xero": xero_refresh,
@@ -4131,11 +4277,14 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "differenceCount": sum(1 for row in rows_to_store if _money(row.get("difference")) != 0),
         "creditNoteCandidateCount": sum(1 for row in rows_to_store if _money(row.get("difference")) > 0 and str(row.get("xeroContactId") or "").strip()),
         "xeroTotal": float(sum((_money(row.get("amount")) for row in xero_rows), start=Decimal("0.00"))),
+        "xeroDebitTotal": float(xero_debit_total),
+        "xeroCreditTotal": float(xero_credit_total),
         "ignitionTotal": float(sum((_money(row.get("amount")) for row in ignition_rows), start=Decimal("0.00"))),
         "ignitionGrossTotal": float(sum((_money(row.get("amount")) for row in ignition_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))),
         "ignitionReversalTotal": float(sum((_money(row.get("amount")).copy_abs() for row in ignition_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))),
         "existingCreditNoteTotal": float(sum((_money(row.get("existingCreditNoteTotal")) for row in rows_to_store), start=Decimal("0.00"))),
         "differenceTotal": float(sum((_money(row.get("difference")) for row in rows_to_store), start=Decimal("0.00"))),
+        "payoutMatching": payout_matching,
     }
     status_value = "ready" if rows_to_store else "empty"
     now = utcnow()

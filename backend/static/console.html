@@ -35007,6 +35007,24 @@
                                 <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                 </div>
+                                <p class="detail-meta">Master Xero PI Clearing account activity (debits and credits) is loaded first.</p>
+                                <section class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Master Xero PI clearing debits and credits">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Source</th>
+                                                <th>Description</th>
+                                                <th>Client</th>
+                                                <th>Reference</th>
+                                                <th>Debit</th>
+                                                <th>Credit</th>
+                                                <th>Net movement</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="piClearingWizardXeroBody"></tbody>
+                                    </table>
+                                </section>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI clearing wizard transaction rows">
                                         <thead>
@@ -46349,6 +46367,93 @@
                     });
             }
 
+            function buildPiClearingXeroBreakdown(rows = []) {
+                const unique = new Map();
+                (Array.isArray(rows) ? rows : []).forEach((row) => {
+                    const xeroRows = Array.isArray(row?.raw?.xeroRows) ? row.raw.xeroRows : [];
+                    xeroRows.forEach((entry) => {
+                        const paymentId = String(entry?.paymentId || "").trim();
+                        const paidOn = String(entry?.paidOn || "").trim();
+                        const clientName = String(entry?.clientName || row?.clientName || "Unknown client").trim() || "Unknown client";
+                        const amount = Number(entry?.amount || 0);
+                        const debitAmount = Number(entry?.debitAmount || 0);
+                        const creditAmount = Number(entry?.creditAmount || 0);
+                        const debit = debitAmount > 0 ? debitAmount : (amount > 0 ? amount : 0);
+                        const credit = creditAmount > 0 ? creditAmount : (amount < 0 ? Math.abs(amount) : 0);
+                        const reference = String(entry?.reference || "").trim();
+                        const raw = entry?.raw && typeof entry.raw === "object" ? entry.raw : {};
+                        const rawInvoice = raw?.Invoice && typeof raw.Invoice === "object" ? raw.Invoice : {};
+                        const source = credit > 0 ? "Receive Money" : "Receivable Payment";
+                        const description = String(
+                            raw?.Reference
+                            || raw?.Description
+                            || rawInvoice?.Type
+                            || (credit > 0
+                                ? `Payout to PI Clearing`
+                                : `Payment: ${clientName}`)
+                        ).trim();
+                        const uniqueKey = paymentId || `${paidOn}|${clientName}|${amount}|${reference}`;
+                        if (unique.has(uniqueKey)) return;
+                        unique.set(uniqueKey, {
+                            key: uniqueKey,
+                            paidOn,
+                            paymentId,
+                            clientName,
+                            source,
+                            description,
+                            debit,
+                            credit,
+                            amount,
+                            reference,
+                        });
+                    });
+                });
+                return [...unique.values()].sort((left, right) => {
+                    const leftDate = Date.parse(left.paidOn || 0) || 0;
+                    const rightDate = Date.parse(right.paidOn || 0) || 0;
+                    if (leftDate !== rightDate) return leftDate - rightDate;
+                    return String(left.clientName || "").localeCompare(String(right.clientName || ""));
+                });
+            }
+
+            function buildPiClearingPayoutMatches(runRows = []) {
+                const payouts = buildPiClearingPayoutBreakdown(runRows).filter((row) => Number(row.netPayout || 0) > 0);
+                const credits = buildPiClearingXeroBreakdown(runRows)
+                    .filter((row) => Number(row.credit || 0) > 0)
+                    .sort((left, right) => {
+                        const leftDate = Date.parse(left.paidOn || 0) || 0;
+                        const rightDate = Date.parse(right.paidOn || 0) || 0;
+                        return leftDate - rightDate;
+                    });
+                const usedCredits = new Set();
+                const tolerance = 0.01;
+                const maxDays = 7;
+                return payouts.map((payout) => {
+                    const payoutAmount = Number(payout.netPayout || 0);
+                    const payoutDate = Date.parse(payout.paidOn || 0) || 0;
+                    let bestIndex = -1;
+                    let bestScore = Number.POSITIVE_INFINITY;
+                    credits.forEach((credit, index) => {
+                        if (usedCredits.has(index)) return;
+                        const creditAmount = Number(credit.credit || 0);
+                        if (Math.abs(creditAmount - payoutAmount) > tolerance) return;
+                        const creditDate = Date.parse(credit.paidOn || 0) || payoutDate;
+                        const dayDiff = Math.abs(Math.round((creditDate - payoutDate) / (24 * 60 * 60 * 1000)));
+                        if (dayDiff > maxDays) return;
+                        const score = dayDiff * 1000 + Math.abs(creditAmount - payoutAmount);
+                        if (score < bestScore) {
+                            bestScore = score;
+                            bestIndex = index;
+                        }
+                    });
+                    if (bestIndex >= 0) {
+                        usedCredits.add(bestIndex);
+                        return { payout, matchedCredit: credits[bestIndex], matched: true };
+                    }
+                    return { payout, matchedCredit: null, matched: false };
+                });
+            }
+
             function piRiskLevel(row = {}) {
                 const level = String(row?.riskLevel || row?.raw?.riskLevel || "").trim().toLowerCase();
                 if (["high", "medium", "low"].includes(level)) return level;
@@ -46702,6 +46807,7 @@
                 const modal = document.getElementById("piClearingWizardModal");
                 const wizardMeta = document.getElementById("piClearingWizardMeta");
                 const wizardSummary = document.getElementById("piClearingWizardSummary");
+                const wizardXeroBody = document.getElementById("piClearingWizardXeroBody");
                 const wizardRowsBody = document.getElementById("piClearingWizardRowsBody");
                 const wizardPayoutBody = document.getElementById("piClearingWizardPayoutBody");
                 const wizardAnalysisSummary = document.getElementById("piClearingWizardAnalysisSummary");
@@ -46872,6 +46978,11 @@
 
                 if (wizardSummary) {
                     const matchProgress = piClearingMatchProgress(runRows);
+                    const xeroRows = buildPiClearingXeroBreakdown(runRows);
+                    const xeroDebits = xeroRows.reduce((sum, row) => sum + Number(row.debit || 0), 0);
+                    const xeroCredits = xeroRows.reduce((sum, row) => sum + Number(row.credit || 0), 0);
+                    const payoutMatches = buildPiClearingPayoutMatches(runRows);
+                    const missingPayoutCount = payoutMatches.filter((item) => !item.matched).length;
                     if (piClearingWorkflowRunning) {
                         wizardSummary.textContent = matchProgress.total > 0
                             ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
@@ -46880,9 +46991,26 @@
                         wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
                     } else {
                         wizardSummary.textContent = runRows.length
-                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded from Xero and Ignition for ${formatMonthKey(piClearingRunMonth(run))}.`
+                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for ${formatMonthKey(piClearingRunMonth(run))}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
                             : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected month.";
                     }
+                }
+                if (wizardXeroBody) {
+                    const xeroRows = buildPiClearingXeroBreakdown(runRows);
+                    wizardXeroBody.innerHTML = xeroRows.length
+                        ? xeroRows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(formatDate(row.paidOn || ""))}</td>
+                                <td>${escapeHTML(String(row.source || "--"))}</td>
+                                <td>${escapeHTML(String(row.description || "--"))}</td>
+                                <td>${escapeHTML(String(row.clientName || "Unknown client"))}</td>
+                                <td>${escapeHTML(String(row.reference || row.paymentId || "--"))}</td>
+                                <td>${escapeHTML(formatCurrency(row.debit || 0))}</td>
+                                <td>${escapeHTML(formatCurrency(row.credit || 0))}</td>
+                                <td>${escapeHTML(formatCurrency(row.amount || 0))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="8"><p class="detail-meta">No PI Clearing debits or credits found in Master Xero for this month.</p></td></tr>`;
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
@@ -46919,13 +47047,18 @@
                 }
                 if (wizardPayoutBody) {
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
+                    const payoutMatches = buildPiClearingPayoutMatches(runRows);
+                    const matchByKey = new Map(
+                        payoutMatches.map((item) => [String(item?.payout?.key || ""), item])
+                    );
                     wizardPayoutBody.innerHTML = payoutRows.length
                         ? payoutRows.map((row) => {
-                            const hint = row.reversals > 0
-                                ? "Contains reversals"
-                                : row.netPayout <= 0
-                                    ? "Check non-positive batch"
-                                    : "Healthy batch";
+                            const matchItem = matchByKey.get(String(row.key || ""));
+                            const hint = Number(row.netPayout || 0) <= 0
+                                ? "Check non-positive batch"
+                                : matchItem?.matched
+                                    ? `Matched Xero credit ${formatDate(matchItem?.matchedCredit?.paidOn || "")}`
+                                    : "Missing Xero credit transaction";
                             return `
                                 <tr data-pi-payout-key="${escapeHTML(String(row.key || ""))}">
                                     <td>${escapeHTML(formatDate(row.paidOn || ""))}</td>
