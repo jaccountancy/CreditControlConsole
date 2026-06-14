@@ -23726,6 +23726,15 @@
                 align-items: center;
                 margin-top: 10px;
             }
+            #chAuthCodeRegisterTableWrap .ch-register-toolbar {
+                margin-top: 0;
+                padding: 10px 12px;
+                border-bottom: 1px solid var(--line);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.92));
+                position: sticky;
+                top: 0;
+                z-index: 3;
+            }
             .ch-register-toolbar input[type="search"],
             .ch-register-toolbar select {
                 font: inherit;
@@ -23738,6 +23747,12 @@
             .ch-register-toolbar input[type="search"] {
                 flex: 1 1 260px;
                 min-width: 220px;
+            }
+            #chAuthCodeRegisterSortKey {
+                min-width: 170px;
+            }
+            #chAuthCodeRegisterSortDirection {
+                min-width: 122px;
             }
             .ch-register-toolbar-meta {
                 margin-left: auto;
@@ -23810,6 +23825,30 @@
             }
             .task-list-bulk-bar input,
             .task-list-bulk-bar select {
+                font: inherit;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .task-list-pagination {
+                margin-top: 10px;
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .task-list-pagination-size {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--muted);
+            }
+            .task-list-pagination-size select {
                 font: inherit;
                 border: 1px solid var(--line);
                 border-radius: 10px;
@@ -24491,6 +24530,9 @@
                 }
                 .task-list-bulk-bar {
                     grid-template-columns: 1fr;
+                }
+                .task-list-pagination {
+                    justify-content: flex-start;
                 }
             }
             .ch-register-client-page {
@@ -30583,7 +30625,8 @@
                                 <div class="ch-settings-actions">
                                     <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Use Upload files to import BM Client and BM Task CSVs.</span>
                                 </div>
-                                <div class="ch-register-toolbar">
+                                <div class="ch-companies-table-wrap" id="chAuthCodeRegisterTableWrap">
+                                    <div class="ch-register-toolbar">
                                     <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, VAT number, manager, email, phone, address, source...">
                                     <select id="chAuthCodeRegisterManagerFilter" aria-label="Filter by manager">
                                         <option value="">All managers</option>
@@ -30591,15 +30634,26 @@
                                     <select id="chAuthCodeRegisterSourceFilter" aria-label="Filter by source file">
                                         <option value="">All source files</option>
                                     </select>
+                                    <select id="chAuthCodeRegisterSortKey" aria-label="Sort rows by">
+                                        <option value="clientId">Sort: Client ID</option>
+                                        <option value="displayName">Sort: Company</option>
+                                        <option value="clientManager">Sort: Manager</option>
+                                        <option value="companyNumber">Sort: Number</option>
+                                        <option value="sourceFilename">Sort: Source file</option>
+                                        <option value="uploadedAt">Sort: Uploaded</option>
+                                    </select>
+                                    <select id="chAuthCodeRegisterSortDirection" aria-label="Sort direction">
+                                        <option value="asc">Ascending</option>
+                                        <option value="desc">Descending</option>
+                                    </select>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterPrevPageButton">Prev</button>
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterPageMeta">Page 1 of 1</span>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterNextPageButton">Next</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterLoadMoreButton">Load more</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterColumnsButton">Columns</button>
-                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
-                                    <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
-                                </div>
-                                <div class="ch-companies-table-wrap" id="chAuthCodeRegisterTableWrap">
+                                        <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
+                                        <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
+                                    </div>
                                     <table class="ch-table" style="width: 100%; table-layout: fixed;">
                                         <thead id="chAuthCodeRegisterTableHead"></thead>
                                         <tbody id="chAuthCodeRegisterTableBody"></tbody>
@@ -30842,6 +30896,34 @@
                                         </div>
                                         <div class="mini-timeline" id="chRegisterClientPageNotesList"></div>
                                     </section>
+                                    <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="tasks" hidden>
+                                        <div class="ch-settings-head">
+                                            <div>
+                                                <h4>Tasks</h4>
+                                                <p class="detail-meta">Outstanding client tasks are shown by default. Include completed tasks to restore any back to outstanding.</p>
+                                            </div>
+                                            <div class="detail-actions">
+                                                <label class="ch-checkbox-inline"><input type="checkbox" id="chRegisterClientPageTasksShowCompletedToggle"> Include completed tasks</label>
+                                            </div>
+                                        </div>
+                                        <div class="ch-companies-table-wrap">
+                                            <table class="ch-table" aria-label="Client tasks">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Task</th>
+                                                        <th>Period end</th>
+                                                        <th>Deadline</th>
+                                                        <th>Status</th>
+                                                        <th>Manager</th>
+                                                        <th>Last updated</th>
+                                                        <th>Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="chRegisterClientPageTasksBody"></tbody>
+                                            </table>
+                                        </div>
+                                        <p class="detail-meta" id="chRegisterClientPageTasksMeta">No tasks linked to this client.</p>
+                                    </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="risk" hidden>
                                         <h4>Risk Assessment</h4>
                                         <p class="detail-meta">History for this client, plus a shortcut into the risk assessment workflow.</p>
@@ -30918,23 +31000,6 @@
                                                 <tbody id="chRegisterClientPageChFilingHistoryBody"></tbody>
                                             </table>
                                         </div>
-                                        <div class="ch-register-risk-grid">
-                                            <label>Status
-                                                <input id="chRegisterClientPageChStatus" type="text" placeholder="Active / ready / blocked…">
-                                            </label>
-                                            <label>Next confirmation date
-                                                <input id="chRegisterClientPageChNextDate" type="date">
-                                            </label>
-                                            <label>Last filed date
-                                                <input id="chRegisterClientPageChLastFiledDate" type="date">
-                                            </label>
-                                            <label>Auth code status
-                                                <input id="chRegisterClientPageChAuthStatus" type="text" placeholder="On file / missing / update required…">
-                                            </label>
-                                        </div>
-                                        <label>Companies House notes
-                                            <textarea id="chRegisterClientPageChNotes" rows="4"></textarea>
-                                        </label>
                                     </section>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="juk-invoices" hidden>
                                         <h4>JUK Invoices</h4>
@@ -31150,6 +31215,21 @@
                                     </table>
                                 </div>
                                 <p class="detail-meta" id="taskListMeta">No tasks loaded.</p>
+                                <div class="task-list-pagination" id="taskListPagination" hidden>
+                                    <label class="task-list-pagination-size" for="taskListPageSizeSelect">
+                                        Rows
+                                        <select id="taskListPageSizeSelect" aria-label="Rows per page">
+                                            <option value="200">200</option>
+                                            <option value="400">400</option>
+                                            <option value="600">600</option>
+                                            <option value="800">800</option>
+                                            <option value="1000">1000</option>
+                                        </select>
+                                    </label>
+                                    <button class="ghost-button" type="button" id="taskListLoadMoreButton">Load more</button>
+                                    <button class="ghost-button" type="button" id="taskListPreviousButton">Previous</button>
+                                    <button class="ghost-button" type="button" id="taskListNextButton">Next</button>
+                                </div>
                                 <section class="task-bookkeeping-workflow" id="taskBookkeepingWorkflowPanel" hidden>
                                     <div class="task-bookkeeping-workflow-head">
                                         <div>
@@ -95640,6 +95720,7 @@
 
             const TASK_TRACKER_STORAGE_KEY = "creditControl.taskTracker.v1";
             const BM_TASK_STATE_STORAGE_KEY = "creditControl.bmTasksLocalState.v1";
+            const TASK_LIST_PAGE_SIZE_OPTIONS = [200, 400, 600, 800, 1000];
 
             function loadTaskTrackerRows() {
                 try {
@@ -95675,12 +95756,14 @@
                         timelineByClient: parsed?.timelineByClient && typeof parsed.timelineByClient === "object" ? parsed.timelineByClient : {},
                         overridesByKey: parsed?.overridesByKey && typeof parsed.overridesByKey === "object" ? parsed.overridesByKey : {},
                         historyByKey: parsed?.historyByKey && typeof parsed.historyByKey === "object" ? parsed.historyByKey : {},
+                        tablePreferences: parsed?.tablePreferences && typeof parsed.tablePreferences === "object" ? parsed.tablePreferences : {},
                     };
                 } catch {
                     return {
                         timelineByClient: {},
                         overridesByKey: {},
                         historyByKey: {},
+                        tablePreferences: {},
                     };
                 }
             }
@@ -95691,6 +95774,9 @@
                         timelineByClient: companiesHouseSettings.bmTaskTimelineByClient || {},
                         overridesByKey: companiesHouseSettings.bmTaskOverridesByKey || {},
                         historyByKey: companiesHouseSettings.bmTaskHistoryByKey || {},
+                        tablePreferences: {
+                            pageSize: normaliseTaskListPageSize(companiesHouseSettings.bmTasksTablePreferences?.pageSize),
+                        },
                     }));
                 } catch {}
             }
@@ -95748,6 +95834,11 @@
                     due: "",
                     sort: "deadline_asc",
                 },
+                bmTasksTablePreferences: {
+                    pageSize: normaliseTaskListPageSize(bmTaskLocalState?.tablePreferences?.pageSize),
+                    page: 1,
+                    loadedPages: 1,
+                },
                 bmTasksSelection: new Set(),
                 bmTasksColumnState: {
                     hidden: ["register"],
@@ -95778,6 +95869,7 @@
                     saving: false,
                     rowId: "",
                     activeTab: "client-info",
+                    showCompletedTasks: false,
                     payload: null,
                 },
             };
@@ -96400,7 +96492,7 @@
                 companiesHouseSettings.registerDataTab = nextTab;
                 const isTasks = false;
                 const isClientPageOpen = !!companiesHouseSettings.authRegisterClientPage?.open;
-                const clientToolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
+                const clientToolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard .ch-register-toolbar");
                 const clientTableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
                 const clientPage = document.getElementById("chRegisterClientPage");
                 const taskToolbar = document.getElementById("chBmTasksToolbar");
@@ -96574,6 +96666,52 @@
                     }
                     return dateSortValue(bmTaskEffectiveDeadlineISO(left)) - dateSortValue(bmTaskEffectiveDeadlineISO(right));
                 });
+            }
+
+            function normaliseTaskListPageSize(value) {
+                const requested = Number(value || 0);
+                if (TASK_LIST_PAGE_SIZE_OPTIONS.includes(requested)) return requested;
+                return 200;
+            }
+
+            function ensureTaskListTablePreferences() {
+                if (!companiesHouseSettings.bmTasksTablePreferences || typeof companiesHouseSettings.bmTasksTablePreferences !== "object") {
+                    companiesHouseSettings.bmTasksTablePreferences = { pageSize: 200, page: 1, loadedPages: 1 };
+                }
+                const preferences = companiesHouseSettings.bmTasksTablePreferences;
+                preferences.pageSize = normaliseTaskListPageSize(preferences.pageSize);
+                preferences.page = Math.max(1, Number(preferences.page || 1));
+                preferences.loadedPages = Math.max(1, Number(preferences.loadedPages || 1));
+                return preferences;
+            }
+
+            function resetTaskListPagination() {
+                const preferences = ensureTaskListTablePreferences();
+                preferences.page = 1;
+                preferences.loadedPages = 1;
+            }
+
+            function pagedTaskListRows(rows = []) {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                const preferences = ensureTaskListTablePreferences();
+                const totalRows = safeRows.length;
+                const totalPages = Math.max(1, Math.ceil(totalRows / preferences.pageSize));
+                preferences.page = Math.min(preferences.page, totalPages);
+                const startIndex = (preferences.page - 1) * preferences.pageSize;
+                const endPage = Math.min(totalPages, preferences.page + preferences.loadedPages - 1);
+                const endIndex = Math.min(totalRows, endPage * preferences.pageSize);
+                const pageRows = safeRows.slice(startIndex, endIndex);
+                return {
+                    pageRows,
+                    totalRows,
+                    pageSize: preferences.pageSize,
+                    currentPage: preferences.page,
+                    totalPages,
+                    startIndex,
+                    endIndex,
+                    loadedPages: Math.max(1, endPage - preferences.page + 1),
+                    endPage,
+                };
             }
 
             function openTaskClientTimeline(clientKey = "", clientName = "", rows = []) {
@@ -97170,12 +97308,14 @@
                 const meta = document.getElementById(metaId);
                 if (!body) return;
                 const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
-                const rows = (mode === "list" ? filteredBmTasksRows(allRows) : allRows.filter((row) => {
+                const filteredRows = (mode === "list" ? filteredBmTasksRows(allRows) : allRows.filter((row) => {
                     const status = String(row?.status || "").trim().toLowerCase();
                     if (mode === "approvals") return ["awaiting_approval", "query", "records_requested"].includes(status);
                     if (mode === "completed") return status === "completed";
                     return true;
                 }));
+                const pagination = mode === "list" ? pagedTaskListRows(filteredRows) : null;
+                const rows = pagination ? pagination.pageRows : filteredRows;
                 const hiddenColumns = new Set(Array.isArray(companiesHouseSettings.bmTasksColumnState?.hidden)
                     ? companiesHouseSettings.bmTasksColumnState.hidden
                     : ["register"]);
@@ -97187,11 +97327,16 @@
                 if (!managerOptions.includes("Unassigned")) managerOptions.unshift("Unassigned");
                 if (!rows.length) {
                     body.innerHTML = `<tr><td colspan="10" class="ch-empty-state">${
-                        allRows.length
+                        filteredRows.length || allRows.length
                             ? (mode === "completed" ? "No completed tasks in the loaded dataset." : "No matching tasks for this view.")
                             : "No BM tasks loaded yet."
                     }</td></tr>`;
-                    if (meta) meta.textContent = "0 rows";
+                    if (meta) {
+                        if (mode === "list") meta.textContent = `Showing 0 of ${filteredRows.length.toLocaleString("en-GB")} task rows`;
+                        else meta.textContent = "0 rows";
+                    }
+                    renderTaskListPaginationControls(mode, pagination);
+                    renderTaskSelectionMeta(rows);
                     return;
                 }
                 body.innerHTML = rows.map((row) => {
@@ -97316,6 +97461,13 @@
                             actionIcon = "•";
                         }
                     }
+                    if (mode === "completed") {
+                        actionKind = "restore";
+                        actionLabel = "Restore";
+                        actionClass = "";
+                        actionDisabled = false;
+                        actionIcon = "↺";
+                    }
                     return `
                         <tr class="${mode === "list" ? bmTaskRowClassByDeadline(row) : ""} task-row-clickable" data-task-open-detail="${escapeHTML(rowId)}" data-task-row-id="${escapeHTML(rowId)}">
                             <td class="task-list-select-col"><input type="checkbox" data-task-select="${escapeHTML(rowId)}" ${isSelected ? "checked" : ""}></td>
@@ -97336,7 +97488,13 @@
                         </tr>
                     `;
                 }).join("");
-                if (meta) meta.textContent = `${rows.length.toLocaleString("en-GB")} shown of ${allRows.length.toLocaleString("en-GB")}`;
+                if (meta) {
+                    if (mode === "list" && pagination) {
+                        meta.textContent = `Showing ${(pagination.startIndex + 1).toLocaleString("en-GB")} to ${pagination.endIndex.toLocaleString("en-GB")} of ${pagination.totalRows.toLocaleString("en-GB")} task rows`;
+                    } else {
+                        meta.textContent = `${rows.length.toLocaleString("en-GB")} shown of ${allRows.length.toLocaleString("en-GB")}`;
+                    }
+                }
 
                 body.querySelectorAll("[data-task-select]").forEach((input) => {
                     input.addEventListener("change", (event) => {
@@ -97427,6 +97585,20 @@
                             await handleBookkeepingTaskStartFlow(match, allRows);
                             return;
                         }
+                        if (actionKind === "restore") {
+                            updateBmTaskStatus(match, "open", "", {
+                                autoNote: "Task restored to outstanding from completed tasks.",
+                            });
+                            const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
+                            companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
+                                ...currentOverride,
+                                completedAt: "",
+                            };
+                            saveBmTaskLocalState();
+                            showToast("Task restored to outstanding.", "success");
+                            renderTaskSubpages();
+                            return;
+                        }
                         if (actionKind === "awaiting_review") return;
                         const rowNode = button.closest("tr");
                         const applyCompletion = () => {
@@ -97488,6 +97660,7 @@
                         }
                     }
                 }
+                renderTaskListPaginationControls(mode, pagination);
                 renderTaskSelectionMeta(rows);
             }
 
@@ -97532,6 +97705,25 @@
                     const selectedVisible = visibleIds.filter((id) => companiesHouseSettings.bmTasksSelection?.has(id)).length;
                     selectAll.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
                     selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+                }
+            }
+
+            function renderTaskListPaginationControls(mode, pagination) {
+                const wrap = document.getElementById("taskListPagination");
+                const sizeSelect = document.getElementById("taskListPageSizeSelect");
+                const loadMoreButton = document.getElementById("taskListLoadMoreButton");
+                const previousButton = document.getElementById("taskListPreviousButton");
+                const nextButton = document.getElementById("taskListNextButton");
+                const isTaskListMode = mode === "list" && pagination;
+                if (!isTaskListMode) return;
+                if (wrap) wrap.hidden = false;
+                if (sizeSelect) sizeSelect.value = String(pagination.pageSize);
+                const reachedEnd = pagination.endPage >= pagination.totalPages;
+                if (previousButton) previousButton.disabled = pagination.currentPage <= 1;
+                if (nextButton) nextButton.disabled = reachedEnd;
+                if (loadMoreButton) {
+                    loadMoreButton.disabled = reachedEnd;
+                    loadMoreButton.textContent = reachedEnd ? "All loaded" : "Load more";
                 }
             }
 
@@ -97936,6 +98128,8 @@
                 const managerFilter = document.getElementById("chAuthCodeRegisterManagerFilter");
                 const sourceFilter = document.getElementById("chAuthCodeRegisterSourceFilter");
                 const searchInput = document.getElementById("chAuthCodeRegisterSearch");
+                const sortKeySelect = document.getElementById("chAuthCodeRegisterSortKey");
+                const sortDirectionSelect = document.getElementById("chAuthCodeRegisterSortDirection");
                 const pageMeta = document.getElementById("chAuthCodeRegisterPageMeta");
                 const prevPageButton = document.getElementById("chAuthCodeRegisterPrevPageButton");
                 const nextPageButton = document.getElementById("chAuthCodeRegisterNextPageButton");
@@ -97957,6 +98151,16 @@
                 if (sourceFilter) {
                     sourceFilter.innerHTML = `<option value="">All source files</option>${uniqueSources.map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("")}`;
                     sourceFilter.value = tableState.sourceFile || "";
+                }
+                if (sortKeySelect) {
+                    const availableSortKeys = new Set(Array.from(sortKeySelect.options).map((option) => String(option.value || "")));
+                    const safeSortKey = availableSortKeys.has(String(tableState.sortKey || ""))
+                        ? String(tableState.sortKey || "")
+                        : "clientId";
+                    sortKeySelect.value = safeSortKey;
+                }
+                if (sortDirectionSelect) {
+                    sortDirectionSelect.value = tableState.sortDirection === "asc" ? "asc" : "desc";
                 }
                 const filteredRows = filteredAuthRegisterRows(list);
                 const visibleColumns = authRegisterVisibleColumns();
@@ -98042,10 +98246,11 @@
                     rowId: "",
                     payload: null,
                     activeTab: "client-info",
+                    showCompletedTasks: false,
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
-                const toolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
+                const toolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard .ch-register-toolbar");
                 if (panel) panel.hidden = true;
                 if (tableWrap) tableWrap.hidden = false;
                 if (toolbar) toolbar.hidden = false;
@@ -98095,6 +98300,48 @@
             function clientRegisterClientMatchKey(row = {}) {
                 const displayName = clientRegisterClientDisplayName(row);
                 return normalisePracticePackClientMatchName(displayName);
+            }
+
+            function clientRegisterTaskMatchesRow(taskRow = {}, row = {}) {
+                const register = taskRow?.matchedRegister || {};
+                const taskRegisterId = String(register?.id || "").trim();
+                const rowId = String(row?.id || "").trim();
+                if (taskRegisterId && rowId && taskRegisterId === rowId) return true;
+                const taskClientId = String(taskRow?.clientId || "").trim().toLowerCase();
+                const rowClientId = String(row?.clientId || "").trim().toLowerCase();
+                if (taskClientId && rowClientId && taskClientId === rowClientId) return true;
+                const taskCompanyNumber = normaliseCompanyNumberInput(register?.companyNumber || taskRow?.companyNumber || "");
+                const rowCompanyNumber = normaliseCompanyNumberInput(row?.companyNumber || "");
+                if (taskCompanyNumber && rowCompanyNumber && taskCompanyNumber === rowCompanyNumber) return true;
+                const taskMatchKey = normalisePracticePackClientMatchName(register?.displayName || taskRow?.clientName || "");
+                const rowMatchKey = clientRegisterClientMatchKey(row);
+                return !!(taskMatchKey && rowMatchKey && taskMatchKey === rowMatchKey);
+            }
+
+            function clientRegisterTasksForRow(row = {}, options = {}) {
+                const includeCompleted = !!options?.includeCompleted;
+                const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
+                    .map((task) => bmTaskRowWithOverrides(task));
+                return allRows
+                    .filter((task) => clientRegisterTaskMatchesRow(task, row))
+                    .filter((task) => includeCompleted || String(task?.status || "").trim().toLowerCase() !== "completed")
+                    .sort((left, right) => {
+                        const leftStamp = dateSortValue(
+                            left?.completedAt
+                            || left?.updatedAt
+                            || bmTaskEffectiveDeadlineISO(left)
+                            || bmTaskEffectivePeriodEndISO(left)
+                            || ""
+                        );
+                        const rightStamp = dateSortValue(
+                            right?.completedAt
+                            || right?.updatedAt
+                            || bmTaskEffectiveDeadlineISO(right)
+                            || bmTaskEffectivePeriodEndISO(right)
+                            || ""
+                        );
+                        return rightStamp - leftStamp;
+                    });
             }
 
             function openRiskAssessmentWorkflowFromClientRegisterPage() {
@@ -98220,6 +98467,7 @@
                     { id: "services", label: "Services Required", icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>` },
                     { id: "timeline", label: "Timeline", icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>` },
                     { id: "notes", label: "Notes", icon: `<svg viewBox="0 0 24 24"><path d="M5 4h14v12H8l-3 3V4z"></path><path d="M9 8h6"></path><path d="M9 11h6"></path></svg>` },
+                    { id: "tasks", label: "Tasks", icon: `<svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"></path><rect x="3" y="4" width="18" height="16" rx="2"></rect></svg>` },
                     { id: "risk", label: "Risk Assessment", icon: `<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.6-7 10-3.8-1.4-7-5-7-10V6l7-3z"></path><path d="M9 12h6"></path></svg>` },
                     { id: "companies-house", label: "Companies House", icon: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg>` },
                     { id: "juk-invoices", label: "JUK Invoices", icon: `<svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg>` },
@@ -98330,7 +98578,7 @@
                 const payload = clientPagePayload();
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
-                const toolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-register-toolbar");
+                const toolbar = document.querySelector("#companiesHouseAuthCodeRegisterCard .ch-register-toolbar");
                 const dataTabs = document.getElementById("chRegisterDataTabs");
                 const settingsActions = document.querySelector("#companiesHouseAuthCodeRegisterCard > .ch-settings-actions");
                 if (!panel || !tableWrap || !toolbar) return;
@@ -98511,6 +98759,42 @@
                         `).join("")
                         : `<article class="timeline-item"><div class="timeline-body">No notes added yet.</div></article>`;
                 }
+                const tasksToggle = document.getElementById("chRegisterClientPageTasksShowCompletedToggle");
+                const tasksBody = document.getElementById("chRegisterClientPageTasksBody");
+                const tasksMeta = document.getElementById("chRegisterClientPageTasksMeta");
+                const includeCompletedTasks = !!pageState.showCompletedTasks;
+                if (tasksToggle) tasksToggle.checked = includeCompletedTasks;
+                if (tasksBody) {
+                    const clientTasks = clientRegisterTasksForRow(row, { includeCompleted: includeCompletedTasks });
+                    tasksBody.innerHTML = clientTasks.length
+                        ? clientTasks.map((task) => {
+                            const rowId = bmTaskIdentitySafe(task);
+                            const status = String(task?.status || "").trim().toLowerCase() || "open";
+                            const isCompletedTask = status === "completed";
+                            const periodEndISO = bmTaskEffectivePeriodEndISO(task);
+                            const deadlineISO = bmTaskEffectiveDeadlineISO(task);
+                            const updatedStamp = String(task?.completedAt || task?.updatedAt || "").trim();
+                            const actionMarkup = isCompletedTask
+                                ? `<button class="ghost-button" type="button" data-client-page-task-restore="${escapeHTML(rowId)}">Restore</button>`
+                                : "—";
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHTML(bmTaskDisplayName(task))}</strong><small>${escapeHTML(bmTaskClientDisplayName(task?.clientName || ""))}</small></td>
+                                    <td>${escapeHTML(periodEndISO ? formatDate(periodEndISO) : "—")}</td>
+                                    <td>${escapeHTML(deadlineISO ? formatDate(deadlineISO) : "—")}</td>
+                                    <td><span class="lock-status-pill ${bmTaskStatusTone(status)}">${escapeHTML(bmTaskStatusLabel(status))}</span></td>
+                                    <td>${escapeHTML(String(task?.assigneeName || "Unassigned").trim() || "Unassigned")}</td>
+                                    <td>${escapeHTML(updatedStamp ? chFormatDateTime(updatedStamp) : "—")}</td>
+                                    <td>${actionMarkup}</td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : `<tr><td colspan="7" class="ch-empty-state">${includeCompletedTasks ? "No tasks linked to this client." : "No outstanding tasks linked to this client."}</td></tr>`;
+                    if (tasksMeta) {
+                        const allClientTaskCount = clientRegisterTasksForRow(row, { includeCompleted: true }).length;
+                        tasksMeta.textContent = `${clientTasks.length.toLocaleString("en-GB")} shown${includeCompletedTasks ? "" : " (outstanding only)"} of ${allClientTaskCount.toLocaleString("en-GB")} linked task${allClientTaskCount === 1 ? "" : "s"}.`;
+                    }
+                }
                 const riskAssessmentsWrap = document.getElementById("chRegisterClientPageRiskAssessmentsList");
                 if (riskAssessmentsWrap) {
                     const clientRiskRows = riskAssessmentsForClient(clientRegisterClientMatchKey(row));
@@ -98644,6 +98928,7 @@
                     loading: true,
                     rowId: safeRowId,
                     activeTab: "client-info",
+                    showCompletedTasks: false,
                     payload: null,
                 };
                 renderClientRegisterClientPage();
@@ -99747,6 +100032,40 @@
                 document.getElementById("chRegisterClientPageOpenCompaniesHouseButton")?.addEventListener("click", openCompaniesHouseFromClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageAddNoteButton")?.addEventListener("click", addNoteToClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageRiskWorkflowButton")?.addEventListener("click", openRiskAssessmentWorkflowFromClientRegisterPage);
+                document.getElementById("chRegisterClientPageTasksShowCompletedToggle")?.addEventListener("change", (event) => {
+                    const checked = !!event?.target?.checked;
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        showCompletedTasks: checked,
+                    };
+                    renderClientRegisterClientPage();
+                });
+                document.getElementById("chRegisterClientPageTasksBody")?.addEventListener("click", (event) => {
+                    const button = event.target?.closest?.("[data-client-page-task-restore]");
+                    if (!button) return;
+                    event.preventDefault();
+                    const rowId = String(button.getAttribute("data-client-page-task-restore") || "").trim();
+                    if (!rowId) return;
+                    const task = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
+                        .map((row) => bmTaskRowWithOverrides(row))
+                        .find((row) => bmTaskIdentitySafe(row) === rowId);
+                    if (!task) {
+                        showToast("Unable to find selected task.", "error");
+                        return;
+                    }
+                    updateBmTaskStatus(task, "open", "", {
+                        autoNote: "Task restored to outstanding from client page.",
+                    });
+                    const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
+                    companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
+                        ...currentOverride,
+                        completedAt: "",
+                    };
+                    saveBmTaskLocalState();
+                    renderTaskSubpages();
+                    renderClientRegisterClientPage();
+                    showToast("Task restored to outstanding.", "success");
+                });
                 document.getElementById("chRegisterClientPageTabs")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-tab]");
                     if (!button) return;
@@ -99833,6 +100152,27 @@
                     saveAuthRegisterTablePreferences();
                     renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
                 });
+                document.getElementById("chAuthCodeRegisterSortKey")?.addEventListener("change", (event) => {
+                    const selectedKey = String(event?.target?.value || "").trim();
+                    const safeSortKey = AUTH_REGISTER_COLUMNS.some((column) => column.key === selectedKey) ? selectedKey : "clientId";
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        sortKey: safeSortKey,
+                        page: 1,
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
+                document.getElementById("chAuthCodeRegisterSortDirection")?.addEventListener("change", (event) => {
+                    const selectedDirection = String(event?.target?.value || "").trim() === "asc" ? "asc" : "desc";
+                    companiesHouseSettings.authRegisterTableState = {
+                        ...companiesHouseSettings.authRegisterTableState,
+                        sortDirection: selectedDirection,
+                        page: 1,
+                    };
+                    saveAuthRegisterTablePreferences();
+                    renderAuthCodeRegisterDirectory(companiesHouseSettings.authRegisterRows || [], companiesHouseSettings.authRegisterRows?.length || 0);
+                });
                 document.getElementById("chAuthCodeRegisterPrevPageButton")?.addEventListener("click", () => {
                     const current = Math.max(1, Number(companiesHouseSettings.authRegisterTableState?.page || 1));
                     companiesHouseSettings.authRegisterTableState = {
@@ -99899,6 +100239,7 @@
                     if (search) search.value = "";
                     if (assignee) assignee.value = "";
                     if (status) status.value = "";
+                    resetTaskListPagination();
                     renderBmTasksTable();
                 });
                 document.getElementById("taskListSearch")?.addEventListener("input", (event) => {
@@ -99906,6 +100247,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         searchTerm: String(event?.target?.value || ""),
                     };
+                    resetTaskListPagination();
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListManagerFilter")?.addEventListener("change", (event) => {
@@ -99913,6 +100255,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         assignee: String(event?.target?.value || ""),
                     };
+                    resetTaskListPagination();
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListStatusFilter")?.addEventListener("change", (event) => {
@@ -99930,6 +100273,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         status: requestedStatus,
                     };
+                    resetTaskListPagination();
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListDueFilter")?.addEventListener("change", (event) => {
@@ -99937,6 +100281,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         due: String(event?.target?.value || ""),
                     };
+                    resetTaskListPagination();
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListSort")?.addEventListener("change", (event) => {
@@ -99944,16 +100289,49 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         sort: String(event?.target?.value || "deadline_asc"),
                     };
+                    resetTaskListPagination();
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListPageSizeSelect")?.addEventListener("change", (event) => {
+                    const preferences = ensureTaskListTablePreferences();
+                    preferences.pageSize = normaliseTaskListPageSize(event?.target?.value);
+                    preferences.page = 1;
+                    preferences.loadedPages = 1;
+                    saveBmTaskLocalState();
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListLoadMoreButton")?.addEventListener("click", () => {
+                    const preferences = ensureTaskListTablePreferences();
+                    preferences.loadedPages = Math.max(1, Number(preferences.loadedPages || 1)) + 1;
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListPreviousButton")?.addEventListener("click", () => {
+                    const preferences = ensureTaskListTablePreferences();
+                    const step = Math.max(1, Number(preferences.loadedPages || 1));
+                    preferences.page = Math.max(1, Number(preferences.page || 1) - step);
+                    preferences.loadedPages = 1;
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskListNextButton")?.addEventListener("click", () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    const filteredRows = filteredBmTasksRows(allRows);
+                    const pagination = pagedTaskListRows(filteredRows);
+                    const preferences = ensureTaskListTablePreferences();
+                    const step = Math.max(1, Number(pagination.loadedPages || preferences.loadedPages || 1));
+                    preferences.page = Math.min(Math.max(1, pagination.totalPages), Number(preferences.page || 1) + step);
+                    preferences.loadedPages = 1;
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListColumnsButton")?.addEventListener("click", openTaskListColumnsDialog);
                 document.getElementById("taskListSelectAll")?.addEventListener("change", (event) => {
-                    const allRows = filteredBmTasksRows(Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []);
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    const filteredRows = filteredBmTasksRows(allRows);
+                    const visibleRows = pagedTaskListRows(filteredRows).pageRows;
                     if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
                     if (event?.target?.checked) {
-                        allRows.forEach((row) => companiesHouseSettings.bmTasksSelection.add(bmTaskIdentitySafe(row)));
+                        visibleRows.forEach((row) => companiesHouseSettings.bmTasksSelection.add(bmTaskIdentitySafe(row)));
                     } else {
-                        allRows.forEach((row) => companiesHouseSettings.bmTasksSelection.delete(bmTaskIdentitySafe(row)));
+                        visibleRows.forEach((row) => companiesHouseSettings.bmTasksSelection.delete(bmTaskIdentitySafe(row)));
                     }
                     renderTaskSubpages();
                 });
@@ -99967,6 +100345,7 @@
                 });
                 document.getElementById("taskListReloadButton")?.addEventListener("click", async () => {
                     await loadBmTasksDirectory(true);
+                    resetTaskListPagination();
                     renderTaskSubpages();
                 });
                 document.getElementById("taskBookkeepingWorkflowCloseButton")?.addEventListener("click", () => {
