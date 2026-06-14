@@ -24054,6 +24054,21 @@
                 animation: taskCompleteIconPop 0.34s cubic-bezier(0.16, 1, 0.3, 1);
                 background: rgba(255, 255, 255, 0.32);
             }
+            .task-complete-button.is-start {
+                border-color: #1758cd;
+                background: linear-gradient(180deg, #2f7cff, #1f63e3);
+            }
+            .task-complete-button.is-start:hover,
+            .task-complete-button.is-start:focus-visible {
+                box-shadow: 0 8px 18px rgba(34, 101, 233, 0.33);
+                border-color: #124bb3;
+            }
+            .task-complete-button.is-awaiting {
+                border-color: #8fa7c7;
+                background: linear-gradient(180deg, #dbe7f7, #cad9ef);
+                color: #35557f;
+                cursor: default;
+            }
             @keyframes taskCompleteIconPop {
                 0% {
                     transform: scale(1);
@@ -95400,6 +95415,30 @@
                 return task.replace(/[\s\-–:|]+$/, "").trim() || "VAT task";
             }
 
+            function bmTaskWorkflowType(row = {}) {
+                const taskName = String(row?.taskName || "").trim().toLowerCase();
+                if (taskName.includes("bookkeeping")) return "bookkeeping";
+                if (taskName.includes("vat")) return "vat";
+                return "";
+            }
+
+            function bmTaskEffectivePeriodEndISO(row = {}) {
+                return String(row?.vatPeriodEndISO || row?.xeroMatch?.periodEndISO || "").trim();
+            }
+
+            function bmTaskEffectiveDeadlineISO(row = {}) {
+                const workflowType = bmTaskWorkflowType(row);
+                const periodEndISO = bmTaskEffectivePeriodEndISO(row);
+                if (workflowType === "bookkeeping" && periodEndISO) {
+                    const periodEnd = new Date(periodEndISO);
+                    if (!Number.isNaN(periodEnd.getTime())) {
+                        const due = new Date(Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth() + 1, 15));
+                        return due.toISOString().slice(0, 10);
+                    }
+                }
+                return String(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "").trim();
+            }
+
             function bmTaskRowWithOverrides(row = {}) {
                 const key = bmTaskIdentitySafe(row);
                 const override = companiesHouseSettings.bmTaskOverridesByKey?.[key] || {};
@@ -95409,6 +95448,8 @@
                     status: String(override.status || row?.status || "open"),
                     taskProgress: String(override.taskProgress || row?.taskProgress || ""),
                     completedAt: override.completedAt || row?.completedAt || "",
+                    workflowState: String(override.workflowState || row?.workflowState || ""),
+                    workflowReviewer: String(override.workflowReviewer || row?.workflowReviewer || ""),
                 };
             }
 
@@ -95425,7 +95466,7 @@
             function bmTaskDeadlineTraffic(row = {}) {
                 const status = String(row?.status || "").trim().toLowerCase();
                 if (status === "completed") return "green";
-                const days = bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "");
+                const days = bmTaskDaysUntilDeadline(bmTaskEffectiveDeadlineISO(row));
                 if (days === null) return "green";
                 if (days <= 0) return "red";
                 if (days <= 7) return "amber";
@@ -95447,7 +95488,7 @@
             }
 
             function bmTaskDeadlineBadgeCopy(row = {}) {
-                const days = bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "");
+                const days = bmTaskDaysUntilDeadline(bmTaskEffectiveDeadlineISO(row));
                 if (days === null) return "No deadline";
                 if (days < 0) return `Overdue ${Math.abs(days)}d`;
                 if (days === 0) return "Due today";
@@ -95456,7 +95497,7 @@
             }
 
             function bmTaskDeadlineDetailCopy(row = {}) {
-                const days = bmTaskDaysUntilDeadline(row?.deadlineISO || row?.xeroMatch?.deadlineISO || "");
+                const days = bmTaskDaysUntilDeadline(bmTaskEffectiveDeadlineISO(row));
                 if (days === null) return "No deadline set";
                 if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} overdue`;
                 if (days === 0) return "Due today";
@@ -95778,13 +95819,13 @@
                         return bmTaskClientDisplayName(left?.clientName).localeCompare(bmTaskClientDisplayName(right?.clientName));
                     }
                     if (sort === "deadline_desc") {
-                        return dateSortValue(right?.deadlineISO || right?.xeroMatch?.deadlineISO || "") - dateSortValue(left?.deadlineISO || left?.xeroMatch?.deadlineISO || "");
+                        return dateSortValue(bmTaskEffectiveDeadlineISO(right)) - dateSortValue(bmTaskEffectiveDeadlineISO(left));
                     }
                     if (sort === "status") {
                         const statusOrder = ["open", "records_requested", "awaiting_approval", "in_review", "query", "completed"];
                         return statusOrder.indexOf(String(left?.status || "open").toLowerCase()) - statusOrder.indexOf(String(right?.status || "open").toLowerCase());
                     }
-                    return dateSortValue(left?.deadlineISO || left?.xeroMatch?.deadlineISO || "") - dateSortValue(right?.deadlineISO || right?.xeroMatch?.deadlineISO || "");
+                    return dateSortValue(bmTaskEffectiveDeadlineISO(left)) - dateSortValue(bmTaskEffectiveDeadlineISO(right));
                 });
             }
 
@@ -95817,6 +95858,190 @@
                         `;
                     },
                 });
+            }
+
+            async function openBmTaskVatWorkspaceFromTaskRow(match = {}) {
+                activeView = "vat-return-prepare";
+                activeNavSection = "vat-return-prepare";
+                const xero = match?.xeroMatch || {};
+                const desiredTenantId = String(xero.tenantId || "").trim();
+                const desiredPeriodEndISO = bmTaskEffectivePeriodEndISO(match);
+                vatReturnSelectedWorkspaceTenantId = desiredTenantId;
+                selectedVatReturnKey = String(xero.vatReturnKey || "").trim();
+                vatReturnDetailTab = "transactions";
+                renderAll();
+                try {
+                    await loadVatReturnQueue(true);
+                    let selected = selectedVatReturnEntry(vatReturnQueueRows());
+                    if (!selected) {
+                        const queueRows = vatReturnQueueRows();
+                        selected = queueRows.find((row) => {
+                            return String(row?.tenantId || "").trim() === desiredTenantId
+                                && String(row?.periodEndISO || "").trim() === desiredPeriodEndISO;
+                        }) || queueRows.find((row) => String(row?.tenantId || "").trim() === desiredTenantId) || null;
+                        if (selected?.key) selectedVatReturnKey = String(selected.key);
+                    }
+                    if (selected) {
+                        await ensureVatReturnTransactions(selected, true);
+                    } else {
+                        renderVatReturnPrepareScreen();
+                        showToast("VAT workspace row found, but no matching VAT period row is available yet. Try Refresh.", "info");
+                    }
+                } catch (error) {
+                    console.error("Unable to open VAT workspace from BM task row", error);
+                    showToast(error?.message || "Unable to open VAT workspace for this task row.", "error");
+                }
+            }
+
+            function setBmTaskOverrideState(rowId = "", patch = {}) {
+                if (!rowId) return;
+                companiesHouseSettings.bmTaskOverridesByKey[rowId] = {
+                    ...(companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {}),
+                    ...patch,
+                };
+                saveBmTaskLocalState();
+            }
+
+            async function handleVatTaskStartFlow(row = {}) {
+                const rowId = bmTaskIdentitySafe(row);
+                const state = String(row?.workflowState || "").trim().toLowerCase();
+                if (state === "in_progress") {
+                    const decision = await showOperationReviewDialog({
+                        eyebrow: "VAT prep workflow",
+                        title: "Mark VAT prep as complete?",
+                        subtitle: "Confirm once the VAT prep workflow checks are done. This enables the final green Complete button.",
+                        confirmLabel: "Prep complete",
+                        cancelLabel: "Keep in progress",
+                        columns: [],
+                        rows: [{}],
+                        summaryChips: [
+                            bmTaskClientDisplayName(row?.clientName),
+                            bmTaskDisplayName(row),
+                        ],
+                    });
+                    if (!decision) {
+                        await openBmTaskVatWorkspaceFromTaskRow(row);
+                        return;
+                    }
+                    setBmTaskOverrideState(rowId, { workflowState: "ready_to_complete" });
+                    updateBmTaskStatus(row, "in_review", "", {
+                        autoNote: "VAT prep workflow completed. Ready for final completion.",
+                    });
+                    showToast("VAT prep marked complete. Final task completion is now enabled.", "success");
+                    renderTaskSubpages();
+                    return;
+                }
+                setBmTaskOverrideState(rowId, { workflowState: "in_progress" });
+                updateBmTaskStatus(row, "in_review", "", {
+                    autoNote: "VAT prep workflow started from task list.",
+                });
+                await openBmTaskVatWorkspaceFromTaskRow(row);
+                showToast("VAT prep started. Return here and click Finish prep when ready.", "info");
+                renderTaskSubpages();
+            }
+
+            async function handleBookkeepingTaskStartFlow(row = {}, allRows = []) {
+                const rowId = bmTaskIdentitySafe(row);
+                const managerPool = Array.from(new Set(
+                    (Array.isArray(allRows) ? allRows : [])
+                        .map((item) => String(item?.assigneeName || "").trim())
+                        .filter(Boolean)
+                )).sort((left, right) => left.localeCompare(right));
+                const defaultReviewer = String(row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
+                if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
+                let selectedReviewer = defaultReviewer;
+                let checklist = {
+                    dividends: true,
+                    corporationTax: true,
+                    suggestedMerges: true,
+                    duplicateTransactions: true,
+                };
+                let notes = "";
+                const decision = await showOperationReviewDialog({
+                    eyebrow: "Monthly bookkeeping workflow",
+                    title: "Submit Monthly Bookkeeping task for review",
+                    subtitle: "Run the ME-style checks, add notes, and route to a reviewer.",
+                    confirmLabel: "Submit for review",
+                    cancelLabel: "Cancel",
+                    columns: [],
+                    rows: [{}],
+                    summaryChips: [
+                        bmTaskClientDisplayName(row?.clientName),
+                        `Period end ${bmTaskEffectivePeriodEndISO(row) || "—"}`,
+                        `Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`,
+                    ],
+                    onRender: ({ body }) => {
+                        body.innerHTML = `
+                            <div class="task-detail-modal-grid">
+                                <article class="task-detail-modal-card">
+                                    <h5>ME workflow checks</h5>
+                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckDividends" checked> Check dividends</label>
+                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckCorpTax" checked> Check corporation tax</label>
+                                    <label style="display:block;margin-bottom:8px;"><input type="checkbox" id="taskBookkeepingCheckMerges" checked> Suggest contacts to merge</label>
+                                    <label style="display:block;"><input type="checkbox" id="taskBookkeepingCheckDuplicates" checked> Highlight potential duplicate transactions</label>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Review routing</h5>
+                                    <select id="taskBookkeepingReviewerSelect" aria-label="Reviewer">
+                                        ${managerPool.map((name) => `<option value="${escapeHTML(name)}" ${name === selectedReviewer ? "selected" : ""}>${escapeHTML(name)}</option>`).join("")}
+                                    </select>
+                                    <p class="detail-meta" style="margin-top:8px;">Submission notes are posted to timeline and task history.</p>
+                                    <textarea id="taskBookkeepingNotes" rows="4" placeholder="Add review notes..."></textarea>
+                                </article>
+                            </div>
+                        `;
+                        const dividendsInput = body.querySelector("#taskBookkeepingCheckDividends");
+                        const corpTaxInput = body.querySelector("#taskBookkeepingCheckCorpTax");
+                        const mergesInput = body.querySelector("#taskBookkeepingCheckMerges");
+                        const duplicatesInput = body.querySelector("#taskBookkeepingCheckDuplicates");
+                        const reviewerInput = body.querySelector("#taskBookkeepingReviewerSelect");
+                        const notesInput = body.querySelector("#taskBookkeepingNotes");
+                        dividendsInput?.addEventListener("change", (event) => {
+                            checklist.dividends = !!event?.target?.checked;
+                        });
+                        corpTaxInput?.addEventListener("change", (event) => {
+                            checklist.corporationTax = !!event?.target?.checked;
+                        });
+                        mergesInput?.addEventListener("change", (event) => {
+                            checklist.suggestedMerges = !!event?.target?.checked;
+                        });
+                        duplicatesInput?.addEventListener("change", (event) => {
+                            checklist.duplicateTransactions = !!event?.target?.checked;
+                        });
+                        reviewerInput?.addEventListener("change", (event) => {
+                            selectedReviewer = String(event?.target?.value || "").trim();
+                        });
+                        notesInput?.addEventListener("input", (event) => {
+                            notes = String(event?.target?.value || "");
+                        });
+                    },
+                    resultProvider: () => ({
+                        reviewer: String(selectedReviewer || "").trim(),
+                        notes: String(notes || "").trim(),
+                        checklist,
+                    }),
+                });
+                if (!decision) return;
+                if (!String(decision.reviewer || "").trim()) {
+                    showToast("Select a reviewer before submitting this task.", "info");
+                    return;
+                }
+                const checksSummary = [
+                    decision.checklist?.dividends ? "dividends checked" : null,
+                    decision.checklist?.corporationTax ? "corporation tax checked" : null,
+                    decision.checklist?.suggestedMerges ? "contact merge suggestions reviewed" : null,
+                    decision.checklist?.duplicateTransactions ? "duplicate transactions reviewed" : null,
+                ].filter(Boolean).join("; ");
+                const reviewNote = [checksSummary, decision.notes].filter(Boolean).join(". ");
+                setBmTaskOverrideState(rowId, {
+                    workflowState: "submitted_for_review",
+                    workflowReviewer: String(decision.reviewer || "").trim(),
+                });
+                updateBmTaskStatus(row, "awaiting_approval", reviewNote, {
+                    autoNote: `Monthly bookkeeping workflow submitted for review to ${decision.reviewer || "reviewer"}.`,
+                });
+                openTaskApprovalsBouncebacksScreen();
+                showToast(`Task submitted for review${decision.reviewer ? ` to ${decision.reviewer}` : ""}.`, "success");
             }
 
             function openBmTaskDetailModal(row = {}, allRows = []) {
@@ -96122,9 +96347,53 @@
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
                     const assigneeHue = bmTaskAssigneeHue(assigneeName);
-                    const deadlineDateLabel = row.deadlineISO ? formatDate(row.deadlineISO) : "—";
+                    const deadlineISO = bmTaskEffectiveDeadlineISO(row);
+                    const periodEndISO = bmTaskEffectivePeriodEndISO(row);
+                    const deadlineDateLabel = deadlineISO ? formatDate(deadlineISO) : "—";
                     const deadlineMeta = bmTaskDeadlineDetailCopy(row);
                     const isCompleted = String(row?.status || "").trim().toLowerCase() === "completed";
+                    const workflowType = bmTaskWorkflowType(row);
+                    const workflowState = String(row?.workflowState || "").trim().toLowerCase();
+                    let actionKind = "complete";
+                    let actionLabel = isCompleted ? "Completed" : "Complete";
+                    let actionClass = "";
+                    let actionDisabled = isCompleted;
+                    let actionIcon = isCompleted ? "✓" : "•";
+                    if (!isCompleted && workflowType === "vat") {
+                        if (workflowState === "ready_to_complete") {
+                            actionKind = "complete";
+                            actionLabel = "Complete";
+                            actionClass = "";
+                            actionIcon = "✓";
+                        } else if (workflowState === "in_progress") {
+                            actionKind = "start_vat";
+                            actionLabel = "Finish prep";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
+                        } else {
+                            actionKind = "start_vat";
+                            actionLabel = "Start";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
+                        }
+                    } else if (!isCompleted && workflowType === "bookkeeping") {
+                        if (String(row?.status || "").trim().toLowerCase() === "awaiting_approval" || workflowState === "submitted_for_review") {
+                            actionKind = "awaiting_review";
+                            actionLabel = "Awaiting review";
+                            actionClass = "is-awaiting";
+                            actionDisabled = true;
+                            actionIcon = "⏳";
+                        } else if (workflowState === "ready_to_complete") {
+                            actionKind = "complete";
+                            actionLabel = "Complete";
+                            actionIcon = "✓";
+                        } else {
+                            actionKind = "start_bookkeeping";
+                            actionLabel = "Start";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
+                        }
+                    }
                     const statusSelect = `
                         <select data-task-status-select="${escapeHTML(rowId)}" hidden>
                             ${bmTaskStatusOptions().map((option) => `<option value="${escapeHTML(option.value)}" ${String(row?.status || "").toLowerCase() === option.value ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
@@ -96140,7 +96409,7 @@
                                 </div>
                             </td>
                             <td><strong>${escapeHTML(taskName)}</strong><small>${escapeHTML(row.taskProgress || "No progress note")}</small></td>
-                            <td>${escapeHTML(row.vatPeriodEndISO ? formatDate(row.vatPeriodEndISO) : "—")}</td>
+                            <td>${escapeHTML(periodEndISO ? formatDate(periodEndISO) : "—")}</td>
                             <td><span class="task-deadline-chip ${bmTaskDeadlineToneClass(row)}">${escapeHTML(deadlineDateLabel)}</span><small>${escapeHTML(deadlineMeta)}</small></td>
                             <td>${statusPill}${statusSelect}</td>
                             <td data-task-col="assignee" ${hiddenColumns.has("assignee") ? "hidden" : ""}>
@@ -96151,7 +96420,7 @@
                             </td>
                             <td data-task-col="register" ${hiddenColumns.has("register") ? "hidden" : ""}>${escapeHTML(registerLabel)}</td>
                             <td data-task-col="xero" ${hiddenColumns.has("xero") ? "hidden" : ""}>${escapeHTML(xeroLabel)}</td>
-                            <td><button class="task-complete-button" type="button" data-task-mark-completed="${escapeHTML(rowId)}" ${isCompleted ? "disabled" : ""} title="${isCompleted ? "Task already completed" : "Mark task completed"}" aria-label="${isCompleted ? "Task already completed" : "Mark task completed"}"><span class="task-complete-icon" aria-hidden="true">${isCompleted ? "✓" : "•"}</span><span>${isCompleted ? "Completed" : "Complete"}</span></button></td>
+                            <td><button class="task-complete-button ${actionClass}" type="button" data-task-mark-completed="${escapeHTML(rowId)}" data-task-action-kind="${escapeHTML(actionKind)}" ${actionDisabled ? "disabled" : ""} title="${escapeHTML(actionLabel)}" aria-label="${escapeHTML(actionLabel)}"><span class="task-complete-icon" aria-hidden="true">${escapeHTML(actionIcon)}</span><span>${escapeHTML(actionLabel)}</span></button></td>
                         </tr>
                     `;
                 }).join("");
@@ -96207,11 +96476,21 @@
                     });
                 });
                 body.querySelectorAll("[data-task-mark-completed]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
+                    button.addEventListener("click", async (event) => {
                         event.stopPropagation();
                         const rowId = String(button.getAttribute("data-task-mark-completed") || "");
+                        const actionKind = String(button.getAttribute("data-task-action-kind") || "complete").trim().toLowerCase();
                         const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
                         if (!match) return;
+                        if (actionKind === "start_vat") {
+                            await handleVatTaskStartFlow(match);
+                            return;
+                        }
+                        if (actionKind === "start_bookkeeping") {
+                            await handleBookkeepingTaskStartFlow(match, allRows);
+                            return;
+                        }
+                        if (actionKind === "awaiting_review") return;
                         const rowNode = button.closest("tr");
                         const applyCompletion = () => {
                             updateBmTaskStatus(match, "completed", "", {
