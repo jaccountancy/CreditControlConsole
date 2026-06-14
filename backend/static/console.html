@@ -99648,6 +99648,23 @@
                             actionIcon = "↗";
                         }
                     }
+                    if (!isCompleted && workflowType === "bookkeeping" && actionKind === "start_bookkeeping") {
+                        const xeroConnected = isXeroConnected();
+                        const hasXeroTenantConnection = Boolean(xeroResolved?.matched && String(xeroResolved?.tenantId || "").trim());
+                        if (!xeroConnected) {
+                            actionKind = "connect_xero";
+                            actionLabel = "Connect Xero";
+                            actionClass = "";
+                            actionDisabled = true;
+                            actionIcon = "•";
+                        } else if (!hasXeroTenantConnection) {
+                            actionKind = "open_bookkeeping_queue";
+                            actionLabel = "Match Xero workspace";
+                            actionClass = "is-start";
+                            actionDisabled = false;
+                            actionIcon = "↗";
+                        }
+                    }
                     if (mode === "completed") {
                         actionKind = "restore";
                         actionLabel = "Restore";
@@ -99784,6 +99801,11 @@
                         if (actionKind === "open_vat_queue") {
                             openVatReturnPrepareScreen();
                             showToast("Select the matching Xero workspace before starting VAT prep for this task.", "info");
+                            return;
+                        }
+                        if (actionKind === "open_bookkeeping_queue") {
+                            openMeReportScreen();
+                            showToast("Match the client to a Xero workspace before starting monthly bookkeeping.", "info");
                             return;
                         }
                         if (actionKind === "awaiting_review") return;
