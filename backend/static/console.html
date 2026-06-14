@@ -94157,6 +94157,30 @@
                 return [...list].sort((left, right) => dateSortValue(right?.stamp || "") - dateSortValue(left?.stamp || ""));
             }
 
+            function bmTaskCurrentActorName() {
+                const data = window.HYMN_PANEL_DATA || {};
+                const candidates = [
+                    data?.user?.displayName,
+                    data?.user?.name,
+                    data?.session?.user?.displayName,
+                    data?.session?.user?.name,
+                    window.HYMN_PANEL_USER?.name,
+                    window.HYMN_PANEL_USER?.firstName,
+                ];
+                for (const candidate of candidates) {
+                    const text = String(candidate || "").trim();
+                    if (text) return text;
+                }
+                return "Jay Wilson";
+            }
+
+            function bmTaskCleanProgressNoteDetail(value = "") {
+                return String(value || "")
+                    .replace(/^task note added\.?\s*/i, "")
+                    .replace(/^bulk note added\.?\s*/i, "")
+                    .trim();
+            }
+
             function appendBmTaskHistory(taskKey = "", event = {}) {
                 if (!taskKey) return;
                 if (!Array.isArray(companiesHouseSettings.bmTaskHistoryByKey[taskKey])) {
@@ -94167,6 +94191,7 @@
                     title: String(event?.title || "Task updated").trim() || "Task updated",
                     detail: String(event?.detail || "").trim(),
                     status: String(event?.status || "").trim(),
+                    actor: String(event?.actor || "").trim(),
                     stamp: event?.stamp || new Date().toISOString(),
                 });
             }
@@ -94239,6 +94264,7 @@
                     title: bmTaskStatusLabel(status),
                     detail: fullNote,
                     status,
+                    actor: String(options?.actorName || bmTaskCurrentActorName()),
                     stamp: nowIso,
                 });
                 saveBmTaskLocalState();
@@ -94489,10 +94515,10 @@
                                     ? `<div class="task-history-list">${progressNotes.map((entry) => `
                                         <article class="task-history-item">
                                             <div class="task-history-item-head">
-                                                <strong>${escapeHTML(entry?.title || "Note")}</strong>
+                                                <strong>Task Note</strong>
                                                 <span>${escapeHTML(entry?.stamp ? formatDateTime(entry.stamp) : "—")}</span>
                                             </div>
-                                            <p>${escapeHTML(entry?.detail || "No note text")}</p>
+                                            <p>${escapeHTML(`Task Note Added by ${String(entry?.actor || bmTaskCurrentActorName())} --> ${bmTaskCleanProgressNoteDetail(entry?.detail || "") || "No note text"}`)}</p>
                                         </article>
                                     `).join("")}</div>`
                                     : `<p class="detail-meta">No task notes yet.</p>`}
