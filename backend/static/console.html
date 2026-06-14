@@ -24380,27 +24380,16 @@
                     transform: scale(1);
                 }
             }
-            .task-row-completing {
-                animation: taskRowCompleteOut 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            .task-row-completing,
+            .task-row-collapsing {
                 transform-origin: center;
                 pointer-events: none;
             }
-            @keyframes taskRowCompleteOut {
-                0% {
-                    opacity: 1;
-                    transform: translateX(0) scale(1);
-                    filter: saturate(1);
-                }
-                68% {
-                    opacity: 0.55;
-                    transform: translateX(8px) scale(0.994);
-                    filter: saturate(0.92);
-                }
-                100% {
-                    opacity: 0;
-                    transform: translateX(22px) scale(0.985);
-                    filter: saturate(0.82);
-                }
+            .task-row-collapsing > td {
+                transition: padding-top 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), padding-bottom 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.34s ease;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+                border-color: transparent !important;
             }
             .task-row-clickable {
                 cursor: pointer;
@@ -97149,6 +97138,32 @@
                 renderTaskSubpages();
             }
 
+            function animateTaskRowCollapse(rowNode, onDone) {
+                if (!(rowNode instanceof HTMLElement)) {
+                    if (typeof onDone === "function") onDone();
+                    return;
+                }
+                const startHeight = Math.max(1, rowNode.getBoundingClientRect().height || rowNode.offsetHeight || 0);
+                rowNode.classList.add("task-row-collapsing");
+                rowNode.style.height = `${startHeight}px`;
+                rowNode.style.opacity = "1";
+                rowNode.style.overflow = "hidden";
+                rowNode.style.transition = "height 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1)";
+                void rowNode.offsetHeight;
+                rowNode.style.height = "0px";
+                rowNode.style.opacity = "0";
+                rowNode.style.transform = "translateX(22px) scale(0.985)";
+                window.setTimeout(() => {
+                    rowNode.classList.remove("task-row-collapsing", "task-row-completing");
+                    rowNode.style.removeProperty("height");
+                    rowNode.style.removeProperty("opacity");
+                    rowNode.style.removeProperty("overflow");
+                    rowNode.style.removeProperty("transition");
+                    rowNode.style.removeProperty("transform");
+                    if (typeof onDone === "function") onDone();
+                }, 360);
+            }
+
             function renderTaskSubpageTable(mode, bodyId, metaId) {
                 const body = document.getElementById(bodyId);
                 const meta = document.getElementById(metaId);
@@ -97414,25 +97429,31 @@
                         if (actionKind === "awaiting_review") return;
                         const rowNode = button.closest("tr");
                         const applyCompletion = () => {
-                            updateBmTaskStatus(match, "completed", "", {
-                                autoNote: "Task marked completed from task list.",
-                            });
-                            if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
-                                resetTaskBookkeepingWorkflowPanel();
+                            try {
+                                updateBmTaskStatus(match, "completed", "", {
+                                    autoNote: "Task marked completed from task list.",
+                                });
+                                if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
+                                    resetTaskBookkeepingWorkflowPanel();
+                                }
+                                if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
+                                    companiesHouseSettings.bmTasksSelection.delete(rowId);
+                                }
+                                showToast("Task completed. Review it in Completed Tasks.", "success");
+                            } catch (error) {
+                                console.error("Unable to complete task", error);
+                                showToast(error?.message || "Unable to complete task.", "error");
+                            } finally {
+                                renderTaskSubpages();
                             }
-                            if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
-                                companiesHouseSettings.bmTasksSelection.delete(rowId);
-                            }
-                            showToast("Task completed. Review it in Completed Tasks.", "success");
-                            renderTaskSubpages();
                         };
-                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing")) {
+                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing") && !rowNode.classList.contains("task-row-collapsing")) {
                             rowNode.classList.add("task-row-completing");
                             button.classList.add("is-completing");
                             const icon = button.querySelector(".task-complete-icon");
                             if (icon) icon.textContent = "✓";
                             button.disabled = true;
-                            window.setTimeout(applyCompletion, 340);
+                            animateTaskRowCollapse(rowNode, applyCompletion);
                             return;
                         }
                         applyCompletion();
