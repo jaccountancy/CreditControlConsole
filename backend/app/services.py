@@ -4354,11 +4354,25 @@ def pi_clearing_payload(user: dict) -> dict:
     return {"runs": runs}
 
 
+def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) -> str:
+    requested = str((payload or {}).get("accountCode") or "").strip()
+    if requested:
+        return requested
+    configured = ""
+    try:
+        connection_row = get_master_xero_connection_for_user(user["id"])
+        settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
+        configured = str(settings.get("piClearingAccountCode") or "").strip()
+    except HTTPException:
+        configured = ""
+    return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+
+
 async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
     safe_payload = payload if isinstance(payload, dict) else {}
     month_start, month_end = _pi_month_bounds(str(safe_payload.get("month") or safe_payload.get("monthStart") or ""))
     month_label = month_start.strftime("%Y-%m")
-    account_code = str(safe_payload.get("accountCode") or PI_CLEARING_DEFAULT_ACCOUNT_CODE).strip() or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+    account_code = _pi_clearing_account_code_for_user(user, safe_payload)
     force_refresh_xero = bool(safe_payload.get("refreshXero"))
     force_refresh_ignition = bool(safe_payload.get("refreshIgnition"))
 
@@ -5123,6 +5137,7 @@ def _default_posting_settings(tenant_id: str | None = None) -> dict:
         "latePaymentChargeTaxType": str(settings.late_payment_charge_tax_type or "OUTPUT2").strip(),
         "badDebtWriteOffAccountCode": str(settings.bad_debt_write_off_account_code or "402").strip(),
         "badDebtWriteOffAccountName": "",
+        "piClearingAccountCode": PI_CLEARING_DEFAULT_ACCOUNT_CODE,
         "updatedAt": "",
     }
 
@@ -5138,6 +5153,7 @@ def _serialize_posting_settings(row: dict | None, tenant_id: str | None = None) 
         "latePaymentChargeTaxType": row.get("late_payment_charge_tax_type") or defaults["latePaymentChargeTaxType"],
         "badDebtWriteOffAccountCode": row.get("bad_debt_write_off_account_code") or defaults["badDebtWriteOffAccountCode"],
         "badDebtWriteOffAccountName": row.get("bad_debt_write_off_account_name") or "",
+        "piClearingAccountCode": row.get("pi_clearing_account_code") or defaults["piClearingAccountCode"],
         "updatedAt": _iso(row.get("updated_at")) or "",
     }
 
@@ -5806,8 +5822,11 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
     account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
     late_payment_code = str(payload.get("latePaymentChargeAccountCode") or "").strip()
     bad_debt_code = str(payload.get("badDebtWriteOffAccountCode") or "").strip()
+    pi_clearing_code = str(payload.get("piClearingAccountCode") or "").strip()
     if not late_payment_code or not bad_debt_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose both Xero posting accounts before saving.")
+    if not pi_clearing_code:
+        pi_clearing_code = PI_CLEARING_DEFAULT_ACCOUNT_CODE
     late_payment_account = account_by_code.get(late_payment_code.lower())
     bad_debt_account = account_by_code.get(bad_debt_code.lower())
     if late_payment_account is None:
@@ -5829,17 +5848,19 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
                     late_payment_charge_tax_type,
                     bad_debt_write_off_account_code,
                     bad_debt_write_off_account_name,
+                    pi_clearing_account_code,
                     updated_by_user_id,
                     created_at,
                     updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE
                 SET late_payment_charge_account_code = EXCLUDED.late_payment_charge_account_code,
                     late_payment_charge_account_name = EXCLUDED.late_payment_charge_account_name,
                     late_payment_charge_tax_type = EXCLUDED.late_payment_charge_tax_type,
                     bad_debt_write_off_account_code = EXCLUDED.bad_debt_write_off_account_code,
                     bad_debt_write_off_account_name = EXCLUDED.bad_debt_write_off_account_name,
+                    pi_clearing_account_code = EXCLUDED.pi_clearing_account_code,
                     updated_by_user_id = EXCLUDED.updated_by_user_id,
                     updated_at = EXCLUDED.updated_at
                 """,
@@ -5850,6 +5871,7 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
                     tax_type,
                     bad_debt_account["code"],
                     bad_debt_account.get("name") or "",
+                    pi_clearing_code,
                     user["id"],
                     now,
                     now,
@@ -5868,6 +5890,7 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
             "late_payment_charge_tax_type": tax_type,
             "bad_debt_write_off_account_code": bad_debt_account["code"],
             "bad_debt_write_off_account_name": bad_debt_account.get("name") or "",
+            "pi_clearing_account_code": pi_clearing_code,
         },
         user["id"],
     )

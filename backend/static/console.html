@@ -29693,6 +29693,10 @@
                                             <span>Bad debt write-offs</span>
                                             <select id="badDebtWriteOffAccountSelect"></select>
                                         </label>
+                                        <label class="posting-settings-field" for="piClearingAccountCodeInput">
+                                            <span>PI clearing nominal</span>
+                                            <input id="piClearingAccountCodeInput" type="text" placeholder="Account code or name (e.g. 700 / PI Clearing)">
+                                        </label>
                                     </div>
                                     <div class="posting-settings-status" id="postingSettingsStatus">
                                         <span>Chart of accounts</span>
@@ -35160,6 +35164,10 @@
                                         <span>Month</span>
                                         <input type="month" id="piClearingMonthInput" />
                                     </label>
+                                    <label class="field-inline" for="piClearingAccountCodeInputInline">
+                                        <span>PI nominal</span>
+                                        <input id="piClearingAccountCodeInputInline" type="text" placeholder="PI clearing account code/name" />
+                                    </label>
                                     <button class="primary-button" id="piClearingStartWorkflowButton" type="button">Start workflow</button>
                                 </div>
                             </div>
@@ -36556,6 +36564,7 @@
                 latePaymentChargeTaxType: "OUTPUT2",
                 badDebtWriteOffAccountCode: "402",
                 badDebtWriteOffAccountName: "",
+                piClearingAccountCode: "PI Clearing Account",
                 updatedAt: ""
             };
             const emptyData = {
@@ -36691,6 +36700,7 @@
             let piClearingCreditNotesRunning = false;
             let piClearingSelectedRunId = "";
             let piClearingSelectedMonth = "";
+            let piClearingSelectedAccountCode = "";
             let piClearingHydrated = false;
             let piClearingWizardOpen = false;
             let piClearingWizardStep = 1;
@@ -38164,6 +38174,7 @@
                     latePaymentChargeTaxType: String(settings?.latePaymentChargeTaxType || defaultPostingSettings.latePaymentChargeTaxType),
                     badDebtWriteOffAccountCode: String(settings?.badDebtWriteOffAccountCode || defaultPostingSettings.badDebtWriteOffAccountCode),
                     badDebtWriteOffAccountName: String(settings?.badDebtWriteOffAccountName || ""),
+                    piClearingAccountCode: String(settings?.piClearingAccountCode || defaultPostingSettings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE),
                     updatedAt: String(settings?.updatedAt || "")
                 };
             }
@@ -46560,6 +46571,13 @@
                 return byMonth || piClearingRuns[0];
             }
 
+            function currentPiClearingAccountCode() {
+                const manual = String(piClearingSelectedAccountCode || "").trim();
+                if (manual) return manual;
+                const configured = String(state?.postingSettings?.piClearingAccountCode || "").trim();
+                return configured || PI_CLEARING_DEFAULT_ACCOUNT_CODE;
+            }
+
             function buildPiClearingPayoutBreakdown(rows = []) {
                 const grouped = new Map();
                 (Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -46936,7 +46954,7 @@
                         method: "POST",
                         body: JSON.stringify({
                             month: piClearingSelectedMonth || currentMonthKey(),
-                            accountCode: PI_CLEARING_DEFAULT_ACCOUNT_CODE,
+                            accountCode: currentPiClearingAccountCode(),
                             refreshXero: true,
                             refreshIgnition: true,
                         }),
@@ -46990,7 +47008,7 @@
                         method: "POST",
                         body: JSON.stringify({
                             rowIds,
-                            accountCode: PI_CLEARING_DEFAULT_ACCOUNT_CODE,
+                            accountCode: currentPiClearingAccountCode(),
                         }),
                     }, { runId: run.id });
                     if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
@@ -47045,6 +47063,7 @@
             function renderPiClearingAccountScreen() {
                 const summary = document.getElementById("piClearingAccountSummary");
                 const monthInput = document.getElementById("piClearingMonthInput");
+                const accountCodeInput = document.getElementById("piClearingAccountCodeInputInline");
                 const startButton = document.getElementById("piClearingStartWorkflowButton");
                 const runsBody = document.getElementById("piClearingRunsBody");
                 const rowsBody = document.getElementById("piClearingRowsBody");
@@ -47081,6 +47100,14 @@
 
                 if (!piClearingSelectedMonth) piClearingSelectedMonth = currentMonthKey();
                 if (monthInput) monthInput.value = piClearingSelectedMonth;
+                if (!String(piClearingSelectedAccountCode || "").trim()) {
+                    piClearingSelectedAccountCode = String(state?.postingSettings?.piClearingAccountCode || "").trim()
+                        || PI_CLEARING_DEFAULT_ACCOUNT_CODE;
+                }
+                if (accountCodeInput) {
+                    accountCodeInput.value = String(piClearingSelectedAccountCode || "").trim();
+                    accountCodeInput.disabled = piClearingWorkflowRunning || piClearingCreditNotesRunning;
+                }
                 if (startButton) {
                     startButton.disabled = piClearingWorkflowRunning;
                     startButton.textContent = piClearingWorkflowRunning ? "Running workflow..." : "Start workflow";
@@ -47096,6 +47123,15 @@
                         renderPiClearingAccountScreen();
                     });
                 }
+                if (accountCodeInput && accountCodeInput.dataset.piWired !== "true") {
+                    accountCodeInput.dataset.piWired = "true";
+                    accountCodeInput.addEventListener("input", (event) => {
+                        piClearingSelectedAccountCode = String(event.target.value || "").trim();
+                    });
+                    accountCodeInput.addEventListener("change", (event) => {
+                        piClearingSelectedAccountCode = String(event.target.value || "").trim();
+                    });
+                }
                 if (startButton && startButton.dataset.piWired !== "true") {
                     startButton.dataset.piWired = "true";
                     startButton.addEventListener("click", runPiClearingWorkflow);
@@ -47108,7 +47144,8 @@
                 const selectedMonthLabel = formatMonthKey(piClearingRunMonth(run) || piClearingSelectedMonth);
                 const summaryPrefix = piClearingStatusMessage || (piClearingLoading ? "Loading PI clearing data..." : "");
                 const monthLabel = run ? formatMonthKey(piClearingRunMonth(run)) : selectedMonthLabel;
-                summary.textContent = [summaryPrefix, monthLabel ? `Selected month: ${monthLabel}.` : ""].filter(Boolean).join(" ");
+                const accountLabel = currentPiClearingAccountCode();
+                summary.textContent = [summaryPrefix, monthLabel ? `Selected month: ${monthLabel}.` : "", `Nominal: ${accountLabel}.`].filter(Boolean).join(" ");
                 summary.dataset.tone = piClearingStatusTone || "info";
                 if (wizardContextMonth) {
                     wizardContextMonth.textContent = selectedMonthLabel ? `Month ${selectedMonthLabel}` : "Month --";
@@ -93168,6 +93205,7 @@
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 const lateSelect = document.getElementById("latePaymentChargeAccountSelect");
                 const badDebtSelect = document.getElementById("badDebtWriteOffAccountSelect");
+                const piClearingInput = document.getElementById("piClearingAccountCodeInput");
                 const status = document.getElementById("postingSettingsStatus");
                 const help = document.getElementById("postingSettingsHelp");
                 const saveButton = document.getElementById("savePostingSettingsButton");
@@ -93175,13 +93213,18 @@
 
                 renderPostingAccountSelect(lateSelect, settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
                 renderPostingAccountSelect(badDebtSelect, settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
+                if (piClearingInput) {
+                    piClearingInput.value = String(settings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE);
+                    piClearingInput.disabled = postingSettingsSaving;
+                }
 
                 if (help) {
-                    help.textContent = `Late payment charges use ${settings.latePaymentChargeTaxType || "OUTPUT2"} VAT. Bad debt write-offs create no-VAT credit notes and allocate them to the original invoice.`;
+                    help.textContent = `Late payment charges use ${settings.latePaymentChargeTaxType || "OUTPUT2"} VAT. Bad debt write-offs create no-VAT credit notes and allocate them to the original invoice. PI clearing nominal controls which Xero account PI clearing workflow pulls from.`;
                 }
                 if (status) {
                     const lateAccount = postingAccountDescription(settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
                     const badDebtAccount = postingAccountDescription(settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
+                    const piClearingAccount = String(settings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE).trim() || PI_CLEARING_DEFAULT_ACCOUNT_CODE;
                     const loadedCopy = xeroAccountsLoaded
                         ? `${xeroAccounts.length.toLocaleString("en-GB")} active Xero account${xeroAccounts.length === 1 ? "" : "s"} loaded.`
                         : isXeroConnected()
@@ -93192,6 +93235,7 @@
                         <span>Current codes</span>
                         <div>Late payment charges: ${escapeHTML(lateAccount)}</div>
                         <div>Bad debt write-offs: ${escapeHTML(badDebtAccount)}</div>
+                        <div>PI clearing nominal: ${escapeHTML(piClearingAccount)}</div>
                         <div>${escapeHTML(stateCopy)}</div>
                     `;
                 }
@@ -93239,8 +93283,12 @@
                 if (!isXeroConnected()) return showToast("Connect Xero before saving posting accounts", "error");
                 const latePaymentChargeAccountCode = document.getElementById("latePaymentChargeAccountSelect")?.value || "";
                 const badDebtWriteOffAccountCode = document.getElementById("badDebtWriteOffAccountSelect")?.value || "";
+                const piClearingAccountCode = String(document.getElementById("piClearingAccountCodeInput")?.value || "").trim();
                 if (!latePaymentChargeAccountCode || !badDebtWriteOffAccountCode) {
                     return showToast("Choose both Xero posting accounts before saving", "error");
+                }
+                if (!piClearingAccountCode) {
+                    return showToast("Enter the PI clearing nominal code or account name before saving", "error");
                 }
                 postingSettingsSaving = true;
                 postingSettingsError = "";
@@ -93257,6 +93305,7 @@
                         body: JSON.stringify({
                             latePaymentChargeAccountCode,
                             badDebtWriteOffAccountCode,
+                            piClearingAccountCode,
                             latePaymentChargeTaxType: state.postingSettings?.latePaymentChargeTaxType || defaultPostingSettings.latePaymentChargeTaxType
                         })
                     });
