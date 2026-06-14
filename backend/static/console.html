@@ -29631,10 +29631,6 @@
                                 <div class="ch-settings-actions">
                                     <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Use Upload files to import BM Client and BM Task CSVs.</span>
                                 </div>
-                                <div class="page-pills" id="chRegisterDataTabs" style="margin: 8px 0 2px;">
-                                    <button class="page-pill is-active" type="button" data-ch-register-tab="clients">Client table</button>
-                                    <span class="page-pills-meta" id="chAuthCodeRegisterLoadedMeta"></span>
-                                </div>
                                 <div class="ch-register-toolbar">
                                     <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, VAT number, manager, email, phone, address, source...">
                                     <select id="chAuthCodeRegisterManagerFilter" aria-label="Filter by manager">
@@ -94183,7 +94179,6 @@
                 const nextPageButton = document.getElementById("chAuthCodeRegisterNextPageButton");
                 const loadMoreButton = document.getElementById("chAuthCodeRegisterLoadMoreButton");
                 const meta = document.getElementById("chAuthCodeRegisterTableMeta");
-                const loadedMeta = document.getElementById("chAuthCodeRegisterLoadedMeta");
                 if (!body) return;
                 const list = Array.isArray(rows) ? rows : [];
                 renderAuthRegisterHeader();
@@ -94244,12 +94239,8 @@
                 if (meta) {
                     meta.textContent = `${pageRows.length.toLocaleString("en-GB")} shown · ${filteredRows.length.toLocaleString("en-GB")} matched of ${Number(totalCount || list.length).toLocaleString("en-GB")}`;
                 }
-                if (list.length) {
-                    const loadedText = `Loaded ${filteredRows.length.toLocaleString("en-GB")} matched rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`;
-                    if (loadedMeta) loadedMeta.textContent = loadedText;
-                    setAuthCodeRegisterStatus(loadedText, "muted");
-                } else if (loadedMeta) {
-                    loadedMeta.textContent = "";
+                if (!list.length) {
+                    setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 }
                 syncAuthRegisterOverrideButton();
                 setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
