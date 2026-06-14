@@ -2493,7 +2493,16 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
 
 @app.get("/api/micro-analyzer/clients")
 def api_micro_analyzer_clients(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **micro_analyzer_clients_payload(user)}
+    try:
+        return {"status": "ok", **micro_analyzer_clients_payload(user)}
+    except Exception as exc:
+        logger.exception("Unable to load micro-analyzer clients", extra={"user_id": user.get("id"), "error": str(exc)})
+        return {
+            "status": "ok",
+            "clients": [],
+            "count": 0,
+            "warning": "Micro-analyzer clients could not be loaded. Check backend logs for details.",
+        }
 
 
 @app.get("/api/vault")
