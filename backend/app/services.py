@@ -30841,16 +30841,28 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, name, xero_contact_id, tenant_id
-                FROM customers
-                WHERE tenant_id = ANY(%s)
-                  AND COALESCE(TRIM(xero_contact_id), '') <> ''
-                ORDER BY name ASC
-                """,
-                (tenant_ids,),
-            )
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, name, xero_contact_id, tenant_id, vat_number
+                    FROM customers
+                    WHERE tenant_id = ANY(%s)
+                      AND COALESCE(TRIM(xero_contact_id), '') <> ''
+                    ORDER BY name ASC
+                    """,
+                    (tenant_ids,),
+                )
+            except pg_errors.UndefinedColumn:
+                cursor.execute(
+                    """
+                    SELECT id, name, xero_contact_id, tenant_id, ''::text AS vat_number
+                    FROM customers
+                    WHERE tenant_id = ANY(%s)
+                      AND COALESCE(TRIM(xero_contact_id), '') <> ''
+                    ORDER BY name ASC
+                    """,
+                    (tenant_ids,),
+                )
             customer_rows = cursor.fetchall() or []
             cursor.execute(
                 """
@@ -30927,6 +30939,7 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                 "xeroContactId": str(customer.get("xero_contact_id") or ""),
                 "tenantId": str(customer.get("tenant_id") or ""),
                 "tenantName": tenant_name_by_id.get(str(customer.get("tenant_id") or ""), str(customer.get("tenant_id") or "")),
+                "vatNumber": str(customer.get("vat_number") or "").strip(),
             }
         )
 
@@ -30939,6 +30952,10 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
         if dedupe_key in seen_contact_ids:
             continue
         seen_contact_ids.add(dedupe_key)
+        # VAT on Unregistered should only include clients that do not have a VAT
+        # number in the client register.
+        if str(row.get("vatNumber") or "").strip():
+            continue
         deduped.append(row)
     return {"clients": deduped, "count": len(deduped)}
 
