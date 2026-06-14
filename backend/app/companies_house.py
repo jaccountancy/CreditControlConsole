@@ -5475,6 +5475,22 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
 def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
     cursor.execute(
         """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ch_companies'
+        """
+    )
+    company_columns = {str(item.get("column_name") or "").strip() for item in (cursor.fetchall() or [])}
+
+    def c_col(column_name: str, *, default_expr: str, alias: str | None = None) -> str:
+        label = alias or column_name
+        if column_name in company_columns:
+            return f"c.{column_name} AS {label}"
+        return f"{default_expr} AS {label}"
+
+    cursor.execute(
+        f"""
         SELECT r.id,
                r.company_number,
                COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
@@ -5484,20 +5500,20 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                r.vat_number,
                r.company_utr,
                r.personal_utr,
-               c.id AS company_id,
-               c.company_status,
-               c.filing_authority_reference,
-               c.officers,
-               c.pscs,
-               c.filing_history,
-               c.registered_office,
-               c.incorporation_date,
-               c.next_made_up_to_date,
-               c.next_due_date,
-               c.last_filed_date,
-               COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
-               COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
-               COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
+               {c_col("id", default_expr="NULL::uuid", alias="company_id")},
+               {c_col("company_status", default_expr="''")},
+               {c_col("filing_authority_reference", default_expr="''")},
+               {c_col("officers", default_expr="'[]'::jsonb")},
+               {c_col("pscs", default_expr="'[]'::jsonb")},
+               {c_col("filing_history", default_expr="'[]'::jsonb")},
+               {c_col("registered_office", default_expr="''")},
+               {c_col("incorporation_date", default_expr="NULL::date")},
+               {c_col("next_made_up_to_date", default_expr="NULL::date")},
+               {c_col("next_due_date", default_expr="NULL::date")},
+               {c_col("last_filed_date", default_expr="NULL::date")},
+               COALESCE(NULLIF({ 'c.contact_email' if 'contact_email' in company_columns else "''" }, ''), r.contact_email) AS contact_email,
+               COALESCE(NULLIF({ 'c.contact_phone' if 'contact_phone' in company_columns else "''" }, ''), r.contact_phone) AS contact_phone,
+               COALESCE(NULLIF({ 'c.client_address' if 'client_address' in company_columns else "''" }, ''), r.client_address) AS client_address,
                r.code_hint,
                r.source_filename,
                r.uploaded_at,
