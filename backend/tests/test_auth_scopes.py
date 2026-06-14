@@ -11,16 +11,29 @@ os.environ.setdefault("XERO_CLIENT_SECRET", "test-xero-client-secret")
 os.environ.setdefault("XERO_REDIRECT_URI", "https://example.com/xero/callback")
 
 try:
-    from app.auth import xero_scope_string
+    from app.auth import configured_xero_scopes_include_payroll, xero_scope_string
 
     _AUTH_TEST_IMPORT_ERROR = ""
 except ModuleNotFoundError as exc:  # pragma: no cover - local runtime guard
     xero_scope_string = None  # type: ignore[assignment]
+    configured_xero_scopes_include_payroll = None  # type: ignore[assignment]
     _AUTH_TEST_IMPORT_ERROR = str(exc)
 
 
 @unittest.skipIf(xero_scope_string is None, f"Auth scope tests skipped: {_AUTH_TEST_IMPORT_ERROR}")
 class XeroScopeStringTests(unittest.TestCase):
+    def test_detects_payroll_scopes_in_config(self):
+        self.assertTrue(
+            configured_xero_scopes_include_payroll(
+                "openid profile email offline_access payroll.employees payroll.payruns"
+            )
+        )
+        self.assertFalse(
+            configured_xero_scopes_include_payroll(
+                "openid profile email offline_access accounting.invoices accounting.payments"
+            )
+        )
+
     def test_filters_malformed_or_unknown_tokens(self):
         configured = "openid profile email offline_access payroll.e\nmployees payroll.payruns,accounting.invoices,scope=accounting.payments Xero"
         scopes = xero_scope_string(configured, include_payroll_scopes=True).split()

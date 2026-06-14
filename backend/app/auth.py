@@ -109,6 +109,10 @@ def _configured_xero_scopes(configured_scopes: str) -> list[str]:
     return scope_tokens
 
 
+def configured_xero_scopes_include_payroll(configured_scopes: str) -> bool:
+    return any(scope.startswith("payroll.") for scope in _configured_xero_scopes(configured_scopes))
+
+
 def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = False) -> str:
     scopes = []
     configured_scope_tokens = _configured_xero_scopes(configured_scopes)

@@ -23,6 +23,7 @@ from .auth import (
     allowed_panel_origins,
     approve_device_code,
     clear_session_cookie,
+    configured_xero_scopes_include_payroll,
     consume_oauth_state,
     create_device_login,
     current_user_from_request,
@@ -634,7 +635,10 @@ def auth_xero_start(
             return response
     state_token = start_oauth_state(redirect_to=redirect_to)
     settings = get_settings()
-    request_payroll_scopes = bool(include_payroll) and bool(settings.xero_enable_payroll_scopes)
+    request_payroll_scopes = bool(include_payroll) and (
+        bool(settings.xero_enable_payroll_scopes)
+        or configured_xero_scopes_include_payroll(settings.xero_scopes)
+    )
     return RedirectResponse(
         xero_authorize_url(
             state_token,
