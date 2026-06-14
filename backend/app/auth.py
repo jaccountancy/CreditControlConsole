@@ -129,7 +129,8 @@ def _configured_xero_scopes(configured_scopes: str) -> list[str]:
 
 def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = False) -> str:
     scopes = []
-    for configured_scope in _configured_xero_scopes(configured_scopes):
+    configured_scope_tokens = _configured_xero_scopes(configured_scopes)
+    for configured_scope in configured_scope_tokens:
         for scope in LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,)):
             if scope not in KNOWN_XERO_SCOPES:
                 continue
@@ -142,7 +143,10 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
     for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *DEFAULT_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
             scopes.append(required_scope)
-    if include_payroll_scopes:
+    # Only request Payroll scopes when Payroll scopes are explicitly configured.
+    # This prevents OAuth invalid_scope failures for apps/tenants without Payroll API access.
+    payroll_scopes_configured = any(scope.startswith("payroll.") for scope in configured_scope_tokens)
+    if include_payroll_scopes and payroll_scopes_configured:
         for payroll_scope in XERO_PAYROLL_SCOPES:
             if payroll_scope not in scopes:
                 scopes.append(payroll_scope)
