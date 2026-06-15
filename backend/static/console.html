@@ -48998,6 +48998,7 @@
                 if (!Array.isArray(piClearingRuns) || !piClearingRuns.length) return null;
                 const byId = piClearingRuns.find((run) => String(run?.id || "") === String(piClearingSelectedRunId || ""));
                 if (byId) return byId;
+                if (piClearingWorkflowRunning && !String(piClearingSelectedRunId || "").trim()) return null;
                 return piClearingRuns[0];
             }
 
@@ -49823,7 +49824,9 @@
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccount);
                     piClearingRuns = Array.isArray(payload?.runs) ? payload.runs : [];
-                    if (!piClearingSelectedRunId && piClearingRuns[0]) piClearingSelectedRunId = String(piClearingRuns[0].id || "");
+                    if (!piClearingWorkflowRunning && !piClearingSelectedRunId && piClearingRuns[0]) {
+                        piClearingSelectedRunId = String(piClearingRuns[0].id || "");
+                    }
                     if (!preserveStatus && !piClearingStatusMessage) {
                         piClearingStatusMessage = piClearingRuns.length
                             ? ""
@@ -50040,6 +50043,8 @@
                 piClearingWorkflowRunning = true;
                 piClearingWorkflowMode = includeIgnition ? "full" : "step1";
                 piClearingWorkflowRefreshRequested = refreshXero;
+                // Clear selected run while the new workflow is building so old batch rows do not render.
+                piClearingSelectedRunId = "";
                 piClearingWizardOpen = true;
                 piClearingWizardStep = targetStep;
                 piClearingShowMatchedStep1 = false;
