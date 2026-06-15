@@ -7660,10 +7660,10 @@ def list_companies(filters: dict | None = None) -> list[dict]:
     search = (filters.get("search") or "").strip().lower()
     if search:
         where_clauses.append(
-            "(LOWER(c.company_name) LIKE %s OR LOWER(c.client_name) LIKE %s OR LOWER(c.company_number) LIKE %s OR LOWER(c.contact_email) LIKE %s OR LOWER(c.contact_phone) LIKE %s OR LOWER(c.client_address) LIKE %s)"
+            "(LOWER(c.company_name) LIKE %s OR LOWER(c.client_name) LIKE %s OR LOWER(c.company_number) LIKE %s OR LOWER(c.vat_number) LIKE %s OR LOWER(c.contact_email) LIKE %s OR LOWER(c.contact_phone) LIKE %s OR LOWER(c.client_address) LIKE %s)"
         )
         like = f"%{search}%"
-        params.extend([like, like, like, like, like, like])
+        params.extend([like, like, like, like, like, like, like])
 
     internal_status = (filters.get("internalStatus") or "").strip()
     if internal_status and internal_status != "all":

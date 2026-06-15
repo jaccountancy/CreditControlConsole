@@ -21780,6 +21780,17 @@ def _juksib_fetch_client_register_rows_for_vat() -> list[dict]:
 
 
 def _juksib_build_vat_register_index(register_rows: list[dict]) -> dict:
+    def should_replace(existing: dict | None, candidate: dict | None) -> bool:
+        if not isinstance(candidate, dict):
+            return False
+        if not isinstance(existing, dict):
+            return True
+        existing_has_vat = bool(_juksib_clean_vat_number(existing.get("vat_number")))
+        candidate_has_vat = bool(_juksib_clean_vat_number(candidate.get("vat_number")))
+        if candidate_has_vat and not existing_has_vat:
+            return True
+        return False
+
     by_client_id: dict[str, dict] = {}
     by_name: dict[str, dict] = {}
     by_id: dict[str, dict] = {}
@@ -21788,10 +21799,10 @@ def _juksib_build_vat_register_index(register_rows: list[dict]) -> dict:
         if row_id:
             by_id[row_id] = row
         client_id_key = str(row.get("client_id") or "").strip().lower()
-        if client_id_key and client_id_key not in by_client_id:
+        if client_id_key and should_replace(by_client_id.get(client_id_key), row):
             by_client_id[client_id_key] = row
         name_key = _bm_tasks_normalise_name_key(_juksib_register_display_name(row))
-        if name_key and name_key not in by_name:
+        if name_key and should_replace(by_name.get(name_key), row):
             by_name[name_key] = row
     return {"rows": register_rows, "byClientId": by_client_id, "byName": by_name, "byId": by_id}
 

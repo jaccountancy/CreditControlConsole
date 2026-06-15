@@ -91094,6 +91094,19 @@
                 ) || null;
             }
 
+            function microAnalyzerRowHasVatNumber(row = {}) {
+                return Boolean(String(row?.vatNumber || "").trim());
+            }
+
+            function microAnalyzerTenantHasVatRegisteredClient(tenantId = "") {
+                const cleanTenantId = String(tenantId || "").trim();
+                if (!cleanTenantId) return false;
+                return (microAnalyzerRows || []).some((row) => (
+                    String(row?.tenantId || "").trim() === cleanTenantId
+                    && microAnalyzerRowHasVatNumber(row)
+                ));
+            }
+
             function microAnalyzerSetClientHidden(rowId = "", hidden = true) {
                 const cleanRowId = String(rowId || "").trim();
                 if (!cleanRowId) return;
@@ -91127,6 +91140,7 @@
             async function loadMicroAnalyzerTenantWorkspace(tenantId = "", force = false) {
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) return;
+                if (microAnalyzerTenantHasVatRegisteredClient(cleanTenantId)) return;
                 if (microAnalyzerWorkspaceLoading) return;
                 if (!force && microAnalyzerWorkspaceResultsByTenantId[cleanTenantId]) return;
                 microAnalyzerWorkspaceLoading = true;
@@ -91183,6 +91197,10 @@
             async function openMicroAnalyzerTenantWorkspace(tenantId = "") {
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) return;
+                if (microAnalyzerTenantHasVatRegisteredClient(cleanTenantId)) {
+                    showToast("VAT number found in client register. This client is auto-hidden and excluded from setup/sync.", "info");
+                    return;
+                }
                 if (!microAnalyzerConnectionByTenant(cleanTenantId)) {
                     showToast("This Xero organisation is no longer connected.", "error");
                     return;
@@ -91219,7 +91237,15 @@
                         })
                         .filter((row) => Boolean(String(row.tenantId || "").trim()) && Boolean(String(row.id || "").trim()));
                     const existingIds = new Set((microAnalyzerRows || []).map((row) => String(row?.id || "").trim()).filter(Boolean));
-                    microAnalyzerHiddenClientIds = (microAnalyzerHiddenClientIds || []).filter((value) => existingIds.has(String(value || "").trim()));
+                    const priorHidden = new Set((microAnalyzerHiddenClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
+                    const autoHiddenVatIds = (microAnalyzerRows || [])
+                        .filter((row) => microAnalyzerRowHasVatNumber(row))
+                        .map((row) => String(row?.id || "").trim())
+                        .filter(Boolean);
+                    autoHiddenVatIds.forEach((rowId) => priorHidden.add(rowId));
+                    microAnalyzerHiddenClientIds = Array.from(priorHidden.values())
+                        .filter((rowId) => existingIds.has(rowId))
+                        .sort((left, right) => left.localeCompare(right, "en-GB"));
                     persistMicroAnalyzerHiddenClientIds();
                     if (selectedMicroAnalyzerRowId && !existingIds.has(String(selectedMicroAnalyzerRowId || "").trim())) {
                         closeMicroAnalyzerWorkspace();
@@ -91454,6 +91480,15 @@
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) {
                     return { tenantId: "", appliedCount: 0, skippedCount: 0, failed: true, message: "Missing tenant id." };
+                }
+                if (microAnalyzerTenantHasVatRegisteredClient(cleanTenantId)) {
+                    return {
+                        tenantId: cleanTenantId,
+                        appliedCount: 0,
+                        skippedCount: 0,
+                        failed: true,
+                        message: "VAT number found in client register. This client is auto-hidden and excluded from NO VAT updates.",
+                    };
                 }
                 const cleanTransactionIds = (Array.isArray(transactionIds) ? transactionIds : [])
                     .map((value) => String(value || "").trim())
@@ -91814,9 +91849,15 @@
                         };
                     });
                 const availableTenantIds = new Set(candidateRows.map((row) => String(row?.tenantId || "").trim()).filter(Boolean));
+                const blockedTenantIds = new Set(
+                    candidateRows
+                        .filter((row) => Number(row?.totalVatRegisteredCount || 0) > 0)
+                        .map((row) => String(row?.tenantId || "").trim())
+                        .filter(Boolean)
+                );
                 microAnalyzerSelectedTenantIds = (microAnalyzerSelectedTenantIds || [])
                     .map((value) => String(value || "").trim())
-                    .filter((value) => value && availableTenantIds.has(value));
+                    .filter((value) => value && availableTenantIds.has(value) && !blockedTenantIds.has(value));
                 const selectedTenantIds = new Set(microAnalyzerSelectedTenantIds);
                 const rows = candidateRows
                     .filter((connection) => {
@@ -91824,10 +91865,10 @@
                         const tenantType = String(connection.tenantType || "").trim().toLowerCase();
                         if (tenantType && tenantType !== "organisation" && tenantType !== "organization") return false;
                         if (
-                            microAnalyzerHideVatRegistered
-                            && connection.totalVatRegisteredCount > 0
+                            connection.totalVatRegisteredCount > 0
                             && connection.totalVatRegisteredCount >= Math.max(1, Number(connection.totalMappedClients || 0))
                         ) return false;
+                        if (microAnalyzerHideVatRegistered && connection.totalVatRegisteredCount > 0) return false;
                         if (microAnalyzerConnectionsWorkspaceFilter === "no-workspace" && connection.workspace) return false;
                         if (microAnalyzerConnectionsWorkspaceFilter === "with-workspace" && !connection.workspace) return false;
                         if (!searchTerm) return true;
@@ -91866,6 +91907,7 @@
                                 : "Count unavailable"
                             : "Loading count...";
                         const hasVatNumber = Number(row.totalVatRegisteredCount || 0) > 0;
+                        const isVatBlocked = hasVatNumber;
                         const vatStatusBubble = hasVatNumber
                             ? '<span class="ch-pill is-bad">Client is VAT Registered</span>'
                             : '<span class="ch-pill is-good">No VAT Number Found</span>';
@@ -91880,12 +91922,12 @@
                             : "";
                         return `
                         <tr class="micro-analyzer-tenant-row ${rowTone}">
-                            <td><input type="checkbox" data-micro-analyzer-select-tenant="${escapeHTML(row.tenantId || "")}" ${selectedTenantIds.has(row.tenantId) ? "checked" : ""} aria-label="Select tenant"></td>
-                            <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}">${escapeHTML(row.tenantName || row.tenantId)}</button><br>${vatStatusBubble}</td>
+                            <td><input type="checkbox" data-micro-analyzer-select-tenant="${escapeHTML(row.tenantId || "")}" ${selectedTenantIds.has(row.tenantId) ? "checked" : ""} ${isVatBlocked ? "disabled" : ""} aria-label="Select tenant"></td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-open-tenant="${escapeHTML(row.tenantId || "")}" ${isVatBlocked ? 'disabled title="VAT number found in client register. Hidden clients are excluded from this workflow."' : ""}>${escapeHTML(row.tenantName || row.tenantId)}</button><br>${vatStatusBubble}</td>
                             <td><strong>${escapeHTML(countLabel)}</strong></td>
                             <td>${workspaceLabel}</td>
                             <td>
-                                <button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}">${row.workspace ? "Open" : "Set up"}</button>
+                                <button class="ghost-button" type="button" data-micro-analyzer-setup-workspace="${escapeHTML(row.tenantId || "")}" ${isVatBlocked ? 'disabled title="VAT number found in client register. Hidden clients are excluded from setup and sync."' : ""}>${row.workspace ? "Open" : "Set up"}</button>
                                 ${row.workspace ? `<button class="ghost-button danger-button" type="button" data-micro-analyzer-delete-workspace="${escapeHTML(row.tenantId || "")}">Delete</button>` : ""}
                             </td>
                         </tr>
@@ -91908,7 +91950,7 @@
                             if (selectAllInput.checked) {
                                 rows.forEach((row) => {
                                     const tenantId = String(row?.tenantId || "").trim();
-                                    if (tenantId) next.add(tenantId);
+                                    if (tenantId && !microAnalyzerTenantHasVatRegisteredClient(tenantId)) next.add(tenantId);
                                 });
                             } else {
                                 rows.forEach((row) => {
@@ -91945,6 +91987,10 @@
                     button.addEventListener("click", () => {
                         const tenantId = String(button.dataset.microAnalyzerSetupWorkspace || "").trim();
                         if (!tenantId) return;
+                        if (microAnalyzerTenantHasVatRegisteredClient(tenantId)) {
+                            showToast("VAT number found in client register. This client is auto-hidden and excluded from setup/sync.", "info");
+                            return;
+                        }
                         const workspace = microAnalyzerWorkspaceByTenant(tenantId);
                         if (workspace) {
                             openMicroAnalyzerTenantWorkspace(tenantId);
@@ -91955,7 +92001,13 @@
                 });
                 tableBody.querySelectorAll("[data-micro-analyzer-open-tenant]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        openMicroAnalyzerTenantWorkspace(button.dataset.microAnalyzerOpenTenant || "");
+                        const tenantId = String(button.dataset.microAnalyzerOpenTenant || "").trim();
+                        if (!tenantId) return;
+                        if (microAnalyzerTenantHasVatRegisteredClient(tenantId)) {
+                            showToast("VAT number found in client register. This client is auto-hidden and excluded from setup/sync.", "info");
+                            return;
+                        }
+                        openMicroAnalyzerTenantWorkspace(tenantId);
                     });
                 });
                 tableBody.querySelectorAll("[data-micro-analyzer-delete-workspace]").forEach((button) => {
@@ -91991,7 +92043,7 @@
                             <td><strong>${escapeHTML(row.clientName || row.customerName || "Client")}</strong></td>
                             <td><small>${escapeHTML(row.tenantName || row.tenantId || "—")}</small></td>
                             <td><code>${escapeHTML(String(row.vatNumber || ""))}</code></td>
-                            <td><button class="ghost-button" type="button" data-micro-analyzer-unhide-client="${escapeHTML(String(row.id || ""))}">Unhide</button></td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-unhide-client="${escapeHTML(String(row.id || ""))}" disabled title="VAT-registered clients stay hidden on this page.">Unhide</button></td>
                         </tr>
                     `).join("")
                     : '<tr><td colspan="4"><small>No hidden VAT-registered clients.</small></td></tr>';
@@ -92013,6 +92065,11 @@
                     button.addEventListener("click", () => {
                         const rowId = String(button.dataset.microAnalyzerUnhideClient || "").trim();
                         if (!rowId) return;
+                        const row = microAnalyzerRowById(rowId, true);
+                        if (row && microAnalyzerRowHasVatNumber(row)) {
+                            showToast("VAT-registered clients remain hidden on this page.", "info");
+                            return;
+                        }
                         microAnalyzerSetClientHidden(rowId, false);
                         renderMicroAnalyzerScreen();
                     });
@@ -92059,6 +92116,7 @@
                 );
                 const selectedTenantIds = microAnalyzerSelectedTenantIdList().filter((tenantId) => connectedTenantIds.has(tenantId));
                 microAnalyzerSelectedTenantIds = selectedTenantIds;
+                const eligibleSelectedTenantIds = selectedTenantIds.filter((tenantId) => !microAnalyzerTenantHasVatRegisteredClient(tenantId));
                 const workspaceCount = (microAnalyzerWorkspaces || []).filter((workspace) => (
                     connectedTenantIds.has(String(workspace?.tenantId || "").trim())
                 )).length;
@@ -92150,9 +92208,9 @@
                 if (bulkSetupSelectedButton && bulkSetupSelectedButton.dataset.microWired !== "true") {
                     bulkSetupSelectedButton.dataset.microWired = "true";
                     bulkSetupSelectedButton.addEventListener("click", async () => {
-                        const tenantIds = microAnalyzerSelectedTenantIdList();
+                        const tenantIds = microAnalyzerSelectedTenantIdList().filter((tenantId) => !microAnalyzerTenantHasVatRegisteredClient(tenantId));
                         if (!tenantIds.length) {
-                            showToast("Select at least one tenant.", "info");
+                            showToast("Selected tenants are VAT-registered and auto-hidden, so setup is blocked.", "info");
                             return;
                         }
                         let completed = 0;
@@ -92189,9 +92247,9 @@
                 if (bulkNoVatSelectedButton && bulkNoVatSelectedButton.dataset.microWired !== "true") {
                     bulkNoVatSelectedButton.dataset.microWired = "true";
                     bulkNoVatSelectedButton.addEventListener("click", async () => {
-                        const tenantIds = microAnalyzerSelectedTenantIdList();
+                        const tenantIds = microAnalyzerSelectedTenantIdList().filter((tenantId) => !microAnalyzerTenantHasVatRegisteredClient(tenantId));
                         if (!tenantIds.length) {
-                            showToast("Select at least one tenant.", "info");
+                            showToast("Selected tenants are VAT-registered and auto-hidden, so NO VAT sync is blocked.", "info");
                             return;
                         }
                         if (microAnalyzerRunAllInFlight) return;
@@ -92265,18 +92323,18 @@
                 if (connectionsSortMode) connectionsSortMode.value = microAnalyzerConnectionsSortMode;
                 if (bulkSetupSelectedButton) {
                     bulkSetupSelectedButton.hidden = inWorkspaceMode;
-                    bulkSetupSelectedButton.disabled = microAnalyzerRunAllInFlight || selectedTenantIds.length === 0;
-                    bulkSetupSelectedButton.textContent = selectedTenantIds.length > 0
-                        ? `Set up selected (${selectedTenantIds.length.toLocaleString("en-GB")})`
+                    bulkSetupSelectedButton.disabled = microAnalyzerRunAllInFlight || eligibleSelectedTenantIds.length === 0;
+                    bulkSetupSelectedButton.textContent = eligibleSelectedTenantIds.length > 0
+                        ? `Set up selected (${eligibleSelectedTenantIds.length.toLocaleString("en-GB")})`
                         : "Set up selected";
                 }
                 if (bulkNoVatSelectedButton) {
                     bulkNoVatSelectedButton.hidden = inWorkspaceMode;
-                    bulkNoVatSelectedButton.disabled = microAnalyzerRunAllInFlight || selectedTenantIds.length === 0;
+                    bulkNoVatSelectedButton.disabled = microAnalyzerRunAllInFlight || eligibleSelectedTenantIds.length === 0;
                     bulkNoVatSelectedButton.textContent = microAnalyzerRunAllInFlight
                         ? "Updating selected..."
-                        : (selectedTenantIds.length > 0
-                            ? `Update selected to NO VAT (${selectedTenantIds.length.toLocaleString("en-GB")})`
+                        : (eligibleSelectedTenantIds.length > 0
+                            ? `Update selected to NO VAT (${eligibleSelectedTenantIds.length.toLocaleString("en-GB")})`
                             : "Update selected to NO VAT");
                 }
                 if (bulkHideSelectedButton) {
@@ -92510,6 +92568,10 @@
                 const silent = Boolean(options?.silent);
                 if (!cleanTenantId) {
                     if (!silent) showToast("Select a connected Xero organisation first.", "error");
+                    return;
+                }
+                if (microAnalyzerTenantHasVatRegisteredClient(cleanTenantId)) {
+                    if (!silent) showToast("VAT number found in client register. This client is auto-hidden and excluded from setup/sync.", "info");
                     return;
                 }
                 const connections = typeof codeBreakerConnections === "function" ? codeBreakerConnections() : [];
