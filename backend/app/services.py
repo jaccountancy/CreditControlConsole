@@ -266,6 +266,7 @@ XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
+XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
@@ -956,6 +957,37 @@ def _payroll_headcount_payrun_date(payrun: dict) -> date | None:
     )
 
 
+def _payroll_headcount_payrun_id(payrun: dict) -> str:
+    return str(
+        payrun.get("PayRunID")
+        or payrun.get("payRunID")
+        or payrun.get("PayrunID")
+        or payrun.get("payrunID")
+        or ""
+    ).strip()
+
+
+def _payroll_headcount_from_payrun_details(payrun_details_payload: dict) -> int:
+    if not isinstance(payrun_details_payload, dict):
+        return 0
+    payruns = payrun_details_payload.get("PayRuns")
+    if isinstance(payruns, list) and payruns:
+        payrun = payruns[0] if isinstance(payruns[0], dict) else {}
+    elif isinstance(payruns, dict):
+        payrun = payruns
+    else:
+        payrun = payrun_details_payload if isinstance(payrun_details_payload, dict) else {}
+    payslips = payrun.get("Payslips") if isinstance(payrun, dict) else []
+    if not isinstance(payslips, list):
+        return 0
+    return sum(
+        1
+        for payslip in payslips
+        if isinstance(payslip, dict)
+        and str(payslip.get("NetPay") if payslip.get("NetPay") is not None else "").strip() != ""
+    )
+
+
 def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | None = None) -> dict:
     latest = None
     if snapshots:
@@ -1244,6 +1276,7 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
 
     errors: list[str] = []
+
     async def _fetch_payroll_dataset(url: str, label: str) -> dict:
         try:
             payload = await xero_api_get(connection_row, url)
@@ -1277,14 +1310,33 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
             },
         )
 
-    active_headcount = sum(1 for employee in employees if _payroll_headcount_employee_is_active(employee))
     month_start = _month_start()
-    current_month_payrun_count = sum(
-        1
+    monthly_payruns = [
+        payrun
         for payrun in payruns
         if (_payroll_headcount_payrun_date(payrun) or month_start).replace(day=1) == month_start
+    ]
+    current_month_payrun_count = sum(
+        1
+        for payrun in monthly_payruns
+        if isinstance(payrun, dict)
     )
     payroll_count = current_month_payrun_count if payruns else 0
+
+    active_headcount = sum(1 for employee in employees if _payroll_headcount_employee_is_active(employee))
+    if active_headcount == 0 and monthly_payruns:
+        latest_payrun = max(
+            monthly_payruns,
+            key=lambda row: _payroll_headcount_payrun_date(row) or date.min,
+        )
+        latest_payrun_id = _payroll_headcount_payrun_id(latest_payrun)
+        if latest_payrun_id:
+            try:
+                details_url = XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(latest_payrun_id, safe=""))
+                payrun_details_payload = await xero_api_get(connection_row, details_url)
+                active_headcount = _payroll_headcount_from_payrun_details(payrun_details_payload)
+            except Exception as exc:
+                errors.append(f"Pay run details sync failed: {_sync_error_message(exc)}")
 
     while True:
         try:
@@ -1445,13 +1497,29 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         "updatedAt": _iso(snapshot_row.get("updated_at")) or "",
     }
 
-    while True:
-        try:
-            payload = payroll_headcount_payload(user)
-            break
-        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
-            if not _repair_schema_once():
-                raise
+    try:
+        while True:
+            try:
+                payload = payroll_headcount_payload(user)
+                break
+            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                if not _repair_schema_once():
+                    raise
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "payroll_headcount_payload_failed user_id=%s tenant_id=%s",
+            user.get("id"),
+            clean_tenant_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Payroll headcount sync could not complete right now.",
+                "error": _sync_error_message(exc),
+            },
+        ) from exc
     return {
         "workspace": next(
             (
