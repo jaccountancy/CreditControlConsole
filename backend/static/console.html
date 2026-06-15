@@ -50038,10 +50038,12 @@
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const selectedRows = runRows.filter((row) => rowIds.includes(String(row?.id || "")));
                 const totalAmount = selectedRows.reduce((sum, row) => sum + Math.abs(Number(row?.differenceTotal || row?.difference || 0)), 0);
+                const refundRowCount = selectedRows.filter((row) => Number(row?.raw?.ignitionReversalTotal || 0) > 0).length;
+                const creditNoteRowCount = Math.max(0, selectedRows.length - refundRowCount);
                 const confirmationMessage = [
-                    `Create ${rowIds.length} PI Clearing credit note${rowIds.length === 1 ? "" : "s"} in Xero?`,
+                    `Post ${rowIds.length} PI Clearing adjustment${rowIds.length === 1 ? "" : "s"} in Xero?`,
                     `Total amount: ${formatCurrency(totalAmount)}.`,
-                    "This will post authorised credit notes to Xero for the selected rows.",
+                    `This will post ${creditNoteRowCount} credit note${creditNoteRowCount === 1 ? "" : "s"} and ${refundRowCount} invoice${refundRowCount === 1 ? "" : "s"} to Xero for the selected rows.`,
                 ].join("\n");
                 if (!window.confirm(confirmationMessage)) return;
                 if (piClearingCreditNotesRunning) return;
@@ -50063,7 +50065,10 @@
                     await loadPiClearingAccount(true);
                     const createdCount = Array.isArray(payload?.created) ? payload.created.length : 0;
                     const skippedCount = Array.isArray(payload?.skipped) ? payload.skipped.length : 0;
-                    piClearingStatusMessage = `${createdCount} credit note${createdCount === 1 ? "" : "s"} created${skippedCount ? `, ${skippedCount} skipped` : ""}.`;
+                    const createdRows = Array.isArray(payload?.created) ? payload.created : [];
+                    const createdInvoices = createdRows.filter((item) => String(item?.documentType || "").toLowerCase() === "invoice").length;
+                    const createdCreditNotes = Math.max(0, createdCount - createdInvoices);
+                    piClearingStatusMessage = `${createdCreditNotes} credit note${createdCreditNotes === 1 ? "" : "s"} and ${createdInvoices} invoice${createdInvoices === 1 ? "" : "s"} created${skippedCount ? `, ${skippedCount} skipped` : ""}.`;
                     piClearingStatusTone = createdCount > 0 ? "success" : "info";
                     piClearingWizardOpen = false;
                     piClearingWizardStep = 0;
@@ -50074,7 +50079,7 @@
                     piClearingFixDifferenceMatch = null;
                     showToast(piClearingStatusMessage, createdCount > 0 ? "success" : "info");
                 } catch (error) {
-                    piClearingStatusMessage = error?.message || "Unable to create PI clearing credit notes.";
+                    piClearingStatusMessage = error?.message || "Unable to create PI clearing adjustments.";
                     piClearingStatusTone = "error";
                     showToast(piClearingStatusMessage, "error");
                 } finally {
@@ -50099,7 +50104,8 @@
                         const refreshed = piClearingRuns.find((item) => String(item?.id || "") === String(run.id));
                         if (refreshed) piClearingSelectedRunId = String(refreshed.id || "");
                     }
-                    showToast("Credit note voided and row returned to pending.", "success");
+                    const documentType = String(payload?.voided?.documentType || "credit_note").toLowerCase() === "invoice" ? "Invoice" : "Credit note";
+                    showToast(`${documentType} voided and row returned to pending.`, "success");
                 } catch (error) {
                     showToast(error?.message || "Unable to void this credit note.", "error");
                 } finally {
@@ -51395,14 +51401,19 @@
                     const payoutId = String(match?.payout?.payoutId || "--").trim() || "--";
                     const lineCount = Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0);
                     const contactState = String(runRow?.xeroContactId || "").trim() ? "Mapped" : "Missing contact";
+                    const isRefundAdjustment = Number(runRow?.raw?.ignitionReversalTotal || 0) > 0;
+                    const actionTypeLabel = isRefundAdjustment ? "Invoice" : "Credit note";
+                    const actionDetail = isRefundAdjustment
+                        ? `Create an authorised invoice in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`
+                        : `Create an authorised credit note in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`;
                     fixDifferenceBody.innerHTML = match
                         ? `
                             <tr><th>Client</th><td>${escapeHTML(clientName)}</td></tr>
                             <tr><th>Payout date</th><td>${escapeHTML(formatDate(payoutDate))}</td></tr>
-                            <tr><th>Credit note amount</th><td>${escapeHTML(formatCurrency(amount))}</td></tr>
+                            <tr><th>${escapeHTML(actionTypeLabel)} amount</th><td>${escapeHTML(formatCurrency(amount))}</td></tr>
                             <tr><th>Ignition payout evidence</th><td>${escapeHTML(payoutId)} (${escapeHTML(String(lineCount))} line${lineCount === 1 ? "" : "s"})</td></tr>
                             <tr><th>Xero contact</th><td>${escapeHTML(contactState)}</td></tr>
-                            <tr><th>Action</th><td>Create an authorised credit note in Xero marked as Awaiting Payment so PI imbalance is reduced by ${escapeHTML(formatCurrency(amount))}.</td></tr>
+                            <tr><th>Action</th><td>${escapeHTML(actionDetail)}</td></tr>
                         `
                         : `<tr><td><p class="detail-meta">No fix is prepared yet.</p></td></tr>`;
                     if (fixDifferenceConfirm) {

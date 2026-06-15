@@ -5692,10 +5692,12 @@ def pi_clearing_payload(user: dict) -> dict:
                 )
                 for note in cursor.fetchall() or []:
                     run_id = str(note.get("run_id") or "")
+                    note_raw_payload = note.get("raw_payload") if isinstance(note.get("raw_payload"), dict) else {}
                     notes_by_run.setdefault(run_id, []).append(
                         {
                             "id": str(note.get("id") or ""),
                             "runRowId": str(note.get("run_row_id") or ""),
+                            "documentType": str(note_raw_payload.get("documentType") or "credit_note"),
                             "xeroContactId": str(note.get("xero_contact_id") or ""),
                             "xeroCreditNoteId": str(note.get("xero_credit_note_id") or ""),
                             "xeroCreditNoteNumber": str(note.get("xero_credit_note_number") or ""),
@@ -6046,7 +6048,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             resolution_status = "balanced_by_existing_credit_note"
         if difference > 0:
             if _money(group.get("ignitionReversalTotal")) > 0:
-                recommendation = "Ignition reversal/refund detected. Create PI Clearing credit note in Xero for the residual variance."
+                recommendation = "Ignition reversal/refund detected. Create PI Clearing invoice in Xero for the residual variance."
             else:
                 recommendation = "Create PI Clearing credit note in Xero for the variance."
             resolution_status = "pending"
@@ -6436,18 +6438,20 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         if _money(raw_payload.get("step1MissingDebitTotal")) > Decimal("0.00"):
             skipped.append({"runRowId": row_id, "reason": "Step 1 failed: same-date Xero debit entries are missing for payout credit(s)."})
             continue
+        has_refund = _money(raw_payload.get("ignitionReversalTotal")) > Decimal("0.00")
+        document_type = "invoice" if has_refund else "credit_note"
         payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
         note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
-        credit_note_payload = {
-            "Type": "ACCRECCREDIT",
+        adjustment_payload = {
+            "Type": "ACCREC" if has_refund else "ACCRECCREDIT",
             "Contact": {"ContactID": contact_id, "Name": client_name},
             "Date": note_date.isoformat(),
             "LineAmountTypes": "NoTax",
             "Status": "AUTHORISED",
-            "Reference": "Client Payment",
+            "Reference": "PI Refund Adjustment" if has_refund else "Client Payment",
             "LineItems": [
                 {
-                    "Description": "PI Adjustment through Jenius AI",
+                    "Description": "PI Refund Adjustment through Jenius AI" if has_refund else "PI Adjustment through Jenius AI",
                     "Quantity": 1,
                     "UnitAmount": float(amount),
                     "AccountCode": account_code,
@@ -6456,12 +6460,28 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             ],
             "CurrencyCode": currency_code,
         }
-        xero_response = await create_credit_note(connection_row, credit_note_payload)
-        created_row = ((xero_response or {}).get("CreditNotes") or [{}])[0]
-        credit_note_id = str(created_row.get("CreditNoteID") or created_row.get("ID") or "").strip()
-        credit_note_number = str(created_row.get("CreditNoteNumber") or "").strip()
-        if not credit_note_id:
-            skipped.append({"runRowId": row_id, "reason": "Xero did not return a credit note id."})
+        xero_response = (
+            await create_sales_invoice(connection_row, adjustment_payload)
+            if has_refund
+            else await create_credit_note(connection_row, adjustment_payload)
+        )
+        created_row = ((xero_response or {}).get("Invoices") or [{}])[0] if has_refund else ((xero_response or {}).get("CreditNotes") or [{}])[0]
+        xero_document_id = str(
+            created_row.get("InvoiceID")
+            or created_row.get("CreditNoteID")
+            or created_row.get("ID")
+            or ""
+        ).strip()
+        xero_document_number = str(created_row.get("InvoiceNumber") or created_row.get("CreditNoteNumber") or "").strip()
+        if not xero_document_id:
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Xero did not return a document id."
+                    if has_refund
+                    else "Xero did not return a credit note id.",
+                }
+            )
             continue
         now = utcnow()
         with get_connection() as connection:
@@ -6479,14 +6499,20 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                         row_id,
                         user["id"],
                         contact_id,
-                        credit_note_id,
-                        credit_note_number,
+                        xero_document_id,
+                        xero_document_number,
                         note_date,
                         amount,
                         currency_code,
                         account_code,
                         "created",
-                        json.dumps(xero_response or {}, default=_json_default),
+                        json.dumps(
+                            {
+                                "documentType": document_type,
+                                "payload": xero_response or {},
+                            },
+                            default=_json_default,
+                        ),
                         now,
                         now,
                     ),
@@ -6513,8 +6539,9 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         created.append(
             {
                 "runRowId": row_id,
-                "xeroCreditNoteId": credit_note_id,
-                "xeroCreditNoteNumber": credit_note_number,
+                "documentType": document_type,
+                "xeroCreditNoteId": xero_document_id,
+                "xeroCreditNoteNumber": xero_document_number,
                 "amount": float(amount),
                 "currencyCode": currency_code,
                 "accountCode": account_code,
@@ -6564,13 +6591,19 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
             xero_credit_note_id = str(note_row.get("xero_credit_note_id") or "").strip()
             if not xero_credit_note_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero credit note id is missing for this record.")
+            note_raw_payload = note_row.get("raw_payload") if isinstance(note_row.get("raw_payload"), dict) else {}
+            document_type = str(note_raw_payload.get("documentType") or "credit_note").strip().lower() or "credit_note"
             run_summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
             finalisation = _pi_finalisation_state_from_summary(run_summary)
             run_status_after_void = "completed" if finalisation.get("canFinalise") else "ready"
         connection.commit()
 
     connection_row = get_master_xero_connection_for_user(user["id"])
-    xero_response = await update_credit_note_status(connection_row, xero_credit_note_id, "VOIDED")
+    xero_response = (
+        await update_invoice_status(connection_row, xero_credit_note_id, "VOIDED")
+        if document_type == "invoice"
+        else await update_credit_note_status(connection_row, xero_credit_note_id, "VOIDED")
+    )
     now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -6605,7 +6638,10 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
             )
         connection.commit()
     updated = pi_clearing_payload(user)
-    return {"voided": {"id": record_id, "xeroCreditNoteId": xero_credit_note_id}, "runs": updated.get("runs") or []}
+    return {
+        "voided": {"id": record_id, "documentType": document_type, "xeroCreditNoteId": xero_credit_note_id},
+        "runs": updated.get("runs") or [],
+    }
 
 
 def disconnect_xero(user: dict, tenant_id: str | None = None, disconnect_all: bool = False) -> dict:
