@@ -9,6 +9,7 @@ import html
 import io
 import json
 import logging
+import math
 import mimetypes
 import os
 import re
@@ -2812,6 +2813,82 @@ def _call_stats_fetch_rows(user: dict, filters: dict | None = None, row_limit: i
     return rows
 
 
+def _call_stats_fetch_rows_page(
+    user: dict,
+    filters: dict | None = None,
+    page: int = 1,
+    page_size: int = 250,
+) -> tuple[list[dict], int]:
+    where_clause, params = _call_stats_filter_clause(filters)
+    clean_page = max(1, int(page or 1))
+    clean_page_size = max(25, min(int(page_size or 250), 1000))
+    offset = (clean_page - 1) * clean_page_size
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) AS total_rows
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND {where_clause}
+                """,
+                (user["id"], *params),
+            )
+            total_row = cursor.fetchone() or {}
+            total_rows = int(total_row.get("total_rows") or 0)
+            cursor.execute(
+                f"""
+                SELECT id,
+                       import_file_id,
+                       call_datetime,
+                       call_date,
+                       call_time,
+                       direction,
+                       duration_seconds,
+                       outcome,
+                       from_number,
+                       to_number,
+                       external_number,
+                       internal_extension,
+                       staff_member,
+                       client_id,
+                       client_name,
+                       client_manager,
+                       matched_status,
+                       number_tag
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND {where_clause}
+                ORDER BY call_datetime DESC NULLS LAST
+                LIMIT %s OFFSET %s
+                """,
+                (user["id"], *params, clean_page_size, offset),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return rows, total_rows
+
+
+def _call_stats_row_payload(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "callDate": row.get("call_date").isoformat() if row.get("call_date") else "",
+        "callTime": str(row.get("call_time") or ""),
+        "direction": str(row.get("direction") or ""),
+        "staffMember": str(row.get("staff_member") or ""),
+        "clientManager": str(row.get("client_manager") or ""),
+        "fromNumber": str(row.get("from_number") or ""),
+        "toNumber": str(row.get("to_number") or ""),
+        "externalNumber": str(row.get("external_number") or ""),
+        "durationSeconds": int(row.get("duration_seconds") or 0),
+        "outcome": str(row.get("outcome") or ""),
+        "clientId": str(row.get("client_id") or ""),
+        "clientName": str(row.get("client_name") or ""),
+        "matchedStatus": str(row.get("matched_status") or ""),
+        "importFileId": str(row.get("import_file_id") or ""),
+    }
+
+
 def _call_stats_average_duration(rows: list[dict]) -> float:
     if not rows:
         return 0.0
@@ -2899,49 +2976,33 @@ def _call_stats_practice_summary(rows: list[dict]) -> dict:
     }
 
 
-def call_stats_dashboard_payload(user: dict, filters: dict | None = None) -> dict:
-    rows = _call_stats_fetch_rows(user, filters, row_limit=20000)
-    summary = _call_stats_practice_summary(rows)
-    by_day = _call_stats_group_counts(rows, lambda row: (row.get("call_date").isoformat() if row.get("call_date") else ""))
+def call_stats_dashboard_payload(user: dict, filters: dict | None = None, page: int = 1, page_size: int = 250) -> dict:
+    full_rows = _call_stats_fetch_rows(user, filters, row_limit=50000)
+    paged_rows, total_rows = _call_stats_fetch_rows_page(user, filters, page=page, page_size=page_size)
+    summary = _call_stats_practice_summary(full_rows)
+    by_day = _call_stats_group_counts(full_rows, lambda row: (row.get("call_date").isoformat() if row.get("call_date") else ""))
     by_week = _call_stats_group_counts(
-        rows,
+        full_rows,
         lambda row: (
             f"{row.get('call_date').isocalendar().year}-W{str(row.get('call_date').isocalendar().week).zfill(2)}"
             if row.get("call_date")
             else ""
         ),
     )
-    by_month = _call_stats_group_counts(rows, lambda row: (row.get("call_date").strftime("%Y-%m") if row.get("call_date") else ""))
+    by_month = _call_stats_group_counts(full_rows, lambda row: (row.get("call_date").strftime("%Y-%m") if row.get("call_date") else ""))
     inbound_vs_outbound = [
         {"label": "Inbound", "count": summary["inboundCalls"]},
         {"label": "Outbound", "count": summary["outboundCalls"]},
     ]
-    by_staff = _call_stats_group_counts(rows, lambda row: row.get("staff_member") or "")
-    by_manager = _call_stats_group_counts(rows, lambda row: row.get("client_manager") or "")
-    top_clients = _call_stats_group_counts(rows, lambda row: row.get("client_name") or "")
-    top_external = _call_stats_group_counts(rows, lambda row: row.get("external_number") or "")
+    by_staff = _call_stats_group_counts(full_rows, lambda row: row.get("staff_member") or "")
+    by_manager = _call_stats_group_counts(full_rows, lambda row: row.get("client_manager") or "")
+    top_clients = _call_stats_group_counts(full_rows, lambda row: row.get("client_name") or "")
+    top_external = _call_stats_group_counts(full_rows, lambda row: row.get("external_number") or "")
     unmatched = call_stats_unmatched_numbers(user, limit=50)
-    avg_by_staff = _call_stats_group_avg_duration_by_staff(rows)
-    recent_rows = [
-        {
-            "id": str(row.get("id") or ""),
-            "callDate": row.get("call_date").isoformat() if row.get("call_date") else "",
-            "callTime": str(row.get("call_time") or ""),
-            "direction": str(row.get("direction") or ""),
-            "staffMember": str(row.get("staff_member") or ""),
-            "clientManager": str(row.get("client_manager") or ""),
-            "fromNumber": str(row.get("from_number") or ""),
-            "toNumber": str(row.get("to_number") or ""),
-            "externalNumber": str(row.get("external_number") or ""),
-            "durationSeconds": int(row.get("duration_seconds") or 0),
-            "outcome": str(row.get("outcome") or ""),
-            "clientId": str(row.get("client_id") or ""),
-            "clientName": str(row.get("client_name") or ""),
-            "matchedStatus": str(row.get("matched_status") or ""),
-            "importFileId": str(row.get("import_file_id") or ""),
-        }
-        for row in rows[:400]
-    ]
+    avg_by_staff = _call_stats_group_avg_duration_by_staff(full_rows)
+    recent_rows = [_call_stats_row_payload(row) for row in paged_rows]
+    clean_page_size = max(25, min(int(page_size or 250), 1000))
+    total_pages = max(1, math.ceil(total_rows / clean_page_size)) if total_rows else 1
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -2982,11 +3043,17 @@ def call_stats_dashboard_payload(user: dict, filters: dict | None = None) -> dic
             "avgDurationByStaff": avg_by_staff,
         },
         "rows": recent_rows,
+        "table": {
+            "page": max(1, int(page or 1)),
+            "pageSize": clean_page_size,
+            "totalRows": total_rows,
+            "totalPages": total_pages,
+        },
         "imports": call_stats_import_files(user),
         "extensions": call_stats_extension_directory_payload(),
         "unmatchedNumbers": unmatched,
         "resyncAudit": resync_audit,
-        "aiSummary": _call_stats_local_insight_summary(rows, summary),
+        "aiSummary": _call_stats_local_insight_summary(full_rows, summary),
     }
 
 

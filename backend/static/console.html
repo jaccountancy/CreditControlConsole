@@ -35070,6 +35070,7 @@
                                             <option value="ignored">Ignored</option>
                                         </select>
                                     </label>
+                                    <label class="field-inline" for="clientCallStatsFilterSearch"><span>Search</span><input id="clientCallStatsFilterSearch" type="search" placeholder="Client, number, outcome, staff" /></label>
                                     <button class="ghost-button" id="clientCallStatsPreset7DaysButton" type="button">Last 7 days</button>
                                     <button class="ghost-button" id="clientCallStatsPreset30DaysButton" type="button">Last 30 days</button>
                                     <button class="ghost-button" id="clientCallStatsPresetMonthButton" type="button">This month</button>
@@ -35207,6 +35208,19 @@
 
                             <section class="detail-card">
                                 <h4>Recent Calls</h4>
+                                <div class="detail-actions">
+                                    <p class="detail-meta" id="clientCallStatsRowsMeta">No rows loaded yet.</p>
+                                    <label class="field-inline" for="clientCallStatsPageSizeSelect">
+                                        <span>Rows per page</span>
+                                        <select id="clientCallStatsPageSizeSelect">
+                                            <option value="100">100</option>
+                                            <option value="250" selected>250</option>
+                                            <option value="500">500</option>
+                                        </select>
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsPrevPageButton" type="button">Previous</button>
+                                    <button class="ghost-button" id="clientCallStatsNextPageButton" type="button">Next</button>
+                                </div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Recent processed call records">
                                         <thead>
@@ -35221,6 +35235,7 @@
                                                 <th>Duration</th>
                                                 <th>Outcome</th>
                                                 <th>Client</th>
+                                                <th>Match</th>
                                             </tr>
                                         </thead>
                                         <tbody id="clientCallStatsRowsBody"></tbody>
@@ -36916,6 +36931,7 @@
                 summary: {},
                 charts: {},
                 rows: [],
+                table: {},
                 imports: [],
                 extensions: [],
                 unmatchedNumbers: [],
@@ -36930,6 +36946,13 @@
                 clientManager: "",
                 direction: "",
                 matchStatus: "",
+                search: "",
+            };
+            let clientCallStatsTable = {
+                page: 1,
+                pageSize: 250,
+                totalRows: 0,
+                totalPages: 1,
             };
             let clientCallStatsImportPreview = null;
             let clientCallStatsClientLogs = null;
@@ -45858,6 +45881,7 @@
                     clientManager: String(payload.clientManager || "").trim(),
                     direction: ["inbound", "outbound"].includes(direction) ? direction : "",
                     matchStatus: ["matched", "unmatched", "ignored"].includes(matchStatus) ? matchStatus : "",
+                    search: String(payload.search || "").trim(),
                 };
             }
 
@@ -45905,6 +45929,7 @@
                     clientManager: document.getElementById("clientCallStatsFilterClientManager")?.value || "",
                     direction: document.getElementById("clientCallStatsFilterDirection")?.value || "",
                     matchStatus: document.getElementById("clientCallStatsFilterMatchStatus")?.value || "",
+                    search: document.getElementById("clientCallStatsFilterSearch")?.value || "",
                 });
             }
 
@@ -45916,12 +45941,14 @@
                 const managerNode = document.getElementById("clientCallStatsFilterClientManager");
                 const directionNode = document.getElementById("clientCallStatsFilterDirection");
                 const matchNode = document.getElementById("clientCallStatsFilterMatchStatus");
+                const searchNode = document.getElementById("clientCallStatsFilterSearch");
                 if (fromNode) fromNode.value = clean.dateFrom;
                 if (toNode) toNode.value = clean.dateTo;
                 if (staffNode) staffNode.value = clean.staffMember;
                 if (managerNode) managerNode.value = clean.clientManager;
                 if (directionNode) directionNode.value = clean.direction;
                 if (matchNode) matchNode.value = clean.matchStatus;
+                if (searchNode) searchNode.value = clean.search;
             }
 
             function renderClientCallStatsPresetControls() {
@@ -46158,11 +46185,32 @@
                 }
 
                 const callRowsBody = document.getElementById("clientCallStatsRowsBody");
+                const rowsMeta = document.getElementById("clientCallStatsRowsMeta");
+                const prevPageButton = document.getElementById("clientCallStatsPrevPageButton");
+                const nextPageButton = document.getElementById("clientCallStatsNextPageButton");
+                const pageSizeSelect = document.getElementById("clientCallStatsPageSizeSelect");
+                if (pageSizeSelect) pageSizeSelect.value = String(clientCallStatsTable.pageSize || 250);
+                if (rowsMeta) {
+                    const totalRows = Number(clientCallStatsTable.totalRows || 0);
+                    const totalPages = Math.max(1, Number(clientCallStatsTable.totalPages || 1));
+                    const currentPage = Math.max(1, Number(clientCallStatsTable.page || 1));
+                    rowsMeta.textContent = clientCallStatsLoading
+                        ? "Loading call rows…"
+                        : `${totalRows.toLocaleString("en-GB")} total rows · page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}.`;
+                }
+                if (prevPageButton) prevPageButton.disabled = clientCallStatsLoading || Number(clientCallStatsTable.page || 1) <= 1;
+                if (nextPageButton) nextPageButton.disabled = clientCallStatsLoading || Number(clientCallStatsTable.page || 1) >= Number(clientCallStatsTable.totalPages || 1);
                 if (callRowsBody) {
                     const rows = Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : [];
                     callRowsBody.innerHTML = rows.length
-                        ? rows.slice(0, 250).map((row) => `
-                            <tr>
+                        ? rows.map((row) => {
+                            const matchStatus = String(row.matchedStatus || "").trim().toLowerCase();
+                            const rowStyle = matchStatus === "matched" ? " style=\"background: rgba(36, 160, 88, 0.10);\"" : "";
+                            const matchChipClass = matchStatus === "matched"
+                                ? "success"
+                                : (matchStatus === "ignored" ? "info" : "danger");
+                            return `
+                            <tr${rowStyle}>
                                 <td>${escapeHTML(String(row.callDate || ""))}</td>
                                 <td>${escapeHTML(String(row.callTime || ""))}</td>
                                 <td>${escapeHTML(String(row.direction || ""))}</td>
@@ -46173,9 +46221,11 @@
                                 <td>${escapeHTML(formatSyncDuration(Number(row.durationSeconds || 0)))}</td>
                                 <td>${escapeHTML(String(row.outcome || ""))}</td>
                                 <td>${escapeHTML(String(row.clientName || ""))}</td>
+                                <td><span class="status-chip ${escapeHTML(matchChipClass)}">${escapeHTML(matchStatus || "unmatched")}</span></td>
                             </tr>
-                        `).join("")
-                        : `<tr><td colspan="10">No call records loaded for the selected filters.</td></tr>`;
+                        `;
+                        }).join("")
+                        : `<tr><td colspan="11">No call records loaded for the selected filters.</td></tr>`;
                 }
 
                 const clientSummary = document.getElementById("clientCallStatsClientSummary");
@@ -46231,6 +46281,8 @@
                     const text = String(value || "").trim();
                     if (text) params.set(key, text);
                 });
+                params.set("page", String(Math.max(1, Number(clientCallStatsTable.page || 1))));
+                params.set("pageSize", String(Math.max(25, Number(clientCallStatsTable.pageSize || 250))));
                 const query = params.toString();
                 return query ? `?${query}` : "";
             }
@@ -46245,11 +46297,19 @@
                         summary: {},
                         charts: {},
                         rows: [],
+                        table: {},
                         imports: [],
                         extensions: [],
                         unmatchedNumbers: [],
                         resyncAudit: [],
                         aiSummary: {},
+                    };
+                    const tablePayload = clientCallStatsData?.table || {};
+                    clientCallStatsTable = {
+                        page: Math.max(1, Number(tablePayload.page || clientCallStatsTable.page || 1)),
+                        pageSize: Math.max(25, Number(tablePayload.pageSize || clientCallStatsTable.pageSize || 250)),
+                        totalRows: Math.max(0, Number(tablePayload.totalRows || 0)),
+                        totalPages: Math.max(1, Number(tablePayload.totalPages || 1)),
                     };
                     const aiPayload = await requestJSON(api.endpoints.clientCallStatsAiReports, { method: "GET", suppressFailurePanel: true });
                     clientCallStatsAiReports = Array.isArray(aiPayload?.reports) ? aiPayload.reports : [];
@@ -46303,12 +46363,11 @@
                 try {
                     const payload = await requestFormData(api.endpoints.clientCallStatsImportCommit, formData);
                     clientCallStatsImportPreview = null;
-                    clientCallStatsData = payload?.clientCallStats || clientCallStatsData;
                     const result = payload?.result || {};
                     const imported = Number(result?.summary?.newRows || 0).toLocaleString("en-GB");
                     showToast(`Call CSV imported. New rows: ${imported}.`, "success");
-                    renderClientCallStatsScreen();
                     closeClientCallStatsImportModal();
+                    await loadClientCallStats({ silent: true });
                 } catch (error) {
                     showToast(error?.message || "Unable to import call log CSV.", "error");
                 }
@@ -46316,13 +46375,12 @@
 
             async function runClientCallStatsResync() {
                 try {
-                    const payload = await requestJSON(api.endpoints.clientCallStatsResync, {
+                    await requestJSON(api.endpoints.clientCallStatsResync, {
                         method: "POST",
                         body: JSON.stringify({ triggerSource: "manual", reason: "Manual Re-Sync button" }),
                     });
-                    clientCallStatsData = payload?.clientCallStats || clientCallStatsData;
                     showToast("Call data re-sync complete.", "success");
-                    renderClientCallStatsScreen();
+                    await loadClientCallStats({ silent: true });
                 } catch (error) {
                     showToast(error?.message || "Unable to re-sync call data.", "error");
                 }
@@ -46366,9 +46424,9 @@
                         method: "POST",
                         body: JSON.stringify(payload),
                     });
-                    clientCallStatsData = response?.clientCallStats || clientCallStatsData;
+                    if (response?.clientCallStats) clientCallStatsData = response.clientCallStats;
                     showToast("Number action saved and history updated.", "success");
-                    renderClientCallStatsScreen();
+                    await loadClientCallStats({ silent: true });
                 } catch (error) {
                     showToast(error?.message || "Unable to apply unmatched number action.", "error");
                 }
@@ -46437,13 +46495,37 @@
                 });
                 document.getElementById("clientCallStatsApplyFiltersButton")?.addEventListener("click", () => {
                     clientCallStatsFilters = readClientCallStatsFiltersFromInputs();
+                    clientCallStatsTable.page = 1;
                     loadClientCallStats({ silent: true });
                 });
                 document.getElementById("clientCallStatsResetFiltersButton")?.addEventListener("click", () => {
                     clientCallStatsFilters = normaliseClientCallStatsFilters({});
+                    clientCallStatsTable.page = 1;
                     writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
                     loadClientCallStats({ silent: true });
                     showToast("Client Call Stats filters reset.", "info");
+                });
+                document.getElementById("clientCallStatsFilterSearch")?.addEventListener("keydown", (event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    clientCallStatsFilters = readClientCallStatsFiltersFromInputs();
+                    clientCallStatsTable.page = 1;
+                    loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsPrevPageButton")?.addEventListener("click", () => {
+                    clientCallStatsTable.page = Math.max(1, Number(clientCallStatsTable.page || 1) - 1);
+                    loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsNextPageButton")?.addEventListener("click", () => {
+                    const totalPages = Math.max(1, Number(clientCallStatsTable.totalPages || 1));
+                    clientCallStatsTable.page = Math.min(totalPages, Number(clientCallStatsTable.page || 1) + 1);
+                    loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsPageSizeSelect")?.addEventListener("change", (event) => {
+                    const nextSize = Math.max(25, Number(event?.target?.value || 250));
+                    clientCallStatsTable.pageSize = nextSize;
+                    clientCallStatsTable.page = 1;
+                    loadClientCallStats({ silent: true });
                 });
                 document.getElementById("clientCallStatsSavePresetButton")?.addEventListener("click", () => saveClientCallStatsFilterPreset());
                 document.getElementById("clientCallStatsApplySavedPresetButton")?.addEventListener("click", () => applyClientCallStatsSavedPreset());
@@ -46490,6 +46572,7 @@
                 if (fromInput) fromInput.value = startValue;
                 if (toInput) toInput.value = endValue;
                 clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
+                clientCallStatsTable.page = 1;
                 loadClientCallStats({ silent: true });
             }
 
@@ -46503,6 +46586,7 @@
                 if (fromInput) fromInput.value = startValue;
                 if (toInput) toInput.value = endValue;
                 clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
+                clientCallStatsTable.page = 1;
                 loadClientCallStats({ silent: true });
             }
 
@@ -46510,6 +46594,7 @@
                 const cleanPreset = normaliseClientCallStatsPreset(preset || {});
                 if (!cleanPreset) return;
                 clientCallStatsFilters = { ...normaliseClientCallStatsFilters(cleanPreset.filters || {}) };
+                clientCallStatsTable.page = 1;
                 writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
                 if (saveAsCurrent) {
                     const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");

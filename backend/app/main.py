@@ -2836,6 +2836,9 @@ def api_client_call_stats(
     outcome: str = Query("", alias="outcome"),
     match_status: str = Query("", alias="matchStatus"),
     import_file_id: str = Query("", alias="importFileId"),
+    search: str = Query("", alias="search"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(250, ge=25, le=1000, alias="pageSize"),
     user: dict = Depends(require_panel_user),
 ):
     filters = {
@@ -2848,8 +2851,9 @@ def api_client_call_stats(
         "outcome": outcome,
         "matchStatus": match_status,
         "importFileId": import_file_id,
+        "search": search,
     }
-    return {"status": "ok", "clientCallStats": call_stats_dashboard_payload(user, filters)}
+    return {"status": "ok", "clientCallStats": call_stats_dashboard_payload(user, filters, page=page, page_size=page_size)}
 
 
 @app.post("/api/client-call-stats/import/preview")
