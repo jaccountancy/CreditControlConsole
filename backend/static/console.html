@@ -35978,7 +35978,7 @@
                                         <thead>
                                             <tr>
                                                 <th>Date</th>
-                                                <th>Reference</th>
+                                                <th>Contact</th>
                                                 <th>Description</th>
                                                 <th>Source</th>
                                                 <th>Debit</th>
@@ -48907,7 +48907,14 @@
                     const xeroLedgerRows = buildPiClearingXeroBreakdown(runRows);
                     wizardXeroBody.innerHTML = xeroLedgerRows.length
                         ? xeroLedgerRows.map((row) => {
-                            const reference = String(row?.reference || row?.paymentId || "--").trim() || "--";
+                            const contact = String(
+                                row?.clientName
+                                || row?.contactName
+                                || row?.contact
+                                || row?.reference
+                                || row?.paymentId
+                                || "--"
+                            ).trim() || "--";
                             const description = String(row?.description || row?.clientName || "").trim() || "--";
                             const source = String(row?.source || "--").trim() || "--";
                             const debit = Number(row?.debit || 0);
@@ -48915,7 +48922,7 @@
                             return `
                                 <tr>
                                     <td>${escapeHTML(formatDate(row?.paidOn || ""))}</td>
-                                    <td>${escapeHTML(reference)}</td>
+                                    <td>${escapeHTML(contact)}</td>
                                     <td>${escapeHTML(description)}</td>
                                     <td>${escapeHTML(source)}</td>
                                     <td>${escapeHTML(debit > 0 ? formatCurrency(debit) : "£0.00")}</td>
