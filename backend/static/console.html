@@ -34642,6 +34642,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <label class="ch-checkbox-inline"><input id="microAnalyzerHideVatRegisteredToggle" type="checkbox" checked> Hide VAT-registered clients</label>
+                                    <button class="ghost-button" id="microAnalyzerConnectXeroButton" type="button">Connect new Xero account</button>
                                     <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh tenants</button>
                                 </div>
                             </div>
@@ -51365,7 +51366,7 @@
                                 piClearingStep1AiResult = null;
                                 piClearingStep1AiRowKey = selectedRowKey;
                                 renderPiClearingAccountScreen();
-                                showToast("Jenius AI is analysing cached payout data for this difference.", "info");
+                                showToast("Jenius AI is analysing payout data for this difference.", "info");
                                 try {
                                     const quickRun = currentPiClearingRun();
                                     const quickRows = Array.isArray(quickRun?.rows) ? quickRun.rows : [];
@@ -51399,7 +51400,7 @@
                                         includeIgnition: true,
                                         includeAI: false,
                                         refreshXero: false,
-                                        refreshIgnition: false,
+                                        refreshIgnition: true,
                                         batchStart: String(run?.monthStart || piClearingBatchStart || ""),
                                         batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
                                         accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
@@ -93912,6 +93913,7 @@
                 const summary = document.getElementById("microAnalyzerSummary");
                 const connectionsSection = document.getElementById("microAnalyzerConnectionsSection");
                 const connectionsTableBody = document.getElementById("microAnalyzerConnectionsTableBody");
+                const microAnalyzerConnectXeroButton = document.getElementById("microAnalyzerConnectXeroButton");
                 const refreshButton = document.getElementById("microAnalyzerRefreshButton");
                 const hideVatRegisteredToggle = document.getElementById("microAnalyzerHideVatRegisteredToggle");
                 const connectionsSearchInput = document.getElementById("microAnalyzerConnectionsSearchInput");
@@ -93986,6 +93988,7 @@
                 }
                 connectionsSection.hidden = inWorkspaceMode;
                 workspaceSection.hidden = !inWorkspaceMode;
+                if (microAnalyzerConnectXeroButton) microAnalyzerConnectXeroButton.hidden = inWorkspaceMode;
                 refreshButton.hidden = inWorkspaceMode;
 
                 if (refreshButton.dataset.microWired !== "true") {
@@ -94003,6 +94006,19 @@
                             microAnalyzerLoading = false;
                             renderMicroAnalyzerScreen();
                         }
+                    });
+                }
+                if (microAnalyzerConnectXeroButton && microAnalyzerConnectXeroButton.dataset.microWired !== "true") {
+                    microAnalyzerConnectXeroButton.dataset.microWired = "true";
+                    microAnalyzerConnectXeroButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        const url = forceXeroConnectURL("micro-analyzer");
+                        if (!url) {
+                            window.alert("Unable to start the Xero login flow.");
+                            return;
+                        }
+                        showToast("Opening Xero connection", "info");
+                        window.location.assign(url);
                     });
                 }
                 if (hideVatRegisteredToggle && hideVatRegisteredToggle.dataset.microWired !== "true") {
@@ -111693,6 +111709,16 @@
                             }
                         } catch (error) {
                             console.error("Unable to continue lock-date workflow after Xero connection", error);
+                        }
+                    } else if (xeroConnectionReturn.targetSection === "micro-analyzer") {
+                        try {
+                            await loadMeReport(true);
+                            await refreshMicroAnalyzerRows();
+                            if (activeView === "micro-analyzer") {
+                                showToast("Returned to VAT on Unregistered. New Xero accounts are now available in the tenant list.", "info");
+                            }
+                        } catch (error) {
+                            console.error("Unable to continue VAT on Unregistered workflow after Xero connection", error);
                         }
                     }
                 }
