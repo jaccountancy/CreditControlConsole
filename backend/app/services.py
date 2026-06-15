@@ -4668,6 +4668,56 @@ def pi_clearing_payload(user: dict) -> dict:
     return {"runs": runs}
 
 
+async def delete_pi_clearing_run(user: dict, run_id: str) -> dict:
+    requested_run_id = str(run_id or "").strip()
+    if not requested_run_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing run id is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_runs
+                WHERE id::text = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (requested_run_id, user["id"]),
+            )
+            run_row = cursor.fetchone()
+            if not run_row:
+                updated = pi_clearing_payload(user)
+                return {"deletedRunId": requested_run_id, "alreadyDeleted": True, "runs": updated.get("runs") or []}
+            resolved_run_id = str(run_row.get("id") or requested_run_id).strip()
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM pi_clearing_credit_notes
+                WHERE run_id::text = %s
+                  AND user_id = %s
+                  AND COALESCE(status, 'created') NOT IN ('voided', 'deleted')
+                """,
+                (resolved_run_id, user["id"]),
+            )
+            active_credit_notes = int((cursor.fetchone() or {}).get("count") or 0)
+            if active_credit_notes > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This batch has active credit notes. Void the credit notes before deleting the batch.",
+                )
+            cursor.execute(
+                """
+                DELETE FROM pi_clearing_runs
+                WHERE id::text = %s
+                  AND user_id = %s
+                """,
+                (resolved_run_id, user["id"]),
+            )
+        connection.commit()
+    updated = pi_clearing_payload(user)
+    return {"deletedRunId": resolved_run_id, "runs": updated.get("runs") or []}
+
+
 def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) -> str:
     requested = str((payload or {}).get("accountCode") or "").strip()
     configured = ""

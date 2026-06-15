@@ -235,6 +235,7 @@ from .services import (
     update_me_report_settings,
     upsert_payroll_headcount_workspace,
     apply_pi_clearing_credit_notes,
+    delete_pi_clearing_run,
     void_pi_clearing_credit_note,
     xero_lock_date_overview_payload,
     xero_lock_date_mismatch_payload,
@@ -2992,6 +2993,11 @@ def api_pi_clearing_account(user: dict = Depends(require_panel_user)):
 async def api_run_pi_clearing_account_workflow(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {"status": "ok", **await run_pi_clearing_workflow(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.delete("/api/pi-clearing-account/runs/{run_id}")
+async def api_delete_pi_clearing_account_run(run_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await delete_pi_clearing_run(user, run_id)}
 
 
 @app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes")

@@ -28539,6 +28539,38 @@
                 font-size: 12px;
                 color: var(--ink-soft);
             }
+            .pi-clearing-runs-toolbar {
+                width: 100%;
+                display: grid;
+                grid-template-columns: minmax(180px, 1.6fr) repeat(2, minmax(130px, 0.7fr));
+                gap: 8px;
+                margin-top: 2px;
+            }
+            .pi-clearing-runs-toolbar input[type="search"],
+            .pi-clearing-runs-toolbar select {
+                width: 100%;
+                min-height: 34px;
+                border-radius: 11px;
+                border: 1px solid rgba(31, 63, 118, 0.18);
+                background: rgba(255, 255, 255, 0.96);
+                color: var(--ink);
+                padding: 6px 10px;
+            }
+            .pi-clearing-runs-actions {
+                display: inline-flex;
+                gap: 8px;
+                align-items: center;
+                justify-content: flex-end;
+                width: 100%;
+            }
+            @media (max-width: 900px) {
+                .pi-clearing-runs-toolbar {
+                    grid-template-columns: minmax(0, 1fr);
+                }
+                .pi-clearing-runs-actions {
+                    justify-content: flex-start;
+                }
+            }
             .pi-clearing-kpi {
                 border: 1px solid rgba(32, 71, 140, 0.16);
                 border-radius: 14px;
@@ -35746,6 +35778,23 @@
                                 <div class="pi-clearing-table-head">
                                     <h4>Batch runs</h4>
                                     <p>Open a completed run or start a new batch workflow.</p>
+                                    <div class="pi-clearing-runs-toolbar">
+                                        <input id="piClearingRunsSearchInput" type="search" placeholder="Search by period or status" aria-label="Search PI clearing batches">
+                                        <select id="piClearingRunsStatusFilter" aria-label="Filter PI clearing batches by status">
+                                            <option value="all">All statuses</option>
+                                            <option value="ready">Ready</option>
+                                            <option value="empty">Empty</option>
+                                            <option value="credit_notes_created">Credit notes created</option>
+                                        </select>
+                                        <select id="piClearingRunsSortSelect" aria-label="Sort PI clearing batches">
+                                            <option value="period-desc">Newest period first</option>
+                                            <option value="period-asc">Oldest period first</option>
+                                            <option value="difference-desc">Largest difference first</option>
+                                            <option value="difference-asc">Smallest difference first</option>
+                                            <option value="rows-desc">Most rows first</option>
+                                            <option value="rows-asc">Fewest rows first</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <table class="ch-table" aria-label="PI clearing batch runs">
                                     <thead>
@@ -35756,7 +35805,7 @@
                                             <th>Ignition total</th>
                                             <th>Difference</th>
                                             <th>Rows</th>
-                                            <th></th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="piClearingRunsBody"></tbody>
@@ -37299,10 +37348,14 @@
             let piClearingLoading = false;
             let piClearingWorkflowRunning = false;
             let piClearingCreditNotesRunning = false;
+            let piClearingDeletingRunIds = new Set();
             let piClearingSelectedRunId = "";
             let piClearingSelectedAccountCode = "";
             let piClearingBatchStart = "";
             let piClearingBatchEnd = "";
+            let piClearingRunsSearchTerm = "";
+            let piClearingRunsStatusFilter = "all";
+            let piClearingRunsSort = "period-desc";
             let piClearingHydrated = false;
             let piClearingWizardOpen = false;
             let piClearingWizardStep = 0;
@@ -38707,6 +38760,7 @@
                         clientCallStatsFilterPresetSuggestions: config.endpoints?.clientCallStatsFilterPresetSuggestions || "/api/client-call-stats/filter-presets/suggest",
                         piClearingAccount: config.endpoints?.piClearingAccount || "/api/pi-clearing-account",
                         piClearingAccountRun: config.endpoints?.piClearingAccountRun || "/api/pi-clearing-account/run",
+                        piClearingAccountDeleteRun: config.endpoints?.piClearingAccountDeleteRun || "/api/pi-clearing-account/runs/:runId",
                         piClearingAccountSetup: config.endpoints?.piClearingAccountSetup || "/api/pi-clearing-account/setup",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
                         piClearingAccountVoidCreditNote: config.endpoints?.piClearingAccountVoidCreditNote || "/api/pi-clearing-account/runs/:runId/credit-notes/:creditNoteRecordId/void",
@@ -47616,6 +47670,49 @@
                 return piClearingRuns[0];
             }
 
+            function piClearingRunStatusValue(run = {}) {
+                return String(run?.status || "").trim().toLowerCase() || "unknown";
+            }
+
+            function piClearingRunSortablePeriodValue(run = {}) {
+                const monthStart = String(run?.monthStart || "").trim();
+                const monthEnd = String(run?.monthEnd || "").trim();
+                const fallback = String(run?.updatedAt || run?.createdAt || "").trim();
+                return Date.parse(monthStart || monthEnd || fallback || 0) || 0;
+            }
+
+            function piClearingVisibleRuns() {
+                const searchTerm = String(piClearingRunsSearchTerm || "").trim().toLowerCase();
+                const statusFilter = String(piClearingRunsStatusFilter || "all").trim().toLowerCase();
+                const sortMode = String(piClearingRunsSort || "period-desc").trim().toLowerCase();
+                const filtered = (Array.isArray(piClearingRuns) ? piClearingRuns : []).filter((entry) => {
+                    const status = piClearingRunStatusValue(entry);
+                    if (statusFilter !== "all" && status !== statusFilter) return false;
+                    if (!searchTerm) return true;
+                    const batchLabel = String(piClearingRunRangeLabel(entry) || "").toLowerCase();
+                    const monthLabel = String(piClearingRunMonth(entry) || "").toLowerCase();
+                    return batchLabel.includes(searchTerm) || monthLabel.includes(searchTerm) || status.includes(searchTerm);
+                });
+                const sorted = [...filtered];
+                sorted.sort((left, right) => {
+                    const leftSummary = left?.summary && typeof left.summary === "object" ? left.summary : {};
+                    const rightSummary = right?.summary && typeof right.summary === "object" ? right.summary : {};
+                    const leftPeriod = piClearingRunSortablePeriodValue(left);
+                    const rightPeriod = piClearingRunSortablePeriodValue(right);
+                    const leftDifference = Number(leftSummary?.differenceTotal || 0);
+                    const rightDifference = Number(rightSummary?.differenceTotal || 0);
+                    const leftRows = Number((left?.rows || []).length || 0);
+                    const rightRows = Number((right?.rows || []).length || 0);
+                    if (sortMode === "period-asc") return leftPeriod - rightPeriod;
+                    if (sortMode === "difference-desc") return rightDifference - leftDifference || (rightPeriod - leftPeriod);
+                    if (sortMode === "difference-asc") return leftDifference - rightDifference || (rightPeriod - leftPeriod);
+                    if (sortMode === "rows-desc") return rightRows - leftRows || (rightPeriod - leftPeriod);
+                    if (sortMode === "rows-asc") return leftRows - rightRows || (rightPeriod - leftPeriod);
+                    return rightPeriod - leftPeriod;
+                });
+                return sorted;
+            }
+
             function currentPiClearingAccountCode() {
                 const manual = String(piClearingSelectedAccountCode || "").trim();
                 if (manual) return manual;
@@ -48152,6 +48249,39 @@
                 }
             }
 
+            async function deletePiClearingRun(runId = "") {
+                const cleanRunId = String(runId || "").trim();
+                if (!cleanRunId) return;
+                if (piClearingDeletingRunIds.has(cleanRunId)) return;
+                const run = (Array.isArray(piClearingRuns) ? piClearingRuns : []).find((entry) => String(entry?.id || "") === cleanRunId);
+                const runLabel = piClearingRunRangeLabel(run || {});
+                if (!window.confirm(`Delete PI clearing batch ${runLabel || cleanRunId}?`)) return;
+                piClearingDeletingRunIds.add(cleanRunId);
+                renderPiClearingAccountScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.piClearingAccountDeleteRun, {
+                        method: "DELETE",
+                    }, { runId: cleanRunId });
+                    if (Array.isArray(payload?.runs)) {
+                        piClearingRuns = payload.runs;
+                    }
+                    const stillExists = piClearingRuns.find((entry) => String(entry?.id || "") === cleanRunId);
+                    if (!stillExists && String(piClearingSelectedRunId || "") === cleanRunId) {
+                        piClearingSelectedRunId = String(piClearingRuns?.[0]?.id || "");
+                    }
+                    piClearingStatusMessage = "PI clearing batch deleted.";
+                    piClearingStatusTone = "success";
+                    showToast("PI clearing batch deleted.", "success");
+                } catch (error) {
+                    piClearingStatusMessage = error?.message || "Unable to delete PI clearing batch.";
+                    piClearingStatusTone = "error";
+                    showToast(piClearingStatusMessage, "error");
+                } finally {
+                    piClearingDeletingRunIds.delete(cleanRunId);
+                    renderPiClearingAccountScreen();
+                }
+            }
+
             function setPiClearingWizardStep(nextStep) {
                 const step = Math.max(0, Math.min(3, Number(nextStep || 0)));
                 piClearingWizardStep = step;
@@ -48168,6 +48298,9 @@
                 const nominalMeta = document.getElementById("piClearingBatchNominalMeta");
                 const confirmBatchButton = document.getElementById("piClearingConfirmBatchButton");
                 const runsBody = document.getElementById("piClearingRunsBody");
+                const runsSearchInput = document.getElementById("piClearingRunsSearchInput");
+                const runsStatusFilter = document.getElementById("piClearingRunsStatusFilter");
+                const runsSortSelect = document.getElementById("piClearingRunsSortSelect");
                 const rowsBody = document.getElementById("piClearingRowsBody");
                 const emptyState = document.getElementById("piClearingEmptyState");
                 const modal = document.getElementById("piClearingWizardModal");
@@ -48289,9 +48422,42 @@
                     startButton.dataset.piWired = "true";
                     startButton.addEventListener("click", openPiClearingWizardSetup);
                 }
+                if (runsSearchInput) {
+                    if (runsSearchInput.value !== String(piClearingRunsSearchTerm || "")) {
+                        runsSearchInput.value = String(piClearingRunsSearchTerm || "");
+                    }
+                    if (runsSearchInput.dataset.piWired !== "true") {
+                        runsSearchInput.dataset.piWired = "true";
+                        runsSearchInput.addEventListener("input", (event) => {
+                            piClearingRunsSearchTerm = String(event.target.value || "");
+                            renderPiClearingAccountScreen();
+                        });
+                    }
+                }
+                if (runsStatusFilter) {
+                    runsStatusFilter.value = String(piClearingRunsStatusFilter || "all");
+                    if (runsStatusFilter.dataset.piWired !== "true") {
+                        runsStatusFilter.dataset.piWired = "true";
+                        runsStatusFilter.addEventListener("change", (event) => {
+                            piClearingRunsStatusFilter = String(event.target.value || "all");
+                            renderPiClearingAccountScreen();
+                        });
+                    }
+                }
+                if (runsSortSelect) {
+                    runsSortSelect.value = String(piClearingRunsSort || "period-desc");
+                    if (runsSortSelect.dataset.piWired !== "true") {
+                        runsSortSelect.dataset.piWired = "true";
+                        runsSortSelect.addEventListener("change", (event) => {
+                            piClearingRunsSort = String(event.target.value || "period-desc");
+                            renderPiClearingAccountScreen();
+                        });
+                    }
+                }
 
                 const run = currentPiClearingRun();
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const visibleRuns = piClearingVisibleRuns();
                 const summaryRows = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const differenceTotal = Number(summaryRows?.differenceTotal || 0);
                 const selectedBatchLabel = piClearingRunRangeLabel(run) || (piClearingBatchStart && piClearingBatchEnd ? `${formatDate(piClearingBatchStart)} to ${formatDate(piClearingBatchEnd)}` : "--");
@@ -48309,17 +48475,20 @@
                 renderPiClearingTopbarSummary();
 
                 if (runsBody) {
-                    if (!piClearingRuns.length) {
+                    if (!visibleRuns.length) {
+                        const hasFilters = Boolean(String(piClearingRunsSearchTerm || "").trim()) || String(piClearingRunsStatusFilter || "all") !== "all";
                         runsBody.innerHTML = `
                             <tr>
-                                <td colspan="7"><p class="detail-meta">No PI clearing runs yet. Start a new batch workflow.</p></td>
+                                <td colspan="7"><p class="detail-meta">${hasFilters ? "No runs match your search/filter." : "No PI clearing runs yet. Start a new batch workflow."}</p></td>
                             </tr>
                         `;
                     } else {
-                        runsBody.innerHTML = piClearingRuns.map((entry) => {
+                        runsBody.innerHTML = visibleRuns.map((entry) => {
                             const batch = piClearingRunRangeLabel(entry);
                             const entrySummary = entry?.summary && typeof entry.summary === "object" ? entry.summary : {};
                             const active = String(entry?.id || "") === String(run?.id || "");
+                            const runId = String(entry?.id || "");
+                            const isDeleting = piClearingDeletingRunIds.has(runId);
                             return `
                                 <tr class="${active ? "is-selected" : ""}">
                                     <td><strong>${escapeHTML(batch || "--")}</strong></td>
@@ -48328,17 +48497,30 @@
                                     <td>${escapeHTML(formatCurrency(entrySummary?.ignitionTotal || 0))}</td>
                                     <td>${escapeHTML(formatCurrency(entrySummary?.differenceTotal || 0))}</td>
                                     <td>${escapeHTML(formatInteger((entry?.rows || []).length || 0))}</td>
-                                    <td><button class="ghost-button" type="button" data-pi-run-id="${escapeHTML(String(entry?.id || ""))}">View</button></td>
+                                    <td>
+                                        <div class="pi-clearing-runs-actions">
+                                            <button class="ghost-button" type="button" data-pi-run-view-id="${escapeHTML(runId)}">View</button>
+                                            <button class="ghost-button danger-button" type="button" data-pi-run-delete-id="${escapeHTML(runId)}" ${isDeleting ? "disabled" : ""}>${isDeleting ? "Deleting..." : "Delete"}</button>
+                                        </div>
+                                    </td>
                                 </tr>
                             `;
                         }).join("");
                     }
                     if (runsBody.dataset.piWired !== "true") {
                         runsBody.dataset.piWired = "true";
-                        runsBody.addEventListener("click", (event) => {
-                            const button = event.target.closest("[data-pi-run-id]");
-                            if (!button) return;
-                            piClearingSelectedRunId = String(button.dataset.piRunId || "");
+                        runsBody.addEventListener("click", async (event) => {
+                            const viewButton = event.target.closest("[data-pi-run-view-id]");
+                            if (viewButton) {
+                                piClearingSelectedRunId = String(viewButton.dataset.piRunViewId || "");
+                                renderPiClearingAccountScreen();
+                                return;
+                            }
+                            const deleteButton = event.target.closest("[data-pi-run-delete-id]");
+                            if (!deleteButton) return;
+                            const runId = String(deleteButton.dataset.piRunDeleteId || "");
+                            if (!runId) return;
+                            await deletePiClearingRun(runId);
                             renderPiClearingAccountScreen();
                         });
                     }
