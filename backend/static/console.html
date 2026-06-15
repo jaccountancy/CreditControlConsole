@@ -49319,6 +49319,21 @@
                 renderPiClearingAccountScreen();
             }
 
+            function closePiClearingWizard() {
+                piClearingWizardOpen = false;
+                piClearingPayoutDetailOpen = false;
+                piClearingSelectedPayoutKey = "";
+                piClearingStep1DifferenceModalOpen = false;
+                piClearingStep1DifferenceRow = null;
+            }
+
+            function piClearingStep1NeedsIgnitionAI(rows = [], run = {}) {
+                const progress = piClearingMatchProgress(rows);
+                if (progress.total <= 0) return false;
+                if (progress.partial > 0 || progress.open > 0) return true;
+                return piClearingRunNeedsIgnitionAndAI(run);
+            }
+
             function piClearingRunNeedsIgnitionAndAI(run = {}) {
                 const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
                 const refresh = summary?.refresh && typeof summary.refresh === "object" ? summary.refresh : {};
@@ -49917,7 +49932,14 @@
                     const stepZeroBlocked = piClearingWizardStep === 0;
                     const stepOneBlocked = piClearingWizardStep === 1 && !runRows.length;
                     wizardNextButton.disabled = piClearingWizardStep >= 3 || stepZeroBlocked || stepOneBlocked;
-                    wizardNextButton.textContent = piClearingWizardStep >= 3 ? "Done" : "Next";
+                    if (piClearingWizardStep >= 3) {
+                        wizardNextButton.textContent = "Done";
+                    } else if (piClearingWizardStep === 1 && runRows.length) {
+                        const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
+                        wizardNextButton.textContent = step1NeedsIgnitionAI ? "Next: Ignition + AI" : "Finish";
+                    } else {
+                        wizardNextButton.textContent = "Next";
+                    }
                 }
 
                 if (wizardSummary) {
@@ -50303,11 +50325,7 @@
                 if (closeButton && closeButton.dataset.piWired !== "true") {
                     closeButton.dataset.piWired = "true";
                     closeButton.addEventListener("click", () => {
-                        piClearingWizardOpen = false;
-                        piClearingPayoutDetailOpen = false;
-                        piClearingSelectedPayoutKey = "";
-                        piClearingStep1DifferenceModalOpen = false;
-                        piClearingStep1DifferenceRow = null;
+                        closePiClearingWizard();
                         renderPiClearingAccountScreen();
                     });
                 }
@@ -50321,19 +50339,27 @@
                     nextButton.dataset.piWired = "true";
                     nextButton.addEventListener("click", async () => {
                         if (piClearingWizardStep >= 3) {
-                            piClearingWizardOpen = false;
-                            piClearingPayoutDetailOpen = false;
-                            piClearingSelectedPayoutKey = "";
-                            piClearingStep1DifferenceModalOpen = false;
-                            piClearingStep1DifferenceRow = null;
+                            closePiClearingWizard();
                             renderPiClearingAccountScreen();
                             return;
+                        }
+                        const run = currentPiClearingRun();
+                        const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                        if (piClearingWizardStep === 1 && runRows.length) {
+                            const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
+                            if (!step1NeedsIgnitionAI) {
+                                piClearingStatusMessage = "Step 1 complete. All rows are matched and balanced.";
+                                piClearingStatusTone = "success";
+                                closePiClearingWizard();
+                                renderPiClearingAccountScreen();
+                                showToast("PI Clearing complete: all Step 1 rows matched.", "success");
+                                return;
+                            }
                         }
                         const targetStep = piClearingWizardStep + 1;
                         setPiClearingWizardStep(targetStep);
                         if (targetStep === 2 && !piClearingStep2HydrationRunning) {
-                            const run = currentPiClearingRun();
-                            if (run?.id && piClearingRunNeedsIgnitionAndAI(run)) {
+                            if (run?.id && piClearingStep1NeedsIgnitionAI(runRows, run)) {
                                 piClearingStep2HydrationRunning = true;
                                 try {
                                     await runPiClearingWorkflow({
