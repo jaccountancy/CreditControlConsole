@@ -17548,6 +17548,22 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         with db.cursor() as cursor:
             for account in accounts:
                 suggestion = _me_treatment_for_account(account)
+                xero_account_id = str(
+                    account.get("AccountID")
+                    or account.get("accountID")
+                    or account.get("AccountId")
+                    or account.get("id")
+                    or ""
+                ).strip()
+                account_code = str(account.get("Code") or account.get("code") or "").strip()
+                account_name = str(account.get("Name") or account.get("name") or "").strip()
+                account_type = str(account.get("Type") or account.get("type") or "").strip()
+                suggested_treatment = str(suggestion.get("suggestedTreatment") or "").strip()
+                tax_treatment = str(suggestion.get("taxTreatment") or "").strip()
+                category = str(suggestion.get("category") or "").strip()
+                confidence = int(suggestion.get("confidence") or 0)
+                review_required = bool(suggestion.get("reviewRequired"))
+                reason = str(suggestion.get("reason") or "").strip()
                 cursor.execute(
                     """
                     INSERT INTO me_report_account_mappings (
@@ -17588,16 +17604,16 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
                     """,
                     (
                         client["id"],
-                        account.get("AccountID") or account.get("accountID") or "",
-                        account.get("Code") or account.get("code") or "",
-                        account.get("Name") or account.get("name") or "",
-                        account.get("Type") or account.get("type") or "",
-                        suggestion["suggestedTreatment"],
-                        suggestion["taxTreatment"],
-                        suggestion["category"],
-                        suggestion["confidence"],
-                        suggestion["reviewRequired"],
-                        suggestion["reason"],
+                        xero_account_id,
+                        account_code,
+                        account_name,
+                        account_type,
+                        suggested_treatment,
+                        tax_treatment,
+                        category,
+                        confidence,
+                        review_required,
+                        reason,
                         utcnow(),
                         utcnow(),
                     ),
