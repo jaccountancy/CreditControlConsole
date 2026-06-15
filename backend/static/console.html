@@ -28648,6 +28648,18 @@
                 justify-content: flex-end;
                 width: 100%;
             }
+            #piClearingRunsBody tr.pi-clearing-run-row-clear td {
+                background: rgba(39, 176, 95, 0.10);
+            }
+            #piClearingRunsBody tr.pi-clearing-run-row-problem td {
+                background: rgba(255, 83, 83, 0.10);
+            }
+            #piClearingRunsBody tr.pi-clearing-run-row-clear.is-selected td {
+                background: rgba(39, 176, 95, 0.16);
+            }
+            #piClearingRunsBody tr.pi-clearing-run-row-problem.is-selected td {
+                background: rgba(255, 83, 83, 0.16);
+            }
             @media (max-width: 900px) {
                 .pi-clearing-runs-toolbar {
                     grid-template-columns: minmax(0, 1fr);
@@ -49809,14 +49821,17 @@
                             const batchNumber = piClearingRunBatchNumber(entry) || "--";
                             const entrySummary = entry?.summary && typeof entry.summary === "object" ? entry.summary : {};
                             const active = String(entry?.id || "") === String(run?.id || "");
+                            const balanceValue = Number(entrySummary?.differenceTotal || 0);
+                            const balanceClear = Math.abs(balanceValue) <= 0.005;
+                            const rowToneClass = balanceClear ? "pi-clearing-run-row-clear" : "pi-clearing-run-row-problem";
                             const runId = String(entry?.id || "");
                             const isDeleting = piClearingDeletingRunIds.has(runId);
                             return `
-                                <tr class="${active ? "is-selected" : ""}">
+                                <tr class="${escapeHTML(`${active ? "is-selected " : ""}${rowToneClass}`.trim())}">
                                     <td><strong>${escapeHTML(batchNumber)}</strong></td>
                                     <td><strong>${escapeHTML(batch || "--")}</strong></td>
                                     <td>${escapeHTML(String(entry?.status || "--"))}</td>
-                                    <td>${escapeHTML(formatCurrency(entrySummary?.xeroTotal || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(balanceValue))}</td>
                                     <td>${escapeHTML(formatInteger((entry?.rows || []).length || 0))}</td>
                                     <td>
                                         <div class="pi-clearing-runs-actions">
