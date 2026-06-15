@@ -1180,144 +1180,157 @@ def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
     tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
     workspace_name = f"{tenant_name} Headcount Workspace"
-    now = utcnow()
-    with get_connection() as connection:
+    schema_repaired = False
+    while True:
+        now = utcnow()
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO payroll_headcount_workspaces (
-                        user_id,
-                        tenant_id,
-                        tenant_name,
-                        workspace_name,
-                        wizard_completed,
-                        ignition_plan_name,
-                        ignition_client_name,
-                        ignition_proposal_name,
-                        ignition_matched_at,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id, tenant_id)
-                    DO UPDATE
-                    SET tenant_name = EXCLUDED.tenant_name,
-                        workspace_name = EXCLUDED.workspace_name,
-                        wizard_completed = TRUE,
-                        updated_at = EXCLUDED.updated_at
-                    RETURNING id,
-                              tenant_id,
-                              tenant_name,
-                              workspace_name,
-                              wizard_completed,
-                              ignition_plan_name,
-                              ignition_client_name,
-                              ignition_proposal_name,
-                              ignition_matched_at,
-                              created_at,
-                              updated_at
-                    """,
-                    (
-                        user["id"],
+            with get_connection() as connection:
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            INSERT INTO payroll_headcount_workspaces (
+                                user_id,
+                                tenant_id,
+                                tenant_name,
+                                workspace_name,
+                                wizard_completed,
+                                ignition_plan_name,
+                                ignition_client_name,
+                                ignition_proposal_name,
+                                ignition_matched_at,
+                                created_at,
+                                updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (user_id, tenant_id)
+                            DO UPDATE
+                            SET tenant_name = EXCLUDED.tenant_name,
+                                workspace_name = EXCLUDED.workspace_name,
+                                wizard_completed = TRUE,
+                                updated_at = EXCLUDED.updated_at
+                            RETURNING id,
+                                      tenant_id,
+                                      tenant_name,
+                                      workspace_name,
+                                      wizard_completed,
+                                      ignition_plan_name,
+                                      ignition_client_name,
+                                      ignition_proposal_name,
+                                      ignition_matched_at,
+                                      created_at,
+                                      updated_at
+                            """,
+                            (
+                                user["id"],
+                                clean_tenant_id,
+                                tenant_name,
+                                workspace_name,
+                                True,
+                                "",
+                                "",
+                                "",
+                                None,
+                                now,
+                                now,
+                            ),
+                        )
+                        row = cursor.fetchone() or {}
+                except pg_errors.InvalidColumnReference:
+                    # Older deployments may miss the unique constraint required by ON CONFLICT.
+                    connection.rollback()
+                    logger.warning(
+                        "payroll_headcount_workspace_upsert_legacy_schema user_id=%s tenant_id=%s",
+                        user.get("id"),
                         clean_tenant_id,
-                        tenant_name,
-                        workspace_name,
-                        True,
-                        "",
-                        "",
-                        "",
-                        None,
-                        now,
-                        now,
-                    ),
-                )
-                row = cursor.fetchone() or {}
-        except pg_errors.InvalidColumnReference:
-            # Older deployments may miss the unique constraint required by ON CONFLICT.
-            connection.rollback()
+                    )
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE payroll_headcount_workspaces
+                            SET tenant_name = %s,
+                                workspace_name = %s,
+                                wizard_completed = TRUE,
+                                updated_at = %s
+                            WHERE user_id = %s
+                              AND tenant_id = %s
+                            RETURNING id,
+                                      tenant_id,
+                                      tenant_name,
+                                      workspace_name,
+                                      wizard_completed,
+                                      ignition_plan_name,
+                                      ignition_client_name,
+                                      ignition_proposal_name,
+                                      ignition_matched_at,
+                                      created_at,
+                                      updated_at
+                            """,
+                            (
+                                tenant_name,
+                                workspace_name,
+                                now,
+                                user["id"],
+                                clean_tenant_id,
+                            ),
+                        )
+                        row = cursor.fetchone() or {}
+                        if not row:
+                            cursor.execute(
+                                """
+                                INSERT INTO payroll_headcount_workspaces (
+                                    user_id,
+                                    tenant_id,
+                                    tenant_name,
+                                    workspace_name,
+                                    wizard_completed,
+                                    ignition_plan_name,
+                                    ignition_client_name,
+                                    ignition_proposal_name,
+                                    ignition_matched_at,
+                                    created_at,
+                                    updated_at
+                                )
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                RETURNING id,
+                                          tenant_id,
+                                          tenant_name,
+                                          workspace_name,
+                                          wizard_completed,
+                                          ignition_plan_name,
+                                          ignition_client_name,
+                                          ignition_proposal_name,
+                                          ignition_matched_at,
+                                          created_at,
+                                          updated_at
+                                """,
+                                (
+                                    user["id"],
+                                    clean_tenant_id,
+                                    tenant_name,
+                                    workspace_name,
+                                    True,
+                                    "",
+                                    "",
+                                    "",
+                                    None,
+                                    now,
+                                    now,
+                                ),
+                            )
+                            row = cursor.fetchone() or {}
+                connection.commit()
+            return _payroll_headcount_workspace_row_payload(row, snapshots=[])
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
             logger.warning(
-                "payroll_headcount_workspace_upsert_legacy_schema user_id=%s tenant_id=%s",
+                "payroll_headcount_workspace_schema_repaired user_id=%s tenant_id=%s",
                 user.get("id"),
                 clean_tenant_id,
             )
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE payroll_headcount_workspaces
-                    SET tenant_name = %s,
-                        workspace_name = %s,
-                        wizard_completed = TRUE,
-                        updated_at = %s
-                    WHERE user_id = %s
-                      AND tenant_id = %s
-                    RETURNING id,
-                              tenant_id,
-                              tenant_name,
-                              workspace_name,
-                              wizard_completed,
-                              ignition_plan_name,
-                              ignition_client_name,
-                              ignition_proposal_name,
-                              ignition_matched_at,
-                              created_at,
-                              updated_at
-                    """,
-                    (
-                        tenant_name,
-                        workspace_name,
-                        now,
-                        user["id"],
-                        clean_tenant_id,
-                    ),
-                )
-                row = cursor.fetchone() or {}
-                if not row:
-                    cursor.execute(
-                        """
-                        INSERT INTO payroll_headcount_workspaces (
-                            user_id,
-                            tenant_id,
-                            tenant_name,
-                            workspace_name,
-                            wizard_completed,
-                            ignition_plan_name,
-                            ignition_client_name,
-                            ignition_proposal_name,
-                            ignition_matched_at,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id,
-                                  tenant_id,
-                                  tenant_name,
-                                  workspace_name,
-                                  wizard_completed,
-                                  ignition_plan_name,
-                                  ignition_client_name,
-                                  ignition_proposal_name,
-                                  ignition_matched_at,
-                                  created_at,
-                                  updated_at
-                        """,
-                        (
-                            user["id"],
-                            clean_tenant_id,
-                            tenant_name,
-                            workspace_name,
-                            True,
-                            "",
-                            "",
-                            "",
-                            None,
-                            now,
-                            now,
-                        ),
-                    )
-                    row = cursor.fetchone() or {}
-        connection.commit()
-    return _payroll_headcount_workspace_row_payload(row, snapshots=[])
 
 
 async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
