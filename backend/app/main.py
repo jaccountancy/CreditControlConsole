@@ -925,9 +925,9 @@ def logout():
 def console_page():
     webpanel_index = WEB_PANEL_DIR / "index.html"
     if webpanel_index.exists():
-        return FileResponse(webpanel_index)
+        return FileResponse(webpanel_index, headers={"Cache-Control": "no-store, max-age=0"})
     logger.warning("WebPanel index not found at %s; serving legacy console", webpanel_index)
-    return FileResponse(LEGACY_CONSOLE_PATH)
+    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/styles.css")
@@ -956,7 +956,7 @@ def webpanel_standalone():
 
 @app.get("/console", response_class=HTMLResponse)
 def legacy_console_page():
-    return FileResponse(LEGACY_CONSOLE_PATH)
+    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/snackccountancy", response_class=HTMLResponse)
