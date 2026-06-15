@@ -28811,6 +28811,33 @@
                 justify-content: flex-start;
                 margin-bottom: 6px;
             }
+            .pi-clearing-mini-totals {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 0 0 10px;
+            }
+            .pi-clearing-mini-total {
+                border: 1px solid rgba(30, 63, 124, 0.16);
+                border-radius: 12px;
+                background: rgba(240, 246, 255, 0.88);
+                padding: 6px 10px;
+                min-width: 170px;
+            }
+            .pi-clearing-mini-total strong {
+                display: block;
+                font-size: 11px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #4a6286;
+                margin-bottom: 3px;
+            }
+            .pi-clearing-mini-total span {
+                display: block;
+                font-size: 14px;
+                font-weight: 800;
+                color: #123f97;
+            }
             .is-loading-button {
                 position: relative;
                 padding-left: 34px;
@@ -36348,6 +36375,16 @@
                                 <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                     <button class="ghost-button" id="piClearingRefreshTransactionsButton" type="button">Refresh from Xero</button>
+                                </div>
+                                <div class="pi-clearing-mini-totals" aria-label="Step 1 totals">
+                                    <article class="pi-clearing-mini-total">
+                                        <strong>Total debit</strong>
+                                        <span id="piClearingStep1TotalDebit">£0.00</span>
+                                    </article>
+                                    <article class="pi-clearing-mini-total">
+                                        <strong>Total credit</strong>
+                                        <span id="piClearingStep1TotalCredit">£0.00</span>
+                                    </article>
                                 </div>
                                 <p class="detail-meta">Step 1 lists Xero credit entries and checks whether each has matching same-date debit entries.</p>
                                 <section class="ch-companies-table-wrap">
@@ -49954,6 +49991,10 @@
                     const xeroRows = buildPiClearingXeroBreakdown(runRows);
                     const xeroDebits = xeroRows.reduce((sum, row) => sum + Number(row.debit || 0), 0);
                     const xeroCredits = xeroRows.reduce((sum, row) => sum + Number(row.credit || 0), 0);
+                    const step1TotalDebit = document.getElementById("piClearingStep1TotalDebit");
+                    const step1TotalCredit = document.getElementById("piClearingStep1TotalCredit");
+                    if (step1TotalDebit) step1TotalDebit.textContent = formatCurrency(xeroDebits);
+                    if (step1TotalCredit) step1TotalCredit.textContent = formatCurrency(xeroCredits);
                     const refreshSummary = summaryRows?.refresh && typeof summaryRows.refresh === "object" ? summaryRows.refresh : {};
                     const xeroRefreshSummary = refreshSummary?.xero && typeof refreshSummary.xero === "object" ? refreshSummary.xero : {};
                     const xeroLastRefreshedAt = String(xeroRefreshSummary?.lastRefreshedAt || xeroRefreshSummary?.refreshedAt || "").trim();
