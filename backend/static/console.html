@@ -49612,6 +49612,33 @@
                     matchedRunRow = fallbackCandidates.sort(rankCandidates)[0] || null;
                     usedFallbackRow = Boolean(matchedRunRow);
                 }
+                if (!matchedRunRow) {
+                    const matchedPayoutDate = piDateKey(bestPayout?.paidOn || "");
+                    const clientFallbackCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
+                        const rowClient = normalizeClient(item?.clientName || "");
+                        if (!rowClient || !targetClients.has(rowClient)) return false;
+                        const resolutionStatus = String(item?.resolutionStatus || "").trim().toLowerCase();
+                        if (["credit_note_created", "balanced_by_existing_credit_note"].includes(resolutionStatus)) return false;
+                        const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
+                        if (matchedPayoutDate && payoutDate && payoutDate !== matchedPayoutDate) return false;
+                        return true;
+                    });
+                    if (clientFallbackCandidates.length) {
+                        const clientRank = (left, right) => {
+                            const leftHasContact = Boolean(String(left?.xeroContactId || "").trim());
+                            const rightHasContact = Boolean(String(right?.xeroContactId || "").trim());
+                            if (leftHasContact !== rightHasContact) return leftHasContact ? -1 : 1;
+                            const leftDiff = Math.abs(Number(left?.differenceTotal || left?.difference || 0));
+                            const rightDiff = Math.abs(Number(right?.differenceTotal || right?.difference || 0));
+                            if (!piAmountEqual(leftDiff, rightDiff, 0.005)) return leftDiff - rightDiff;
+                            const leftClient = normalizeClient(left?.clientName || "");
+                            const rightClient = normalizeClient(right?.clientName || "");
+                            return leftClient.localeCompare(rightClient);
+                        };
+                        matchedRunRow = clientFallbackCandidates.sort(clientRank)[0] || null;
+                        usedFallbackRow = Boolean(matchedRunRow);
+                    }
+                }
 
                 return {
                     targetDate: piDateKey(bestPayout?.paidOn || "") || targetDate,
