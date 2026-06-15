@@ -28883,6 +28883,12 @@
             .pi-step1-row-match td:first-child {
                 border-left: 3px solid rgba(39, 176, 95, 0.65);
             }
+            .pi-step1-row-mismatch td {
+                background: rgba(255, 83, 83, 0.08);
+            }
+            .pi-step1-row-mismatch td:first-child {
+                border-left: 3px solid rgba(200, 33, 33, 0.65);
+            }
             .pi-clearing-setup-shell {
                 display: grid;
                 gap: 10px;
@@ -29059,6 +29065,16 @@
             .pi-step-success-copy small {
                 color: #2d6f53;
                 font-weight: 600;
+            }
+            .pi-step1-next-step {
+                display: grid;
+                gap: 10px;
+            }
+            .pi-step1-next-step p {
+                margin: 0;
+            }
+            .pi-step1-ai-button {
+                justify-self: start;
             }
             [data-pi-payout-key] {
                 cursor: pointer;
@@ -50046,7 +50062,7 @@
                             const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
                             const status = String(row?.status || "").trim().toLowerCase();
                             const canViewMatches = status === "balanced";
-                            const rowClass = status === "balanced" ? "pi-step1-row-match" : "";
+                            const rowClass = status === "balanced" ? "pi-step1-row-match" : "pi-step1-row-mismatch";
                             return `
                                 <tr class="${escapeHTML(rowClass)}">
                                     <td>${escapeHTML(formatDate(row?.date || ""))}</td>
@@ -50058,7 +50074,7 @@
                                     <td>
                                         ${canViewMatches
                                             ? `<button class="ghost-button" type="button" data-pi-step1-detail="${escapeHTML(String(index))}">View matches</button>`
-                                            : `<button class="ghost-button" type="button" data-pi-step1-detail="${escapeHTML(String(index))}">Init it</button>`
+                                            : `<button class="ghost-button" type="button" data-pi-step1-detail="${escapeHTML(String(index))}">Fix It</button>`
                                         }
                                     </td>
                                 </tr>
@@ -50537,7 +50553,12 @@
                             : "<div>None</div>";
                         const nextStepMarkup = isBalanced
                             ? `<span class="pi-step-success"><span class="pi-step-success-icon" aria-hidden="true">✓</span><span class="pi-step-success-copy"><strong>Reconciled</strong><small>All same-date debits are matched.</small></span></span>`
-                            : "Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.";
+                            : `
+                                <div class="pi-step1-next-step">
+                                    <p>Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.</p>
+                                    <button class="primary-button pi-step1-ai-button" type="button" data-pi-step1-ask-ai="true">Ask Jenius AI</button>
+                                </div>
+                            `;
                         step1DifferenceBody.innerHTML = row
                             ? `
                                 <tr><th>Credit payment id</th><td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td></tr>
@@ -50549,6 +50570,22 @@
                                 <tr><th>Next step</th><td>${nextStepMarkup}</td></tr>
                             `
                             : `<tr><td><p class="detail-meta">No row selected.</p></td></tr>`;
+                        const askAiButton = step1DifferenceBody.querySelector("[data-pi-step1-ask-ai]");
+                        if (askAiButton) {
+                            askAiButton.addEventListener("click", async () => {
+                                piClearingStep1DifferenceModalOpen = false;
+                                piClearingStep1DifferenceRow = null;
+                                renderPiClearingAccountScreen();
+                                showToast("Jenius AI is checking Ignition data and preparing balancing credit note suggestions.", "info");
+                                await runPiClearingWorkflow({
+                                    includeIgnition: true,
+                                    includeAI: true,
+                                    refreshXero: false,
+                                    refreshIgnition: true,
+                                    targetStep: 2,
+                                });
+                            });
+                        }
                     }
                 }
                 const step1DifferenceClose = document.getElementById("piClearingStep1DifferenceCloseButton");
