@@ -49425,11 +49425,20 @@
                 const missingDebitAmount = Math.max(0, Number(row?.missingDebitAmount || (creditAmount - matchedDebitTotal)));
                 if (!targetDate || missingDebitAmount <= 0.005) return null;
 
+                const normalizeClient = (value = "") => String(value || "").trim().toLowerCase();
                 const creditClientName = String(row?.creditClientName || "").trim().toLowerCase();
                 const payouts = buildPiClearingPayoutBreakdown(runRows);
                 const tolerance = 0.01;
                 const maxDepth = 6;
                 const maxNodes = 2500;
+                const expectedClientNames = new Set();
+                if (creditClientName) expectedClientNames.add(creditClientName);
+                (Array.isArray(runRows) ? runRows : []).forEach((item) => {
+                    const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
+                    if (!payoutDate || payoutDate !== targetDate) return;
+                    const clientName = normalizeClient(item?.clientName || "");
+                    if (clientName) expectedClientNames.add(clientName);
+                });
 
                 const findBestCombination = (payout = {}) => {
                     const allLines = (Array.isArray(payout?.lines) ? payout.lines : [])
@@ -49460,6 +49469,18 @@
                             lines: [exactSingleMatches[0]],
                             netAmount: Number(exactSingleMatches[0]?.signedAmount || 0),
                         };
+                    }
+                    if (exactSingleMatches.length > 1) {
+                        const nameMatchedExact = exactSingleMatches.filter((line) => expectedClientNames.has(line.lineClientName));
+                        if (nameMatchedExact.length === 1) {
+                            return {
+                                score: 0,
+                                lines: [nameMatchedExact[0]],
+                                netAmount: Number(nameMatchedExact[0]?.signedAmount || 0),
+                            };
+                        }
+                        // Ambiguous exact-amount lines: don't auto-pick a client.
+                        if (nameMatchedExact.length > 1 || expectedClientNames.size === 0) return null;
                     }
 
                     let visited = 0;
@@ -49519,7 +49540,6 @@
 
                 if (!bestPayout || !bestCombination?.lines?.length) return null;
 
-                const normalizeClient = (value = "") => String(value || "").trim().toLowerCase();
                 const targetClients = new Set(
                     (bestCombination.lines || [])
                         .map((item) => normalizeClient(item?.clientName || ""))
