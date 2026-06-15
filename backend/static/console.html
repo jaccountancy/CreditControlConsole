@@ -49330,17 +49330,7 @@
             function piClearingStep1NeedsIgnitionAI(rows = [], run = {}) {
                 const progress = piClearingMatchProgress(rows);
                 if (progress.total <= 0) return false;
-                if (progress.partial > 0 || progress.open > 0) return true;
-                return piClearingRunNeedsIgnitionAndAI(run);
-            }
-
-            function piClearingRunNeedsIgnitionAndAI(run = {}) {
-                const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
-                const refresh = summary?.refresh && typeof summary.refresh === "object" ? summary.refresh : {};
-                const ignitionRefresh = refresh?.ignition && typeof refresh.ignition === "object" ? refresh.ignition : {};
-                const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
-                const engine = String(analysis?.engine || "").trim().toLowerCase();
-                return Boolean(ignitionRefresh?.deferred) || engine === "local_deferred" || String(summary?.workflowMode || "") === "transactions_only";
+                return progress.partial > 0 || progress.open > 0;
             }
 
             async function runPiClearingWorkflow(options = {}) {
@@ -49932,11 +49922,13 @@
                     const stepZeroBlocked = piClearingWizardStep === 0;
                     const stepOneBlocked = piClearingWizardStep === 1 && !runRows.length;
                     wizardNextButton.disabled = piClearingWizardStep >= 3 || stepZeroBlocked || stepOneBlocked;
+                    const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
                     if (piClearingWizardStep >= 3) {
                         wizardNextButton.textContent = "Done";
                     } else if (piClearingWizardStep === 1 && runRows.length) {
-                        const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
                         wizardNextButton.textContent = step1NeedsIgnitionAI ? "Next: Ignition + AI" : "Finish";
+                    } else if (piClearingWizardStep === 2) {
+                        wizardNextButton.textContent = step1NeedsIgnitionAI ? "Next" : "Finish";
                     } else {
                         wizardNextButton.textContent = "Next";
                     }
@@ -50353,6 +50345,17 @@
                                 closePiClearingWizard();
                                 renderPiClearingAccountScreen();
                                 showToast("PI Clearing complete: all Step 1 rows matched.", "success");
+                                return;
+                            }
+                        }
+                        if (piClearingWizardStep === 2 && runRows.length) {
+                            const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
+                            if (!step1NeedsIgnitionAI) {
+                                piClearingStatusMessage = "Batch complete. No unmatched rows, so Ignition and credit notes are not required.";
+                                piClearingStatusTone = "success";
+                                closePiClearingWizard();
+                                renderPiClearingAccountScreen();
+                                showToast("PI Clearing complete: no unmatched rows.", "success");
                                 return;
                             }
                         }
