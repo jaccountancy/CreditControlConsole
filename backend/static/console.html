@@ -49987,14 +49987,14 @@
                 });
                 if (wizardBackButton) wizardBackButton.disabled = piClearingWizardStep <= 0;
                 if (wizardNextButton) {
-                    const stepZeroBlocked = piClearingWizardStep === 0;
-                    const stepOneBlocked = piClearingWizardStep === 1 && !runRows.length;
-                    wizardNextButton.disabled = piClearingWizardStep >= 3 || stepZeroBlocked || stepOneBlocked;
                     const step1NeedsIgnitionAI = piClearingStep1NeedsIgnitionAI(runRows, run);
+                    const stepZeroBlocked = piClearingWizardStep === 0;
+                    const stepOneBlocked = piClearingWizardStep === 1 && (!runRows.length || step1NeedsIgnitionAI);
+                    wizardNextButton.disabled = piClearingWizardStep >= 3 || stepZeroBlocked || stepOneBlocked;
                     if (piClearingWizardStep >= 3) {
                         wizardNextButton.textContent = "Done";
-                    } else if (piClearingWizardStep === 1 && runRows.length) {
-                        wizardNextButton.textContent = step1NeedsIgnitionAI ? "Next: Ignition + AI" : "Finish";
+                    } else if (piClearingWizardStep === 1) {
+                        wizardNextButton.textContent = "Complete Batch";
                     } else if (piClearingWizardStep === 2) {
                         wizardNextButton.textContent = step1NeedsIgnitionAI ? "Next" : "Finish";
                     } else {
