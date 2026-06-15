@@ -49486,20 +49486,15 @@
 
                 let bestPayout = null;
                 let bestCombination = null;
-                const targetDateEpoch = Date.parse(targetDate || 0) || 0;
                 payouts.forEach((payout) => {
                     const combo = findBestCombination(payout);
                     if (!combo) return;
-                    const payoutNet = Number(payout?.netPayout || 0);
-                    const payoutAmountDelta = Math.abs(payoutNet - creditAmount);
-                    const payoutDateKey = piDateKey(payout?.paidOn || "");
-                    const payoutDateEpoch = Date.parse(payoutDateKey || 0) || 0;
-                    const payoutDateDeltaDays = targetDateEpoch && payoutDateEpoch
-                        ? Math.abs(Math.round((payoutDateEpoch - targetDateEpoch) / (24 * 60 * 60 * 1000)))
-                        : 0;
+                    const lines = Array.isArray(combo?.lines) ? combo.lines : [];
+                    const exactLineHits = lines.filter((line) => piAmountEqual(Math.abs(Number(line?.signedAmount || line?.amount || 0)), missingDebitAmount)).length;
+                    const payoutLineCount = Array.isArray(payout?.lines) ? payout.lines.length : 0;
                     const score = Number(combo.score || 0)
-                        + payoutAmountDelta * 5
-                        + payoutDateDeltaDays * 0.01;
+                        - (exactLineHits * 0.4)
+                        - (Math.min(payoutLineCount, 30) * 0.01);
                     if (!bestCombination || score < Number(bestCombination.score || 0)) {
                         bestCombination = {
                             ...combo,
@@ -49525,7 +49520,8 @@
                     if (!piAmountEqual(differenceTotal, missingDebitAmount, Math.max(tolerance, 0.02))) return false;
                     const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
                     const matchedPayoutDate = piDateKey(bestPayout?.paidOn || "");
-                    if (payoutDate && payoutDate !== targetDate && payoutDate !== matchedPayoutDate) return false;
+                    if (!matchedPayoutDate) return false;
+                    if (!payoutDate || payoutDate !== matchedPayoutDate) return false;
                     return true;
                 });
 
@@ -49548,7 +49544,7 @@
                 })[0] || null;
 
                 return {
-                    targetDate,
+                    targetDate: piDateKey(bestPayout?.paidOn || "") || targetDate,
                     missingDebitAmount,
                     payout: bestPayout,
                     payoutLines: bestCombination.lines,
@@ -51394,7 +51390,7 @@
                         : null;
                     const runRow = match?.runRow && typeof match.runRow === "object" ? match.runRow : null;
                     const clientName = String(runRow?.clientName || match?.payoutLine?.clientName || "Unknown client").trim();
-                    const payoutDate = String(runRow?.payoutDate || match?.targetDate || "").trim();
+                    const payoutDate = String(match?.payout?.paidOn || runRow?.payoutDate || match?.targetDate || "").trim();
                     const amount = Math.abs(Number(runRow?.differenceTotal || match?.missingDebitAmount || 0));
                     const payoutId = String(match?.payout?.payoutId || "--").trim() || "--";
                     const lineCount = Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0);
