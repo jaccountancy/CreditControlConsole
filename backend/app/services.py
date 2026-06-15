@@ -32783,27 +32783,6 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
                 register_rows = []
         connection.commit()
 
-    proposal_rows: list[dict] = []
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            try:
-                cursor.execute(
-                    """
-                    SELECT payload
-                    FROM ignition_reporting_records
-                    WHERE user_id = %s
-                      AND dataset = 'proposals'
-                    ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
-                    LIMIT 12000
-                    """,
-                    (user["id"],),
-                )
-                proposal_rows = cursor.fetchall() or []
-            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
-                connection.rollback()
-                proposal_rows = []
-        connection.commit()
-
     register_vat_by_client_id: dict[str, str] = {}
     register_vat_by_name: dict[str, str] = {}
     for register_row in register_rows:
@@ -32813,94 +32792,64 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
         client_id_key = str(register_row.get("client_id") or "").strip().lower()
         if client_id_key and client_id_key not in register_vat_by_client_id:
             register_vat_by_client_id[client_id_key] = cleaned_vat
-        display_name = str(register_row.get("company_name") or register_row.get("client_name") or "").strip()
-        name_key = _bm_tasks_normalise_name_key(display_name)
-        if name_key and name_key not in register_vat_by_name:
-            register_vat_by_name[name_key] = cleaned_vat
+        for raw_name in (register_row.get("company_name"), register_row.get("client_name")):
+            name_key = _bm_tasks_normalise_name_key(str(raw_name or "").strip())
+            if name_key and name_key not in register_vat_by_name:
+                register_vat_by_name[name_key] = cleaned_vat
 
-    eligible_labels = {"Micro", "Starter", "Solo", "Solo+", "Solo MTD"}
-    active_ignition_by_key: dict[str, dict] = {}
-    for row in proposal_rows:
-        proposal = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-        if not proposal:
+    customers_by_tenant: dict[str, list[dict]] = defaultdict(list)
+    for row in customer_rows:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
             continue
-        if not _is_accepted_ignition_proposal(proposal):
-            continue
-        if not _ignition_proposal_client_is_active(proposal):
-            continue
-        service_name = _ignition_proposal_service_name(proposal)
-        plan_label = _plan_label_for_text(" ".join([service_name, str(proposal.get("name") or ""), str(proposal.get("reference_number") or "")]).strip())
-        if plan_label not in eligible_labels:
-            continue
-        client_name = _ignition_proposal_client_name(proposal)
-        if not client_name:
-            continue
-        candidate = {
-            "clientName": client_name,
-            "planName": plan_label,
-            "serviceName": service_name or "",
-            "proposalName": str(proposal.get("name") or proposal.get("reference_number") or "").strip(),
-            "ignitionClientId": _ignition_proposal_client_id(proposal),
-        }
-        for key in _ignition_name_match_keys(client_name):
-            if not key:
-                continue
-            existing = active_ignition_by_key.get(key)
-            if existing is None:
-                active_ignition_by_key[key] = candidate
-                continue
-            existing_priority = 1 if str(existing.get("planName") or "") == "Starter" else 0
-            incoming_priority = 1 if plan_label == "Starter" else 0
-            if incoming_priority > existing_priority:
-                active_ignition_by_key[key] = candidate
+        customers_by_tenant[tenant_id].append(row)
 
     rows: list[dict] = []
-    for customer in customer_rows:
-        customer_name = str(customer.get("name") or "").strip()
-        if not customer_name:
-            continue
-        matched = None
-        for key in _ignition_name_match_keys(customer_name):
-            if key and key in active_ignition_by_key:
-                matched = active_ignition_by_key[key]
+    for tenant_id in tenant_ids:
+        tenant_name = tenant_name_by_id.get(tenant_id, tenant_id)
+        tenant_name_key = _bm_tasks_normalise_name_key(tenant_name)
+        candidates = customers_by_tenant.get(tenant_id, [])
+        preferred_customer: dict | None = None
+        for candidate in candidates:
+            if _juksib_clean_vat_number(candidate.get("vat_number")):
+                preferred_customer = candidate
                 break
-        if not matched:
-            continue
-        customer_id_text = str(customer.get("id") or "").strip()
-        customer_name = str(customer.get("name") or "").strip()
-        customer_vat = _juksib_clean_vat_number(customer.get("vat_number"))
-        if not customer_vat:
+            candidate_name_key = _bm_tasks_normalise_name_key(str(candidate.get("name") or "").strip())
+            if candidate_name_key and candidate_name_key in register_vat_by_name:
+                preferred_customer = candidate
+                break
+        if preferred_customer is None and candidates:
+            preferred_customer = candidates[0]
+
+        customer_name = str((preferred_customer or {}).get("name") or "").strip()
+        customer_id_text = str((preferred_customer or {}).get("id") or "").strip()
+        customer_vat = _juksib_clean_vat_number((preferred_customer or {}).get("vat_number"))
+        if not customer_vat and customer_id_text:
             customer_vat = register_vat_by_client_id.get(customer_id_text.lower(), "")
-        if not customer_vat:
+        if not customer_vat and customer_name:
             customer_vat = register_vat_by_name.get(_bm_tasks_normalise_name_key(customer_name), "")
+        if not customer_vat and tenant_name_key:
+            customer_vat = register_vat_by_name.get(tenant_name_key, "")
+
         rows.append(
             {
-                "id": customer_id_text,
-                "clientName": matched.get("clientName") or customer_name,
-                "planName": matched.get("planName") or "",
-                "serviceName": matched.get("serviceName") or "",
-                "proposalName": matched.get("proposalName") or "",
-                "ignitionClientId": matched.get("ignitionClientId") or "",
+                "id": customer_id_text or f"tenant:{tenant_id}",
+                "clientName": customer_name or tenant_name or tenant_id,
+                "planName": "",
+                "serviceName": "",
+                "proposalName": "",
+                "ignitionClientId": "",
                 "customerId": customer_id_text,
-                "customerName": customer_name,
-                "xeroContactId": str(customer.get("xero_contact_id") or ""),
-                "tenantId": str(customer.get("tenant_id") or ""),
-                "tenantName": tenant_name_by_id.get(str(customer.get("tenant_id") or ""), str(customer.get("tenant_id") or "")),
+                "customerName": customer_name or tenant_name or tenant_id,
+                "xeroContactId": str((preferred_customer or {}).get("xero_contact_id") or ""),
+                "tenantId": tenant_id,
+                "tenantName": tenant_name,
                 "vatNumber": customer_vat,
             }
         )
 
     rows.sort(key=lambda item: (str(item.get("tenantName") or "").casefold(), str(item.get("customerName") or "").casefold()))
-    deduped: list[dict] = []
-    seen_contact_ids: set[str] = set()
-    for row in rows:
-        contact_id = str(row.get("xeroContactId") or "").strip()
-        dedupe_key = contact_id or f"{row.get('tenantId')}::{row.get('customerId')}"
-        if dedupe_key in seen_contact_ids:
-            continue
-        seen_contact_ids.add(dedupe_key)
-        deduped.append(row)
-    return {"clients": deduped, "count": len(deduped)}
+    return {"clients": rows, "count": len(rows)}
 
 
 VAULT_MAX_FILE_BYTES = 75 * 1024 * 1024
