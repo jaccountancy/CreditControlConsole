@@ -28845,6 +28845,17 @@
             .pi-step1-row.is-missing_debits {
                 background: rgba(255, 236, 236, 0.76);
             }
+            .pi-ledger-table td:nth-child(5),
+            .pi-ledger-table td:nth-child(6),
+            .pi-ledger-table th:nth-child(5),
+            .pi-ledger-table th:nth-child(6) {
+                text-align: right;
+                white-space: nowrap;
+            }
+            .pi-ledger-table td:nth-child(2) {
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+                font-size: 12px;
+            }
             [data-pi-payout-key] {
                 cursor: pointer;
             }
@@ -35960,19 +35971,18 @@
                                 <p class="detail-meta" id="piClearingWizardSummary">Transaction rows for this batch appear below.</p>
                                 <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
-                                    <button class="ghost-button" id="piClearingToggleMatchedPairsButton" type="button">Show matched pairs</button>
                                 </div>
-                                <p class="detail-meta">Step 1 lists every Xero credit on this account. Green means all same-date debit entries were found; red means one or more debit entries are missing.</p>
+                                <p class="detail-meta">Step 1 shows the raw Xero account transactions for the selected nominal account (debits and credits only), displayed in a clean ledger table.</p>
                                 <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
+                                    <table class="ch-table pi-ledger-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
                                         <thead>
                                             <tr>
-                                                <th>Credit date</th>
-                                                <th>Credit reference</th>
-                                                <th>Credit amount</th>
-                                                <th>Matched debit total</th>
-                                                <th>Missing debit total</th>
-                                                <th>Status</th>
+                                                <th>Date</th>
+                                                <th>Reference</th>
+                                                <th>Description</th>
+                                                <th>Source</th>
+                                                <th>Debit</th>
+                                                <th>Credit</th>
                                             </tr>
                                         </thead>
                                         <tbody id="piClearingWizardXeroBody"></tbody>
@@ -48881,6 +48891,10 @@
                         wizardSummary.textContent = matchProgress.total > 0
                             ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
                             : (piClearingStatusMessage || "Loading transactions...");
+                    } else if (piClearingWizardStep === 1) {
+                        wizardSummary.textContent = xeroRows.length
+                            ? `Loaded ${formatInteger(xeroRows.length)} Xero account transaction${xeroRows.length === 1 ? "" : "s"} for this period: debits ${formatCurrency(xeroDebits)} and credits ${formatCurrency(xeroCredits)}.`
+                            : "No Xero account transactions were loaded for this nominal account in the selected period.";
                     } else if (piClearingWorkflowStageState === "error" && !runRows.length) {
                         wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
                     } else {
@@ -48890,39 +48904,26 @@
                     }
                 }
                 if (wizardXeroBody) {
-                    const xeroStep1 = summaryRows?.xeroStep1 && typeof summaryRows.xeroStep1 === "object" ? summaryRows.xeroStep1 : {};
-                    const step1Rows = Array.isArray(xeroStep1?.rows) ? xeroStep1.rows : [];
-                    const visibleRows = piClearingShowMatchedStep1
-                        ? step1Rows
-                        : step1Rows.filter((row) => String(row?.status || "").toLowerCase() !== "balanced");
-                    wizardXeroBody.innerHTML = visibleRows.length
-                        ? visibleRows.map((row) => {
-                            const status = String(row?.status || "").toLowerCase();
-                            const isBalanced = status === "balanced";
-                            const badgeClass = isBalanced ? "is-balanced" : "is-missing";
-                            const badgeLabel = isBalanced ? "Green: All debits found" : "Red: Missing debit entries";
-                            const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
-                            const matchedDebitTotal = Number(row?.matchedDebitTotal ?? matchedDebits.reduce((sum, item) => sum + Number(item?.amountUsed || 0), 0));
-                            const creditReference = String(row?.creditReference || row?.creditPaymentId || "--").trim() || "--";
+                    const xeroLedgerRows = buildPiClearingXeroBreakdown(runRows);
+                    wizardXeroBody.innerHTML = xeroLedgerRows.length
+                        ? xeroLedgerRows.map((row) => {
+                            const reference = String(row?.reference || row?.paymentId || "--").trim() || "--";
+                            const description = String(row?.description || row?.clientName || "").trim() || "--";
+                            const source = String(row?.source || "--").trim() || "--";
+                            const debit = Number(row?.debit || 0);
+                            const credit = Number(row?.credit || 0);
                             return `
-                                <tr class="pi-step1-row is-${escapeHTML(isBalanced ? "balanced" : "missing_debits")}">
-                                    <td>${escapeHTML(formatDate(row?.date || ""))}</td>
-                                    <td>${escapeHTML(creditReference)}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.creditAmount || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(matchedDebitTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.missingDebitAmount || 0))}</td>
-                                    <td><span class="pi-step1-status-badge ${badgeClass}">${escapeHTML(badgeLabel)}</span></td>
+                                <tr>
+                                    <td>${escapeHTML(formatDate(row?.paidOn || ""))}</td>
+                                    <td>${escapeHTML(reference)}</td>
+                                    <td>${escapeHTML(description)}</td>
+                                    <td>${escapeHTML(source)}</td>
+                                    <td>${escapeHTML(debit > 0 ? formatCurrency(debit) : "£0.00")}</td>
+                                    <td>${escapeHTML(credit > 0 ? formatCurrency(credit) : "£0.00")}</td>
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="6"><p class="detail-meta">${step1Rows.length ? "All credits are matched to same-date debits. Step 1 is clean." : "No Xero credit rows found for this account in this batch period."}</p></td></tr>`;
-                }
-                if (wizardToggleMatchedButton) {
-                    wizardToggleMatchedButton.textContent = piClearingShowMatchedStep1 ? "Hide matched pairs" : "Show matched pairs";
-                    wizardToggleMatchedButton.onclick = () => {
-                        piClearingShowMatchedStep1 = !piClearingShowMatchedStep1;
-                        renderPiClearingAccountScreen();
-                    };
+                        : `<tr><td colspan="6"><p class="detail-meta">No Xero account transactions found for this nominal account in the selected period.</p></td></tr>`;
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
