@@ -23985,6 +23985,39 @@
                 letter-spacing: 0.03em;
                 text-transform: uppercase;
             }
+            .task-status-inline-menu {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                overflow-x: auto;
+                padding: 2px 0 4px;
+                scrollbar-width: thin;
+            }
+            .task-status-inline-option {
+                border: 0;
+                background: transparent;
+                padding: 0;
+                cursor: pointer;
+                flex: 0 0 auto;
+            }
+            .task-status-inline-option .task-status-pill {
+                opacity: 0.58;
+                filter: saturate(0.82);
+                transform: none;
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24), 0 6px 12px rgba(27, 42, 72, 0.08);
+                transition: opacity 0.16s ease, transform 0.16s ease, filter 0.16s ease;
+            }
+            .task-status-inline-option:hover .task-status-pill,
+            .task-status-inline-option:focus-visible .task-status-pill {
+                opacity: 0.9;
+                filter: saturate(1);
+                transform: translateY(-1px);
+            }
+            .task-status-inline-option.is-active .task-status-pill {
+                opacity: 1;
+                filter: saturate(1);
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34), 0 9px 16px rgba(27, 42, 72, 0.12);
+            }
             .task-list-row-overdue {
                 background: rgba(255, 83, 83, 0.06);
             }
@@ -100386,24 +100419,17 @@
                     const isSelected = companiesHouseSettings.bmTasksSelection?.has(rowId);
                     const currentStatus = String(row?.status || "").trim().toLowerCase() || "open";
                     const statusMenu = `
-                        <details class="task-status-menu-wrap" data-task-status-menu-wrap="${escapeHTML(rowId)}">
-                            <summary class="task-list-status-trigger" data-task-status-trigger="${escapeHTML(rowId)}" aria-label="Change task status">
-                                <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(currentStatus)}"><span>${escapeHTML(bmTaskStatusLabel(currentStatus))}</span></span>
-                                <span class="task-status-caret" aria-hidden="true">⌄</span>
-                            </summary>
-                            <div class="task-status-menu" data-task-status-menu="${escapeHTML(rowId)}" role="menu" aria-label="Task status options">
-                                ${bmTaskStatusOptions().map((option) => {
-                                    const optionValue = String(option?.value || "").trim().toLowerCase();
-                                    const isActive = optionValue === currentStatus;
-                                    return `
-                                        <button class="task-status-option ${isActive ? "is-active" : ""}" type="button" role="menuitemradio" aria-checked="${isActive ? "true" : "false"}" data-task-status-option="${escapeHTML(rowId)}" data-task-status-value="${escapeHTML(optionValue)}">
-                                            <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(optionValue)}"><span>${escapeHTML(option?.label || bmTaskStatusLabel(optionValue))}</span></span>
-                                            ${isActive ? '<span class="task-status-option-check">Current</span>' : ""}
-                                        </button>
-                                    `;
-                                }).join("")}
-                            </div>
-                        </details>
+                        <div class="task-status-inline-menu" role="group" aria-label="Task status options">
+                            ${bmTaskStatusOptions().map((option) => {
+                                const optionValue = String(option?.value || "").trim().toLowerCase();
+                                const isActive = optionValue === currentStatus;
+                                return `
+                                    <button class="task-status-inline-option ${isActive ? "is-active" : ""}" type="button" aria-pressed="${isActive ? "true" : "false"}" data-task-status-option="${escapeHTML(rowId)}" data-task-status-value="${escapeHTML(optionValue)}">
+                                        <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(optionValue)}"><span>${escapeHTML(option?.label || bmTaskStatusLabel(optionValue))}</span></span>
+                                    </button>
+                                `;
+                            }).join("")}
+                        </div>
                     `;
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
@@ -100567,16 +100593,6 @@
                         openTaskClientTimeline(clientKey, clientName, clientRows);
                     });
                 });
-                body.querySelectorAll("[data-task-status-trigger]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
-                body.querySelectorAll("[data-task-status-menu]").forEach((menu) => {
-                    menu.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
                 body.querySelectorAll("[data-task-manager-trigger]").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.stopPropagation();
@@ -100598,8 +100614,6 @@
                         updateBmTaskStatus(match, nextStatus, "", {
                             autoNote: `Status set to ${bmTaskStatusLabel(nextStatus)} from task table.`,
                         });
-                        const statusWrap = button.closest("[data-task-status-menu-wrap]");
-                        if (statusWrap instanceof HTMLDetailsElement) statusWrap.open = false;
                         showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
                         renderTaskSubpages();
                     });
