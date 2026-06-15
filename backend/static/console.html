@@ -28799,6 +28799,51 @@
                 justify-content: flex-start;
                 margin-bottom: 6px;
             }
+            .is-loading-button {
+                position: relative;
+                padding-left: 34px;
+            }
+            .is-loading-button::before {
+                content: "";
+                position: absolute;
+                left: 12px;
+                top: 50%;
+                width: 14px;
+                height: 14px;
+                margin-top: -7px;
+                border-radius: 999px;
+                border: 2px solid rgba(255, 255, 255, 0.55);
+                border-top-color: rgba(255, 255, 255, 0.95);
+                animation: pi-clearing-loading-spin 0.75s linear infinite;
+            }
+            .ghost-button.is-loading-button::before {
+                border-color: rgba(37, 70, 111, 0.32);
+                border-top-color: rgba(37, 70, 111, 0.88);
+            }
+            .pi-loading-hint-inline {
+                color: #355177;
+                font-weight: 600;
+            }
+            .pi-loading-bar {
+                display: inline-block;
+                width: 100%;
+                height: 10px;
+                border-radius: 999px;
+                background: linear-gradient(
+                    90deg,
+                    rgba(219, 232, 255, 0.78) 10%,
+                    rgba(242, 247, 255, 0.95) 44%,
+                    rgba(219, 232, 255, 0.78) 78%
+                );
+                background-size: 220% 100%;
+                animation: pi-loading-shimmer 1.2s ease-in-out infinite;
+            }
+            .pi-step1-row-match td {
+                background: rgba(39, 176, 95, 0.08);
+            }
+            .pi-step1-row-match td:first-child {
+                border-left: 3px solid rgba(39, 176, 95, 0.65);
+            }
             .pi-clearing-setup-shell {
                 display: grid;
                 gap: 10px;
@@ -28997,11 +29042,20 @@
                 50% { box-shadow: 0 10px 20px rgba(20, 69, 150, 0.22); }
                 100% { box-shadow: 0 8px 14px rgba(20, 69, 150, 0.12); }
             }
+            @keyframes pi-clearing-loading-spin {
+                to { transform: rotate(360deg); }
+            }
+            @keyframes pi-loading-shimmer {
+                0% { background-position: 100% 0; }
+                100% { background-position: -100% 0; }
+            }
             @media (prefers-reduced-motion: reduce) {
                 .pi-clearing-wizard-section,
                 .pi-clearing-step-chip,
                 .pi-clearing-workflow-stage-chip,
-                .pi-clearing-progress-fill {
+                .pi-clearing-progress-fill,
+                .is-loading-button::before,
+                .pi-loading-bar {
                     animation: none !important;
                     transition: none !important;
                 }
@@ -37807,6 +37861,9 @@
             let piClearingWorkflowStageState = "idle";
             let piClearingWorkflowStartedAt = 0;
             let piClearingWorkflowElapsedSeconds = 0;
+            let piClearingWorkflowMode = "idle";
+            let piClearingWorkflowShowStages = false;
+            let piClearingWorkflowRefreshRequested = false;
             let piClearingStep2HydrationRunning = false;
             let clientCallStatsData = {
                 summary: {},
@@ -49129,11 +49186,18 @@
                 }
                 piClearingWorkflowStartedAt = 0;
                 piClearingWorkflowElapsedSeconds = 0;
+                piClearingWorkflowShowStages = false;
             }
 
             function piClearingWorkflowProgressMessage() {
-                const stageText = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
                 const elapsed = formatSyncDuration(Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0)));
+                if (piClearingWorkflowMode === "step1") {
+                    if (piClearingWorkflowElapsedSeconds >= PI_CLEARING_WORKFLOW_SLOW_SECONDS) {
+                        return `Loading Xero transactions for Step 1. Still running after ${elapsed}. Large periods can take longer than usual.`;
+                    }
+                    return `Loading Xero transactions for Step 1. Elapsed ${elapsed}.`;
+                }
+                const stageText = PI_CLEARING_WORKFLOW_STAGES[piClearingWorkflowStageIndex] || "Running PI clearing workflow...";
                 if (piClearingWorkflowElapsedSeconds >= PI_CLEARING_WORKFLOW_SLOW_SECONDS) {
                     return `${stageText} Still running after ${elapsed}. Backend processing is taking longer than usual.`;
                 }
@@ -49177,10 +49241,12 @@
                 }, PI_CLEARING_LIVE_POLL_MS);
             }
 
-            function startPiClearingWorkflowStageTicker() {
+            function startPiClearingWorkflowStageTicker(options = {}) {
+                const singleStage = options?.singleStage === true;
                 stopPiClearingWorkflowStageTicker();
                 piClearingWorkflowStageState = "running";
                 piClearingWorkflowStageIndex = 0;
+                piClearingWorkflowShowStages = !singleStage;
                 piClearingWorkflowStartedAt = Date.now();
                 piClearingWorkflowElapsedSeconds = 0;
                 piClearingStatusMessage = piClearingWorkflowProgressMessage();
@@ -49194,7 +49260,7 @@
                         PI_CLEARING_WORKFLOW_STAGES.length - 1,
                         Math.floor(elapsedSeconds / PI_CLEARING_STAGE_ADVANCE_SECONDS)
                     );
-                    piClearingWorkflowStageIndex = stageIndex;
+                    piClearingWorkflowStageIndex = singleStage ? 0 : stageIndex;
                     piClearingStatusMessage = piClearingWorkflowProgressMessage();
                     piClearingStatusTone = "info";
                     renderPiClearingAccountScreen();
@@ -49275,18 +49341,14 @@
                 const refreshIgnition = includeIgnition && options?.refreshIgnition === true;
                 const targetStep = Math.max(0, Math.min(3, Number(options?.targetStep ?? 1)));
                 piClearingWorkflowRunning = true;
+                piClearingWorkflowMode = includeIgnition ? "full" : "step1";
+                piClearingWorkflowRefreshRequested = refreshXero;
                 piClearingWizardOpen = true;
                 piClearingWizardStep = targetStep;
                 piClearingShowMatchedStep1 = false;
+                startPiClearingWorkflowStageTicker({ singleStage: !includeIgnition });
                 if (includeIgnition) {
-                    startPiClearingWorkflowStageTicker();
                     startPiClearingLivePolling();
-                } else {
-                    piClearingWorkflowStageState = "idle";
-                    piClearingWorkflowStageIndex = -1;
-                    piClearingStatusMessage = "Loading Xero transactions for Step 1...";
-                    piClearingStatusTone = "info";
-                    renderPiClearingAccountScreen();
                 }
                 try {
                     await ensurePiClearingNominalSetup();
@@ -49322,6 +49384,7 @@
                     if (includeIgnition) {
                         piClearingWorkflowStageState = "success";
                         piClearingWorkflowStageIndex = PI_CLEARING_WORKFLOW_STAGES.length - 1;
+                        piClearingWorkflowShowStages = true;
                         piClearingStatusMessage = `Workflow completed. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"} and Ignition pulled ${formatInteger(ignitionFetched)} row${ignitionFetched === 1 ? "" : "s"}. Review AI findings and generate credit notes.`;
                         piClearingStatusTone = "success";
                         showToast("PI Clearing workflow completed.", "success");
@@ -49342,6 +49405,8 @@
                     stopPiClearingLivePolling();
                     stopPiClearingWorkflowStageTicker();
                     piClearingWorkflowRunning = false;
+                    piClearingWorkflowMode = "idle";
+                    piClearingWorkflowRefreshRequested = false;
                     renderPiClearingAccountScreen();
                 }
             }
@@ -49826,7 +49891,12 @@
                     chip.classList.remove("is-error");
                 });
                 if (workflowStageRow) {
-                    workflowStageRow.hidden = !(piClearingWorkflowRunning || piClearingWorkflowStageState === "success" || piClearingWorkflowStageState === "error");
+                    const showWorkflowStages = piClearingWorkflowShowStages && (
+                        piClearingWorkflowRunning
+                        || piClearingWorkflowStageState === "success"
+                        || piClearingWorkflowStageState === "error"
+                    );
+                    workflowStageRow.hidden = !showWorkflowStages;
                 }
                 document.querySelectorAll("[data-pi-workflow-stage-chip]").forEach((chip) => {
                     const chipIndex = Number(chip.dataset.piWorkflowStageChip || "-1");
@@ -49868,9 +49938,10 @@
                     const step1CreditCount = Number(xeroStep1?.creditCount || 0);
                     const step1MissingTotal = Number(xeroStep1?.missingDebitTotal || 0);
                     if (piClearingWorkflowRunning) {
+                        const elapsed = formatSyncDuration(Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0)));
                         wizardSummary.textContent = matchProgress.total > 0
-                            ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open.`
-                            : (piClearingStatusMessage || "Loading transactions...");
+                            ? `${piClearingStatusMessage || "Loading transactions..."} ${formatInteger(matchProgress.matched)} matched · ${formatInteger(matchProgress.partial)} part-matched · ${formatInteger(matchProgress.open)} open. Elapsed ${elapsed}.`
+                            : `${piClearingStatusMessage || "Loading transactions..."} Elapsed ${elapsed}.`;
                     } else if (piClearingWizardStep === 1) {
                         wizardSummary.textContent = xeroRows.length
                             ? `Loaded ${formatInteger(xeroRows.length)} Xero account transaction${xeroRows.length === 1 ? "" : "s"} for this period: debits ${formatCurrency(xeroDebits)} and credits ${formatCurrency(xeroCredits)}.${xeroRefreshSuffix}`
@@ -49905,8 +49976,9 @@
                             const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
                             const status = String(row?.status || "").trim().toLowerCase();
                             const canViewMatches = status === "balanced";
+                            const rowClass = status === "balanced" ? "pi-step1-row-match" : "";
                             return `
-                                <tr>
+                                <tr class="${escapeHTML(rowClass)}">
                                     <td>${escapeHTML(formatDate(row?.date || ""))}</td>
                                     <td>${escapeHTML(String(row?.creditClientName || "--"))}</td>
                                     <td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td>
@@ -49922,7 +49994,26 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No Xero credit entries found for this nominal account in the selected period.</p></td></tr>`;
+                        : (piClearingWorkflowRunning
+                            ? `
+                                <tr>
+                                    <td colspan="7">
+                                        <p class="detail-meta pi-loading-hint-inline">Loading Xero transactions. Rows will appear here automatically as data arrives.</p>
+                                    </td>
+                                </tr>
+                                ${Array.from({ length: 5 }, () => `
+                                    <tr>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                        <td><span class="pi-loading-bar"></span></td>
+                                    </tr>
+                                `).join("")}
+                            `
+                            : `<tr><td colspan="7"><p class="detail-meta">No Xero credit entries found for this nominal account in the selected period.</p></td></tr>`);
                     wizardXeroBody.querySelectorAll("[data-pi-step1-detail]").forEach((button) => {
                         button.addEventListener("click", () => {
                             const rowIndex = Number(button.getAttribute("data-pi-step1-detail"));
@@ -49935,9 +50026,12 @@
                     });
                 }
                 if (wizardLoadButton) {
+                    const elapsed = formatSyncDuration(Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0)));
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
+                    wizardLoadButton.classList.toggle("is-loading-button", piClearingWorkflowRunning);
+                    wizardLoadButton.setAttribute("aria-busy", piClearingWorkflowRunning ? "true" : "false");
                     wizardLoadButton.textContent = piClearingWorkflowRunning
-                        ? "Loading transactions..."
+                        ? `${piClearingWorkflowRefreshRequested ? "Refreshing transactions" : "Loading transactions"} (${elapsed})...`
                         : piClearingWorkflowStageState === "error"
                             ? "Retry transactions"
                         : runRows.length
@@ -49951,9 +50045,14 @@
                     };
                 }
                 if (wizardRefreshButton) {
+                    const elapsed = formatSyncDuration(Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0)));
                     wizardRefreshButton.disabled = piClearingWorkflowRunning;
+                    wizardRefreshButton.classList.toggle("is-loading-button", piClearingWorkflowRunning);
+                    wizardRefreshButton.setAttribute("aria-busy", piClearingWorkflowRunning ? "true" : "false");
                     wizardRefreshButton.textContent = piClearingWorkflowRunning
-                        ? "Refreshing..."
+                        ? (piClearingWorkflowRefreshRequested
+                            ? `Refreshing from Xero (${elapsed})...`
+                            : `Refresh unavailable (${elapsed})`)
                         : "Refresh from Xero";
                     wizardRefreshButton.onclick = () => {
                         runPiClearingWorkflow({
