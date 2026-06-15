@@ -49525,7 +49525,7 @@
                     return true;
                 });
 
-                const matchedRunRow = candidates.sort((left, right) => {
+                const rankCandidates = (left, right) => {
                     const leftClient = normalizeClient(left?.clientName || "");
                     const rightClient = normalizeClient(right?.clientName || "");
                     const leftHasContact = Boolean(String(left?.xeroContactId || "").trim());
@@ -49541,7 +49541,18 @@
                         + (rightDate === matchedPayoutDate ? 0 : 1);
                     if (leftScore !== rightScore) return leftScore - rightScore;
                     return leftClient.localeCompare(rightClient);
-                })[0] || null;
+                };
+
+                let matchedRunRow = candidates.sort(rankCandidates)[0] || null;
+                let usedFallbackRow = false;
+                if (!matchedRunRow) {
+                    const fallbackCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
+                        const differenceTotal = Math.abs(Number(item?.differenceTotal || item?.difference || 0));
+                        return piAmountEqual(differenceTotal, missingDebitAmount, Math.max(tolerance, 0.02));
+                    });
+                    matchedRunRow = fallbackCandidates.sort(rankCandidates)[0] || null;
+                    usedFallbackRow = Boolean(matchedRunRow);
+                }
 
                 return {
                     targetDate: piDateKey(bestPayout?.paidOn || "") || targetDate,
@@ -49551,6 +49562,7 @@
                     payoutLine: bestCombination.lines[0] || null,
                     netAmount: Number(bestCombination.netAmount || 0),
                     runRow: matchedRunRow,
+                    usedFallbackRow,
                 };
             }
 
@@ -49584,13 +49596,26 @@
                 const cleanRunId = String(runId || "").trim();
                 const cleanRowId = String(rowId || "").trim();
                 if (!cleanRunId || !cleanRowId) return;
+                const payoutClientName = String(match?.payoutLine?.clientName || "").trim();
+                const fallbackContact = (() => {
+                    const currentRun = currentPiClearingRun();
+                    const rows = Array.isArray(currentRun?.rows) ? currentRun.rows : [];
+                    if (!payoutClientName) return "";
+                    const lowered = payoutClientName.toLowerCase();
+                    const byClient = rows.find((item) =>
+                        String(item?.clientName || "").trim().toLowerCase() === lowered
+                        && String(item?.xeroContactId || "").trim()
+                    );
+                    return String(byClient?.xeroContactId || "").trim();
+                })();
                 const fixPayload = {
                     step1RowKey: String(step1RowKey || "").trim(),
                     targetDate: String(match?.targetDate || "").trim(),
                     missingDebitAmount: Number(match?.missingDebitAmount || 0),
                     payoutId: String(match?.payout?.payoutId || "").trim(),
                     lineCount: Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0),
-                    clientName: String(match?.runRow?.clientName || match?.payoutLine?.clientName || "").trim(),
+                    clientName: String(match?.payoutLine?.clientName || match?.runRow?.clientName || "").trim(),
+                    xeroContactId: String(match?.runRow?.xeroContactId || fallbackContact || "").trim(),
                 };
                 try {
                     await requestJSON(api.endpoints.piClearingAccountStep1Fix, {

@@ -5811,6 +5811,7 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
                 "payoutId": str(fix_payload.get("payoutId") or "").strip(),
                 "lineCount": line_count,
                 "clientName": str(fix_payload.get("clientName") or "").strip(),
+                "xeroContactId": str(fix_payload.get("xeroContactId") or "").strip(),
                 "runRowId": clean_row_id,
             }
             next_raw = dict(raw_payload)
@@ -6405,10 +6406,16 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 FROM pi_clearing_run_rows
                 WHERE run_id = %s
                   AND user_id = %s
-                  AND ABS(difference_total) > 0.005
-                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note', 'step1_xero_check_required')
+                  AND (
+                        ABS(difference_total) > 0.005
+                        OR (
+                            id = ANY(%s)
+                            AND COALESCE(NULLIF(raw_payload->'step1AiFix'->>'missingDebitAmount', '')::numeric, 0) > 0
+                        )
+                      )
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
             """
-            params: list = [run_id, user["id"]]
+            params: list = [run_id, user["id"], selected_row_ids or []]
             if selected_row_ids:
                 query += " AND id = ANY(%s)"
                 params.append(selected_row_ids)
@@ -6428,19 +6435,50 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         amount = _money(row.get("difference_total")).copy_abs()
         currency_code = str(row.get("currency_code") or "GBP").strip() or "GBP"
         client_name = str(row.get("client_name") or "Unknown client")
+        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        step1_fix = raw_payload.get("step1AiFix") if isinstance(raw_payload.get("step1AiFix"), dict) else {}
+        if _money(raw_payload.get("step1MissingDebitTotal")) > Decimal("0.00") and not step1_fix:
+            skipped.append({"runRowId": row_id, "reason": "Step 1 failed: same-date Xero debit entries are missing for payout credit(s)."})
+            continue
+        fix_amount = _money(step1_fix.get("missingDebitAmount")) if step1_fix else Decimal("0.00")
+        if fix_amount > Decimal("0.00"):
+            amount = fix_amount.copy_abs()
+        fix_client_name = str(step1_fix.get("clientName") or "").strip() if step1_fix else ""
+        if fix_client_name:
+            client_name = fix_client_name
+        fix_contact_id = str(step1_fix.get("xeroContactId") or "").strip() if step1_fix else ""
+        if fix_contact_id:
+            contact_id = fix_contact_id
+        has_refund = _money(raw_payload.get("ignitionReversalTotal")) > Decimal("0.00")
+        document_type = "invoice" if has_refund else "credit_note"
+        payout_date = _parse_optional_iso_date(step1_fix.get("targetDate")) if step1_fix else None
+        if payout_date is None:
+            payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
+        if not contact_id and client_name:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT xero_contact_id
+                        FROM customers
+                        WHERE tenant_id = %s
+                          AND LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                          AND NULLIF(TRIM(COALESCE(xero_contact_id, '')), '') IS NOT NULL
+                        LIMIT 1
+                        """,
+                        (run_row.get("tenant_id"), client_name),
+                    )
+                    mapped_contact_row = cursor.fetchone() or {}
+                connection.commit()
+            mapped_contact_id = str(mapped_contact_row.get("xero_contact_id") or "").strip()
+            if mapped_contact_id:
+                contact_id = mapped_contact_id
         if amount <= 0:
             skipped.append({"runRowId": row_id, "reason": "Row has no non-zero difference."})
             continue
         if not contact_id:
             skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
             continue
-        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
-        if _money(raw_payload.get("step1MissingDebitTotal")) > Decimal("0.00"):
-            skipped.append({"runRowId": row_id, "reason": "Step 1 failed: same-date Xero debit entries are missing for payout credit(s)."})
-            continue
-        has_refund = _money(raw_payload.get("ignitionReversalTotal")) > Decimal("0.00")
-        document_type = "invoice" if has_refund else "credit_note"
-        payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
         note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
         adjustment_payload = {
             "Type": "ACCREC" if has_refund else "ACCRECCREDIT",
