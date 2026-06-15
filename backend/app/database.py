@@ -1467,6 +1467,8 @@ CREATE TABLE IF NOT EXISTS me_report_sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    period_start DATE,
+    period_end DATE,
     status TEXT NOT NULL DEFAULT 'queued',
     current_step TEXT NOT NULL DEFAULT 'Queued',
     summary TEXT NOT NULL DEFAULT '',
@@ -1478,6 +1480,9 @@ CREATE TABLE IF NOT EXISTS me_report_sync_runs (
     heartbeat_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ
 );
+
+ALTER TABLE me_report_sync_runs ADD COLUMN IF NOT EXISTS period_start DATE;
+ALTER TABLE me_report_sync_runs ADD COLUMN IF NOT EXISTS period_end DATE;
 
 CREATE INDEX IF NOT EXISTS me_report_sync_runs_client_status_idx
 ON me_report_sync_runs (client_id, status, created_at DESC);

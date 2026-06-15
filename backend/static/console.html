@@ -75665,11 +75665,16 @@
                 return null;
             }
 
-            async function runSelectedMeReportSync(clientId = "") {
+            async function runSelectedMeReportSync(clientId = "", options = {}) {
                 const client = clientId ? (meReportData.clients || []).find((item) => item.id === clientId) : selectedMeReportClient();
                 if (!client) return showToast("Select an ME Report client first", "error");
                 if (isMeReportProcessing) return;
                 let keepFailureBanner = false;
+                const syncPayload = {};
+                const periodStartDate = String(options?.periodStartDate || "").trim();
+                const periodEndDate = String(options?.periodEndDate || "").trim();
+                if (periodStartDate) syncPayload.periodStartDate = periodStartDate;
+                if (periodEndDate) syncPayload.periodEndDate = periodEndDate;
                 startMeReportFeedback({
                     id: "",
                     status: "running",
@@ -75680,7 +75685,11 @@
                     isActive: true
                 });
                 try {
-                    const payload = await requestJSON(api.endpoints.meReportSync, { method: "POST", body: JSON.stringify({}) }, { clientId: client.id });
+                    const payload = await requestJSON(
+                        api.endpoints.meReportSync,
+                        { method: "POST", body: JSON.stringify(syncPayload) },
+                        { clientId: client.id }
+                    );
                     const syncRun = payload?.meReportSyncRun || null;
                     if (!syncRun?.id) throw new Error("The backend did not return an ME Report sync id.");
                     activeMeReportSyncRunId = syncRun.id;
@@ -99962,6 +99971,29 @@
                 showToast(`Task submitted for review to ${assignedReviewer}.`, "success");
             }
 
+            async function taskBookkeepingEnsureMeReportClient(row = {}) {
+                let meClient = taskBookkeepingFindMeReportClient(row);
+                if (meClient?.id) return meClient;
+                const tenantId = String(bmTaskResolvedXeroMatch(row)?.tenantId || row?.xeroMatch?.tenantId || "").trim();
+                if (!tenantId) return null;
+                const clientName = String(row?.clientName || row?.matchedRegister?.companyName || "").trim();
+                if (!clientName) return null;
+                const response = await requestJSON(
+                    api.endpoints.meReportClients,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({
+                            clientName,
+                            tenantId,
+                        }),
+                    }
+                );
+                meReportData = normaliseMeReportPayload(response);
+                ensureMeReportSelection();
+                meClient = taskBookkeepingFindMeReportClient(row);
+                return meClient?.id ? meClient : null;
+            }
+
             async function handleBookkeepingTaskStartFlow(row = {}, allRows = []) {
                 if (activeView !== "task-list") {
                     activeView = "task-list";
@@ -99976,6 +100008,33 @@
                         companiesHouseSettings.authRegisterLoaded ? Promise.resolve() : loadAuthCodeRegisterDirectory(false),
                     ]);
                 } catch {}
+                let resolvedRow = bmTaskRowWithOverrides(row);
+                try {
+                    await autoMatchBookkeepingTaskXeroWorkspace(resolvedRow, allRows);
+                    resolvedRow = bmTaskRowWithOverrides(row);
+                    await loadMeReport(true);
+                    const periodConfig = taskBookkeepingWorkflowPeriodConfig(resolvedRow);
+                    const meClient = await taskBookkeepingEnsureMeReportClient(resolvedRow);
+                    if (meClient?.id && periodConfig.periodEndISO) {
+                        const syncedPeriodEnd = String(meClient?.summary?.periodEnd || meClient?.reviews?.[0]?.periodEnd || "").trim();
+                        const latestSyncISO = String(meClient?.lastCalculatedAt || meClient?.lastSyncAt || "").trim();
+                        const latestSyncDate = parseDateValue(latestSyncISO);
+                        const syncAgeHours = latestSyncDate ? Math.max(0, (Date.now() - latestSyncDate.getTime()) / 3600000) : Number.POSITIVE_INFINITY;
+                        const needsPeriodSync = syncedPeriodEnd !== periodConfig.periodEndISO || syncAgeHours > 6;
+                        if (needsPeriodSync) {
+                            showToast(`Pulling ${periodConfig.monthLabel} Xero transactions and YTD figures...`, "info");
+                            await runSelectedMeReportSync(meClient.id, {
+                                periodStartDate: periodConfig.periodStartISO,
+                                periodEndDate: periodConfig.periodEndISO,
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error("Unable to pre-sync bookkeeping workflow from Xero", error);
+                    if (!(error instanceof AuthRequiredError)) {
+                        showToast(error?.message || "Could not refresh Xero transactions before opening workflow.", "warning");
+                    }
+                }
                 openTaskBookkeepingWorkflowPanel(row, allRows);
             }
 

@@ -3165,8 +3165,12 @@ def api_connect_me_report_client_xero(client_id: str, user: dict = Depends(requi
 
 
 @app.post("/api/me-report/clients/{client_id}/sync")
-def api_me_report_sync(client_id: str, user: dict = Depends(require_panel_user)):
-    sync_run, started = request_me_report_sync_run(user, client_id)
+async def api_me_report_sync(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    sync_run, started = request_me_report_sync_run(user, client_id, payload if isinstance(payload, dict) else {})
     if started:
         _submit_background_job("me_report_sync", run_me_report_sync_job, dict(user), str(sync_run["id"]))
     return {"status": sync_run["status"], "started": started, "meReportSyncRun": serialize_me_report_sync_run(sync_run)}

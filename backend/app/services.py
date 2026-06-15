@@ -13032,6 +13032,8 @@ def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
     return {
         "id": str(row["id"]),
         "clientId": str(row.get("client_id") or ""),
+        "periodStart": _iso(row.get("period_start")) or "",
+        "periodEnd": _iso(row.get("period_end")) or "",
         "status": row.get("status") or "",
         "currentStep": row.get("current_step") or "",
         "summary": row.get("summary") or "",
@@ -17159,10 +17161,28 @@ def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
         connection.commit()
 
 
-def request_me_report_sync_run(user: dict, client_id: str) -> tuple[dict, bool]:
+def _me_report_sync_period_from_payload(payload: dict | None = None) -> tuple[date, date]:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    today = utcnow().date()
+    period_end_raw = str(safe_payload.get("periodEndDate") or safe_payload.get("periodEnd") or "").strip()
+    period_start_raw = str(safe_payload.get("periodStartDate") or safe_payload.get("periodStart") or "").strip()
+    period_end = _parse_optional_iso_date(period_end_raw) if period_end_raw else None
+    period_start = _parse_optional_iso_date(period_start_raw) if period_start_raw else None
+    period_end = period_end or today
+    if period_end > today:
+        period_end = today
+    period_start = period_start or date(period_end.year, period_end.month, 1)
+    if period_start > period_end:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sync period start cannot be after period end.")
+    return period_start, period_end
+
+
+def request_me_report_sync_run(user: dict, client_id: str, payload: dict | None = None) -> tuple[dict, bool]:
     client = _me_report_client_row(user, client_id)
     if client.get("xero_connection_status") != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect this ME Report client to Xero before syncing.")
+    period_start, period_end = _me_report_sync_period_from_payload(payload)
+    period_label = period_end.strftime("%B %Y")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -17184,13 +17204,21 @@ def request_me_report_sync_run(user: dict, client_id: str) -> tuple[dict, bool]:
             cursor.execute(
                 """
                 INSERT INTO me_report_sync_runs (
-                    client_id, user_id, status, current_step,
+                    client_id, user_id, period_start, period_end, status, current_step,
                     summary, progress, heartbeat_at, created_at
                 )
-                VALUES (%s, %s, 'queued', 'Queued', 'ME Report Xero sync queued.', 2, %s, %s)
+                VALUES (%s, %s, %s, %s, 'queued', 'Queued', %s, 2, %s, %s)
                 RETURNING *
                 """,
-                (client_id, user["id"], utcnow(), utcnow()),
+                (
+                    client_id,
+                    user["id"],
+                    period_start,
+                    period_end,
+                    f"ME Report Xero sync queued for {period_label}.",
+                    utcnow(),
+                    utcnow(),
+                ),
             )
             row = cursor.fetchone()
         connection.commit()
@@ -17255,8 +17283,16 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
     client = _me_report_client_row(user, str(sync_run["client_id"]))
     connection_row = _me_report_xero_connection(user, client)
     today = utcnow().date()
-    period_start = date(today.year, today.month, 1)
-    period_end = today
+    period_start = sync_run.get("period_start")
+    period_end = sync_run.get("period_end")
+    if isinstance(period_start, datetime):
+        period_start = period_start.date()
+    if isinstance(period_end, datetime):
+        period_end = period_end.date()
+    if not isinstance(period_end, date):
+        period_end = today
+    if not isinstance(period_start, date):
+        period_start = date(period_end.year, period_end.month, 1)
     now = utcnow()
     _update_me_report_sync_run(
         sync_run_id,
