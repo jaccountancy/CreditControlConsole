@@ -1049,6 +1049,14 @@ def _payroll_headcount_payrun_id(payrun: dict) -> str:
     ).strip()
 
 
+def _payroll_headcount_month_start_iso(value) -> str:
+    parsed_date = _parse_any_date(value)
+    if parsed_date:
+        return parsed_date.isoformat()
+    text = str(value or "").strip()
+    return text[:10] if text else ""
+
+
 def _payroll_headcount_from_payrun_details(payrun_details_payload: dict) -> int:
     if not isinstance(payrun_details_payload, dict):
         return 0
@@ -1141,11 +1149,7 @@ def payroll_headcount_payload(user: dict) -> dict:
                         continue
                     snapshots_by_workspace_id.setdefault(workspace_id, []).append(
                         {
-                            "monthStart": (
-                                snapshot_row.get("month_start").isoformat()
-                                if snapshot_row.get("month_start")
-                                else ""
-                            ),
+                            "monthStart": _payroll_headcount_month_start_iso(snapshot_row.get("month_start")),
                             "headcount": int(snapshot_row.get("headcount") or 0),
                             "payrollCount": int(snapshot_row.get("payroll_count") or 0),
                             "source": str(snapshot_row.get("source") or ""),
@@ -1657,7 +1661,7 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                 raise
 
     snapshot = {
-        "monthStart": snapshot_row.get("month_start").isoformat() if snapshot_row.get("month_start") else "",
+        "monthStart": _payroll_headcount_month_start_iso(snapshot_row.get("month_start")),
         "headcount": int(snapshot_row.get("headcount") or 0),
         "payrollCount": int(snapshot_row.get("payroll_count") or 0),
         "source": str(snapshot_row.get("source") or ""),

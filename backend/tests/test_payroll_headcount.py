@@ -56,6 +56,11 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(services._payroll_headcount_from_payrun_details({"PayRuns": [{}]}), 0)
         self.assertEqual(services._payroll_headcount_from_payrun_details({}), 0)
 
+    def test_month_start_iso_handles_legacy_text_values(self):
+        self.assertEqual(services._payroll_headcount_month_start_iso("2026-06-01"), "2026-06-01")
+        self.assertEqual(services._payroll_headcount_month_start_iso("/Date(1764547200000+0000)/"), "2025-12-01")
+        self.assertEqual(services._payroll_headcount_month_start_iso(""), "")
+
     def test_workspace_upsert_repairs_missing_schema_and_retries_once(self):
         now = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
         row = {
