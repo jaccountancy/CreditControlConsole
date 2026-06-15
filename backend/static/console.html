@@ -36374,8 +36374,8 @@
                                         <tbody id="piClearingWizardRowsBody"></tbody>
                                     </table>
                                 </section>
-                                <p class="detail-meta">Ignition payout-level breakdown (arrival-date batches) to spot reversals and outlier payouts quickly.</p>
-                                <section class="ch-companies-table-wrap">
+                                <p class="detail-meta" id="piClearingPayoutIntro">Ignition payout-level breakdown (arrival-date batches) to spot reversals and outlier payouts quickly.</p>
+                                <section class="ch-companies-table-wrap" id="piClearingPayoutSection">
                                     <table class="ch-table" aria-label="Ignition payout breakdown by arrival date">
                                         <thead>
                                             <tr>
@@ -50080,9 +50080,18 @@
                 const step2Reconciliation = step1Rows.length
                     ? step2FromStep1
                     : (step2FromAnalysis || buildPiClearingStep2CreditReconciliation(runRows));
+                const unmatchedCredits = Array.isArray(step2Reconciliation?.unmatchedCredits) ? step2Reconciliation.unmatchedCredits : [];
+                const hasStep2Input = step1Rows.length > 0 || runRows.length > 0;
+                const showPayoutBreakdown = unmatchedCredits.length > 0;
+                const payoutIntro = document.getElementById("piClearingPayoutIntro");
+                const payoutSection = document.getElementById("piClearingPayoutSection");
+                if (payoutIntro) payoutIntro.hidden = !showPayoutBreakdown;
+                if (payoutSection) payoutSection.hidden = !showPayoutBreakdown;
+                if (!showPayoutBreakdown) {
+                    piClearingPayoutDetailOpen = false;
+                    piClearingSelectedPayoutKey = "";
+                }
                 if (wizardRowsBody) {
-                    const unmatchedCredits = Array.isArray(step2Reconciliation?.unmatchedCredits) ? step2Reconciliation.unmatchedCredits : [];
-                    const hasStep2Input = step1Rows.length > 0 || runRows.length > 0;
                     wizardRowsBody.innerHTML = hasStep2Input
                         ? unmatchedCredits.length
                             ? unmatchedCredits.map((row) => `
@@ -50103,7 +50112,7 @@
                             : `<tr><td colspan="8"><p class="detail-meta">All same-date credit entries are fully matched to equal debit entries. Nothing to review in Step 2.</p></td></tr>`
                         : `<tr><td colspan="8"><p class="detail-meta">Run the workflow to populate transaction rows.</p></td></tr>`;
                 }
-                if (wizardPayoutBody) {
+                if (wizardPayoutBody && showPayoutBreakdown) {
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
                     const payoutMatches = buildPiClearingPayoutMatches(runRows);
                     const matchByKey = new Map(
