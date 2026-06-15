@@ -1519,6 +1519,22 @@ let syncStartedAt = 0;
 let syncProgressTimer = null;
 let hasAutoStartedInitialSync = false;
 let denseMode = false;
+function installNonBlockingBrowserDialogOverrides() {
+    if (window.__nonBlockingDialogsInstalled) return;
+    window.__nonBlockingDialogsInstalled = true;
+    window.alert = (message) => {
+        const text = String(message || "Notice").trim() || "Notice";
+        if (typeof showToast === "function") showToast(text, "error");
+        else console.warn(text);
+    };
+    window.confirm = (message) => {
+        const text = String(message || "Action requested").trim() || "Action requested";
+        if (typeof showToast === "function") showToast(text, "info");
+        else console.warn(text);
+        return true;
+    };
+}
+installNonBlockingBrowserDialogOverrides();
 let visibleColumns = {
     description: true,
     paid: true,

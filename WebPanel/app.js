@@ -19,6 +19,23 @@ let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
 
+function installNonBlockingBrowserDialogOverrides() {
+    if (window.__nonBlockingDialogsInstalled) return;
+    window.__nonBlockingDialogsInstalled = true;
+    window.alert = (message) => {
+        const text = String(message || "Notice").trim() || "Notice";
+        if (typeof showToast === "function") showToast(text, "error");
+        else console.warn(text);
+    };
+    window.confirm = (message) => {
+        const text = String(message || "Action requested").trim() || "Action requested";
+        if (typeof showToast === "function") showToast(text, "info");
+        else console.warn(text);
+        return true;
+    };
+}
+installNonBlockingBrowserDialogOverrides();
+
 const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
 const filterLabels = { all: "All invoices", action: "Needs action", current: "Current only" };
 

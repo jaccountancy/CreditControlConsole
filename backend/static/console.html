@@ -37380,6 +37380,28 @@
                 ? persistedUIState.activeView
                 : "ledger";
             if (activeView === "tasks") activeView = "task-list";
+            function installNonBlockingBrowserDialogOverrides() {
+                if (window.__nonBlockingDialogsInstalled) return;
+                window.__nonBlockingDialogsInstalled = true;
+                window.alert = function(message) {
+                    const text = String(message || "Notice").trim() || "Notice";
+                    try {
+                        showToast(text, "warning");
+                    } catch {
+                        console.warn(text);
+                    }
+                };
+                window.confirm = function(message) {
+                    const text = String(message || "Action requested").trim() || "Action requested";
+                    try {
+                        showToast(text, "warning");
+                    } catch {
+                        console.warn(text);
+                    }
+                    return true;
+                };
+            }
+            installNonBlockingBrowserDialogOverrides();
             let selectedSa100WorkspaceId = "";
             let selectedSa100ClientId = "";
             let selectedSa100TaxYear = "";
