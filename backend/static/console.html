@@ -6659,6 +6659,17 @@
             #clientCallStatsScreen .call-stats-filter-row .ghost-button {
                 border-radius: 999px;
             }
+            #clientCallStatsScreen .call-stats-filter-row.is-sticky {
+                position: sticky;
+                top: 6px;
+                z-index: 12;
+                padding: 10px;
+                border-radius: 12px;
+                background: rgba(246, 250, 255, 0.96);
+                border: 1px solid rgba(39, 86, 165, 0.16);
+                box-shadow: 0 10px 18px rgba(27, 64, 128, 0.12);
+                backdrop-filter: blur(6px);
+            }
             #clientCallStatsScreen .call-stats-filter-row .primary-button {
                 border-radius: 999px;
             }
@@ -6694,12 +6705,123 @@
                 color: #20385f;
                 font-size: 1.34rem;
             }
+            #clientCallStatsScreen .call-stats-kpi-strip {
+                display: grid;
+                gap: 10px;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                margin-bottom: 12px;
+            }
+            #clientCallStatsScreen .call-stats-kpi {
+                border-radius: 12px;
+                border: 1px solid rgba(35, 78, 151, 0.14);
+                background: rgba(255, 255, 255, 0.9);
+                padding: 10px 12px;
+            }
+            #clientCallStatsScreen .call-stats-kpi span {
+                display: block;
+                font-size: 0.72rem;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: #677fa2;
+                font-weight: 800;
+            }
+            #clientCallStatsScreen .call-stats-kpi strong {
+                display: block;
+                margin-top: 2px;
+                font-size: 1.05rem;
+                color: #1f3b69;
+            }
             #clientCallStatsScreen .call-stats-table-card {
                 border: 1px solid rgba(30, 74, 149, 0.1);
+            }
+            #clientCallStatsScreen .call-stats-collapsible {
+                margin-top: 18px;
+            }
+            #clientCallStatsScreen .call-stats-collapsible > .call-stats-section-head {
+                margin-bottom: 0;
+            }
+            #clientCallStatsScreen .call-stats-collapse-toggle {
+                border-radius: 999px;
+                border: 1px solid rgba(26, 66, 133, 0.18);
+                background: rgba(255, 255, 255, 0.86);
+                padding: 7px 12px;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #2c4f84;
+                cursor: pointer;
+            }
+            #clientCallStatsScreen .call-stats-collapsible-body[hidden] {
+                display: none;
+            }
+            #clientCallStatsScreen .call-stats-collapsible-body {
+                margin-top: 10px;
+            }
+            #clientCallStatsScreen .call-stats-table-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: flex-end;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+            #clientCallStatsScreen .call-stats-column-picker {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                font-size: 0.82rem;
+                color: #425e86;
+            }
+            #clientCallStatsScreen .call-stats-column-picker label {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                border: 1px solid rgba(24, 64, 128, 0.14);
+                background: rgba(255, 255, 255, 0.82);
+            }
+            #clientCallStatsRecentTable th:nth-child(1),
+            #clientCallStatsRecentTable td:nth-child(1) {
+                position: sticky;
+                left: 0;
+                z-index: 3;
+                background: rgba(255, 255, 255, 0.98);
+            }
+            #clientCallStatsRecentTable th:nth-child(2),
+            #clientCallStatsRecentTable td:nth-child(2) {
+                position: sticky;
+                left: 112px;
+                z-index: 2;
+                background: rgba(255, 255, 255, 0.98);
+            }
+            #clientCallStatsRecentTable th:nth-child(1),
+            #clientCallStatsRecentTable th:nth-child(2) {
+                z-index: 4;
+            }
+            #clientCallStatsScreen .call-stats-skeleton {
+                position: relative;
+                overflow: hidden;
+                background: rgba(225, 233, 245, 0.7);
+                border-radius: 8px;
+                min-height: 16px;
+            }
+            #clientCallStatsScreen .call-stats-skeleton::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                transform: translateX(-100%);
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent);
+                animation: callStatsSkeletonShimmer 1.5s infinite;
+            }
+            @keyframes callStatsSkeletonShimmer {
+                100% { transform: translateX(100%); }
             }
             @media (max-width: 1480px) {
                 #clientCallStatsScreen .call-stats-filter-grid {
                     grid-template-columns: repeat(3, minmax(140px, 1fr));
+                }
+                #clientCallStatsRecentTable th:nth-child(2),
+                #clientCallStatsRecentTable td:nth-child(2) {
+                    left: 96px;
                 }
             }
             @media (max-width: 980px) {
@@ -6712,6 +6834,15 @@
                 #clientCallStatsScreen .call-stats-section-head {
                     flex-direction: column;
                     align-items: flex-start;
+                }
+                #clientCallStatsRecentTable th:nth-child(1),
+                #clientCallStatsRecentTable td:nth-child(1),
+                #clientCallStatsRecentTable th:nth-child(2),
+                #clientCallStatsRecentTable td:nth-child(2) {
+                    position: static;
+                    left: auto;
+                    z-index: auto;
+                    background: transparent;
                 }
             }
             @media (max-width: 620px) {
@@ -35301,7 +35432,7 @@
                                     </label>
                                     <label class="field-inline" for="clientCallStatsFilterSearch"><span>Search</span><input id="clientCallStatsFilterSearch" type="search" placeholder="Client, number, outcome, staff" /></label>
                                 </div>
-                                <div class="call-stats-filter-row">
+                                <div class="call-stats-filter-row is-sticky">
                                     <button class="ghost-button" id="clientCallStatsPreset7DaysButton" type="button">Last 7 days</button>
                                     <button class="ghost-button" id="clientCallStatsPreset30DaysButton" type="button">Last 30 days</button>
                                     <button class="ghost-button" id="clientCallStatsPresetMonthButton" type="button">This month</button>
@@ -35353,6 +35484,7 @@
                                     <h4>Summary</h4>
                                     <button class="ghost-button" id="clientCallStatsExportDashboardButton" type="button">Export dashboard CSV</button>
                                 </div>
+                                <div class="call-stats-kpi-strip" id="clientCallStatsKpiStrip"></div>
                                 <div class="summary-grid" id="clientCallStatsSummaryCards"></div>
                                 <div class="summary-grid" id="clientCallStatsChartCards"></div>
                             </section>
@@ -35380,8 +35512,12 @@
                                 </section>
                             </section>
 
-                            <section class="detail-card call-stats-table-card">
-                                <h4>Import History</h4>
+                            <section class="detail-card call-stats-table-card call-stats-collapsible" data-call-stats-panel="importHistory">
+                                <div class="call-stats-section-head">
+                                    <h4>Import History</h4>
+                                    <button class="call-stats-collapse-toggle" type="button" data-call-stats-toggle="importHistory">Collapse</button>
+                                </div>
+                                <div class="call-stats-collapsible-body" data-call-stats-body="importHistory">
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Call import history">
                                         <thead>
@@ -35397,10 +35533,15 @@
                                         <tbody id="clientCallStatsImportHistoryBody"></tbody>
                                     </table>
                                 </section>
+                                </div>
                             </section>
 
-                            <section class="detail-card call-stats-table-card">
-                                <h4>Re-Sync Audit</h4>
+                            <section class="detail-card call-stats-table-card call-stats-collapsible" data-call-stats-panel="resyncAudit">
+                                <div class="call-stats-section-head">
+                                    <h4>Re-Sync Audit</h4>
+                                    <button class="call-stats-collapse-toggle" type="button" data-call-stats-toggle="resyncAudit">Collapse</button>
+                                </div>
+                                <div class="call-stats-collapsible-body" data-call-stats-body="resyncAudit">
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Call stats resync audit">
                                         <thead>
@@ -35415,10 +35556,15 @@
                                         <tbody id="clientCallStatsResyncAuditBody"></tbody>
                                     </table>
                                 </section>
+                                </div>
                             </section>
 
-                            <section class="detail-card call-stats-table-card">
-                                <h4>Internal Extension Directory</h4>
+                            <section class="detail-card call-stats-table-card call-stats-collapsible" data-call-stats-panel="extensions">
+                                <div class="call-stats-section-head">
+                                    <h4>Internal Extension Directory</h4>
+                                    <button class="call-stats-collapse-toggle" type="button" data-call-stats-toggle="extensions">Collapse</button>
+                                </div>
+                                <div class="call-stats-collapsible-body" data-call-stats-body="extensions">
                                 <form class="detail-actions" id="clientCallStatsExtensionForm">
                                     <label class="field-inline" for="clientCallStatsExtensionInput"><span>Extension</span><input id="clientCallStatsExtensionInput" type="text" required /></label>
                                     <label class="field-inline" for="clientCallStatsStaffInput"><span>Staff member</span><input id="clientCallStatsStaffInput" type="text" required /></label>
@@ -35436,10 +35582,25 @@
                                         <tbody id="clientCallStatsExtensionsBody"></tbody>
                                     </table>
                                 </section>
+                                </div>
                             </section>
 
                             <section class="detail-card call-stats-table-card" id="clientCallStatsRecentCallsSection">
                                 <h4>Recent Calls</h4>
+                                <div class="call-stats-table-toolbar">
+                                    <label class="field-inline" for="clientCallStatsSortBy">
+                                        <span>Sort by</span>
+                                        <select id="clientCallStatsSortBy">
+                                            <option value="callDate">Date</option>
+                                            <option value="durationSeconds">Duration</option>
+                                            <option value="clientName">Client</option>
+                                            <option value="staffMember">Staff</option>
+                                            <option value="matchedStatus">Match</option>
+                                        </select>
+                                    </label>
+                                    <button class="ghost-button" id="clientCallStatsSortDirectionButton" type="button">Descending</button>
+                                    <div class="call-stats-column-picker" id="clientCallStatsColumnPicker"></div>
+                                </div>
                                 <div class="detail-actions">
                                     <p class="detail-meta" id="clientCallStatsRowsMeta">No rows loaded yet.</p>
                                     <label class="field-inline" for="clientCallStatsPageSizeSelect">
@@ -35454,21 +35615,9 @@
                                     <button class="ghost-button" id="clientCallStatsNextPageButton" type="button">Next</button>
                                 </div>
                                 <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="Recent processed call records">
+                                    <table class="ch-table" id="clientCallStatsRecentTable" aria-label="Recent processed call records">
                                         <thead>
-                                            <tr>
-                                                <th>Date</th>
-                                                <th>Time</th>
-                                                <th>Direction</th>
-                                                <th>Staff member</th>
-                                                <th>Client manager</th>
-                                                <th>From number</th>
-                                                <th>To number</th>
-                                                <th>Duration</th>
-                                                <th>Outcome</th>
-                                                <th>Client</th>
-                                                <th>Match</th>
-                                            </tr>
+                                            <tr id="clientCallStatsRowsHead"></tr>
                                         </thead>
                                         <tbody id="clientCallStatsRowsBody"></tbody>
                                     </table>
@@ -35559,6 +35708,25 @@
                                     <tbody id="clientCallStatsImportPreviewBody"></tbody>
                                 </table>
                             </section>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="clientCallStatsAssignModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="clientCallStatsAssignModalTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Client Call Stats</p>
+                                    <h4 id="clientCallStatsAssignModalTitle">Assign Unmatched Number</h4>
+                                    <p class="detail-meta" id="clientCallStatsAssignModalMeta">Link this number to a client without leaving the table.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="clientCallStatsAssignModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <form class="detail-actions" id="clientCallStatsAssignModalForm">
+                                <label class="field-inline" for="clientCallStatsAssignClientIdInput"><span>Client ID</span><input id="clientCallStatsAssignClientIdInput" type="text" required /></label>
+                                <label class="field-inline" for="clientCallStatsAssignClientNameInput"><span>Client name (optional)</span><input id="clientCallStatsAssignClientNameInput" type="text" /></label>
+                                <button class="primary-button" type="submit">Assign number</button>
+                            </form>
                         </section>
                     </div>
                     <section class="late-charges-screen detail-card" id="piClearingAccountScreen" hidden>
@@ -37192,6 +37360,17 @@
             let clientCallStatsLatestAiReport = null;
             let clientCallStatsEventsBound = false;
             const clientCallStatsFilterPresetStorageKey = `${STORAGE_KEY}:client-call-stats-filter-presets:v1`;
+            const clientCallStatsUIPrefsStorageKey = `${STORAGE_KEY}:client-call-stats-ui-prefs:v1`;
+            const clientCallStatsDefaultCollapsedPanels = {
+                importHistory: true,
+                resyncAudit: true,
+                extensions: true,
+            };
+            let clientCallStatsCollapsedPanels = { ...clientCallStatsDefaultCollapsedPanels };
+            let clientCallStatsSortKey = "callDate";
+            let clientCallStatsSortDirection = "desc";
+            let clientCallStatsHiddenColumns = [];
+            let clientCallStatsAssignNumber = "";
             let clientCallStatsSavedFilterPresets = loadClientCallStatsFilterPresets();
             let clientCallStatsAiFilterPresets = [];
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
@@ -46153,6 +46332,45 @@
                 }
             }
 
+            function loadClientCallStatsUIPrefs() {
+                try {
+                    const raw = window.localStorage.getItem(clientCallStatsUIPrefsStorageKey);
+                    if (!raw) return;
+                    const parsed = JSON.parse(raw);
+                    clientCallStatsFilters = normaliseClientCallStatsFilters(parsed?.filters || clientCallStatsFilters);
+                    clientCallStatsTable.pageSize = Math.max(25, Math.min(1000, Number(parsed?.pageSize || clientCallStatsTable.pageSize || 250)));
+                    clientCallStatsSortKey = String(parsed?.sortKey || clientCallStatsSortKey || "callDate");
+                    clientCallStatsSortDirection = String(parsed?.sortDirection || clientCallStatsSortDirection || "desc") === "asc" ? "asc" : "desc";
+                    const hiddenColumns = Array.isArray(parsed?.hiddenColumns) ? parsed.hiddenColumns : [];
+                    clientCallStatsHiddenColumns = hiddenColumns.map((item) => String(item || "").trim()).filter(Boolean);
+                    const collapsed = parsed?.collapsedPanels && typeof parsed.collapsedPanels === "object" ? parsed.collapsedPanels : {};
+                    clientCallStatsCollapsedPanels = {
+                        ...clientCallStatsDefaultCollapsedPanels,
+                        importHistory: collapsed.importHistory !== undefined ? !!collapsed.importHistory : clientCallStatsDefaultCollapsedPanels.importHistory,
+                        resyncAudit: collapsed.resyncAudit !== undefined ? !!collapsed.resyncAudit : clientCallStatsDefaultCollapsedPanels.resyncAudit,
+                        extensions: collapsed.extensions !== undefined ? !!collapsed.extensions : clientCallStatsDefaultCollapsedPanels.extensions,
+                    };
+                } catch {}
+            }
+
+            function persistClientCallStatsUIPrefs() {
+                try {
+                    window.localStorage.setItem(
+                        clientCallStatsUIPrefsStorageKey,
+                        JSON.stringify({
+                            filters: clientCallStatsFilters,
+                            pageSize: clientCallStatsTable.pageSize,
+                            sortKey: clientCallStatsSortKey,
+                            sortDirection: clientCallStatsSortDirection,
+                            hiddenColumns: clientCallStatsHiddenColumns,
+                            collapsedPanels: clientCallStatsCollapsedPanels,
+                        }),
+                    );
+                } catch {}
+            }
+
+            loadClientCallStatsUIPrefs();
+
             function readClientCallStatsFiltersFromInputs() {
                 return normaliseClientCallStatsFilters({
                     dateFrom: document.getElementById("clientCallStatsFilterDateFrom")?.value || "",
@@ -46227,11 +46445,111 @@
                 }
             }
 
+            function clientCallStatsRecentColumns() {
+                return [
+                    { key: "callDate", label: "Date", required: true },
+                    { key: "callTime", label: "Time", required: true },
+                    { key: "direction", label: "Direction" },
+                    { key: "staffMember", label: "Staff member" },
+                    { key: "clientManager", label: "Client manager" },
+                    { key: "fromNumber", label: "From number" },
+                    { key: "toNumber", label: "To number" },
+                    { key: "durationSeconds", label: "Duration" },
+                    { key: "outcome", label: "Outcome" },
+                    { key: "clientName", label: "Client" },
+                    { key: "matchedStatus", label: "Match" },
+                ];
+            }
+
+            function clientCallStatsVisibleRecentColumns() {
+                const hidden = new Set(clientCallStatsHiddenColumns || []);
+                return clientCallStatsRecentColumns().filter((column) => column.required || !hidden.has(column.key));
+            }
+
+            function clientCallStatsSortableValue(row, key) {
+                const record = row && typeof row === "object" ? row : {};
+                if (key === "durationSeconds") return Number(record.durationSeconds || 0);
+                if (key === "callDate") return Date.parse(`${record.callDate || ""}T${record.callTime || "00:00:00"}`) || 0;
+                return String(record?.[key] || "").toLowerCase();
+            }
+
+            function sortClientCallStatsRows(rows = []) {
+                const key = String(clientCallStatsSortKey || "callDate");
+                const direction = clientCallStatsSortDirection === "asc" ? "asc" : "desc";
+                return [...rows].sort((left, right) => {
+                    const leftValue = clientCallStatsSortableValue(left, key);
+                    const rightValue = clientCallStatsSortableValue(right, key);
+                    let comparison = 0;
+                    if (typeof leftValue === "number" && typeof rightValue === "number") comparison = leftValue - rightValue;
+                    else comparison = String(leftValue || "").localeCompare(String(rightValue || ""), undefined, { numeric: true, sensitivity: "base" });
+                    if (comparison < 0) return direction === "asc" ? -1 : 1;
+                    if (comparison > 0) return direction === "asc" ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            function renderClientCallStatsCollapseStates() {
+                document.querySelectorAll("[data-call-stats-body]").forEach((node) => {
+                    const panel = String(node.getAttribute("data-call-stats-body") || "").trim();
+                    if (!panel) return;
+                    const collapsed = !!clientCallStatsCollapsedPanels?.[panel];
+                    node.hidden = collapsed;
+                    const toggle = document.querySelector(`[data-call-stats-toggle="${panel}"]`);
+                    if (toggle) toggle.textContent = collapsed ? "Expand" : "Collapse";
+                });
+            }
+
+            function renderClientCallStatsColumnPicker() {
+                const picker = document.getElementById("clientCallStatsColumnPicker");
+                if (!picker) return;
+                const hidden = new Set(clientCallStatsHiddenColumns || []);
+                const optionalColumns = clientCallStatsRecentColumns().filter((column) => !column.required);
+                picker.innerHTML = optionalColumns.map((column) => `
+                    <label>
+                        <input type="checkbox" data-call-stats-column="${escapeHTML(column.key)}" ${hidden.has(column.key) ? "" : "checked"}>
+                        <span>${escapeHTML(column.label)}</span>
+                    </label>
+                `).join("");
+            }
+
+            function openClientCallStatsAssignModal(number) {
+                const targetNumber = String(number || "").trim();
+                if (!targetNumber) return;
+                clientCallStatsAssignNumber = targetNumber;
+                const modal = document.getElementById("clientCallStatsAssignModal");
+                const meta = document.getElementById("clientCallStatsAssignModalMeta");
+                const idInput = document.getElementById("clientCallStatsAssignClientIdInput");
+                const nameInput = document.getElementById("clientCallStatsAssignClientNameInput");
+                if (!modal) return;
+                if (meta) meta.textContent = `Link ${targetNumber} to a client without leaving the table.`;
+                if (idInput) idInput.value = "";
+                if (nameInput) nameInput.value = "";
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+                setTimeout(() => idInput?.focus(), 0);
+            }
+
+            function closeClientCallStatsAssignModal() {
+                const modal = document.getElementById("clientCallStatsAssignModal");
+                if (!modal) return;
+                modal.hidden = true;
+                clientCallStatsAssignNumber = "";
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
             function renderClientCallStatsScreen() {
                 const summary = document.getElementById("clientCallStatsSummary");
                 if (!summary) return;
                 writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
                 renderClientCallStatsPresetControls();
+                renderClientCallStatsCollapseStates();
+                renderClientCallStatsColumnPicker();
+                const sortBySelect = document.getElementById("clientCallStatsSortBy");
+                const sortDirectionButton = document.getElementById("clientCallStatsSortDirectionButton");
+                if (sortBySelect) sortBySelect.value = clientCallStatsSortKey;
+                if (sortDirectionButton) sortDirectionButton.textContent = clientCallStatsSortDirection === "asc" ? "Ascending" : "Descending";
                 const totalCalls = Number(clientCallStatsData?.summary?.totalCalls || 0).toLocaleString("en-GB");
                 const matchedCalls = Number(clientCallStatsData?.summary?.matchedCalls || 0).toLocaleString("en-GB");
                 const unmatchedCalls = Number(clientCallStatsData?.summary?.unmatchedCalls || 0).toLocaleString("en-GB");
@@ -46244,9 +46562,37 @@
                 if (onboardingTotal) onboardingTotal.textContent = totalCalls;
                 if (onboardingMatched) onboardingMatched.textContent = matchedCalls;
                 if (onboardingUnmatched) onboardingUnmatched.textContent = unmatchedCalls;
+                const kpiStrip = document.getElementById("clientCallStatsKpiStrip");
+                if (kpiStrip) {
+                    const total = Number(clientCallStatsData?.summary?.totalCalls || 0);
+                    const matched = Number(clientCallStatsData?.summary?.matchedCalls || 0);
+                    const unmatched = Number(clientCallStatsData?.summary?.unmatchedCalls || 0);
+                    const matchedRate = total > 0 ? ((matched / total) * 100).toFixed(1) : "0.0";
+                    const unmatchedRate = total > 0 ? ((unmatched / total) * 100).toFixed(1) : "0.0";
+                    const avgDuration = formatSyncDuration(Math.round(Number(clientCallStatsData?.summary?.averageDurationSeconds || 0)));
+                    kpiStrip.innerHTML = [
+                        ["Total Calls", total.toLocaleString("en-GB")],
+                        ["Matched %", `${matchedRate}%`],
+                        ["Unmatched %", `${unmatchedRate}%`],
+                        ["Avg Duration", avgDuration || "--"],
+                    ].map(([label, value]) => `
+                        <article class="call-stats-kpi">
+                            <span>${escapeHTML(String(label || ""))}</span>
+                            <strong>${escapeHTML(String(value || "--"))}</strong>
+                        </article>
+                    `).join("");
+                }
 
                 const summaryCards = document.getElementById("clientCallStatsSummaryCards");
                 if (summaryCards) {
+                    if (clientCallStatsLoading) {
+                        summaryCards.innerHTML = Array.from({ length: 8 }).map(() => `
+                            <article class="metric-card">
+                                <div class="call-stats-skeleton" style="height:12px;width:60%;"></div>
+                                <div class="call-stats-skeleton" style="height:24px;width:46%;margin-top:12px;"></div>
+                            </article>
+                        `).join("");
+                    } else {
                     const cards = [
                         ["Total Calls", clientCallStatsData?.summary?.totalCalls || 0],
                         ["Inbound Calls", clientCallStatsData?.summary?.inboundCalls || 0],
@@ -46263,10 +46609,21 @@
                             <p class="metric-value">${escapeHTML(typeof value === "number" ? Number(value).toLocaleString("en-GB") : String(value || "--"))}</p>
                         </article>
                     `).join("");
+                    }
                 }
 
                 const chartCards = document.getElementById("clientCallStatsChartCards");
                 if (chartCards) {
+                    if (clientCallStatsLoading) {
+                        chartCards.innerHTML = Array.from({ length: 4 }).map(() => `
+                            <article class="metric-card">
+                                <div class="call-stats-skeleton" style="height:12px;width:55%;"></div>
+                                <div class="call-stats-skeleton" style="height:10px;width:100%;margin-top:14px;"></div>
+                                <div class="call-stats-skeleton" style="height:10px;width:88%;margin-top:10px;"></div>
+                                <div class="call-stats-skeleton" style="height:10px;width:74%;margin-top:10px;"></div>
+                            </article>
+                        `).join("");
+                    } else {
                     const topClients = Array.isArray(clientCallStatsData?.charts?.topCallingClients) ? clientCallStatsData.charts.topCallingClients.slice(0, 5) : [];
                     const topStaff = Array.isArray(clientCallStatsData?.charts?.callsByStaff) ? clientCallStatsData.charts.callsByStaff.slice(0, 5) : [];
                     const unmatched = Array.isArray(clientCallStatsData?.charts?.unmatchedNumbers) ? clientCallStatsData.charts.unmatchedNumbers.slice(0, 5) : [];
@@ -46316,6 +46673,7 @@
                             }
                         </article>
                     `;
+                    }
                 }
 
                 const importSummaryCards = document.getElementById("clientCallStatsImportSummaryCards");
@@ -46355,7 +46713,9 @@
                 const unmatchedBody = document.getElementById("clientCallStatsUnmatchedBody");
                 if (unmatchedBody) {
                     const rows = Array.isArray(clientCallStatsData?.unmatchedNumbers) ? clientCallStatsData.unmatchedNumbers : [];
-                    unmatchedBody.innerHTML = rows.length
+                    unmatchedBody.innerHTML = clientCallStatsLoading
+                        ? `<tr><td colspan="6"><div class="call-stats-skeleton" style="height:30px;"></div></td></tr>`
+                        : rows.length
                         ? rows.map((row) => `
                             <tr>
                                 <td>${escapeHTML(String(row.number || ""))}</td>
@@ -46372,7 +46732,7 @@
                                 </td>
                             </tr>
                         `).join("")
-                        : `<tr><td colspan="6">No unmatched numbers.</td></tr>`;
+                        : `<tr><td colspan="6">No unmatched numbers right now. Import a fresh batch or widen your filters.</td></tr>`;
                 }
 
                 const extensionBody = document.getElementById("clientCallStatsExtensionsBody");
@@ -46423,6 +46783,7 @@
                 }
 
                 const callRowsBody = document.getElementById("clientCallStatsRowsBody");
+                const callRowsHead = document.getElementById("clientCallStatsRowsHead");
                 const rowsMeta = document.getElementById("clientCallStatsRowsMeta");
                 const prevPageButton = document.getElementById("clientCallStatsPrevPageButton");
                 const nextPageButton = document.getElementById("clientCallStatsNextPageButton");
@@ -46438,32 +46799,42 @@
                 }
                 if (prevPageButton) prevPageButton.disabled = clientCallStatsLoading || Number(clientCallStatsTable.page || 1) <= 1;
                 if (nextPageButton) nextPageButton.disabled = clientCallStatsLoading || Number(clientCallStatsTable.page || 1) >= Number(clientCallStatsTable.totalPages || 1);
+                if (callRowsHead) {
+                    const visibleColumns = clientCallStatsVisibleRecentColumns();
+                    callRowsHead.innerHTML = visibleColumns.map((column) => `<th>${escapeHTML(column.label)}</th>`).join("");
+                }
                 if (callRowsBody) {
-                    const rows = Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : [];
-                    callRowsBody.innerHTML = rows.length
+                    const rows = sortClientCallStatsRows(Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : []);
+                    const visibleColumns = clientCallStatsVisibleRecentColumns();
+                    callRowsBody.innerHTML = clientCallStatsLoading
+                        ? `<tr><td colspan="${Math.max(2, visibleColumns.length)}"><div class="call-stats-skeleton" style="height:34px;"></div></td></tr>`
+                        : rows.length
                         ? rows.map((row) => {
                             const matchStatus = String(row.matchedStatus || "").trim().toLowerCase();
                             const rowStyle = matchStatus === "matched" ? " style=\"background: rgba(36, 160, 88, 0.10);\"" : "";
                             const matchChipClass = matchStatus === "matched"
                                 ? "success"
                                 : (matchStatus === "ignored" ? "info" : "danger");
+                            const valueByKey = {
+                                callDate: escapeHTML(String(row.callDate || "")),
+                                callTime: escapeHTML(String(row.callTime || "")),
+                                direction: escapeHTML(String(row.direction || "")),
+                                staffMember: escapeHTML(String(row.staffMember || "")),
+                                clientManager: escapeHTML(String(row.clientManager || "")),
+                                fromNumber: escapeHTML(String(row.fromNumber || "")),
+                                toNumber: escapeHTML(String(row.toNumber || "")),
+                                durationSeconds: escapeHTML(formatSyncDuration(Number(row.durationSeconds || 0))),
+                                outcome: escapeHTML(String(row.outcome || "")),
+                                clientName: escapeHTML(String(row.clientName || "")),
+                                matchedStatus: `<span class="status-chip ${escapeHTML(matchChipClass)}">${escapeHTML(matchStatus || "unmatched")}</span>`,
+                            };
                             return `
                             <tr${rowStyle}>
-                                <td>${escapeHTML(String(row.callDate || ""))}</td>
-                                <td>${escapeHTML(String(row.callTime || ""))}</td>
-                                <td>${escapeHTML(String(row.direction || ""))}</td>
-                                <td>${escapeHTML(String(row.staffMember || ""))}</td>
-                                <td>${escapeHTML(String(row.clientManager || ""))}</td>
-                                <td>${escapeHTML(String(row.fromNumber || ""))}</td>
-                                <td>${escapeHTML(String(row.toNumber || ""))}</td>
-                                <td>${escapeHTML(formatSyncDuration(Number(row.durationSeconds || 0)))}</td>
-                                <td>${escapeHTML(String(row.outcome || ""))}</td>
-                                <td>${escapeHTML(String(row.clientName || ""))}</td>
-                                <td><span class="status-chip ${escapeHTML(matchChipClass)}">${escapeHTML(matchStatus || "unmatched")}</span></td>
+                                ${visibleColumns.map((column) => `<td>${valueByKey[column.key] || "—"}</td>`).join("")}
                             </tr>
                         `;
                         }).join("")
-                        : `<tr><td colspan="11">No call records loaded for the selected filters.</td></tr>`;
+                        : `<tr><td colspan="${Math.max(2, visibleColumns.length)}">No call records loaded for the selected filters.</td></tr>`;
                 }
 
                 const clientSummary = document.getElementById("clientCallStatsClientSummary");
@@ -46549,6 +46920,7 @@
                         totalRows: Math.max(0, Number(tablePayload.totalRows || 0)),
                         totalPages: Math.max(1, Number(tablePayload.totalPages || 1)),
                     };
+                    persistClientCallStatsUIPrefs();
                     const aiPayload = await requestJSON(api.endpoints.clientCallStatsAiReports, { method: "GET", suppressFailurePanel: true });
                     clientCallStatsAiReports = Array.isArray(aiPayload?.reports) ? aiPayload.reports : [];
                     if (!silent) showToast("Client Call Stats refreshed.", "success");
@@ -46650,23 +47022,52 @@
             }
 
             async function applyClientCallStatsNumberAction(action, number) {
-                let payload = { action, number };
-                if (action === "assign_client") {
-                    const clientId = window.prompt("Enter the client ID to assign this number:");
-                    if (!clientId) return;
-                    const clientName = window.prompt("Optional: enter client name for this assignment (leave blank if unknown):");
-                    payload = { ...payload, clientId: String(clientId).trim(), clientName: String(clientName || "").trim() };
+                const cleanAction = String(action || "").trim();
+                const cleanNumber = String(number || "").trim();
+                if (!cleanAction || !cleanNumber) return;
+                if (cleanAction === "assign_client") {
+                    openClientCallStatsAssignModal(cleanNumber);
+                    return;
                 }
                 try {
                     const response = await requestJSON(api.endpoints.clientCallStatsUnmatchedAction, {
                         method: "POST",
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify({ action: cleanAction, number: cleanNumber }),
                     });
                     if (response?.clientCallStats) clientCallStatsData = response.clientCallStats;
                     showToast("Number action saved and history updated.", "success");
                     await loadClientCallStats({ silent: true });
                 } catch (error) {
                     showToast(error?.message || "Unable to apply unmatched number action.", "error");
+                }
+            }
+
+            async function submitClientCallStatsAssignModal(event) {
+                event?.preventDefault();
+                const clientId = String(document.getElementById("clientCallStatsAssignClientIdInput")?.value || "").trim();
+                const clientName = String(document.getElementById("clientCallStatsAssignClientNameInput")?.value || "").trim();
+                const number = String(clientCallStatsAssignNumber || "").trim();
+                if (!number) return;
+                if (!clientId) {
+                    showToast("Enter a client ID before assigning.", "info");
+                    return;
+                }
+                try {
+                    const response = await requestJSON(api.endpoints.clientCallStatsUnmatchedAction, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            action: "assign_client",
+                            number,
+                            clientId,
+                            clientName,
+                        }),
+                    });
+                    if (response?.clientCallStats) clientCallStatsData = response.clientCallStats;
+                    closeClientCallStatsAssignModal();
+                    showToast("Number assigned to client.", "success");
+                    await loadClientCallStats({ silent: true });
+                } catch (error) {
+                    showToast(error?.message || "Unable to assign number.", "error");
                 }
             }
 
@@ -46714,6 +47115,11 @@
                 document.getElementById("clientCallStatsImportModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "clientCallStatsImportModal") closeClientCallStatsImportModal();
                 });
+                document.getElementById("clientCallStatsAssignModalCloseButton")?.addEventListener("click", () => closeClientCallStatsAssignModal());
+                document.getElementById("clientCallStatsAssignModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "clientCallStatsAssignModal") closeClientCallStatsAssignModal();
+                });
+                document.getElementById("clientCallStatsAssignModalForm")?.addEventListener("submit", (event) => submitClientCallStatsAssignModal(event));
                 document.getElementById("clientCallStatsRefreshButton")?.addEventListener("click", () => loadClientCallStats());
                 document.getElementById("clientCallStatsOnboardingRefreshButton")?.addEventListener("click", () => loadClientCallStats());
                 document.getElementById("clientCallStatsResyncButton")?.addEventListener("click", () => runClientCallStatsResync());
@@ -46740,12 +47146,14 @@
                 document.getElementById("clientCallStatsApplyFiltersButton")?.addEventListener("click", () => {
                     clientCallStatsFilters = readClientCallStatsFiltersFromInputs();
                     clientCallStatsTable.page = 1;
+                    persistClientCallStatsUIPrefs();
                     loadClientCallStats({ silent: true });
                 });
                 document.getElementById("clientCallStatsResetFiltersButton")?.addEventListener("click", () => {
                     clientCallStatsFilters = normaliseClientCallStatsFilters({});
                     clientCallStatsTable.page = 1;
                     writeClientCallStatsFiltersToInputs(clientCallStatsFilters);
+                    persistClientCallStatsUIPrefs();
                     loadClientCallStats({ silent: true });
                     showToast("Client Call Stats filters reset.", "info");
                 });
@@ -46754,6 +47162,7 @@
                     event.preventDefault();
                     clientCallStatsFilters = readClientCallStatsFiltersFromInputs();
                     clientCallStatsTable.page = 1;
+                    persistClientCallStatsUIPrefs();
                     loadClientCallStats({ silent: true });
                 });
                 document.getElementById("clientCallStatsPrevPageButton")?.addEventListener("click", () => {
@@ -46769,7 +47178,43 @@
                     const nextSize = Math.max(25, Number(event?.target?.value || 250));
                     clientCallStatsTable.pageSize = nextSize;
                     clientCallStatsTable.page = 1;
+                    persistClientCallStatsUIPrefs();
                     loadClientCallStats({ silent: true });
+                });
+                document.getElementById("clientCallStatsSortBy")?.addEventListener("change", (event) => {
+                    clientCallStatsSortKey = String(event?.target?.value || "callDate");
+                    clientCallStatsTable.page = 1;
+                    persistClientCallStatsUIPrefs();
+                    renderClientCallStatsScreen();
+                });
+                document.getElementById("clientCallStatsSortDirectionButton")?.addEventListener("click", () => {
+                    clientCallStatsSortDirection = clientCallStatsSortDirection === "asc" ? "desc" : "asc";
+                    persistClientCallStatsUIPrefs();
+                    renderClientCallStatsScreen();
+                });
+                document.getElementById("clientCallStatsColumnPicker")?.addEventListener("change", (event) => {
+                    const checkbox = event?.target?.closest?.("input[type=\"checkbox\"][data-call-stats-column]");
+                    if (!checkbox) return;
+                    const column = String(checkbox.getAttribute("data-call-stats-column") || "").trim();
+                    if (!column) return;
+                    const hidden = new Set(clientCallStatsHiddenColumns || []);
+                    if (checkbox.checked) hidden.delete(column);
+                    else hidden.add(column);
+                    clientCallStatsHiddenColumns = Array.from(hidden);
+                    persistClientCallStatsUIPrefs();
+                    renderClientCallStatsScreen();
+                });
+                document.querySelectorAll("[data-call-stats-toggle]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const panel = String(button.getAttribute("data-call-stats-toggle") || "").trim();
+                        if (!panel) return;
+                        clientCallStatsCollapsedPanels = {
+                            ...clientCallStatsCollapsedPanels,
+                            [panel]: !clientCallStatsCollapsedPanels?.[panel],
+                        };
+                        persistClientCallStatsUIPrefs();
+                        renderClientCallStatsCollapseStates();
+                    });
                 });
                 document.getElementById("clientCallStatsSavePresetButton")?.addEventListener("click", () => saveClientCallStatsFilterPreset());
                 document.getElementById("clientCallStatsApplySavedPresetButton")?.addEventListener("click", () => applyClientCallStatsSavedPreset());
@@ -46817,6 +47262,7 @@
                 if (toInput) toInput.value = endValue;
                 clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
                 clientCallStatsTable.page = 1;
+                persistClientCallStatsUIPrefs();
                 loadClientCallStats({ silent: true });
             }
 
@@ -46831,6 +47277,7 @@
                 if (toInput) toInput.value = endValue;
                 clientCallStatsFilters = { ...clientCallStatsFilters, dateFrom: startValue, dateTo: endValue };
                 clientCallStatsTable.page = 1;
+                persistClientCallStatsUIPrefs();
                 loadClientCallStats({ silent: true });
             }
 
@@ -46844,6 +47291,7 @@
                     const presetSelect = document.getElementById("clientCallStatsSavedPresetsSelect");
                     if (presetSelect) presetSelect.value = cleanPreset.name;
                 }
+                persistClientCallStatsUIPrefs();
                 loadClientCallStats({ silent: true });
                 showToast(`Applied preset: ${cleanPreset.name}.`, "success");
             }
