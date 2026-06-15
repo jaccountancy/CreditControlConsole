@@ -5734,6 +5734,72 @@ async def delete_pi_clearing_run(user: dict, run_id: str) -> dict:
     return {"deletedRunId": resolved_run_id, "runs": updated.get("runs") or []}
 
 
+async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, payload: dict | None = None) -> dict:
+    clean_run_id = str(run_id or "").strip()
+    clean_row_id = str(run_row_id or "").strip()
+    safe_payload = payload if isinstance(payload, dict) else {}
+    fix_payload = safe_payload.get("fix") if isinstance(safe_payload.get("fix"), dict) else {}
+    if not clean_run_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing run id is required.")
+    if not clean_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing row id is required.")
+    if not fix_payload:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fix payload is required.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT rr.id, rr.raw_payload
+                FROM pi_clearing_run_rows AS rr
+                JOIN pi_clearing_runs AS run ON run.id = rr.run_id
+                WHERE run.id = %s
+                  AND rr.id = %s
+                  AND run.user_id = %s
+                LIMIT 1
+                """,
+                (clean_run_id, clean_row_id, user["id"]),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing row not found for this run.")
+
+            raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+            step1_fix = {
+                "savedAt": _iso(utcnow()) or "",
+                "step1RowKey": str(fix_payload.get("step1RowKey") or "").strip(),
+                "targetDate": str(fix_payload.get("targetDate") or "").strip(),
+                "missingDebitAmount": float(_money(fix_payload.get("missingDebitAmount"))),
+                "payoutId": str(fix_payload.get("payoutId") or "").strip(),
+                "lineCount": int(fix_payload.get("lineCount") or 0),
+                "clientName": str(fix_payload.get("clientName") or "").strip(),
+                "runRowId": clean_row_id,
+            }
+            next_raw = dict(raw_payload)
+            next_raw["step1AiFix"] = step1_fix
+
+            cursor.execute(
+                """
+                UPDATE pi_clearing_run_rows
+                SET raw_payload = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (next_raw, clean_row_id),
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_runs
+                SET updated_at = NOW()
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (clean_run_id, user["id"]),
+            )
+        connection.commit()
+    return {"saved": True, "runId": clean_run_id, "rowId": clean_row_id}
+
+
 def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) -> str:
     requested = str((payload or {}).get("accountCode") or "").strip()
     configured = ""

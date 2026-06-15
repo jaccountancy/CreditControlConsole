@@ -36761,35 +36761,20 @@
                                 </div>
                             </section>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="3" hidden>
-                                <p class="detail-meta" id="piClearingWizardCreditSummary">Select unresolved difference rows and create balancing credit notes in Xero.</p>
+                                <p class="detail-meta" id="piClearingWizardCreditSummary">Review the credit notes Jenius will create to balance this batch, then confirm posting to Xero.</p>
                                 <div class="summary-grid pi-clearing-kpi-grid" id="piClearingStep3BalanceGrid"></div>
                                 <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="Suggested credit notes grouped by contact">
+                                    <table class="ch-table" aria-label="Credit notes to create in Xero">
                                         <thead>
                                             <tr>
-                                                <th>Rows</th>
-                                                <th>Total suggested</th>
+                                                <th>Client</th>
+                                                <th>Credit notes</th>
+                                                <th>Total to create</th>
                                                 <th>Payout date window</th>
                                                 <th>Risk mix</th>
                                             </tr>
                                         </thead>
                                         <tbody id="piClearingSuggestedNotesBody"></tbody>
-                                    </table>
-                                </section>
-                                <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="Rows eligible for PI clearing credit notes">
-                                        <thead>
-                                            <tr>
-                                                <th>Select</th>
-                                                <th>Client</th>
-                                                <th>Payout date</th>
-                                                <th>Difference</th>
-                                                <th>Risk</th>
-                                                <th>Contact</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="piClearingWizardCreditRowsBody"></tbody>
                                     </table>
                                 </section>
                                 <section class="ch-companies-table-wrap">
@@ -36808,9 +36793,8 @@
                                     </table>
                                 </section>
                                 <div class="detail-actions">
-                                    <button class="ghost-button" id="piClearingSelectAllRowsButton" type="button">Select all eligible</button>
                                     <button class="ghost-button" id="piClearingDryRunPdfButton" type="button">Export dry-run PDF</button>
-                                    <button class="primary-button" id="piClearingCreateCreditNotesButton" type="button">Create credit notes in Xero</button>
+                                    <button class="primary-button" id="piClearingCreateCreditNotesButton" type="button">Confirm and create credit notes in Xero</button>
                                 </div>
                             </section>
                             </div>
@@ -36865,6 +36849,29 @@
                                     <tbody id="piClearingStep1DifferenceBody"></tbody>
                                 </table>
                             </section>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="piClearingFixDifferenceModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="piClearingFixDifferenceTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">PI Clearing · Credit note confirmation</p>
+                                    <h4 id="piClearingFixDifferenceTitle">Fix difference</h4>
+                                    <p class="detail-meta">Review the credit note that will be created, then confirm posting to Xero.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="piClearingFixDifferenceCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Credit note confirmation details">
+                                    <tbody id="piClearingFixDifferenceBody"></tbody>
+                                </table>
+                            </section>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="piClearingFixDifferenceCancelButton" type="button">Cancel</button>
+                                <button class="primary-button" id="piClearingFixDifferenceConfirmButton" type="button">Confirm and post to Xero</button>
+                            </div>
                         </section>
                     </div>
 
@@ -38206,6 +38213,9 @@
             let piClearingStep1AiRunning = false;
             let piClearingStep1AiResult = null;
             let piClearingStep1AiRowKey = "";
+            const piClearingStep1AiCache = new Map();
+            let piClearingFixDifferenceModalOpen = false;
+            let piClearingFixDifferenceMatch = null;
             let piClearingWorkflowStageTimer = null;
             let piClearingLivePollTimer = null;
             const PI_CLEARING_WORKFLOW_STAGES = [
@@ -39628,6 +39638,7 @@
                         piClearingAccountDeleteRun: config.endpoints?.piClearingAccountDeleteRun || "/api/pi-clearing-account/runs/:runId",
                         piClearingAccountSetup: config.endpoints?.piClearingAccountSetup || "/api/pi-clearing-account/setup",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
+                        piClearingAccountStep1Fix: config.endpoints?.piClearingAccountStep1Fix || "/api/pi-clearing-account/runs/:runId/rows/:runRowId/step1-fix",
                         piClearingAccountVoidCreditNote: config.endpoints?.piClearingAccountVoidCreditNote || "/api/pi-clearing-account/runs/:runId/credit-notes/:creditNoteRecordId/void",
                         piClearingAccountDryRunPdf: config.endpoints?.piClearingAccountDryRunPdf || "/api/pi-clearing-account/runs/:runId/dry-run.pdf",
                         jukEquity: config.endpoints?.jukEquity || "/api/juk-equity",
@@ -49536,11 +49547,39 @@
                 const matchedRowId = String(match?.runRow?.id || "").trim();
                 if (!matchedRowId) return false;
                 piClearingSelectedRowIds = new Set([matchedRowId]);
-                piClearingWizardOpen = true;
-                piClearingWizardStep = 3;
-                piClearingStep1DifferenceModalOpen = false;
-                piClearingStep1DifferenceRow = null;
                 return true;
+            }
+
+            function openPiClearingFixDifferenceModal(match = {}) {
+                if (!applyPiStep1AiMatch(match)) return false;
+                piClearingFixDifferenceMatch = {
+                    ...match,
+                    runRow: match?.runRow && typeof match.runRow === "object" ? { ...match.runRow } : null,
+                };
+                piClearingFixDifferenceModalOpen = true;
+                return true;
+            }
+
+            async function persistPiStep1AiFix(runId = "", rowId = "", step1RowKey = "", match = {}) {
+                const cleanRunId = String(runId || "").trim();
+                const cleanRowId = String(rowId || "").trim();
+                if (!cleanRunId || !cleanRowId) return;
+                const fixPayload = {
+                    step1RowKey: String(step1RowKey || "").trim(),
+                    targetDate: String(match?.targetDate || "").trim(),
+                    missingDebitAmount: Number(match?.missingDebitAmount || 0),
+                    payoutId: String(match?.payout?.payoutId || "").trim(),
+                    lineCount: Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0),
+                    clientName: String(match?.runRow?.clientName || match?.payoutLine?.clientName || "").trim(),
+                };
+                try {
+                    await requestJSON(api.endpoints.piClearingAccountStep1Fix, {
+                        method: "POST",
+                        body: JSON.stringify({ fix: fixPayload }),
+                    }, { runId: cleanRunId, runRowId: cleanRowId });
+                } catch (error) {
+                    console.warn("Unable to persist Step 1 AI fix", error);
+                }
             }
 
             function piRiskLevel(row = {}) {
@@ -49850,6 +49889,13 @@
                 piClearingStep1AiRunning = false;
                 piClearingStep1AiResult = null;
                 piClearingStep1AiRowKey = "";
+                piClearingFixDifferenceModalOpen = false;
+                piClearingFixDifferenceMatch = null;
+            }
+
+            function closePiClearingFixDifferenceModal() {
+                piClearingFixDifferenceModalOpen = false;
+                piClearingFixDifferenceMatch = null;
             }
 
             function piClearingStep1NeedsIgnitionAI(rows = [], run = {}) {
@@ -49961,14 +50007,17 @@
                 }
             }
 
-            async function createPiClearingCreditNotes() {
+            async function createPiClearingCreditNotes(options = {}) {
                 const run = currentPiClearingRun();
                 if (!run?.id) return showToast("Run the workflow first.", "info");
-                const rowIds = [...piClearingSelectedRowIds];
+                const overrideRowIds = Array.isArray(options?.rowIds)
+                    ? options.rowIds.map((item) => String(item || "").trim()).filter(Boolean)
+                    : [];
+                const rowIds = overrideRowIds.length ? overrideRowIds : [...piClearingSelectedRowIds];
                 if (!rowIds.length) return showToast("Select at least one eligible difference row.", "info");
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const selectedRows = runRows.filter((row) => rowIds.includes(String(row?.id || "")));
-                const totalAmount = selectedRows.reduce((sum, row) => sum + Number(row?.difference || 0), 0);
+                const totalAmount = selectedRows.reduce((sum, row) => sum + Math.abs(Number(row?.differenceTotal || row?.difference || 0)), 0);
                 const confirmationMessage = [
                     `Create ${rowIds.length} PI Clearing credit note${rowIds.length === 1 ? "" : "s"} in Xero?`,
                     `Total amount: ${formatCurrency(totalAmount)}.`,
@@ -49996,11 +50045,13 @@
                     const skippedCount = Array.isArray(payload?.skipped) ? payload.skipped.length : 0;
                     piClearingStatusMessage = `${createdCount} credit note${createdCount === 1 ? "" : "s"} created${skippedCount ? `, ${skippedCount} skipped` : ""}.`;
                     piClearingStatusTone = createdCount > 0 ? "success" : "info";
-                    piClearingWizardOpen = true;
-                    piClearingWizardStep = 1;
+                    piClearingWizardOpen = false;
+                    piClearingWizardStep = 0;
                     piClearingShowMatchedStep1 = false;
                     piClearingStep1DifferenceModalOpen = false;
                     piClearingStep1DifferenceRow = null;
+                    piClearingFixDifferenceModalOpen = false;
+                    piClearingFixDifferenceMatch = null;
                     showToast(piClearingStatusMessage, createdCount > 0 ? "success" : "info");
                 } catch (error) {
                     piClearingStatusMessage = error?.message || "Unable to create PI clearing credit notes.";
@@ -50110,7 +50161,6 @@
                 const wizardContextRows = document.getElementById("piClearingWizardContextRows");
                 const workflowStageRow = document.getElementById("piClearingWorkflowStageRow");
                 const wizardCreditSummary = document.getElementById("piClearingWizardCreditSummary");
-                const wizardCreditRowsBody = document.getElementById("piClearingWizardCreditRowsBody");
                 const step3BalanceGrid = document.getElementById("piClearingStep3BalanceGrid");
                 const suggestedNotesBody = document.getElementById("piClearingSuggestedNotesBody");
                 const createdNotesBody = document.getElementById("piClearingCreatedNotesBody");
@@ -50127,6 +50177,9 @@
                 const step1DifferenceTitle = document.getElementById("piClearingStep1DifferenceTitle");
                 const step1DifferenceMeta = document.getElementById("piClearingStep1DifferenceMeta");
                 const step1DifferenceBody = document.getElementById("piClearingStep1DifferenceBody");
+                const fixDifferenceModal = document.getElementById("piClearingFixDifferenceModal");
+                const fixDifferenceBody = document.getElementById("piClearingFixDifferenceBody");
+                const fixDifferenceConfirm = document.getElementById("piClearingFixDifferenceConfirmButton");
                 if (!summary) return;
                 if (activeView === "pi-clearing-account" && !piClearingHydrated && !piClearingLoading) {
                     loadPiClearingAccount();
@@ -50765,6 +50818,13 @@
                     return Math.abs(Number(row?.differenceTotal || 0)) > 0.005
                         && !["credit_note_created", "balanced_by_existing_credit_note", "step1_xero_check_required"].includes(resolution);
                 });
+                const autoCreatableRowIds = creditRows
+                    .filter((row) => Boolean(String(row?.xeroContactId || "").trim()))
+                    .map((row) => String(row?.id || "").trim())
+                    .filter(Boolean);
+                if (!piClearingCreditNotesRunning && piClearingWizardStep === 3) {
+                    piClearingSelectedRowIds = new Set(autoCreatableRowIds);
+                }
                 if (step3BalanceGrid) {
                     const beforeBalanceRaw = Number(summaryRows?.differenceTotal || 0);
                     const beforeBalanceAbs = Math.abs(beforeBalanceRaw);
@@ -50794,6 +50854,7 @@
                                 : "--";
                             return `
                                 <tr>
+                                    <td>${escapeHTML(item.clientName || "Unknown client")}</td>
                                     <td>${escapeHTML(formatInteger(item.rowCount))}</td>
                                     <td>${escapeHTML(formatCurrency(item.total))}</td>
                                     <td>${escapeHTML(dateWindow)}</td>
@@ -50801,43 +50862,12 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="4"><p class="detail-meta">No suggested credit notes for this run.</p></td></tr>`;
+                        : `<tr><td colspan="5"><p class="detail-meta">No suggested credit notes for this run.</p></td></tr>`;
                 }
                 if (wizardCreditSummary) {
                     const selectedCount = [...piClearingSelectedRowIds].length;
-                    wizardCreditSummary.textContent = `${creditRows.length} row${creditRows.length === 1 ? "" : "s"} eligible. ${selectedCount} selected.`;
-                }
-                if (wizardCreditRowsBody) {
-                    wizardCreditRowsBody.innerHTML = creditRows.length
-                        ? creditRows.map((row) => {
-                            const rowId = String(row?.id || "");
-                            const hasContact = Boolean(String(row?.xeroContactId || "").trim());
-                            const checked = piClearingSelectedRowIds.has(rowId) ? "checked" : "";
-                            return `
-                                <tr>
-                                    <td><input type="checkbox" data-pi-credit-row="${escapeHTML(rowId)}" ${checked} ${hasContact ? "" : "disabled"}></td>
-                                    <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
-                                    <td>${escapeHTML(formatDate(String(row?.payoutDate || row?.raw?.payoutDate || "")))}</td>
-                                    <td>${escapeHTML(formatCurrency(Math.abs(Number(row?.differenceTotal || 0))))}</td>
-                                    <td>${piRiskBadgeHTML(row)}</td>
-                                    <td>${hasContact ? "Mapped" : "Missing contact"}</td>
-                                    <td>${escapeHTML(String(row?.resolutionStatus || "pending"))}</td>
-                                </tr>
-                            `;
-                        }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No unresolved difference rows are eligible for credit notes.</p></td></tr>`;
-                    if (wizardCreditRowsBody.dataset.piWired !== "true") {
-                        wizardCreditRowsBody.dataset.piWired = "true";
-                        wizardCreditRowsBody.addEventListener("change", (event) => {
-                            const checkbox = event.target.closest("[data-pi-credit-row]");
-                            if (!checkbox) return;
-                            const rowId = String(checkbox.dataset.piCreditRow || "");
-                            if (!rowId) return;
-                            if (checkbox.checked) piClearingSelectedRowIds.add(rowId);
-                            else piClearingSelectedRowIds.delete(rowId);
-                            renderPiClearingAccountScreen();
-                        });
-                    }
+                    const blockedCount = Math.max(0, creditRows.length - autoCreatableRowIds.length);
+                    wizardCreditSummary.textContent = `${selectedCount} credit-note row${selectedCount === 1 ? "" : "s"} ready to post in Xero.${blockedCount ? ` ${blockedCount} blocked row${blockedCount === 1 ? " is" : "s are"} excluded (missing contact).` : ""}`;
                 }
                 if (createdNotesBody) {
                     const notes = Array.isArray(run?.creditNotes) ? run.creditNotes : [];
@@ -50959,24 +50989,6 @@
                         }
                     });
                 }
-                const selectAllButton = document.getElementById("piClearingSelectAllRowsButton");
-                if (selectAllButton) {
-                    selectAllButton.disabled = piClearingCreditNotesRunning || !creditRows.length;
-                    if (selectAllButton.dataset.piWired !== "true") {
-                        selectAllButton.dataset.piWired = "true";
-                        selectAllButton.addEventListener("click", () => {
-                            const next = new Set();
-                            creditRows.forEach((row) => {
-                                const rowId = String(row?.id || "");
-                                if (!rowId) return;
-                                if (!String(row?.xeroContactId || "").trim()) return;
-                                next.add(rowId);
-                            });
-                            piClearingSelectedRowIds = next;
-                            renderPiClearingAccountScreen();
-                        });
-                    }
-                }
                 if (payoutDetailModal) payoutDetailModal.hidden = !piClearingPayoutDetailOpen;
                 if (payoutDetailModal && piClearingPayoutDetailOpen) {
                     const payoutRows = buildPiClearingPayoutBreakdown(runRows);
@@ -51077,6 +51089,35 @@
                             piClearingStep1AiResult = null;
                             piClearingStep1AiRunning = false;
                         }
+                        if (!piClearingStep1AiResult && step1RowKey) {
+                            const persistedRow = (Array.isArray(runRows) ? runRows : []).find((item) => {
+                                const fix = item?.raw && typeof item.raw === "object" ? item.raw.step1AiFix : null;
+                                return fix && String(fix.step1RowKey || "").trim() === step1RowKey;
+                            });
+                            const persistedFix = persistedRow?.raw && typeof persistedRow.raw === "object"
+                                ? persistedRow.raw.step1AiFix
+                                : null;
+                            if (persistedFix) {
+                                piClearingStep1AiResult = {
+                                    rowKey: step1RowKey,
+                                    status: "matched",
+                                    targetDate: String(persistedFix?.targetDate || row?.date || ""),
+                                    payoutId: String(persistedFix?.payoutId || "--"),
+                                    lineCount: Number(persistedFix?.lineCount || 0),
+                                    match: {
+                                        targetDate: String(persistedFix?.targetDate || row?.date || ""),
+                                        missingDebitAmount: Number(persistedFix?.missingDebitAmount || missingDebitAmount),
+                                        payout: { payoutId: String(persistedFix?.payoutId || "--") },
+                                        payoutLines: [],
+                                        runRow: persistedRow || null,
+                                    },
+                                };
+                                piClearingStep1AiCache.set(step1RowKey, {
+                                    runId: String(run?.id || ""),
+                                    result: piClearingStep1AiResult,
+                                });
+                            }
+                        }
                         const aiResult = piClearingStep1AiResult;
                         const aiStatusMarkup = (() => {
                             if (isBalanced) return "";
@@ -51116,7 +51157,7 @@
                                         <strong>AI found the balancing match</strong>
                                         <p>Matched ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(aiResult?.targetDate || row?.date || ""))} via payout ${escapeHTML(payoutId)} using ${escapeHTML(String(lineCount))} Ignition line${lineCount === 1 ? "" : "s"}.</p>
                                         <div class="pi-step1-ai-actions">
-                                            <button class="primary-button" type="button" data-pi-step1-ai-apply="true">Select row and continue to Step 3</button>
+                                            <button class="primary-button" type="button" data-pi-step1-ai-apply="true">Fix Differences</button>
                                         </div>
                                     </div>
                                 `;
@@ -51180,17 +51221,58 @@
                                 if (!row || piClearingStep1AiRunning) return;
                                 const selectedStep1Row = { ...row };
                                 const selectedRowKey = piStep1DifferenceRowKey(selectedStep1Row);
+                                const currentRun = currentPiClearingRun();
+                                const currentRunId = String(currentRun?.id || "");
+                                const cacheHit = piClearingStep1AiCache.get(selectedRowKey);
+                                if (cacheHit && cacheHit.runId === currentRunId) {
+                                    piClearingStep1AiResult = {
+                                        ...cacheHit.result,
+                                        rowKey: selectedRowKey,
+                                    };
+                                    piClearingStep1AiRowKey = selectedRowKey;
+                                    renderPiClearingAccountScreen();
+                                    showToast("Jenius AI reused cached match for this row.", "success");
+                                    return;
+                                }
                                 piClearingStep1AiRunning = true;
                                 piClearingStep1AiResult = null;
                                 piClearingStep1AiRowKey = selectedRowKey;
                                 renderPiClearingAccountScreen();
-                                showToast("Jenius AI is running OpenAI-assisted payout matching for this difference.", "info");
+                                showToast("Jenius AI is analysing cached payout data for this difference.", "info");
                                 try {
+                                    const quickRun = currentPiClearingRun();
+                                    const quickRows = Array.isArray(quickRun?.rows) ? quickRun.rows : [];
+                                    const quickMatch = piResolveStep1DifferenceFromIgnition(selectedStep1Row, quickRows);
+                                    if (quickMatch?.runRow?.id) {
+                                        const quickResult = {
+                                            rowKey: selectedRowKey,
+                                            status: "matched",
+                                            targetDate: String(quickMatch?.targetDate || ""),
+                                            payoutId: String(quickMatch?.payout?.payoutId || "--"),
+                                            lineCount: Array.isArray(quickMatch?.payoutLines) ? quickMatch.payoutLines.length : (quickMatch?.payoutLine ? 1 : 0),
+                                            match: quickMatch,
+                                        };
+                                        piClearingStep1AiResult = quickResult;
+                                        piClearingStep1AiCache.set(selectedRowKey, {
+                                            runId: String(quickRun?.id || ""),
+                                            result: quickResult,
+                                        });
+                                        void persistPiStep1AiFix(
+                                            String(quickRun?.id || ""),
+                                            String(quickMatch?.runRow?.id || ""),
+                                            selectedRowKey,
+                                            quickMatch,
+                                        );
+                                        piClearingStatusMessage = `Jenius AI matched ${formatCurrency(quickMatch?.missingDebitAmount || 0)} on ${formatDate(quickMatch?.targetDate || "")} using cached payout data ${String(quickMatch?.payout?.payoutId || "--")}.`;
+                                        piClearingStatusTone = "success";
+                                        showToast("Jenius AI found a valid match instantly from cached data.", "success");
+                                        return;
+                                    }
                                     await runPiClearingWorkflow({
                                         includeIgnition: true,
-                                        includeAI: true,
+                                        includeAI: false,
                                         refreshXero: false,
-                                        refreshIgnition: true,
+                                        refreshIgnition: false,
                                         batchStart: String(run?.monthStart || piClearingBatchStart || ""),
                                         batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
                                         accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
@@ -51208,9 +51290,19 @@
                                             lineCount: Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0),
                                             match,
                                         };
+                                        piClearingStep1AiCache.set(selectedRowKey, {
+                                            runId: String(refreshedRun?.id || ""),
+                                            result: piClearingStep1AiResult,
+                                        });
+                                        void persistPiStep1AiFix(
+                                            String(refreshedRun?.id || ""),
+                                            String(match?.runRow?.id || ""),
+                                            selectedRowKey,
+                                            match,
+                                        );
                                         piClearingStatusMessage = `Jenius AI matched ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")} using Ignition payout ${String(match?.payout?.payoutId || "--")}.`;
                                         piClearingStatusTone = "success";
-                                        showToast("Jenius AI found a valid Step 3 match.", "success");
+                                        showToast("Jenius AI found a valid Step 3 match from synced data.", "success");
                                     } else if (match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length)) {
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
@@ -51246,15 +51338,17 @@
                             applyAiButton.addEventListener("click", () => {
                                 const match = piClearingStep1AiResult?.match;
                                 if (!match) return;
-                                if (!applyPiStep1AiMatch(match)) {
-                                    showToast("AI found evidence, but no Step 3 row could be selected.", "warning");
+                                if (!openPiClearingFixDifferenceModal(match)) {
+                                    showToast("AI found evidence, but no credit-note row could be prepared.", "warning");
                                     return;
                                 }
                                 const matchedClient = String(match?.runRow?.clientName || match?.payoutLine?.clientName || "the matched contact").trim();
-                                piClearingStatusMessage = `Jenius AI selected ${matchedClient} for Step 3 credit-note treatment (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
+                                piClearingStep1DifferenceModalOpen = false;
+                                piClearingStep1DifferenceRow = null;
+                                piClearingStatusMessage = `Jenius AI prepared a credit-note fix for ${matchedClient} (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
                                 piClearingStatusTone = "success";
                                 renderPiClearingAccountScreen();
-                                showToast("AI match applied. Continue in Step 3.", "success");
+                                showToast("Review and confirm the credit note fix.", "success");
                             });
                         }
                     }
@@ -51269,6 +51363,57 @@
                         piClearingStep1AiResult = null;
                         piClearingStep1AiRowKey = "";
                         renderPiClearingAccountScreen();
+                    });
+                }
+                if (fixDifferenceModal) fixDifferenceModal.hidden = !piClearingFixDifferenceModalOpen;
+                if (fixDifferenceModal && piClearingFixDifferenceModalOpen && fixDifferenceBody) {
+                    const match = piClearingFixDifferenceMatch && typeof piClearingFixDifferenceMatch === "object"
+                        ? piClearingFixDifferenceMatch
+                        : null;
+                    const runRow = match?.runRow && typeof match.runRow === "object" ? match.runRow : null;
+                    const clientName = String(runRow?.clientName || match?.payoutLine?.clientName || "Unknown client").trim();
+                    const payoutDate = String(runRow?.payoutDate || match?.targetDate || "").trim();
+                    const amount = Math.abs(Number(runRow?.differenceTotal || match?.missingDebitAmount || 0));
+                    const payoutId = String(match?.payout?.payoutId || "--").trim() || "--";
+                    const lineCount = Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0);
+                    const contactState = String(runRow?.xeroContactId || "").trim() ? "Mapped" : "Missing contact";
+                    fixDifferenceBody.innerHTML = match
+                        ? `
+                            <tr><th>Client</th><td>${escapeHTML(clientName)}</td></tr>
+                            <tr><th>Payout date</th><td>${escapeHTML(formatDate(payoutDate))}</td></tr>
+                            <tr><th>Credit note amount</th><td>${escapeHTML(formatCurrency(amount))}</td></tr>
+                            <tr><th>Ignition payout evidence</th><td>${escapeHTML(payoutId)} (${escapeHTML(String(lineCount))} line${lineCount === 1 ? "" : "s"})</td></tr>
+                            <tr><th>Xero contact</th><td>${escapeHTML(contactState)}</td></tr>
+                            <tr><th>Action</th><td>Create an authorised credit note in Xero marked as Awaiting Payment so PI imbalance is reduced by ${escapeHTML(formatCurrency(amount))}.</td></tr>
+                        `
+                        : `<tr><td><p class="detail-meta">No fix is prepared yet.</p></td></tr>`;
+                    if (fixDifferenceConfirm) {
+                        fixDifferenceConfirm.disabled = piClearingCreditNotesRunning || !String(runRow?.id || "").trim();
+                        fixDifferenceConfirm.textContent = piClearingCreditNotesRunning ? "Posting..." : "Confirm and post to Xero";
+                    }
+                }
+                const fixDifferenceClose = document.getElementById("piClearingFixDifferenceCloseButton");
+                if (fixDifferenceClose && fixDifferenceClose.dataset.piWired !== "true") {
+                    fixDifferenceClose.dataset.piWired = "true";
+                    fixDifferenceClose.addEventListener("click", () => {
+                        closePiClearingFixDifferenceModal();
+                        renderPiClearingAccountScreen();
+                    });
+                }
+                const fixDifferenceCancel = document.getElementById("piClearingFixDifferenceCancelButton");
+                if (fixDifferenceCancel && fixDifferenceCancel.dataset.piWired !== "true") {
+                    fixDifferenceCancel.dataset.piWired = "true";
+                    fixDifferenceCancel.addEventListener("click", () => {
+                        closePiClearingFixDifferenceModal();
+                        renderPiClearingAccountScreen();
+                    });
+                }
+                if (fixDifferenceConfirm && fixDifferenceConfirm.dataset.piWired !== "true") {
+                    fixDifferenceConfirm.dataset.piWired = "true";
+                    fixDifferenceConfirm.addEventListener("click", async () => {
+                        const rowId = String(piClearingFixDifferenceMatch?.runRow?.id || "").trim();
+                        if (!rowId || piClearingCreditNotesRunning) return;
+                        await createPiClearingCreditNotes({ rowIds: [rowId] });
                     });
                 }
             }
