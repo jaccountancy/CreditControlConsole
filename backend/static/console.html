@@ -48299,8 +48299,10 @@
                 if (!xeroAccountsLoaded && !xeroAccountsLoading) {
                     await loadXeroPostingSettings(true);
                 }
-                if (!piClearingBatchStart) piClearingBatchStart = piClearingDefaultBatchStartISO();
-                if (!piClearingBatchEnd) piClearingBatchEnd = piClearingDefaultBatchEndISO();
+                const suggestedStart = piClearingDefaultBatchStartISO();
+                const suggestedEnd = piClearingDefaultBatchEndISO();
+                piClearingBatchStart = suggestedStart;
+                piClearingBatchEnd = suggestedEnd < suggestedStart ? suggestedStart : suggestedEnd;
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 if (!piClearingSelectedAccountCode) {
                     piClearingSelectedAccountCode = String(settings.piClearingAccountCode || "").trim();
