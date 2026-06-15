@@ -49511,11 +49511,14 @@
 
                 if (!bestPayout || !bestCombination?.lines?.length) return null;
 
-                const targetClient = String(
-                    bestCombination.lines.find((item) => String(item?.clientName || "").trim())?.clientName
-                    || row?.creditClientName
-                    || ""
-                ).trim().toLowerCase();
+                const normalizeClient = (value = "") => String(value || "").trim().toLowerCase();
+                const targetClients = new Set(
+                    (bestCombination.lines || [])
+                        .map((item) => normalizeClient(item?.clientName || ""))
+                        .filter(Boolean)
+                );
+                const primaryTargetClient = normalizeClient(row?.creditClientName || "");
+                if (primaryTargetClient) targetClients.add(primaryTargetClient);
 
                 const candidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
                     const differenceTotal = Math.abs(Number(item?.differenceTotal || item?.difference || 0));
@@ -49527,11 +49530,21 @@
                 });
 
                 const matchedRunRow = candidates.sort((left, right) => {
-                    const leftClient = String(left?.clientName || "").trim().toLowerCase();
-                    const rightClient = String(right?.clientName || "").trim().toLowerCase();
-                    const leftScore = leftClient && leftClient === targetClient ? 0 : 1;
-                    const rightScore = rightClient && rightClient === targetClient ? 0 : 1;
-                    return leftScore - rightScore;
+                    const leftClient = normalizeClient(left?.clientName || "");
+                    const rightClient = normalizeClient(right?.clientName || "");
+                    const leftHasContact = Boolean(String(left?.xeroContactId || "").trim());
+                    const rightHasContact = Boolean(String(right?.xeroContactId || "").trim());
+                    const leftDate = piDateKey(left?.payoutDate || left?.date || left?.raw?.payoutDate || "");
+                    const rightDate = piDateKey(right?.payoutDate || right?.date || right?.raw?.payoutDate || "");
+                    const matchedPayoutDate = piDateKey(bestPayout?.paidOn || "");
+                    const leftScore = (targetClients.has(leftClient) ? 0 : 10)
+                        + (leftHasContact ? 0 : 3)
+                        + (leftDate === matchedPayoutDate ? 0 : 1);
+                    const rightScore = (targetClients.has(rightClient) ? 0 : 10)
+                        + (rightHasContact ? 0 : 3)
+                        + (rightDate === matchedPayoutDate ? 0 : 1);
+                    if (leftScore !== rightScore) return leftScore - rightScore;
+                    return leftClient.localeCompare(rightClient);
                 })[0] || null;
 
                 return {

@@ -3769,6 +3769,24 @@ def _pi_first_non_empty(payload: dict, *paths: tuple[str, ...]) -> str:
     return ""
 
 
+def _pi_first_text_value(payload: dict, *paths: tuple[str, ...]) -> str:
+    for path in paths:
+        current = payload
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if current is None:
+            continue
+        if isinstance(current, (dict, list, tuple, set)):
+            continue
+        text = str(current).strip()
+        if text:
+            return text
+    return ""
+
+
 def _pi_amount_value(payload: dict) -> Decimal:
     def _parse_scalar_amount(candidate) -> Decimal | None:
         if candidate in (None, ""):
@@ -3859,12 +3877,14 @@ def _pi_amount_value(payload: dict) -> Decimal:
 
 def _pi_date_value(payload: dict) -> date | None:
     for key in (
-        "payment_date",
-        "paymentDate",
-        "arrival_date",
-        "arrivalDate",
+        # For PI clearing we anchor by payout/arrival date so credit notes
+        # are dated to the payout batch, not individual collection rows.
         "payout_date",
         "payoutDate",
+        "arrival_date",
+        "arrivalDate",
+        "payment_date",
+        "paymentDate",
         "processed_at",
         "processedAt",
         "created_at",
@@ -3937,18 +3957,26 @@ def _pi_load_ignition_payments(user: dict, month_start: date, month_end: date) -
             continue
         is_reversal = _pi_is_reversal_entry(payload, dataset=dataset) or amount < 0
         signed_amount = -amount.copy_abs() if is_reversal else amount
-        client_name = _pi_first_non_empty(
+        client_name = _pi_first_text_value(
             payload,
             ("client_name",),
             ("clientName",),
-            ("client",),
             ("client", "name"),
+            ("client", "client_name"),
+            ("client", "display_name"),
             ("proposal", "client_name"),
             ("proposal", "clientName"),
             ("payer_name",),
             ("payerName",),
             ("contact", "name"),
         )
+        if not client_name and isinstance(payload.get("client"), dict):
+            client_name = _pi_first_text_value(
+                payload.get("client") or {},
+                ("name",),
+                ("client_name",),
+                ("display_name",),
+            )
         if not client_name:
             client_name = "Unknown client"
         payment_id = _pi_first_non_empty(payload, ("id",), ("payment_id",), ("paymentId",), ("external_id",))
@@ -6419,7 +6447,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             "Reference": "Client Payment",
             "LineItems": [
                 {
-                    "Description": "Payment made by the client",
+                    "Description": "PI Adjustment through Jenius AI",
                     "Quantity": 1,
                     "UnitAmount": float(amount),
                     "AccountCode": account_code,
