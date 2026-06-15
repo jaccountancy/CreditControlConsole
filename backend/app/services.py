@@ -12606,6 +12606,8 @@ def _me_report_contact_for_user(user: dict, xero_contact_id: str, tenant_id: str
         "xeroContactId": row.get("xero_contact_id") or "",
         "name": row.get("name") or "Unnamed Xero contact",
         "email": _me_report_contact_email(row),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
         "primaryPerson": row.get("primary_person") or "",
         "contactPeople": row.get("contact_people") if isinstance(row.get("contact_people"), list) else [],
     }
@@ -13299,6 +13301,9 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "xeroContactName": row.get("xero_contact_name") or "",
         "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
+        "tenantId": str(row.get("xero_tenant_id") or ""),
+        "tenantName": str(row.get("xero_tenant_name") or row.get("xero_tenant_id") or ""),
+        "xeroTenantId": str(row.get("xero_tenant_id") or ""),
         "xeroTenantName": row.get("xero_tenant_name") or "",
         "vatRegisteredConfirmed": vat_registered_confirmed,
         "vatRegisteredConfirmedAt": _iso(row.get("vat_registered_confirmed_at")) or "",
@@ -13702,6 +13707,12 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
         connection_row = xero_connection_for_user_tenant(user, requested_tenant_id or None)
     except HTTPException:
         connection_row = {}
+    resolved_tenant_id = str(connection_row.get("tenant_id") or requested_tenant_id or (xero_contact or {}).get("tenantId") or "").strip()
+    resolved_tenant_name = str(
+        connection_row.get("tenant_name")
+        or (xero_contact or {}).get("tenantName")
+        or ""
+    ).strip()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -13731,9 +13742,9 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                     xero_contact["name"] if xero_contact else "",
                     xero_contact["email"] if xero_contact else "",
                     connection_row.get("id"),
-                    connection_row.get("tenant_id"),
-                    connection_row.get("tenant_name") or "",
-                    "connected" if connection_row else "not_connected",
+                    resolved_tenant_id,
+                    resolved_tenant_name,
+                    "connected" if resolved_tenant_id else "not_connected",
                     utcnow(),
                     utcnow(),
                 ),
