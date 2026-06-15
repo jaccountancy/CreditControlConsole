@@ -2174,6 +2174,7 @@ CREATE TABLE IF NOT EXISTS pi_clearing_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id TEXT NOT NULL DEFAULT '',
+    batch_number TEXT NOT NULL DEFAULT '',
     month_start DATE NOT NULL,
     month_end DATE NOT NULL,
     account_code TEXT NOT NULL DEFAULT 'PI Clearing Account',
@@ -2186,6 +2187,7 @@ CREATE TABLE IF NOT EXISTS pi_clearing_runs (
 );
 
 ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS batch_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS month_end DATE;
 ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS account_code TEXT NOT NULL DEFAULT 'PI Clearing Account';
 ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
@@ -2196,6 +2198,10 @@ ALTER TABLE pi_clearing_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT
 
 CREATE INDEX IF NOT EXISTS pi_clearing_runs_user_month_idx
 ON pi_clearing_runs (user_id, month_start DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS pi_clearing_runs_user_tenant_batch_number_idx
+ON pi_clearing_runs (user_id, tenant_id, batch_number)
+WHERE batch_number <> '';
 
 CREATE TABLE IF NOT EXISTS pi_clearing_run_rows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

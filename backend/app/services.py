@@ -268,6 +268,7 @@ XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
+PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
 PI_CLEARING_AI_SCHEMA = {
@@ -4208,6 +4209,8 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
         "journalProcessed": journal_processed,
         "journalStored": journal_stored,
         "journalsError": journals_error,
+        "refreshedAt": _iso(now) or "",
+        "lastRefreshedAt": _iso(now) or "",
     }
 
 
@@ -4247,7 +4250,7 @@ async def _pi_refresh_ignition_payment_datasets(user: dict) -> dict:
     }
 
 
-def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, account_code: str) -> tuple[list[dict], str]:
+def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, account_code: str) -> tuple[list[dict], str, str]:
     connection_row = get_master_xero_connection_for_user(user["id"])
     tenant_id = str(connection_row.get("tenant_id") or "").strip()
     with get_connection() as connection:
@@ -4260,6 +4263,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                        p.currency_code,
                        p.reference,
                        p.account_name,
+                       p.synced_at,
                        p.raw,
                        c.name AS customer_name,
                        c.xero_contact_id
@@ -4277,6 +4281,8 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
 
     wanted = str(account_code or "").strip().lower()
     items: list[dict] = []
+    latest_synced_at: datetime | None = None
+    latest_journal_synced_at: datetime | None = None
     for row in rows:
         raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
         raw_invoice = raw.get("Invoice") if isinstance(raw.get("Invoice"), dict) else {}
@@ -4342,12 +4348,19 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "raw": raw,
             }
         )
+        synced_at_value = row.get("synced_at")
+        if isinstance(synced_at_value, datetime):
+            if latest_synced_at is None or synced_at_value > latest_synced_at:
+                latest_synced_at = synced_at_value
+            if str(raw.get("PI_Source") or "").strip().lower() == "journal_line":
+                if latest_journal_synced_at is None or synced_at_value > latest_journal_synced_at:
+                    latest_journal_synced_at = synced_at_value
     # When journal lines are available for the selected nominal account, prefer them
     # because they represent full ledger postings (both debits and credits).
     journal_items = [item for item in items if str(item.get("source") or "") == "journal_line"]
     if wanted and journal_items:
-        return journal_items, tenant_id
-    return items, tenant_id
+        return journal_items, tenant_id, (_iso(latest_journal_synced_at) or _iso(latest_synced_at) or "")
+    return items, tenant_id, (_iso(latest_synced_at) or "")
 
 
 def _pi_existing_credit_note_totals(
@@ -4991,6 +5004,72 @@ def _pi_xero_credit_rows(xero_rows: list[dict]) -> list[dict]:
     return items
 
 
+def _pi_easter_sunday(year: int) -> date:
+    """Return Easter Sunday for Gregorian calendar years."""
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _pi_first_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    current = date(year, month, 1)
+    offset = (weekday - current.weekday()) % 7
+    return current + timedelta(days=offset)
+
+
+def _pi_last_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    last_day = date(year, month, monthrange(year, month)[1])
+    offset = (last_day.weekday() - weekday) % 7
+    return last_day - timedelta(days=offset)
+
+
+def _pi_observed_bank_holiday(day_value: date) -> date:
+    if day_value.weekday() == 5:
+        return day_value + timedelta(days=2)
+    if day_value.weekday() == 6:
+        return day_value + timedelta(days=1)
+    return day_value
+
+
+def _pi_uk_bank_holidays(year: int) -> set[date]:
+    easter = _pi_easter_sunday(year)
+    new_year_observed = _pi_observed_bank_holiday(date(year, 1, 1))
+    christmas_observed = _pi_observed_bank_holiday(date(year, 12, 25))
+    boxing_observed = _pi_observed_bank_holiday(date(year, 12, 26))
+    if boxing_observed == christmas_observed:
+        boxing_observed += timedelta(days=1)
+    return {
+        new_year_observed,
+        easter - timedelta(days=2),  # Good Friday
+        easter + timedelta(days=1),  # Easter Monday
+        _pi_first_weekday_of_month(year, 5, 0),  # Early May bank holiday
+        _pi_last_weekday_of_month(year, 5, 0),  # Spring bank holiday
+        _pi_last_weekday_of_month(year, 8, 0),  # Summer bank holiday
+        christmas_observed,
+        boxing_observed,
+    }
+
+
+def _pi_is_non_processing_day(day_value: date | None) -> bool:
+    if day_value is None:
+        return False
+    if day_value.weekday() >= 5:
+        return True
+    return day_value in _pi_uk_bank_holidays(day_value.year)
+
+
 def _pi_match_ignition_payouts_to_xero_credits(ignition_rows: list[dict], xero_rows: list[dict]) -> dict:
     payouts = sorted(
         _pi_payout_batches_from_ignition_rows(ignition_rows),
@@ -5032,6 +5111,21 @@ def _pi_match_ignition_payouts_to_xero_credits(ignition_rows: list[dict], xero_r
                 best_distance = ranking
                 best_index = index
         if best_index is None:
+            if _pi_is_non_processing_day(payout_date):
+                matched += 1
+                rows.append(
+                    {
+                        "payoutId": str(payout.get("payoutId") or "unlabeled-batch"),
+                        "paidOn": str(payout.get("paidOn") or ""),
+                        "ignitionNetPayout": float(net_amount),
+                        "matched": True,
+                        "matchReason": "non_processing_day",
+                        "xeroCreditPaymentId": "",
+                        "xeroCreditPaidOn": "",
+                        "xeroCreditAmount": 0.0,
+                    }
+                )
+                continue
             missing_item = {
                 "payoutId": str(payout.get("payoutId") or "unlabeled-batch"),
                 "paidOn": str(payout.get("paidOn") or ""),
@@ -5044,6 +5138,7 @@ def _pi_match_ignition_payouts_to_xero_credits(ignition_rows: list[dict], xero_r
                     "paidOn": missing_item["paidOn"],
                     "ignitionNetPayout": float(net_amount),
                     "matched": False,
+                    "matchReason": "missing_xero_credit",
                     "xeroCreditPaymentId": "",
                     "xeroCreditPaidOn": "",
                     "xeroCreditAmount": 0.0,
@@ -5059,6 +5154,7 @@ def _pi_match_ignition_payouts_to_xero_credits(ignition_rows: list[dict], xero_r
                 "paidOn": str(payout.get("paidOn") or ""),
                 "ignitionNetPayout": float(net_amount),
                 "matched": True,
+                "matchReason": "xero_credit_matched",
                 "xeroCreditPaymentId": str(credit.get("paymentId") or ""),
                 "xeroCreditPaidOn": str(credit.get("paidOn") or ""),
                 "xeroCreditAmount": float(_money(credit.get("creditAmount"))),
@@ -5077,6 +5173,7 @@ def _pi_run_payload(run_row: dict, rows: list[dict], credit_notes: list[dict]) -
     return {
         "id": str(run_row.get("id") or ""),
         "tenantId": str(run_row.get("tenant_id") or ""),
+        "batchNumber": str(run_row.get("batch_number") or ""),
         "monthStart": run_row.get("month_start").isoformat() if run_row.get("month_start") else "",
         "monthEnd": run_row.get("month_end").isoformat() if run_row.get("month_end") else "",
         "accountCode": str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE),
@@ -5090,9 +5187,58 @@ def _pi_run_payload(run_row: dict, rows: list[dict], credit_notes: list[dict]) -
     }
 
 
+def _pi_parse_batch_number(label: str) -> int | None:
+    match = re.fullmatch(rf"{PI_CLEARING_BATCH_NUMBER_PREFIX}-(\d+)", str(label or "").strip().upper())
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _pi_backfill_missing_batch_numbers(cursor, user_id: str) -> None:
+    cursor.execute(
+        """
+        SELECT id, tenant_id, batch_number, month_start, created_at
+        FROM pi_clearing_runs
+        WHERE user_id = %s
+        ORDER BY tenant_id ASC, month_start ASC, created_at ASC
+        """,
+        (user_id,),
+    )
+    rows = cursor.fetchall() or []
+    if not rows:
+        return
+
+    max_by_tenant: dict[str, int] = {}
+    for row in rows:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        parsed = _pi_parse_batch_number(str(row.get("batch_number") or ""))
+        if parsed is None:
+            continue
+        max_by_tenant[tenant_id] = max(max_by_tenant.get(tenant_id, 0), parsed)
+
+    for row in rows:
+        current_label = str(row.get("batch_number") or "").strip()
+        if current_label:
+            continue
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        next_number = max_by_tenant.get(tenant_id, 0) + 1
+        batch_number = f"{PI_CLEARING_BATCH_NUMBER_PREFIX}-{next_number:03d}"
+        cursor.execute(
+            """
+            UPDATE pi_clearing_runs
+            SET batch_number = %s
+            WHERE id = %s
+              AND user_id = %s
+            """,
+            (batch_number, row.get("id"), user_id),
+        )
+        max_by_tenant[tenant_id] = next_number
+
+
 def pi_clearing_payload(user: dict) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            _pi_backfill_missing_batch_numbers(cursor, user["id"])
             cursor.execute(
                 """
                 SELECT *
@@ -5248,6 +5394,26 @@ def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) 
     return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
 
 
+def _pi_next_batch_number(cursor, user_id: str, tenant_id: str) -> str:
+    cursor.execute(
+        """
+        SELECT batch_number
+        FROM pi_clearing_runs
+        WHERE user_id = %s
+          AND tenant_id = %s
+        """,
+        (user_id, tenant_id),
+    )
+    rows = cursor.fetchall() or []
+    max_number = 0
+    for row in rows:
+        parsed = _pi_parse_batch_number(str(row.get("batch_number") or ""))
+        if parsed is None:
+            continue
+        max_number = max(max_number, parsed)
+    return f"{PI_CLEARING_BATCH_NUMBER_PREFIX}-{max_number + 1:03d}"
+
+
 async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> dict:
     safe_payload = payload if isinstance(payload, dict) else {}
     month_start, month_end = _pi_batch_bounds(safe_payload)
@@ -5259,10 +5425,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     force_refresh_ignition = bool(safe_payload.get("refreshIgnition")) and include_ignition
 
     # Prefer cached historical data already stored in the database.
-    xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    xero_rows, tenant_id, xero_last_refreshed_at = _pi_load_xero_payments(user, month_start, month_end, account_code)
     if force_refresh_xero or not xero_rows:
         xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
-        xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+        xero_rows, tenant_id, xero_last_refreshed_at = _pi_load_xero_payments(user, month_start, month_end, account_code)
     else:
         xero_refresh = {
             "tenantId": tenant_id,
@@ -5273,11 +5439,14 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             "skippedRefresh": True,
             "source": "cache",
             "message": "Using cached historical Xero payments from local database.",
+            "lastRefreshedAt": xero_last_refreshed_at,
         }
     if not force_refresh_xero and xero_rows and not any(_money(row.get("amount")) < Decimal("0.00") for row in xero_rows):
         # Backfill historical caches created before PI clearing ingested ACCPAY rows.
         xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
-        xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
+        xero_rows, tenant_id, xero_last_refreshed_at = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    if not str(xero_refresh.get("lastRefreshedAt") or "").strip():
+        xero_refresh["lastRefreshedAt"] = xero_last_refreshed_at or str(xero_refresh.get("refreshedAt") or "")
     xero_step1 = _pi_step1_xero_credit_debit_check(xero_rows)
     missing_credit_payment_ids = {
         str(item).strip()
@@ -5539,12 +5708,16 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             cursor.execute(
                 """
                 INSERT INTO pi_clearing_runs (
-                    user_id, tenant_id, month_start, month_end, account_code, status, summary, ai_analysis, created_at, updated_at
+                    user_id, tenant_id, batch_number, month_start, month_end, account_code, status, summary, ai_analysis, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
                 ON CONFLICT (user_id, tenant_id, month_start)
                 DO UPDATE
                 SET month_end = EXCLUDED.month_end,
+                    batch_number = CASE
+                        WHEN COALESCE(pi_clearing_runs.batch_number, '') = '' THEN EXCLUDED.batch_number
+                        ELSE pi_clearing_runs.batch_number
+                    END,
                     account_code = EXCLUDED.account_code,
                     status = EXCLUDED.status,
                     summary = EXCLUDED.summary,
@@ -5555,6 +5728,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 (
                     user["id"],
                     tenant_id,
+                    _pi_next_batch_number(cursor, user["id"], tenant_id),
                     month_start,
                     month_end,
                     account_code,
