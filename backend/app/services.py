@@ -5745,6 +5745,14 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing row id is required.")
     if not fix_payload:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fix payload is required.")
+    try:
+        line_count = int(fix_payload.get("lineCount") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fix lineCount must be numeric.") from exc
+    try:
+        missing_debit_amount = float(_money(fix_payload.get("missingDebitAmount")))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fix missingDebitAmount must be numeric.") from exc
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -5769,9 +5777,9 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
                 "savedAt": _iso(utcnow()) or "",
                 "step1RowKey": str(fix_payload.get("step1RowKey") or "").strip(),
                 "targetDate": str(fix_payload.get("targetDate") or "").strip(),
-                "missingDebitAmount": float(_money(fix_payload.get("missingDebitAmount"))),
+                "missingDebitAmount": missing_debit_amount,
                 "payoutId": str(fix_payload.get("payoutId") or "").strip(),
-                "lineCount": int(fix_payload.get("lineCount") or 0),
+                "lineCount": line_count,
                 "clientName": str(fix_payload.get("clientName") or "").strip(),
                 "runRowId": clean_row_id,
             }
@@ -5781,11 +5789,11 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
             cursor.execute(
                 """
                 UPDATE pi_clearing_run_rows
-                SET raw_payload = %s,
+                SET raw_payload = %s::jsonb,
                     updated_at = NOW()
                 WHERE id = %s
                 """,
-                (next_raw, clean_row_id),
+                (json.dumps(next_raw, default=_json_default), clean_row_id),
             )
             cursor.execute(
                 """
