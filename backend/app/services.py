@@ -4714,6 +4714,63 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
     }
 
 
+def _pi_finalisation_state(
+    *,
+    xero_debit_total: Decimal,
+    xero_credit_total: Decimal,
+    xero_step1: dict | None = None,
+) -> dict:
+    step1 = xero_step1 if isinstance(xero_step1, dict) else {}
+    missing_credit_count = int(step1.get("missingCreditCount") or 0)
+    missing_debit_total = _money(step1.get("missingDebitTotal"))
+    balance_delta = (xero_debit_total - xero_credit_total).copy_abs().quantize(Decimal("0.01"))
+    can_finalise = missing_credit_count == 0 and balance_delta <= Decimal("0.01")
+    if can_finalise:
+        reason = "Batch fully reconciled. PI debits and credits are balanced and no Step 1 debit entries are missing."
+    elif missing_credit_count > 0:
+        reason = (
+            f"Batch cannot be finalised yet. Step 1 still has {missing_credit_count} credit "
+            f"entr{'y' if missing_credit_count == 1 else 'ies'} missing debit coverage "
+            f"(£{missing_debit_total:.2f})."
+        )
+    else:
+        reason = (
+            f"Batch cannot be finalised yet. PI debits and credits are not balanced "
+            f"(difference £{balance_delta:.2f})."
+        )
+    return {
+        "canFinalise": can_finalise,
+        "reason": reason,
+        "debitCreditDifference": float(_money(balance_delta)),
+        "missingCreditCount": missing_credit_count,
+        "missingDebitTotal": float(_money(missing_debit_total)),
+    }
+
+
+def _pi_finalisation_state_from_summary(summary: dict | None) -> dict:
+    safe_summary = summary if isinstance(summary, dict) else {}
+    existing = safe_summary.get("finalisation")
+    if isinstance(existing, dict):
+        can_finalise = bool(existing.get("canFinalise"))
+        reason = str(existing.get("reason") or "").strip()
+        if can_finalise and not reason:
+            reason = "Batch fully reconciled."
+        elif not can_finalise and not reason:
+            reason = "Batch is not fully reconciled."
+        return {
+            "canFinalise": can_finalise,
+            "reason": reason,
+            "debitCreditDifference": float(_money(existing.get("debitCreditDifference"))),
+            "missingCreditCount": int(existing.get("missingCreditCount") or 0),
+            "missingDebitTotal": float(_money(existing.get("missingDebitTotal"))),
+        }
+    return _pi_finalisation_state(
+        xero_debit_total=_money(safe_summary.get("xeroDebitTotal")),
+        xero_credit_total=_money(safe_summary.get("xeroCreditTotal")),
+        xero_step1=safe_summary.get("xeroStep1") if isinstance(safe_summary.get("xeroStep1"), dict) else {},
+    )
+
+
 def _pi_step2_ledger_rows(xero_rows: list[dict]) -> list[dict]:
     rows: list[dict] = []
     for row in xero_rows or []:
@@ -5197,7 +5254,9 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     month_label = f"{month_start.isoformat()} to {month_end.isoformat()}"
     account_code = _pi_clearing_account_code_for_user(user, safe_payload)
     force_refresh_xero = bool(safe_payload.get("refreshXero"))
-    force_refresh_ignition = bool(safe_payload.get("refreshIgnition"))
+    include_ignition = bool(safe_payload.get("includeIgnition"))
+    include_ai = bool(safe_payload.get("includeAI")) and include_ignition
+    force_refresh_ignition = bool(safe_payload.get("refreshIgnition")) and include_ignition
 
     # Prefer cached historical data already stored in the database.
     xero_rows, tenant_id = _pi_load_xero_payments(user, month_start, month_end, account_code)
@@ -5226,19 +5285,33 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         if str(item).strip()
     }
 
-    ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
-    if force_refresh_ignition or not ignition_rows:
-        ignition_refresh = await _pi_refresh_ignition_payment_datasets(user)
+    if include_ignition:
         ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
+        if force_refresh_ignition or not ignition_rows:
+            ignition_refresh = await _pi_refresh_ignition_payment_datasets(user)
+            ignition_rows = _pi_load_ignition_payments(user, month_start, month_end)
+        else:
+            ignition_refresh = {
+                "connected": True,
+                "fetched": 0,
+                "changed": 0,
+                "cachedRows": len(ignition_rows),
+                "skippedRefresh": True,
+                "source": "cache",
+                "message": "Using cached Ignition payments from local database.",
+                "datasets": {},
+            }
     else:
+        ignition_rows = []
         ignition_refresh = {
             "connected": True,
             "fetched": 0,
             "changed": 0,
-            "cachedRows": len(ignition_rows),
+            "cachedRows": 0,
             "skippedRefresh": True,
-            "source": "cache",
-            "message": "Using cached Ignition payments from local database.",
+            "deferred": True,
+            "source": "deferred",
+            "message": "Ignition loading deferred until Step 2.",
             "datasets": {},
         }
 
@@ -5379,46 +5452,66 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     payout_matching = _pi_match_ignition_payouts_to_xero_credits(ignition_rows, xero_rows)
     daily_balance = _pi_daily_balance_analysis(xero_rows)
     step2_ledger_rows = _pi_step2_ledger_rows(xero_rows)
-    step2_reconciliation = await _pi_ai_step2_reconciliation(
-        month_label,
-        step2_ledger_rows,
-        user_id=str(user.get("id") or ""),
+    step2_reconciliation = (
+        await _pi_ai_step2_reconciliation(
+            month_label,
+            step2_ledger_rows,
+            user_id=str(user.get("id") or ""),
+        )
+        if include_ignition
+        else _pi_local_step2_reconciliation(step2_ledger_rows)
     )
 
-    ai_analysis = await _pi_ai_analysis(
-        month_label,
-        [
+    if include_ai:
+        ai_analysis = await _pi_ai_analysis(
+            month_label,
+            [
+                {
+                    "clientName": row.get("clientName"),
+                    "xeroTotal": float(row.get("xeroTotal") or 0),
+                    "ignitionTotal": float(row.get("ignitionTotal") or 0),
+                    "ignitionGrossTotal": float(row.get("ignitionGrossTotal") or 0),
+                    "ignitionReversalTotal": float(row.get("ignitionReversalTotal") or 0),
+                    "existingCreditNoteTotal": float(row.get("existingCreditNoteTotal") or 0),
+                    "rawDifference": float(row.get("rawDifference") or 0),
+                    "difference": float(row.get("difference") or 0),
+                    "riskLevel": str(row.get("riskLevel") or "low"),
+                    "riskScore": int(row.get("riskScore") or 0),
+                    "explainer": str(row.get("explainer") or ""),
+                    "hasContact": bool(row.get("xeroContactId")),
+                }
+                for row in rows_to_store
+            ],
             {
-                "clientName": row.get("clientName"),
-                "xeroTotal": float(row.get("xeroTotal") or 0),
-                "ignitionTotal": float(row.get("ignitionTotal") or 0),
-                "ignitionGrossTotal": float(row.get("ignitionGrossTotal") or 0),
-                "ignitionReversalTotal": float(row.get("ignitionReversalTotal") or 0),
-                "existingCreditNoteTotal": float(row.get("existingCreditNoteTotal") or 0),
-                "rawDifference": float(row.get("rawDifference") or 0),
-                "difference": float(row.get("difference") or 0),
-                "riskLevel": str(row.get("riskLevel") or "low"),
-                "riskScore": int(row.get("riskScore") or 0),
-                "explainer": str(row.get("explainer") or ""),
-                "hasContact": bool(row.get("xeroContactId")),
-            }
-            for row in rows_to_store
-        ],
-        {
-            "payoutMatching": payout_matching,
-            "dailyBalance": daily_balance,
-            "xeroStep1": xero_step1,
-        },
-        step2_reconciliation=step2_reconciliation,
-        user_id=str(user.get("id") or ""),
-    )
+                "payoutMatching": payout_matching,
+                "dailyBalance": daily_balance,
+                "xeroStep1": xero_step1,
+            },
+            step2_reconciliation=step2_reconciliation,
+            user_id=str(user.get("id") or ""),
+        )
+    else:
+        ai_analysis = {
+            "summary": "AI analysis deferred. Review Step 1 transactions first, then continue to Step 2.",
+            "findings": [],
+            "actions": [],
+            "confidence": 0.0,
+            "engine": "local_deferred",
+            "step2Reconciliation": step2_reconciliation,
+        }
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
     xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
+    finalisation = _pi_finalisation_state(
+        xero_debit_total=xero_debit_total,
+        xero_credit_total=xero_credit_total,
+        xero_step1=xero_step1,
+    )
     summary = {
         "refresh": {
             "xero": xero_refresh,
             "ignition": ignition_refresh,
         },
+        "workflowMode": "full" if include_ignition else "transactions_only",
         "xeroCount": len(xero_rows),
         "ignitionCount": len(ignition_rows),
         "differenceCount": sum(1 for row in rows_to_store if _money(row.get("difference")) != 0),
@@ -5435,8 +5528,10 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "dailyBalance": daily_balance,
         "xeroStep1": xero_step1,
         "step2Reconciliation": step2_reconciliation,
+        "finalisation": finalisation,
     }
-    status_value = "ready" if rows_to_store else "empty"
+    has_any_xero_rows = len(xero_rows) > 0
+    status_value = "completed" if finalisation.get("canFinalise") else ("ready" if has_any_xero_rows else "empty")
     now = utcnow()
 
     with get_connection() as connection:
@@ -5646,6 +5741,9 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             run_row = cursor.fetchone() or {}
             if not run_row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            run_summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
+            finalisation = _pi_finalisation_state_from_summary(run_summary)
+            run_status_after_credit_note = "completed" if finalisation.get("canFinalise") else "credit_notes_created"
             account_code = requested_account_code or str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE)
             query = """
                 SELECT *
@@ -5756,7 +5854,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                         updated_at = %s
                     WHERE id = %s
                     """,
-                    ("credit_notes_created", now, run_id),
+                    (run_status_after_credit_note, now, run_id),
                 )
             connection.commit()
         created.append(
@@ -5795,6 +5893,17 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
             note_row = cursor.fetchone() or {}
             if not note_row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing credit note record not found.")
+            cursor.execute(
+                """
+                SELECT summary
+                FROM pi_clearing_runs
+                WHERE id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (run_id, user["id"]),
+            )
+            run_row = cursor.fetchone() or {}
             status_value = str(note_row.get("status") or "").strip().lower()
             if status_value in {"voided", "deleted"}:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This PI Clearing credit note is already voided.")
@@ -5802,6 +5911,9 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
             xero_credit_note_id = str(note_row.get("xero_credit_note_id") or "").strip()
             if not xero_credit_note_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero credit note id is missing for this record.")
+            run_summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
+            finalisation = _pi_finalisation_state_from_summary(run_summary)
+            run_status_after_void = "completed" if finalisation.get("canFinalise") else "ready"
         connection.commit()
 
     connection_row = get_master_xero_connection_for_user(user["id"])
@@ -5836,7 +5948,7 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
                     updated_at = %s
                 WHERE id = %s
                 """,
-                ("ready", now, run_id),
+                (run_status_after_void, now, run_id),
             )
         connection.commit()
     updated = pi_clearing_payload(user)

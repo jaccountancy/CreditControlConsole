@@ -35840,6 +35840,7 @@
                                         <select id="piClearingRunsStatusFilter" aria-label="Filter PI clearing batches by status">
                                             <option value="all">All statuses</option>
                                             <option value="ready">Ready</option>
+                                            <option value="completed">Completed</option>
                                             <option value="empty">Empty</option>
                                             <option value="credit_notes_created">Credit notes created</option>
                                         </select>
@@ -35858,9 +35859,7 @@
                                         <tr>
                                             <th>Batch period</th>
                                             <th>Status</th>
-                                            <th>Xero total</th>
-                                            <th>Ignition total</th>
-                                            <th>Difference</th>
+                                            <th>PI Clearing Account Balance</th>
                                             <th>Rows</th>
                                             <th>Actions</th>
                                         </tr>
@@ -35974,18 +35973,18 @@
                                 <div class="detail-actions pi-clearing-step-toolbar">
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                 </div>
-                                <p class="detail-meta">Step 1 shows the raw Xero account transactions for the selected nominal account (debits and credits only), displayed in a clean ledger table.</p>
+                                <p class="detail-meta">Step 1 lists Xero credit entries and checks whether each has matching same-date debit entries.</p>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table pi-ledger-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
                                         <thead>
                                             <tr>
                                                 <th>Date</th>
                                                 <th>Contact</th>
-                                            <th>Description</th>
-                                            <th>Source</th>
-                                            <th>Debit</th>
-                                            <th>Credit</th>
-                                            <th>Running balance</th>
+                                                <th>Credit payment id</th>
+                                                <th>Credit</th>
+                                                <th>Matched debit total</th>
+                                                <th>Status</th>
+                                                <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody id="piClearingWizardXeroBody"></tbody>
@@ -36124,6 +36123,25 @@
                                         </tr>
                                     </thead>
                                     <tbody id="piClearingPayoutDetailBody"></tbody>
+                                </table>
+                            </section>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="piClearingStep1DifferenceModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="piClearingStep1DifferenceTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">PI Clearing · Step 1</p>
+                                    <h4 id="piClearingStep1DifferenceTitle">Work out difference</h4>
+                                    <p class="detail-meta" id="piClearingStep1DifferenceMeta">Review the selected unmatched credit entry.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="piClearingStep1DifferenceCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Step 1 difference detail">
+                                    <tbody id="piClearingStep1DifferenceBody"></tbody>
                                 </table>
                             </section>
                         </section>
@@ -37460,6 +37478,8 @@
             let piClearingStatusTone = "info";
             let piClearingPayoutDetailOpen = false;
             let piClearingSelectedPayoutKey = "";
+            let piClearingStep1DifferenceModalOpen = false;
+            let piClearingStep1DifferenceRow = null;
             let piClearingWorkflowStageTimer = null;
             let piClearingLivePollTimer = null;
             const PI_CLEARING_WORKFLOW_STAGES = [
@@ -37475,6 +37495,7 @@
             let piClearingWorkflowStageState = "idle";
             let piClearingWorkflowStartedAt = 0;
             let piClearingWorkflowElapsedSeconds = 0;
+            let piClearingStep2HydrationRunning = false;
             let clientCallStatsData = {
                 summary: {},
                 charts: {},
@@ -48268,11 +48289,13 @@
                 const dailyBalance = summary?.dailyBalance && typeof summary.dailyBalance === "object" ? summary.dailyBalance : {};
                 const imbalanceDayCount = Number(dailyBalance?.imbalanceDayCount || 0);
                 const xeroStep1 = summary?.xeroStep1 && typeof summary.xeroStep1 === "object" ? summary.xeroStep1 : {};
+                const finalisation = summary?.finalisation && typeof summary.finalisation === "object" ? summary.finalisation : {};
                 return [
                     { label: "Xero total", value: formatCurrency(summary?.xeroTotal || 0) },
                     { label: "Xero debits", value: formatCurrency(summary?.xeroDebitTotal || 0) },
                     { label: "Xero credits", value: formatCurrency(summary?.xeroCreditTotal || 0) },
                     { label: "Step 1 missing debits", value: formatInteger(xeroStep1?.missingCreditCount || 0) },
+                    { label: "Batch finalise", value: finalisation?.canFinalise ? "Ready" : "Blocked" },
                     { label: "Ignition total", value: formatCurrency(summary?.ignitionTotal || 0) },
                     { label: "Reversals", value: formatCurrency(summary?.ignitionReversalTotal || 0) },
                     { label: "Existing CN", value: formatCurrency(summary?.existingCreditNoteTotal || 0) },
@@ -48454,19 +48477,41 @@
                 renderPiClearingAccountScreen();
             }
 
-            async function runPiClearingWorkflow() {
+            function piClearingRunNeedsIgnitionAndAI(run = {}) {
+                const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
+                const refresh = summary?.refresh && typeof summary.refresh === "object" ? summary.refresh : {};
+                const ignitionRefresh = refresh?.ignition && typeof refresh.ignition === "object" ? refresh.ignition : {};
+                const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
+                const engine = String(analysis?.engine || "").trim().toLowerCase();
+                return Boolean(ignitionRefresh?.deferred) || engine === "local_deferred" || String(summary?.workflowMode || "") === "transactions_only";
+            }
+
+            async function runPiClearingWorkflow(options = {}) {
                 if (piClearingWorkflowRunning) return;
                 const setupState = piClearingSetupState();
                 if (!setupState.valid) {
                     showToast(setupState.message || "Confirm setup before running this batch.", setupState.tone === "warning" ? "info" : "error");
                     return;
                 }
+                const includeIgnition = options?.includeIgnition === true;
+                const includeAI = includeIgnition && options?.includeAI !== false;
+                const refreshXero = options?.refreshXero !== false;
+                const refreshIgnition = includeIgnition && options?.refreshIgnition !== false;
+                const targetStep = Math.max(0, Math.min(3, Number(options?.targetStep ?? 1)));
                 piClearingWorkflowRunning = true;
                 piClearingWizardOpen = true;
-                piClearingWizardStep = 1;
+                piClearingWizardStep = targetStep;
                 piClearingShowMatchedStep1 = false;
-                startPiClearingWorkflowStageTicker();
-                startPiClearingLivePolling();
+                if (includeIgnition) {
+                    startPiClearingWorkflowStageTicker();
+                    startPiClearingLivePolling();
+                } else {
+                    piClearingWorkflowStageState = "idle";
+                    piClearingWorkflowStageIndex = -1;
+                    piClearingStatusMessage = "Loading Xero transactions for Step 1...";
+                    piClearingStatusTone = "info";
+                    renderPiClearingAccountScreen();
+                }
                 try {
                     await ensurePiClearingNominalSetup();
                     const payload = await requestJSON(api.endpoints.piClearingAccountRun, {
@@ -48475,8 +48520,10 @@
                             batchStart: piClearingBatchStart,
                             batchEnd: piClearingBatchEnd,
                             accountCode: currentPiClearingAccountCode(),
-                            refreshXero: true,
-                            refreshIgnition: true,
+                            refreshXero,
+                            refreshIgnition,
+                            includeIgnition,
+                            includeAI,
                         }),
                     });
                     const runId = String(payload?.run?.id || "");
@@ -48484,7 +48531,7 @@
                     await loadPiClearingAccount(true);
                     if (runId) piClearingSelectedRunId = runId;
                     piClearingWizardOpen = true;
-                    piClearingWizardStep = 1;
+                    piClearingWizardStep = targetStep;
                     piClearingSelectedRowIds = new Set();
                     const runSummary = payload?.run?.summary && typeof payload.run.summary === "object" ? payload.run.summary : {};
                     const refreshSummary = runSummary?.refresh && typeof runSummary.refresh === "object" ? runSummary.refresh : {};
@@ -48496,11 +48543,19 @@
                     const ignitionFetched = Number(
                         ignitionRefresh?.skippedRefresh ? (ignitionRefresh?.cachedRows || 0) : (ignitionRefresh?.fetched || 0)
                     );
-                    piClearingWorkflowStageState = "success";
-                    piClearingWorkflowStageIndex = PI_CLEARING_WORKFLOW_STAGES.length - 1;
-                    piClearingStatusMessage = `Workflow completed. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"} and Ignition pulled ${formatInteger(ignitionFetched)} row${ignitionFetched === 1 ? "" : "s"}. Review AI findings and generate credit notes.`;
-                    piClearingStatusTone = "success";
-                    showToast("PI Clearing workflow completed.", "success");
+                    if (includeIgnition) {
+                        piClearingWorkflowStageState = "success";
+                        piClearingWorkflowStageIndex = PI_CLEARING_WORKFLOW_STAGES.length - 1;
+                        piClearingStatusMessage = `Workflow completed. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"} and Ignition pulled ${formatInteger(ignitionFetched)} row${ignitionFetched === 1 ? "" : "s"}. Review AI findings and generate credit notes.`;
+                        piClearingStatusTone = "success";
+                        showToast("PI Clearing workflow completed.", "success");
+                    } else {
+                        piClearingWorkflowStageState = "idle";
+                        piClearingWorkflowStageIndex = -1;
+                        piClearingStatusMessage = `Transactions loaded. Xero pulled ${formatInteger(xeroFetched)} row${xeroFetched === 1 ? "" : "s"}. Review Step 1, then continue to Step 2 for Ignition + AI.`;
+                        piClearingStatusTone = "success";
+                        showToast("Step 1 transactions loaded.", "success");
+                    }
                 } catch (error) {
                     piClearingWorkflowStageState = "error";
                     if (piClearingWorkflowStageIndex < 0) piClearingWorkflowStageIndex = 0;
@@ -48660,6 +48715,9 @@
                 const payoutDetailModal = document.getElementById("piClearingPayoutDetailModal");
                 const payoutDetailBody = document.getElementById("piClearingPayoutDetailBody");
                 const payoutDetailMeta = document.getElementById("piClearingPayoutDetailMeta");
+                const step1DifferenceModal = document.getElementById("piClearingStep1DifferenceModal");
+                const step1DifferenceMeta = document.getElementById("piClearingStep1DifferenceMeta");
+                const step1DifferenceBody = document.getElementById("piClearingStep1DifferenceBody");
                 if (!summary) return;
                 if (activeView === "pi-clearing-account" && !piClearingHydrated && !piClearingLoading) {
                     loadPiClearingAccount();
@@ -48890,7 +48948,7 @@
                         const hasFilters = Boolean(String(piClearingRunsSearchTerm || "").trim()) || String(piClearingRunsStatusFilter || "all") !== "all";
                         runsBody.innerHTML = `
                             <tr>
-                                <td colspan="7"><p class="detail-meta">${hasFilters ? "No runs match your search/filter." : "No PI clearing runs yet. Start a new batch workflow."}</p></td>
+                                <td colspan="5"><p class="detail-meta">${hasFilters ? "No runs match your search/filter." : "No PI clearing runs yet. Start a new batch workflow."}</p></td>
                             </tr>
                         `;
                     } else {
@@ -48905,8 +48963,6 @@
                                     <td><strong>${escapeHTML(batch || "--")}</strong></td>
                                     <td>${escapeHTML(String(entry?.status || "--"))}</td>
                                     <td>${escapeHTML(formatCurrency(entrySummary?.xeroTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(entrySummary?.ignitionTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(entrySummary?.differenceTotal || 0))}</td>
                                     <td>${escapeHTML(formatInteger((entry?.rows || []).length || 0))}</td>
                                     <td>
                                         <div class="pi-clearing-runs-actions">
@@ -49034,42 +49090,57 @@
                     } else if (piClearingWorkflowStageState === "error" && !runRows.length) {
                         wizardSummary.textContent = `${piClearingStatusMessage || "Workflow failed."} Use Get transactions to retry.`;
                     } else {
+                        const finalisation = summaryRows?.finalisation && typeof summaryRows.finalisation === "object" ? summaryRows.finalisation : {};
+                        const finaliseReason = String(finalisation?.reason || "").trim();
                         wizardSummary.textContent = runRows.length
-                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for batch ${piClearingRunRangeLabel(run)}. Step 1 (Xero only): ${formatInteger(step1CreditCount - step1MissingCount)} of ${formatInteger(step1CreditCount)} payout credit${step1CreditCount === 1 ? "" : "s"} balanced to same-date debits; ${formatInteger(step1MissingCount)} still missing ${formatCurrency(step1MissingTotal)}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Days not nil: ${formatInteger(imbalanceDayCount)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.`
+                            ? `${runRows.length} reconciliation row${runRows.length === 1 ? "" : "s"} loaded for batch ${piClearingRunRangeLabel(run)}. Step 1 (Xero only): ${formatInteger(step1CreditCount - step1MissingCount)} of ${formatInteger(step1CreditCount)} payout credit${step1CreditCount === 1 ? "" : "s"} balanced to same-date debits; ${formatInteger(step1MissingCount)} still missing ${formatCurrency(step1MissingTotal)}. Xero debits ${formatCurrency(xeroDebits)}, credits ${formatCurrency(xeroCredits)}. Days not nil: ${formatInteger(imbalanceDayCount)}. Ignition payouts missing in Xero: ${formatInteger(missingPayoutCount)}.${finaliseReason ? ` ${finaliseReason}` : ""}`
                             : "No rows loaded yet. Use Get transactions to pull Xero and Ignition data for the selected batch.";
                     }
                 }
                 if (wizardXeroBody) {
-                    const xeroLedgerRows = buildPiClearingXeroBreakdown(runRows);
-                    let runningBalance = 0;
-                    wizardXeroBody.innerHTML = xeroLedgerRows.length
-                        ? xeroLedgerRows.map((row) => {
-                            const contact = String(
-                                row?.clientName
-                                || row?.contactName
-                                || row?.contact
-                                || row?.reference
-                                || row?.paymentId
-                                || "--"
-                            ).trim() || "--";
-                            const description = String(row?.description || row?.clientName || "").trim() || "--";
-                            const source = String(row?.source || "--").trim() || "--";
-                            const debit = Number(row?.debit || 0);
-                            const credit = Number(row?.credit || 0);
-                            runningBalance += debit - credit;
+                    const step1Rows = Array.isArray(summaryRows?.xeroStep1?.rows) ? summaryRows.xeroStep1.rows : [];
+                    const rowToneClass = (statusValue = "") => {
+                        const status = String(statusValue || "").trim().toLowerCase();
+                        if (status === "balanced") return "is-success";
+                        if (status === "partial") return "is-warning";
+                        return "is-open";
+                    };
+                    const rowLabel = (statusValue = "") => {
+                        const status = String(statusValue || "").trim().toLowerCase();
+                        if (status === "balanced") return "Matched";
+                        if (status === "partial") return "Part-matched";
+                        return "Missing debit";
+                    };
+                    wizardXeroBody.innerHTML = step1Rows.length
+                        ? step1Rows.map((row, index) => {
+                            const creditAmount = Number(row?.creditAmount || 0);
+                            const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
+                            const missingDebitAmount = Number(row?.missingDebitAmount || 0);
+                            const status = String(row?.status || "").trim().toLowerCase();
+                            const canInit = status === "partial" || status === "missing_debits";
                             return `
                                 <tr>
-                                    <td>${escapeHTML(formatDate(row?.paidOn || ""))}</td>
-                                    <td>${escapeHTML(contact)}</td>
-                                    <td>${escapeHTML(description)}</td>
-                                    <td>${escapeHTML(source)}</td>
-                                    <td>${escapeHTML(debit > 0 ? formatCurrency(debit) : "£0.00")}</td>
-                                    <td>${escapeHTML(credit > 0 ? formatCurrency(credit) : "£0.00")}</td>
-                                    <td>${escapeHTML(formatCurrency(runningBalance))}</td>
+                                    <td>${escapeHTML(formatDate(row?.date || ""))}</td>
+                                    <td>${escapeHTML(String(row?.creditClientName || "--"))}</td>
+                                    <td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td>
+                                    <td>${escapeHTML(formatCurrency(creditAmount))}</td>
+                                    <td>${escapeHTML(formatCurrency(matchedDebitTotal))}</td>
+                                    <td><span class="ch-pill ${escapeHTML(rowToneClass(status))}">${escapeHTML(rowLabel(status))}</span></td>
+                                    <td>${canInit ? `<button class="ghost-button" type="button" data-pi-step1-init="${escapeHTML(String(index))}">Init it</button>` : `<span class="detail-meta">No action</span>`}</td>
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No Xero account transactions found for this nominal account in the selected period.</p></td></tr>`;
+                        : `<tr><td colspan="7"><p class="detail-meta">No Xero credit entries found for this nominal account in the selected period.</p></td></tr>`;
+                    wizardXeroBody.querySelectorAll("[data-pi-step1-init]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const rowIndex = Number(button.getAttribute("data-pi-step1-init"));
+                            const targetRow = Number.isFinite(rowIndex) ? step1Rows[rowIndex] : null;
+                            if (!targetRow) return;
+                            piClearingStep1DifferenceRow = targetRow;
+                            piClearingStep1DifferenceModalOpen = true;
+                            renderPiClearingAccountScreen();
+                        });
+                    });
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
@@ -49320,6 +49391,8 @@
                         piClearingWizardOpen = false;
                         piClearingPayoutDetailOpen = false;
                         piClearingSelectedPayoutKey = "";
+                        piClearingStep1DifferenceModalOpen = false;
+                        piClearingStep1DifferenceRow = null;
                         renderPiClearingAccountScreen();
                     });
                 }
@@ -49331,15 +49404,35 @@
                 const nextButton = document.getElementById("piClearingWizardNextButton");
                 if (nextButton && nextButton.dataset.piWired !== "true") {
                     nextButton.dataset.piWired = "true";
-                    nextButton.addEventListener("click", () => {
+                    nextButton.addEventListener("click", async () => {
                         if (piClearingWizardStep >= 3) {
                             piClearingWizardOpen = false;
                             piClearingPayoutDetailOpen = false;
                             piClearingSelectedPayoutKey = "";
+                            piClearingStep1DifferenceModalOpen = false;
+                            piClearingStep1DifferenceRow = null;
                             renderPiClearingAccountScreen();
                             return;
                         }
-                        setPiClearingWizardStep(piClearingWizardStep + 1);
+                        const targetStep = piClearingWizardStep + 1;
+                        setPiClearingWizardStep(targetStep);
+                        if (targetStep === 2 && !piClearingStep2HydrationRunning) {
+                            const run = currentPiClearingRun();
+                            if (run?.id && piClearingRunNeedsIgnitionAndAI(run)) {
+                                piClearingStep2HydrationRunning = true;
+                                try {
+                                    await runPiClearingWorkflow({
+                                        includeIgnition: true,
+                                        includeAI: true,
+                                        refreshXero: false,
+                                        refreshIgnition: true,
+                                        targetStep: 2,
+                                    });
+                                } finally {
+                                    piClearingStep2HydrationRunning = false;
+                                }
+                            }
+                        }
                     });
                 }
                 const selectAllButton = document.getElementById("piClearingSelectAllRowsButton");
@@ -49392,6 +49485,41 @@
                     payoutDetailClose.addEventListener("click", () => {
                         piClearingPayoutDetailOpen = false;
                         piClearingSelectedPayoutKey = "";
+                        renderPiClearingAccountScreen();
+                    });
+                }
+                if (step1DifferenceModal) step1DifferenceModal.hidden = !piClearingStep1DifferenceModalOpen;
+                if (step1DifferenceModal && piClearingStep1DifferenceModalOpen) {
+                    const row = piClearingStep1DifferenceRow && typeof piClearingStep1DifferenceRow === "object" ? piClearingStep1DifferenceRow : null;
+                    const creditAmount = Number(row?.creditAmount || 0);
+                    const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
+                    const missingDebitAmount = Number(row?.missingDebitAmount || 0);
+                    if (step1DifferenceMeta) {
+                        step1DifferenceMeta.textContent = row
+                            ? `${formatDate(row?.date || "")} · Credit ${formatCurrency(creditAmount)} · Missing ${formatCurrency(missingDebitAmount)}`
+                            : "No credit entry selected.";
+                    }
+                    if (step1DifferenceBody) {
+                        const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
+                        step1DifferenceBody.innerHTML = row
+                            ? `
+                                <tr><th>Credit payment id</th><td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td></tr>
+                                <tr><th>Credit reference</th><td>${escapeHTML(String(row?.creditReference || "--"))}</td></tr>
+                                <tr><th>Credit amount</th><td>${escapeHTML(formatCurrency(creditAmount))}</td></tr>
+                                <tr><th>Matched debit total</th><td>${escapeHTML(formatCurrency(matchedDebitTotal))}</td></tr>
+                                <tr><th>Missing debit amount</th><td>${escapeHTML(formatCurrency(missingDebitAmount))}</td></tr>
+                                <tr><th>Matched debit lines</th><td>${escapeHTML(matchedDebits.length ? matchedDebits.map((item) => `${formatCurrency(Number(item?.amountUsed || 0))}${item?.paymentId ? ` (${item.paymentId})` : ""}`).join(", ") : "None")}</td></tr>
+                                <tr><th>Next step</th><td>Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.</td></tr>
+                            `
+                            : `<tr><td><p class="detail-meta">No row selected.</p></td></tr>`;
+                    }
+                }
+                const step1DifferenceClose = document.getElementById("piClearingStep1DifferenceCloseButton");
+                if (step1DifferenceClose && step1DifferenceClose.dataset.piWired !== "true") {
+                    step1DifferenceClose.dataset.piWired = "true";
+                    step1DifferenceClose.addEventListener("click", () => {
+                        piClearingStep1DifferenceModalOpen = false;
+                        piClearingStep1DifferenceRow = null;
                         renderPiClearingAccountScreen();
                     });
                 }
