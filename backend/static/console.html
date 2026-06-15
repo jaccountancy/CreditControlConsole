@@ -51400,15 +51400,33 @@
                                         includeIgnition: true,
                                         includeAI: false,
                                         refreshXero: false,
-                                        refreshIgnition: true,
+                                        refreshIgnition: false,
                                         batchStart: String(run?.monthStart || piClearingBatchStart || ""),
                                         batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
                                         accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
                                         targetStep: 2,
                                     });
-                                    const refreshedRun = currentPiClearingRun();
-                                    const refreshedRows = Array.isArray(refreshedRun?.rows) ? refreshedRun.rows : [];
-                                    const match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, refreshedRows);
+                                    const cachedRun = currentPiClearingRun();
+                                    const cachedRows = Array.isArray(cachedRun?.rows) ? cachedRun.rows : [];
+                                    let match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, cachedRows);
+                                    let matchSourceLabel = "cached backend payout data";
+                                    let activeRun = cachedRun;
+                                    if (!match?.runRow?.id && !(match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length))) {
+                                        await runPiClearingWorkflow({
+                                            includeIgnition: true,
+                                            includeAI: false,
+                                            refreshXero: false,
+                                            refreshIgnition: true,
+                                            batchStart: String(run?.monthStart || piClearingBatchStart || ""),
+                                            batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
+                                            accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
+                                            targetStep: 2,
+                                        });
+                                        activeRun = currentPiClearingRun();
+                                        const refreshedRows = Array.isArray(activeRun?.rows) ? activeRun.rows : [];
+                                        match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, refreshedRows);
+                                        matchSourceLabel = "refreshed Ignition payout data";
+                                    }
                                     if (match?.runRow?.id) {
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
@@ -51419,18 +51437,18 @@
                                             match,
                                         };
                                         piClearingStep1AiCache.set(selectedRowKey, {
-                                            runId: String(refreshedRun?.id || ""),
+                                            runId: String(activeRun?.id || ""),
                                             result: piClearingStep1AiResult,
                                         });
                                         void persistPiStep1AiFix(
-                                            String(refreshedRun?.id || ""),
+                                            String(activeRun?.id || ""),
                                             String(match?.runRow?.id || ""),
                                             selectedRowKey,
                                             match,
                                         );
-                                        piClearingStatusMessage = `Jenius AI matched ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")} using Ignition payout ${String(match?.payout?.payoutId || "--")}.`;
+                                        piClearingStatusMessage = `Jenius AI matched ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")} using ${matchSourceLabel} (${String(match?.payout?.payoutId || "--")}).`;
                                         piClearingStatusTone = "success";
-                                        showToast("Jenius AI found a valid Step 3 match from synced data.", "success");
+                                        showToast(matchSourceLabel === "cached backend payout data" ? "Jenius AI found a valid Step 3 match from cached backend data." : "Jenius AI found a valid Step 3 match from synced data.", "success");
                                     } else if (match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length)) {
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
