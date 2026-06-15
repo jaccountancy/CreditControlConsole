@@ -16952,6 +16952,149 @@ def _xero_bank_transaction_amount(transaction: dict) -> Decimal:
     return abs(sum(_money(item.get("LineAmount")) for item in transaction.get("LineItems") or []))
 
 
+def _me_report_bank_transaction_date(transaction: dict) -> date | None:
+    for key in ("Date", "DateString", "UpdatedDateUTC", "UpdatedDate", "CreatedDateUTC"):
+        value = transaction.get(key)
+        parsed_dt = _parse_optional_iso_datetime(value)
+        if parsed_dt:
+            return parsed_dt.date()
+        parsed_date = _parse_optional_iso_date(value)
+        if parsed_date:
+            return parsed_date
+    return None
+
+
+def _me_report_bank_transaction_rows(
+    bank_transactions_payload: dict,
+    period_start: date,
+    period_end: date,
+) -> list[dict]:
+    rows: list[dict] = []
+    transactions = bank_transactions_payload.get("BankTransactions") or []
+    for transaction in transactions:
+        if not isinstance(transaction, dict):
+            continue
+        transaction_date = _me_report_bank_transaction_date(transaction)
+        if transaction_date and (transaction_date < period_start or transaction_date > period_end):
+            continue
+        if transaction.get("Total") is not None:
+            amount = _money(transaction.get("Total"))
+        else:
+            amount = _money(sum(_money(item.get("LineAmount")) for item in transaction.get("LineItems") or []))
+        reference = str(transaction.get("Reference") or "").strip()
+        narration = str(transaction.get("Narration") or "").strip()
+        transaction_type = str(transaction.get("Type") or "").strip()
+        contact = transaction.get("Contact") if isinstance(transaction.get("Contact"), dict) else {}
+        contact_name = str(contact.get("Name") or "").strip()
+        description_parts = [part for part in (reference, narration, transaction_type, contact_name) if part]
+        description = " · ".join(description_parts) if description_parts else "Bank transaction"
+        transaction_id = str(
+            transaction.get("BankTransactionID")
+            or transaction.get("BankTransactionId")
+            or transaction.get("ID")
+            or ""
+        ).strip()
+        status_text = str(transaction.get("Status") or "").strip()
+        status_upper = status_text.upper()
+        if transaction.get("IsReconciled") is None:
+            is_reconciled = status_upper in {"RECONCILED", "MATCHED"}
+        else:
+            is_reconciled = bool(transaction.get("IsReconciled"))
+        if status_upper == "UNRECONCILED":
+            is_reconciled = False
+        bank_account = transaction.get("BankAccount") if isinstance(transaction.get("BankAccount"), dict) else {}
+        account_code = str(bank_account.get("Code") or "").strip() or "BANK"
+        account_name = str(bank_account.get("Name") or "").strip() or "Bank transactions"
+        rows.append(
+            {
+                "transactionId": transaction_id,
+                "date": transaction_date.isoformat() if transaction_date else "",
+                "description": description,
+                "amount": float(amount),
+                "source": "Xero BankTransactions API",
+                "status": status_text,
+                "isReconciled": is_reconciled,
+                "accountCode": account_code,
+                "accountName": account_name,
+            }
+        )
+    return rows
+
+
+def _me_report_trial_balance_accounts_from_bank_transactions(rows: list[dict]) -> list[dict]:
+    grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        account_code = str(row.get("accountCode") or "BANK").strip() or "BANK"
+        account_name = str(row.get("accountName") or "Bank transactions").strip() or "Bank transactions"
+        grouped[(account_code, account_name)].append(row)
+    accounts: list[dict] = []
+    for (account_code, account_name), account_rows in sorted(grouped.items(), key=lambda item: (item[0][1], item[0][0])):
+        debit_total = Decimal("0.00")
+        credit_total = Decimal("0.00")
+        net_total = Decimal("0.00")
+        transactions = []
+        for row in account_rows:
+            amount = _money(row.get("amount"))
+            net_total += amount
+            if amount >= 0:
+                debit_total += amount
+            else:
+                credit_total += abs(amount)
+            transactions.append(
+                {
+                    "transactionId": str(row.get("transactionId") or ""),
+                    "date": str(row.get("date") or ""),
+                    "description": str(row.get("description") or ""),
+                    "amount": float(amount),
+                    "source": str(row.get("source") or "Xero BankTransactions API"),
+                    "status": str(row.get("status") or ""),
+                    "isUnreconciled": not bool(row.get("isReconciled")),
+                    "reconciled": bool(row.get("isReconciled")),
+                    "bankTransactionId": str(row.get("transactionId") or ""),
+                }
+            )
+        accounts.append(
+            {
+                "accountCode": account_code,
+                "accountName": account_name,
+                "accountType": "BANK",
+                "debitYTD": float(_money(debit_total)),
+                "creditYTD": float(_money(credit_total)),
+                "amount": float(_money(net_total)),
+                "source": "Xero BankTransactions API",
+                "transactions": transactions[:1000],
+            }
+        )
+    return accounts
+
+
+def _me_report_unreconciled_bank_transactions(rows: list[dict]) -> list[dict]:
+    results = []
+    for row in rows:
+        if bool(row.get("isReconciled")):
+            continue
+        transaction_id = str(row.get("transactionId") or "").strip()
+        if not transaction_id:
+            continue
+        results.append(
+            {
+                "transactionId": transaction_id,
+                "id": transaction_id,
+                "bankTransactionId": transaction_id,
+                "date": str(row.get("date") or ""),
+                "description": str(row.get("description") or ""),
+                "amount": float(_money(row.get("amount"))),
+                "status": str(row.get("status") or "Unreconciled"),
+                "isUnreconciled": True,
+                "reconciled": False,
+                "source": str(row.get("source") or "Xero BankTransactions API"),
+            }
+        )
+    return results[:300]
+
+
 def _xero_invoice_amount_due(invoice: dict) -> Decimal:
     return abs(_money(invoice.get("AmountDue") if invoice.get("AmountDue") is not None else invoice.get("Total")))
 
@@ -17680,6 +17823,18 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         })
     traffic_light = "red" if any(item["severity"] == "red" for item in open_exceptions) else ("amber" if open_exceptions else "green")
     dla_status = "red" if dla_balance < 0 else ("amber" if dla_balance == 0 else "green")
+    bank_transaction_rows = _me_report_bank_transaction_rows(bank_transactions_payload, period_start, period_end)
+    trial_balance_accounts = _me_report_trial_balance_accounts_from_bank_transactions(bank_transaction_rows)
+    unreconciled_transactions = _me_report_unreconciled_bank_transactions(bank_transaction_rows)
+    contact_rows = [
+        {
+            "xeroContactId": str(item.get("ContactID") or item.get("contactID") or ""),
+            "name": str(item.get("Name") or item.get("name") or ""),
+            "email": str(item.get("EmailAddress") or item.get("emailAddress") or ""),
+        }
+        for item in contacts
+        if isinstance(item, dict)
+    ][:1000]
     summary = {
         "periodStart": period_start.isoformat(),
         "periodEnd": period_end.isoformat(),
@@ -17721,6 +17876,11 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "duplicateSpendBillCount": len(duplicate_spend_candidates),
         "duplicateContactCount": len(duplicate_contact_candidates),
         "payrollControlWarnings": payroll_control_warnings,
+        "trialBalanceAccounts": trial_balance_accounts,
+        "unreconciledTransactions": unreconciled_transactions,
+        "unreconciledBankTransactionCount": len(unreconciled_transactions),
+        "contacts": contact_rows,
+        "xeroContacts": contact_rows,
         "mappingReviewCount": len(low_confidence),
         "exceptionCount": len(open_exceptions),
         "trafficLight": traffic_light,

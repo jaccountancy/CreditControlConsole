@@ -68016,8 +68016,8 @@
             }
 
             function meReportFlowMatchesPeriod(client = {}, periodConfig = {}) {
-                const targetStart = String(periodConfig?.periodStart || "").trim();
-                const targetEnd = String(periodConfig?.periodEnd || "").trim();
+                const targetStart = String(periodConfig?.periodStart || periodConfig?.periodStartISO || "").trim();
+                const targetEnd = String(periodConfig?.periodEnd || periodConfig?.periodEndISO || "").trim();
                 if (!targetStart && !targetEnd) return true;
                 const clientStart = String(client?.flowPeriodStart || "").trim();
                 const clientEnd = String(client?.flowPeriodEnd || "").trim();
@@ -99156,7 +99156,14 @@
                 const unreconciledRows = taskBookkeepingFilterTransactionsForPeriod(meReportUnreconciledTransactionRows(summary), periodConfig);
                 const unreconciledBankCount = Math.max(Number(meReportUnreconciledBankCount(summary) || 0), unreconciledRows.length);
                 const contactRows = meReportObjectRows(summary.contacts || summary.xeroContacts || summary.contactRows);
-                const latestSyncISO = String(meClient?.updatedAt || meClient?.syncedAt || meClient?.lastSyncedAt || "").trim();
+                const latestSyncISO = String(
+                    meClient?.lastCalculatedAt
+                    || meClient?.lastSyncAt
+                    || meClient?.updatedAt
+                    || meClient?.syncedAt
+                    || meClient?.lastSyncedAt
+                    || ""
+                ).trim();
                 const latestSyncDate = parseDateValue(latestSyncISO);
                 const freshnessHours = latestSyncDate ? Math.max(0, (Date.now() - latestSyncDate.getTime()) / 3600000) : Number.POSITIVE_INFINITY;
                 const incrementalFresh = Number.isFinite(freshnessHours) && freshnessHours <= 48;
