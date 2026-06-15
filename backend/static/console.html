@@ -37702,9 +37702,11 @@
             let vatReturnQueueTab = "unregistered";
             const microAnalyzerWorkspaceStorageKey = `${STORAGE_KEY}:vat-on-unregistered-workspaces:v1`;
             const microAnalyzerHiddenClientStorageKey = `${STORAGE_KEY}:vat-on-unregistered-hidden-clients:v1`;
+            const microAnalyzerUnhiddenVatClientStorageKey = `${STORAGE_KEY}:vat-on-unregistered-unhidden-vat-clients:v1`;
             const microAnalyzerControlsStorageKey = `${STORAGE_KEY}:vat-on-unregistered-controls:v1`;
             let microAnalyzerWorkspaces = loadMicroAnalyzerWorkspaces();
             let microAnalyzerHiddenClientIds = loadMicroAnalyzerHiddenClientIds();
+            let microAnalyzerUnhiddenVatClientIds = loadMicroAnalyzerUnhiddenVatClientIds();
             const payrollHeadcountStorageKey = `${STORAGE_KEY}:payroll-headcount-workspaces:v1`;
             let payrollHeadcountWorkspaces = loadPayrollHeadcountWorkspaces();
             const payrollHeadcountIncludedTenantIdsStorageKey = `${STORAGE_KEY}:payroll-headcount-included-tenant-ids:v1`;
@@ -40203,6 +40205,16 @@
                 }
             }
 
+            function loadMicroAnalyzerUnhiddenVatClientIds() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(microAnalyzerUnhiddenVatClientStorageKey) || "[]");
+                    if (!Array.isArray(stored)) return [];
+                    return stored.map((value) => String(value || "").trim()).filter(Boolean);
+                } catch {
+                    return [];
+                }
+            }
+
             function loadMicroAnalyzerTableControls() {
                 const defaults = {
                     hideVatRegistered: true,
@@ -40288,6 +40300,14 @@
                     localStorage.setItem(microAnalyzerHiddenClientStorageKey, JSON.stringify(microAnalyzerHiddenClientIds || []));
                 } catch {
                     // Hidden VAT on Unregistered clients can operate in-memory if browser storage is unavailable.
+                }
+            }
+
+            function persistMicroAnalyzerUnhiddenVatClientIds() {
+                try {
+                    localStorage.setItem(microAnalyzerUnhiddenVatClientStorageKey, JSON.stringify(microAnalyzerUnhiddenVatClientIds || []));
+                } catch {
+                    // Unhidden VAT on Unregistered clients can operate in-memory if browser storage is unavailable.
                 }
             }
 
@@ -91538,10 +91558,16 @@
                 const cleanRowId = String(rowId || "").trim();
                 if (!cleanRowId) return;
                 const hiddenSet = new Set((microAnalyzerHiddenClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
+                const unhiddenVatSet = new Set((microAnalyzerUnhiddenVatClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
                 if (hidden) hiddenSet.add(cleanRowId);
                 else hiddenSet.delete(cleanRowId);
+                const row = microAnalyzerRowById(cleanRowId, true);
+                if (hidden) unhiddenVatSet.delete(cleanRowId);
+                else if (row && microAnalyzerRowHasVatNumber(row)) unhiddenVatSet.add(cleanRowId);
                 microAnalyzerHiddenClientIds = Array.from(hiddenSet.values()).sort((left, right) => left.localeCompare(right, "en-GB"));
+                microAnalyzerUnhiddenVatClientIds = Array.from(unhiddenVatSet.values()).sort((left, right) => left.localeCompare(right, "en-GB"));
                 persistMicroAnalyzerHiddenClientIds();
+                persistMicroAnalyzerUnhiddenVatClientIds();
             }
 
             function closeMicroAnalyzerWorkspace() {
@@ -91665,15 +91691,22 @@
                         .filter((row) => Boolean(String(row.tenantId || "").trim()) && Boolean(String(row.id || "").trim()));
                     const existingIds = new Set((microAnalyzerRows || []).map((row) => String(row?.id || "").trim()).filter(Boolean));
                     const priorHidden = new Set((microAnalyzerHiddenClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
+                    const unhiddenVatSet = new Set((microAnalyzerUnhiddenVatClientIds || []).map((value) => String(value || "").trim()).filter(Boolean));
                     const autoHiddenVatIds = (microAnalyzerRows || [])
                         .filter((row) => microAnalyzerRowHasVatNumber(row))
                         .map((row) => String(row?.id || "").trim())
                         .filter(Boolean);
-                    autoHiddenVatIds.forEach((rowId) => priorHidden.add(rowId));
+                    autoHiddenVatIds.forEach((rowId) => {
+                        if (!unhiddenVatSet.has(rowId)) priorHidden.add(rowId);
+                    });
                     microAnalyzerHiddenClientIds = Array.from(priorHidden.values())
                         .filter((rowId) => existingIds.has(rowId))
                         .sort((left, right) => left.localeCompare(right, "en-GB"));
+                    microAnalyzerUnhiddenVatClientIds = Array.from(unhiddenVatSet.values())
+                        .filter((rowId) => existingIds.has(rowId))
+                        .sort((left, right) => left.localeCompare(right, "en-GB"));
                     persistMicroAnalyzerHiddenClientIds();
+                    persistMicroAnalyzerUnhiddenVatClientIds();
                     if (selectedMicroAnalyzerRowId && !existingIds.has(String(selectedMicroAnalyzerRowId || "").trim())) {
                         closeMicroAnalyzerWorkspace();
                     }
@@ -92470,7 +92503,7 @@
                             <td><strong>${escapeHTML(row.clientName || row.customerName || "Client")}</strong></td>
                             <td><small>${escapeHTML(row.tenantName || row.tenantId || "—")}</small></td>
                             <td><code>${escapeHTML(String(row.vatNumber || ""))}</code></td>
-                            <td><button class="ghost-button" type="button" data-micro-analyzer-unhide-client="${escapeHTML(String(row.id || ""))}" disabled title="VAT-registered clients stay hidden on this page.">Unhide</button></td>
+                            <td><button class="ghost-button" type="button" data-micro-analyzer-unhide-client="${escapeHTML(String(row.id || ""))}">Unhide</button></td>
                         </tr>
                     `).join("")
                     : '<tr><td colspan="4"><small>No hidden VAT-registered clients.</small></td></tr>';
@@ -92492,12 +92525,8 @@
                     button.addEventListener("click", () => {
                         const rowId = String(button.dataset.microAnalyzerUnhideClient || "").trim();
                         if (!rowId) return;
-                        const row = microAnalyzerRowById(rowId, true);
-                        if (row && microAnalyzerRowHasVatNumber(row)) {
-                            showToast("VAT-registered clients remain hidden on this page.", "info");
-                            return;
-                        }
                         microAnalyzerSetClientHidden(rowId, false);
+                        showToast("Client removed from hidden VAT list.", "success");
                         renderMicroAnalyzerScreen();
                     });
                 });
