@@ -36579,7 +36579,7 @@
                                 </div>
                             </section>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="3" hidden>
-                                <p class="detail-meta" id="piClearingWizardCreditSummary">Select rows with positive differences and create balancing credit notes in Xero.</p>
+                                <p class="detail-meta" id="piClearingWizardCreditSummary">Select unresolved difference rows and create balancing credit notes in Xero.</p>
                                 <div class="summary-grid pi-clearing-kpi-grid" id="piClearingStep3BalanceGrid"></div>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Suggested credit notes grouped by contact">
@@ -50561,19 +50561,20 @@
 
                 const creditRows = runRows.filter((row) => {
                     const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
-                    return Number(row?.differenceTotal || 0) > 0
+                    return Math.abs(Number(row?.differenceTotal || 0)) > 0.005
                         && !["credit_note_created", "balanced_by_existing_credit_note", "step1_xero_check_required"].includes(resolution);
                 });
                 if (step3BalanceGrid) {
-                    const beforeBalance = Number(summaryRows?.differenceTotal || 0);
+                    const beforeBalanceRaw = Number(summaryRows?.differenceTotal || 0);
+                    const beforeBalanceAbs = Math.abs(beforeBalanceRaw);
                     const selectedImpact = creditRows
                         .filter((row) => piClearingSelectedRowIds.has(String(row?.id || "")))
-                        .reduce((total, row) => total + Number(row?.differenceTotal || 0), 0);
-                    const afterPreview = beforeBalance - selectedImpact;
+                        .reduce((total, row) => total + Math.abs(Number(row?.differenceTotal || 0)), 0);
+                    const afterPreviewAbs = Math.max(0, beforeBalanceAbs - selectedImpact);
                     const kpis = [
-                        { label: "Before PI balance", value: formatCurrency(beforeBalance) },
+                        { label: "Before PI imbalance", value: formatCurrency(beforeBalanceAbs) },
                         { label: "Selected credit-note impact", value: formatCurrency(selectedImpact) },
-                        { label: "After PI balance (preview)", value: formatCurrency(afterPreview) },
+                        { label: "After PI imbalance (preview)", value: formatCurrency(afterPreviewAbs) },
                     ];
                     step3BalanceGrid.innerHTML = kpis.map((item) => `
                         <article class="pi-clearing-kpi">
@@ -50617,14 +50618,14 @@
                                     <td><input type="checkbox" data-pi-credit-row="${escapeHTML(rowId)}" ${checked} ${hasContact ? "" : "disabled"}></td>
                                     <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
                                     <td>${escapeHTML(formatDate(String(row?.payoutDate || row?.raw?.payoutDate || "")))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.differenceTotal || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(Math.abs(Number(row?.differenceTotal || 0))))}</td>
                                     <td>${piRiskBadgeHTML(row)}</td>
                                     <td>${hasContact ? "Mapped" : "Missing contact"}</td>
                                     <td>${escapeHTML(String(row?.resolutionStatus || "pending"))}</td>
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7"><p class="detail-meta">No positive differences for credit notes.</p></td></tr>`;
+                        : `<tr><td colspan="7"><p class="detail-meta">No unresolved difference rows are eligible for credit notes.</p></td></tr>`;
                     if (wizardCreditRowsBody.dataset.piWired !== "true") {
                         wizardCreditRowsBody.dataset.piWired = "true";
                         wizardCreditRowsBody.addEventListener("change", (event) => {

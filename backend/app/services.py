@@ -5135,6 +5135,48 @@ def _pi_local_step2_reconciliation(ledger_rows: list[dict]) -> dict:
         if credit > Decimal("0.00"):
             bucket["credits"].append(row)
 
+    def _find_same_date_combo(target: Decimal, debits: list[dict], debit_used: list[bool]) -> tuple[list[int], Decimal]:
+        available = [
+            (index, _money(item.get("debit")))
+            for index, item in enumerate(debits)
+            if not debit_used[index] and _money(item.get("debit")) > Decimal("0.00")
+        ]
+        available.sort(key=lambda item: item[1], reverse=True)
+        available = available[:24]
+        if not available:
+            return [], Decimal("0.00")
+
+        best: tuple[tuple[Decimal, int], list[int], Decimal] | None = None
+        max_depth = 6
+        max_nodes = 3000
+        visited = 0
+
+        def _dfs(start: int, picked: list[int], running_total: Decimal) -> None:
+            nonlocal best, visited
+            visited += 1
+            if visited > max_nodes:
+                return
+            if picked:
+                delta = abs(running_total - target)
+                if delta <= tolerance:
+                    score = (delta, len(picked))
+                    if best is None or score < best[0]:
+                        best = (score, list(picked), running_total)
+                        if delta == Decimal("0.00") and len(picked) == 1:
+                            return
+            if len(picked) >= max_depth or start >= len(available):
+                return
+            if running_total > target + tolerance:
+                return
+            for cursor in range(start, len(available)):
+                debit_index, amount = available[cursor]
+                _dfs(cursor + 1, picked + [debit_index], running_total + amount)
+
+        _dfs(0, [], Decimal("0.00"))
+        if not best:
+            return [], Decimal("0.00")
+        return best[1], best[2]
+
     unmatched_rows: list[dict] = []
     hidden_pair_count = 0
     unmatched_total = Decimal("0.00")
@@ -5145,18 +5187,18 @@ def _pi_local_step2_reconciliation(ledger_rows: list[dict]) -> dict:
         debit_used = [False] * len(debits)
         for credit_row in credits:
             credit_amount = _money(credit_row.get("credit"))
-            matched_index = -1
-            for index, debit_row in enumerate(debits):
-                if debit_used[index]:
-                    continue
-                if abs(_money(debit_row.get("debit")) - credit_amount) <= tolerance:
-                    matched_index = index
-                    break
-            if matched_index >= 0:
-                debit_used[matched_index] = True
+            matched_indexes, matched_total = _find_same_date_combo(credit_amount, debits, debit_used)
+            if matched_indexes and abs(matched_total - credit_amount) <= tolerance:
+                for index in matched_indexes:
+                    debit_used[index] = True
                 hidden_pair_count += 1
                 continue
             unmatched_total += credit_amount
+            combo_hint = "No same-date debit combination balances this credit."
+            if matched_total > Decimal("0.00"):
+                combo_hint = (
+                    f"Same-date debit combination reached £{matched_total:.2f} versus credit £{credit_amount:.2f}."
+                )
             unmatched_rows.append(
                 {
                     "date": date_key,
@@ -5164,10 +5206,10 @@ def _pi_local_step2_reconciliation(ledger_rows: list[dict]) -> dict:
                     "description": str(credit_row.get("description") or "").strip() or "--",
                     "source": str(credit_row.get("source") or "").strip() or "--",
                     "credit": float(credit_amount),
-                    "matchingDebitTotal": 0.0,
-                    "unmatchedAmount": float(credit_amount),
+                    "matchingDebitTotal": float(_money(matched_total)),
+                    "unmatchedAmount": float(_money(max(Decimal("0.00"), credit_amount - matched_total))),
                     "aiStatus": "Needs review",
-                    "aiHint": f"No same-date debit equals £{credit_amount:.2f}.",
+                    "aiHint": combo_hint,
                 }
             )
     return {
@@ -5209,8 +5251,10 @@ async def _pi_ai_step2_reconciliation(month_label: str, ledger_rows: list[dict],
                 "role": "system",
                 "content": (
                     "You reconcile PI clearing ledger lines. Use only same-date matching. "
-                    "A debit can be used once. A credit is matched only when an unused same-date debit equals it within 0.01. "
-                    "Hide matched pairs. Return only unmatched credits."
+                    "A debit can be used once. A credit is fully matched when one or more unused same-date debits sum to that credit within 0.01. "
+                    "You may use split combinations (for example 100 = 50 + 50) and include refunds where signed amounts net correctly. "
+                    "Hide fully matched pairs and return only unmatched credits. "
+                    "Set matchingDebitTotal to the debit sum used for each unmatched credit."
                 ),
             },
             {
@@ -6137,7 +6181,7 @@ def pi_clearing_dry_run_pdf(
                 FROM pi_clearing_run_rows
                 WHERE run_id = %s
                   AND user_id = %s
-                  AND difference_total > 0
+                  AND ABS(difference_total) > 0.005
                   AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note', 'step1_xero_check_required')
             """
             params: list = [run_id, user["id"]]
@@ -6257,7 +6301,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 FROM pi_clearing_run_rows
                 WHERE run_id = %s
                   AND user_id = %s
-                  AND difference_total > 0
+                  AND ABS(difference_total) > 0.005
                   AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note', 'step1_xero_check_required')
             """
             params: list = [run_id, user["id"]]
@@ -6269,7 +6313,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             target_rows = cursor.fetchall() or []
         connection.commit()
     if not target_rows:
-        return {"created": [], "skipped": [], "message": "No positive-difference rows were selected."}
+        return {"created": [], "skipped": [], "message": "No eligible non-zero difference rows were selected."}
 
     connection_row = get_master_xero_connection_for_user(user["id"])
     created: list[dict] = []
@@ -6277,11 +6321,11 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
     for row in target_rows:
         row_id = str(row.get("id") or "")
         contact_id = str(row.get("xero_contact_id") or "").strip()
-        amount = _money(row.get("difference_total"))
+        amount = _money(row.get("difference_total")).copy_abs()
         currency_code = str(row.get("currency_code") or "GBP").strip() or "GBP"
         client_name = str(row.get("client_name") or "Unknown client")
         if amount <= 0:
-            skipped.append({"runRowId": row_id, "reason": "Row has no positive difference."})
+            skipped.append({"runRowId": row_id, "reason": "Row has no non-zero difference."})
             continue
         if not contact_id:
             skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
