@@ -29205,6 +29205,30 @@
                 font-weight: 600;
                 line-height: 1.35;
             }
+            .pi-step1-ai-decision-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                gap: 8px;
+            }
+            .pi-step1-ai-decision {
+                border: 1px solid rgba(30, 63, 124, 0.16);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: rgba(255, 255, 255, 0.7);
+                display: grid;
+                gap: 2px;
+            }
+            .pi-step1-ai-decision strong {
+                font-size: 11px;
+                color: #405d90;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+            }
+            .pi-step1-ai-decision span {
+                font-size: 13px;
+                color: #173f8f;
+                font-weight: 700;
+            }
             .pi-step1-ai-status.is-success {
                 border-color: rgba(16, 138, 92, 0.26);
                 background: rgba(16, 138, 92, 0.08);
@@ -51209,7 +51233,7 @@
                                 const stageCards = [
                                     "Pull Ignition payout lines",
                                     "Build same-date amount combinations",
-                                    "Map best match to Step 3 row",
+                                    "Map best match to Step 3 adjustment row",
                                 ].map((label, index) => {
                                     const tone = stageIndex > index ? "is-done" : stageIndex === index ? "is-active" : "";
                                     const stepLabel = `Step ${index + 1}`;
@@ -51234,11 +51258,21 @@
                             if (aiResult.status === "matched") {
                                 const lineCount = Number(aiResult?.lineCount || 0);
                                 const payoutId = String(aiResult?.payoutId || "--");
+                                const match = aiResult?.match && typeof aiResult.match === "object" ? aiResult.match : {};
+                                const payoutClient = String(match?.payoutLine?.clientName || "").trim() || "Unknown";
+                                const mappedClient = String(match?.runRow?.clientName || payoutClient).trim();
+                                const decisionMode = Boolean(match?.usedFallbackRow) ? "Fallback row" : "Direct row";
                                 return `
                                     <div class="pi-step1-ai-status is-success">
                                         <strong>AI found the balancing match</strong>
                                         <p>Matched ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(aiResult?.targetDate || row?.date || ""))} via payout ${escapeHTML(payoutId)} using ${escapeHTML(String(lineCount))} Ignition line${lineCount === 1 ? "" : "s"}.</p>
+                                        <div class="pi-step1-ai-decision-grid">
+                                            <article class="pi-step1-ai-decision"><strong>Payout line</strong><span>${escapeHTML(payoutClient)}</span></article>
+                                            <article class="pi-step1-ai-decision"><strong>Posting row</strong><span>${escapeHTML(mappedClient)}</span></article>
+                                            <article class="pi-step1-ai-decision"><strong>Match mode</strong><span>${escapeHTML(decisionMode)}</span></article>
+                                        </div>
                                         <div class="pi-step1-ai-actions">
+                                            <button class="ghost-button" type="button" data-pi-step1-open-payout="true">Open payout lines</button>
                                             <button class="primary-button" type="button" data-pi-step1-ai-apply="true">Fix Differences</button>
                                         </div>
                                     </div>
@@ -51248,7 +51282,10 @@
                                 return `
                                     <div class="pi-step1-ai-status is-warning">
                                         <strong>AI found payout evidence but no eligible Step 3 row</strong>
-                                        <p>We matched same-date payout lines for ${escapeHTML(formatCurrency(missingDebitAmount))}, but there is no eligible difference row to auto-select yet. Refresh and review row status/contact mapping.</p>
+                                        <p>We matched same-date payout lines for ${escapeHTML(formatCurrency(missingDebitAmount))}, but there is no eligible adjustment row to auto-select yet. Refresh and review row status/contact mapping.</p>
+                                        <div class="pi-step1-ai-actions">
+                                            <button class="ghost-button" type="button" data-pi-step1-open-payout="true">Open payout lines</button>
+                                        </div>
                                     </div>
                                 `;
                             }
@@ -51264,6 +51301,9 @@
                                 <div class="pi-step1-ai-status is-warning">
                                     <strong>No matching payout combination found</strong>
                                     <p>OpenAI reviewed same-date payout and refund lines but could not build a combination that balances ${escapeHTML(formatCurrency(missingDebitAmount))}. Confirm the missing Xero posting first.</p>
+                                    <div class="pi-step1-ai-actions">
+                                        <button class="ghost-button" type="button" data-pi-step1-open-payout="true">Open payout lines</button>
+                                    </div>
                                 </div>
                             `;
                         })();
@@ -51273,11 +51313,11 @@
                                 <div class="pi-step1-next-step">
                                     <div class="pi-step1-ai-intro">
                                         <strong>Ask Jenius AI to work out the missing debit logic</strong>
-                                        <small>Jenius uses OpenAI plus Ignition payout breakdown to find exact and split combinations, then maps the result to Step 3 credit-note treatment.</small>
+                                        <small>Jenius uses OpenAI plus Ignition payout breakdown to find exact and split combinations, then maps the result to Step 3 adjustment treatment.</small>
                                         <ol class="pi-step1-ai-steps">
                                             <li>Refresh latest Ignition payout lines and refunds</li>
                                             <li>Find same-date amount combinations that net to the missing value</li>
-                                            <li>Select the matching row for Step 3 credit-note creation</li>
+                                            <li>Select the matching row for Step 3 posting (credit note/invoice)</li>
                                         </ol>
                                     </div>
                                     ${aiStatusMarkup}
@@ -51416,21 +51456,35 @@
                             });
                         }
                         const applyAiButton = step1DifferenceBody.querySelector("[data-pi-step1-ai-apply]");
+                        const openPayoutButton = step1DifferenceBody.querySelector("[data-pi-step1-open-payout]");
+                        if (openPayoutButton) {
+                            openPayoutButton.addEventListener("click", () => {
+                                const match = piClearingStep1AiResult?.match;
+                                const payoutKey = String(match?.payout?.key || "").trim();
+                                if (!payoutKey) {
+                                    showToast("No payout batch key is available for this match yet.", "info");
+                                    return;
+                                }
+                                piClearingSelectedPayoutKey = payoutKey;
+                                piClearingPayoutDetailOpen = true;
+                                renderPiClearingAccountScreen();
+                            });
+                        }
                         if (applyAiButton) {
                             applyAiButton.addEventListener("click", () => {
                                 const match = piClearingStep1AiResult?.match;
                                 if (!match) return;
                                 if (!openPiClearingFixDifferenceModal(match)) {
-                                    showToast("AI found evidence, but no credit-note row could be prepared.", "warning");
+                                    showToast("AI found evidence, but no adjustment row could be prepared.", "warning");
                                     return;
                                 }
                                 const matchedClient = String(match?.runRow?.clientName || match?.payoutLine?.clientName || "the matched contact").trim();
                                 piClearingStep1DifferenceModalOpen = false;
                                 piClearingStep1DifferenceRow = null;
-                                piClearingStatusMessage = `Jenius AI prepared a credit-note fix for ${matchedClient} (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
+                                piClearingStatusMessage = `Jenius AI prepared a posting fix for ${matchedClient} (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
                                 piClearingStatusTone = "success";
                                 renderPiClearingAccountScreen();
-                                showToast("Review and confirm the credit note fix.", "success");
+                                showToast("Review and confirm the posting fix.", "success");
                             });
                         }
                     }
