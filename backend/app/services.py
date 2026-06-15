@@ -271,6 +271,7 @@ PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
+PI_CLEARING_OPENAI_TIMEOUT_SECONDS = 18
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -4534,16 +4535,26 @@ async def _pi_refresh_ignition_payment_datasets(user: dict) -> dict:
     endpoint_lookup = {name: endpoint for name, endpoint in IGNITION_DATASETS}
     practice_id = str(connection_row.get("practice_id") or "")
     dataset_stats: dict[str, dict] = {}
+    dataset_modified_since = {
+        dataset: (_ignition_incremental_modified_since(user["id"]) if _ignition_dataset_has_cache(user["id"], dataset) else None)
+        for dataset in ("payments", "collections")
+    }
     total_fetched = 0
     total_changed = 0
     for dataset in ("payments", "collections"):
         endpoint = endpoint_lookup.get(dataset)
         if not endpoint:
             continue
-        rows, _meta = await fetch_ignition_collection(connection_row, endpoint)
+        modified_since = dataset_modified_since.get(dataset)
+        rows, _meta = await fetch_ignition_collection(connection_row, endpoint, modified_since=modified_since)
         changed = _upsert_ignition_records(user, practice_id, dataset, rows)
         fetched = len(rows or [])
-        dataset_stats[dataset] = {"fetched": fetched, "changed": changed}
+        dataset_stats[dataset] = {
+            "fetched": fetched,
+            "changed": changed,
+            "incremental": bool(modified_since),
+            "modifiedSince": _iso(modified_since) or "",
+        }
         total_fetched += fetched
         total_changed += changed
 
@@ -4837,6 +4848,7 @@ async def _pi_ai_analysis(
             request_body,
             "PI Clearing analysis",
             preferred_model=settings.openai_model,
+            timeout_seconds=PI_CLEARING_OPENAI_TIMEOUT_SECONDS,
             user_id=user_id,
             feature="openai-core",
             page="practice-tools",
@@ -5947,7 +5959,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             step2_ledger_rows,
             user_id=str(user.get("id") or ""),
         )
-        if include_ignition
+        if include_ignition and include_ai
         else _pi_local_step2_reconciliation(step2_ledger_rows)
     )
 
@@ -6224,6 +6236,8 @@ def pi_clearing_dry_run_pdf(
 
 async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict | None = None) -> dict:
     safe_payload = payload if isinstance(payload, dict) else {}
+    if not bool(safe_payload.get("confirmed")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Confirm credit note creation before posting to Xero.")
     selected_row_ids = [str(item).strip() for item in (safe_payload.get("rowIds") or []) if str(item).strip()]
     requested_account_code = str(safe_payload.get("accountCode") or "").strip()
     with get_connection() as connection:

@@ -29079,6 +29079,24 @@
             .pi-step1-ai-button {
                 justify-self: start;
             }
+            .pi-step1-match-table-wrap {
+                width: 100%;
+                max-width: 100%;
+                overflow: auto;
+                border: 1px solid rgba(24, 62, 121, 0.16);
+                border-radius: 10px;
+                background: #f8fbff;
+            }
+            .pi-step1-match-table {
+                min-width: 640px;
+            }
+            .pi-step1-match-table thead th {
+                white-space: nowrap;
+                font-size: 12px;
+            }
+            .pi-step1-match-table td {
+                font-size: 12px;
+            }
             [data-pi-payout-key] {
                 cursor: pointer;
             }
@@ -49413,6 +49431,11 @@
                 const refreshXero = options?.refreshXero === true;
                 const refreshIgnition = includeIgnition && options?.refreshIgnition === true;
                 const targetStep = Math.max(0, Math.min(3, Number(options?.targetStep ?? 1)));
+                const batchStart = String(options?.batchStart || piClearingBatchStart || "").trim();
+                const batchEnd = String(options?.batchEnd || piClearingBatchEnd || "").trim();
+                const accountCode = String(options?.accountCode || currentPiClearingAccountCode() || "").trim();
+                if (batchStart) piClearingBatchStart = batchStart;
+                if (batchEnd) piClearingBatchEnd = batchEnd;
                 piClearingWorkflowRunning = true;
                 piClearingWorkflowMode = includeIgnition ? "full" : "step1";
                 piClearingWorkflowRefreshRequested = refreshXero;
@@ -49428,9 +49451,9 @@
                     const payload = await requestJSON(api.endpoints.piClearingAccountRun, {
                         method: "POST",
                         body: JSON.stringify({
-                            batchStart: piClearingBatchStart,
-                            batchEnd: piClearingBatchEnd,
-                            accountCode: currentPiClearingAccountCode(),
+                            batchStart,
+                            batchEnd,
+                            accountCode,
                             refreshXero,
                             refreshIgnition,
                             includeIgnition,
@@ -49489,6 +49512,15 @@
                 if (!run?.id) return showToast("Run the workflow first.", "info");
                 const rowIds = [...piClearingSelectedRowIds];
                 if (!rowIds.length) return showToast("Select at least one eligible difference row.", "info");
+                const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const selectedRows = runRows.filter((row) => rowIds.includes(String(row?.id || "")));
+                const totalAmount = selectedRows.reduce((sum, row) => sum + Number(row?.difference || 0), 0);
+                const confirmationMessage = [
+                    `Create ${rowIds.length} PI Clearing credit note${rowIds.length === 1 ? "" : "s"} in Xero?`,
+                    `Total amount: ${formatCurrency(totalAmount)}.`,
+                    "This will post authorised credit notes to Xero for the selected rows.",
+                ].join("\n");
+                if (!window.confirm(confirmationMessage)) return;
                 if (piClearingCreditNotesRunning) return;
                 piClearingCreditNotesRunning = true;
                 renderPiClearingAccountScreen();
@@ -49498,16 +49530,23 @@
                         body: JSON.stringify({
                             rowIds,
                             accountCode: currentPiClearingAccountCode(),
+                            confirmed: true,
                         }),
                     }, { runId: run.id });
                     if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
                     const updated = piClearingRuns.find((item) => String(item?.id || "") === String(run.id));
                     if (updated) piClearingSelectedRunId = String(updated.id || "");
                     piClearingSelectedRowIds = new Set();
+                    await loadPiClearingAccount(true);
                     const createdCount = Array.isArray(payload?.created) ? payload.created.length : 0;
                     const skippedCount = Array.isArray(payload?.skipped) ? payload.skipped.length : 0;
                     piClearingStatusMessage = `${createdCount} credit note${createdCount === 1 ? "" : "s"} created${skippedCount ? `, ${skippedCount} skipped` : ""}.`;
                     piClearingStatusTone = createdCount > 0 ? "success" : "info";
+                    piClearingWizardOpen = true;
+                    piClearingWizardStep = 1;
+                    piClearingShowMatchedStep1 = false;
+                    piClearingStep1DifferenceModalOpen = false;
+                    piClearingStep1DifferenceRow = null;
                     showToast(piClearingStatusMessage, createdCount > 0 ? "success" : "info");
                 } catch (error) {
                     piClearingStatusMessage = error?.message || "Unable to create PI clearing credit notes.";
@@ -50453,7 +50492,10 @@
                                         includeIgnition: true,
                                         includeAI: true,
                                         refreshXero: false,
-                                        refreshIgnition: true,
+                                        refreshIgnition: false,
+                                        batchStart: String(run?.monthStart || piClearingBatchStart || ""),
+                                        batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
+                                        accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
                                         targetStep: 2,
                                     });
                                 } finally {
@@ -50537,23 +50579,44 @@
                     if (step1DifferenceBody) {
                         const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
                         const matchedDebitLines = matchedDebits.length
-                            ? matchedDebits.map((item) => {
-                                const amountUsed = formatCurrency(Number(item?.amountUsed || item?.amount || 0));
-                                const contactName = String(
-                                    item?.contactName
-                                    || item?.clientName
-                                    || item?.xeroContactName
-                                    || item?.creditClientName
-                                    || item?.name
-                                    || ""
-                                ).trim() || "Unknown contact";
-                                const parts = [
-                                    amountUsed,
-                                    contactName,
-                                ].filter(Boolean);
-                                return `<div>${escapeHTML(parts.join(" · "))}</div>`;
-                            }).join("")
-                            : "<div>None</div>";
+                            ? `
+                                <div class="pi-step1-match-table-wrap">
+                                    <table class="ch-table pi-step1-match-table" aria-label="Matched debit lines">
+                                        <thead>
+                                            <tr>
+                                                <th>Debit amount used</th>
+                                                <th>Contact</th>
+                                                <th>Debit payment id</th>
+                                                <th>Reference</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${matchedDebits.map((item) => {
+                                                const amountUsed = formatCurrency(Number(item?.amountUsed || item?.amount || 0));
+                                                const contactName = String(
+                                                    item?.contactName
+                                                    || item?.clientName
+                                                    || item?.xeroContactName
+                                                    || item?.creditClientName
+                                                    || item?.name
+                                                    || ""
+                                                ).trim() || "Unknown contact";
+                                                const paymentId = String(item?.paymentId || item?.debitPaymentId || "--").trim() || "--";
+                                                const reference = String(item?.reference || item?.debitReference || "--").trim() || "--";
+                                                return `
+                                                    <tr>
+                                                        <td>${escapeHTML(amountUsed)}</td>
+                                                        <td>${escapeHTML(contactName)}</td>
+                                                        <td>${escapeHTML(paymentId)}</td>
+                                                        <td>${escapeHTML(reference)}</td>
+                                                    </tr>
+                                                `;
+                                            }).join("")}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `
+                            : `<p class="detail-meta">No same-date debit lines were matched to this credit.</p>`;
                         const nextStepMarkup = isBalanced
                             ? `<span class="pi-step-success"><span class="pi-step-success-icon" aria-hidden="true">✓</span><span class="pi-step-success-copy"><strong>Reconciled</strong><small>All same-date debits are matched.</small></span></span>`
                             : `
@@ -50584,7 +50647,10 @@
                                     includeIgnition: true,
                                     includeAI: true,
                                     refreshXero: false,
-                                    refreshIgnition: true,
+                                    refreshIgnition: false,
+                                    batchStart: String(run?.monthStart || piClearingBatchStart || ""),
+                                    batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
+                                    accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
                                     targetStep: 2,
                                 });
                             });
