@@ -28858,6 +28858,39 @@
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
                 font-size: 12px;
             }
+            .pi-step-success {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                color: #0f6e45;
+            }
+            .pi-step-success-icon {
+                width: 34px;
+                height: 34px;
+                border-radius: 999px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 21px;
+                font-weight: 800;
+                line-height: 1;
+                color: #0f6e45;
+                background: rgba(20, 128, 79, 0.16);
+                border: 2px solid rgba(20, 128, 79, 0.34);
+            }
+            .pi-step-success-copy {
+                display: inline-flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .pi-step-success-copy strong {
+                font-size: 16px;
+                letter-spacing: 0.01em;
+            }
+            .pi-step-success-copy small {
+                color: #2d6f53;
+                font-weight: 600;
+            }
             [data-pi-payout-key] {
                 cursor: pointer;
             }
@@ -49566,16 +49599,24 @@
                         const matchedDebitLines = matchedDebits.length
                             ? matchedDebits.map((item) => {
                                 const amountUsed = formatCurrency(Number(item?.amountUsed || item?.amount || 0));
-                                const paymentId = String(item?.paymentId || "").trim();
-                                const paidOn = formatDate(String(item?.paidOn || item?.date || "").trim());
+                                const contactName = String(
+                                    item?.contactName
+                                    || item?.clientName
+                                    || item?.xeroContactName
+                                    || item?.creditClientName
+                                    || item?.name
+                                    || ""
+                                ).trim() || "Unknown contact";
                                 const parts = [
                                     amountUsed,
-                                    paidOn && paidOn !== "--" ? paidOn : "",
-                                    paymentId ? `ID ${paymentId}` : "",
+                                    contactName,
                                 ].filter(Boolean);
                                 return `<div>${escapeHTML(parts.join(" · "))}</div>`;
                             }).join("")
                             : "<div>None</div>";
+                        const nextStepMarkup = isBalanced
+                            ? `<span class="pi-step-success"><span class="pi-step-success-icon" aria-hidden="true">✓</span><span class="pi-step-success-copy"><strong>Reconciled</strong><small>All same-date debits are matched.</small></span></span>`
+                            : "Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.";
                         step1DifferenceBody.innerHTML = row
                             ? `
                                 <tr><th>Credit payment id</th><td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td></tr>
@@ -49584,7 +49625,7 @@
                                 <tr><th>Matched debit total</th><td>${escapeHTML(formatCurrency(matchedDebitTotal))}</td></tr>
                                 <tr><th>Missing debit amount</th><td>${escapeHTML(formatCurrency(missingDebitAmount))}</td></tr>
                                 <tr><th>Matched debit lines</th><td>${matchedDebitLines}</td></tr>
-                                <tr><th>Next step</th><td>${isBalanced ? "No action needed. This credit is fully matched by same-date debits." : "Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions."}</td></tr>
+                                <tr><th>Next step</th><td>${nextStepMarkup}</td></tr>
                             `
                             : `<tr><td><p class="detail-meta">No row selected.</p></td></tr>`;
                     }
@@ -102081,17 +102122,24 @@
                     const isSelected = companiesHouseSettings.bmTasksSelection?.has(rowId);
                     const currentStatus = String(row?.status || "").trim().toLowerCase() || "open";
                     const statusMenu = `
-                        <div class="task-status-inline-menu" role="group" aria-label="Task status options">
-                            ${bmTaskStatusOptions().map((option) => {
-                                const optionValue = String(option?.value || "").trim().toLowerCase();
-                                const isActive = optionValue === currentStatus;
-                                return `
-                                    <button class="task-status-inline-option ${isActive ? "is-active" : ""}" type="button" aria-pressed="${isActive ? "true" : "false"}" data-task-status-option="${escapeHTML(rowId)}" data-task-status-value="${escapeHTML(optionValue)}">
-                                        <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(optionValue)}"><span>${escapeHTML(option?.label || bmTaskStatusLabel(optionValue))}</span></span>
-                                    </button>
-                                `;
-                            }).join("")}
-                        </div>
+                        <details class="task-status-menu-wrap" data-task-status-menu-wrap="${escapeHTML(rowId)}">
+                            <summary class="task-list-status-trigger" data-task-status-trigger="${escapeHTML(rowId)}" aria-label="Change task status">
+                                <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(currentStatus)}"><span>${escapeHTML(bmTaskStatusLabel(currentStatus))}</span></span>
+                                <span class="task-status-caret" aria-hidden="true">⌄</span>
+                            </summary>
+                            <div class="task-status-menu" data-task-status-menu="${escapeHTML(rowId)}" role="menu" aria-label="Task status options">
+                                ${bmTaskStatusOptions().map((option) => {
+                                    const optionValue = String(option?.value || "").trim().toLowerCase();
+                                    const isActive = optionValue === currentStatus;
+                                    return `
+                                        <button class="task-status-option ${isActive ? "is-active" : ""}" type="button" role="menuitemradio" aria-checked="${isActive ? "true" : "false"}" data-task-status-option="${escapeHTML(rowId)}" data-task-status-value="${escapeHTML(optionValue)}">
+                                            <span class="lock-status-pill task-status-pill ${bmTaskStatusTone(optionValue)}"><span>${escapeHTML(option?.label || bmTaskStatusLabel(optionValue))}</span></span>
+                                            ${isActive ? '<span class="task-status-option-check">Current</span>' : ""}
+                                        </button>
+                                    `;
+                                }).join("")}
+                            </div>
+                        </details>
                     `;
                     const assigneeName = String(row.assigneeName || "").trim();
                     const assigneeInitials = bmTaskAssigneeInitials(assigneeName);
@@ -102265,6 +102313,16 @@
                         event.stopPropagation();
                     });
                 });
+                body.querySelectorAll("[data-task-status-trigger]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                    });
+                });
+                body.querySelectorAll("[data-task-status-menu]").forEach((menu) => {
+                    menu.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                    });
+                });
                 body.querySelectorAll("[data-task-status-option]").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.preventDefault();
@@ -102276,6 +102334,8 @@
                         updateBmTaskStatus(match, nextStatus, "", {
                             autoNote: `Status set to ${bmTaskStatusLabel(nextStatus)} from task table.`,
                         });
+                        const statusWrap = button.closest("[data-task-status-menu-wrap]");
+                        if (statusWrap instanceof HTMLDetailsElement) statusWrap.open = false;
                         showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
                         renderTaskSubpages();
                     });
