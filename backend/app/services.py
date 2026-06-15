@@ -4957,6 +4957,7 @@ def _pi_daily_balance_analysis(xero_rows: list[dict]) -> dict:
 
 def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
     by_day: dict[str, dict] = {}
+    invoice_reference_pattern = re.compile(r"\bINV[-\s]?\d+", re.IGNORECASE)
     for row in xero_rows or []:
         paid_on = str(row.get("paidOn") or "").strip()[:10]
         if not paid_on:
@@ -4975,11 +4976,24 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
             "amount": amount,
             "reference": str(row.get("reference") or "").strip(),
             "clientName": str(row.get("clientName") or "").strip(),
+            "source": str(row.get("source") or "").strip().lower(),
         }
         if amount > Decimal("0.00"):
             bucket["debits"].append(item)
         elif amount < Decimal("0.00"):
-            bucket["credits"].append(item)
+            reference = str(item.get("reference") or "")
+            source = str(item.get("source") or "")
+            # Some Xero bank-transaction invoice collections can arrive with a negative sign.
+            # Reclassify clear invoice references as debits so Step 1 can match payout totals.
+            if source == "bank_transaction" and invoice_reference_pattern.search(reference):
+                bucket["debits"].append(
+                    {
+                        **item,
+                        "amount": amount.copy_abs(),
+                    }
+                )
+            else:
+                bucket["credits"].append(item)
 
     rows: list[dict] = []
     missing_credit_payment_ids: list[str] = []
