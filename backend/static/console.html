@@ -48269,12 +48269,9 @@
                     throw new Error("Choose and confirm a valid PI nominal account code from the connected Xero chart.");
                 }
                 const selectedCode = String(resolvedAccount.code || "").trim();
-                const selectedName = String(resolvedAccount.name || "").trim();
                 const isConfirmed = String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase();
                 if (!isConfirmed) {
-                    const confirmed = window.confirm(`Use Xero nominal ${selectedCode}${selectedName ? ` (${selectedName})` : ""} for this PI clearing batch?`);
-                    if (!confirmed) throw new Error("Confirm the Xero nominal account code before running the batch.");
-                    piClearingConfirmedAccountCode = selectedCode;
+                    throw new Error("Confirm the Xero account code first using 'Confirm Xero account code'.");
                 }
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 if (settings.piClearingAccountLocked && String(settings.piClearingAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase()) {
