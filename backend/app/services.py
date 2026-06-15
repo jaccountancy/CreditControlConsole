@@ -6291,13 +6291,34 @@ async def save_posting_settings(user: dict, payload: dict) -> dict:
 async def save_pi_clearing_account_setup(user: dict, payload: dict) -> dict:
     connection_row = get_master_xero_connection_for_user(user["id"])
     tenant_id = str(connection_row.get("tenant_id") or "").strip()
-    selected_code = str(payload.get("piClearingAccountCode") or payload.get("accountCode") or "").strip()
-    if not selected_code:
+    selected_value = str(payload.get("piClearingAccountCode") or payload.get("accountCode") or "").strip()
+    if not selected_value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a PI nominal account before starting the batch.")
 
     accounts = await _fetch_xero_chart_of_accounts(connection_row)
     account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
-    selected_account = account_by_code.get(selected_code.lower())
+    selected_account = account_by_code.get(selected_value.lower())
+    if selected_account is None:
+        selected_account = next(
+            (
+                account
+                for account in accounts
+                if str(account.get("name") or "").strip().lower() == selected_value.lower()
+            ),
+            None,
+        )
+    if selected_account is None and "·" in selected_value:
+        selected_code_hint = selected_value.split("·", 1)[0].strip()
+        if selected_code_hint:
+            selected_account = account_by_code.get(selected_code_hint.lower())
+    if selected_account is None:
+        fuzzy = [
+            account for account in accounts
+            if selected_value.lower() in str(account.get("code") or "").strip().lower()
+            or selected_value.lower() in str(account.get("name") or "").strip().lower()
+        ]
+        if len(fuzzy) == 1:
+            selected_account = fuzzy[0]
     if selected_account is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a PI nominal account from the connected Jaccountancy chart of accounts.")
 

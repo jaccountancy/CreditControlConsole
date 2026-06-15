@@ -35943,6 +35943,10 @@
                                             PI nominal account (Jaccountancy COA)
                                             <select id="piClearingBatchNominalSelect"></select>
                                         </label>
+                                        <div class="detail-actions is-wide" style="padding: 0;">
+                                            <button class="ghost-button" id="piClearingConfirmNominalButton" type="button">Confirm Xero account code</button>
+                                        </div>
+                                        <p class="pi-clearing-setup-state is-wide" id="piClearingNominalSelectionStatus" data-tone="warning">Account code not confirmed yet.</p>
                                         <p class="detail-meta is-wide" id="piClearingBatchNominalMeta">Select the PI nominal account once. This setting will lock after first save.</p>
                                     </div>
                                     <div class="summary-grid pi-clearing-kpi-grid pi-clearing-setup-summary" id="piClearingSetupSummaryGrid"></div>
@@ -37407,6 +37411,7 @@
             let piClearingSelectedAccountCode = "";
             let piClearingBatchStart = "";
             let piClearingBatchEnd = "";
+            let piClearingConfirmedAccountCode = "";
             let piClearingRunsSearchTerm = "";
             let piClearingRunsStatusFilter = "all";
             let piClearingRunsSort = "period-desc";
@@ -47730,6 +47735,31 @@
                 return Number.isNaN(date.getTime()) ? null : date;
             }
 
+            function piClearingResolveNominalAccount(rawValue = "") {
+                const value = String(rawValue || "").trim();
+                if (!value) return null;
+                const accounts = Array.isArray(xeroAccounts) ? xeroAccounts : [];
+                if (!accounts.length) return null;
+                const normalised = value.toLowerCase();
+                const byCode = accounts.find((account) => String(account?.code || "").trim().toLowerCase() === normalised);
+                if (byCode) return byCode;
+                const byName = accounts.find((account) => String(account?.name || "").trim().toLowerCase() === normalised);
+                if (byName) return byName;
+                const strippedCode = value.split("·")[0].trim();
+                if (strippedCode && strippedCode !== value) {
+                    const codeFromLabel = accounts.find((account) => String(account?.code || "").trim().toLowerCase() === strippedCode.toLowerCase());
+                    if (codeFromLabel) return codeFromLabel;
+                }
+                const matches = accounts.filter((account) => {
+                    const code = String(account?.code || "").trim().toLowerCase();
+                    const name = String(account?.name || "").trim().toLowerCase();
+                    const label = `${code} ${name}`.trim();
+                    return code.includes(normalised) || name.includes(normalised) || label.includes(normalised);
+                });
+                if (matches.length === 1) return matches[0];
+                return null;
+            }
+
             function piClearingSetupState() {
                 const startValue = String(piClearingBatchStart || "").trim();
                 const endValue = String(piClearingBatchEnd || "").trim();
@@ -47754,14 +47784,30 @@
                     return { valid: false, tone: "error", message: "Batch end date cannot be in the future.", dayCount: 0 };
                 }
                 const dayCount = Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-                if (!selectedCode) {
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                const lockedCode = String(settings?.piClearingAccountCode || "").trim();
+                const locked = Boolean(settings?.piClearingAccountLocked);
+                const resolved = piClearingResolveNominalAccount(selectedCode) || (locked ? piClearingResolveNominalAccount(lockedCode) : null);
+                if (!resolved) {
                     return { valid: false, tone: "warning", message: "Choose a PI nominal account before running this batch.", dayCount };
+                }
+                const confirmed = Boolean(piClearingConfirmedAccountCode)
+                    && String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === String(resolved.code || "").trim().toLowerCase();
+                const lockedMatch = locked && lockedCode && lockedCode.toLowerCase() === String(resolved.code || "").trim().toLowerCase();
+                if (!confirmed && !lockedMatch) {
+                    return {
+                        valid: false,
+                        tone: "warning",
+                        message: `Confirm ${resolved.code} (${resolved.name || "Xero nominal"}) as the PI source account.`,
+                        dayCount,
+                    };
                 }
                 return {
                     valid: true,
                     tone: "success",
                     message: `Ready to run ${dayCount.toLocaleString("en-GB")} day${dayCount === 1 ? "" : "s"} from ${formatDate(startValue)} to ${formatDate(endValue)}.`,
                     dayCount,
+                    accountCode: String(resolved.code || "").trim(),
                 };
             }
 
@@ -48218,12 +48264,21 @@
             }
 
             async function ensurePiClearingNominalSetup() {
-                const selectedCode = String(piClearingSelectedAccountCode || "").trim();
-                if (!selectedCode) {
-                    throw new Error("Choose the PI nominal account before running this batch.");
+                const resolvedAccount = piClearingResolveNominalAccount(piClearingSelectedAccountCode);
+                if (!resolvedAccount?.code) {
+                    throw new Error("Choose and confirm a valid PI nominal account code from the connected Xero chart.");
+                }
+                const selectedCode = String(resolvedAccount.code || "").trim();
+                const selectedName = String(resolvedAccount.name || "").trim();
+                const isConfirmed = String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase();
+                if (!isConfirmed) {
+                    const confirmed = window.confirm(`Use Xero nominal ${selectedCode}${selectedName ? ` (${selectedName})` : ""} for this PI clearing batch?`);
+                    if (!confirmed) throw new Error("Confirm the Xero nominal account code before running the batch.");
+                    piClearingConfirmedAccountCode = selectedCode;
                 }
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 if (settings.piClearingAccountLocked && String(settings.piClearingAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase()) {
+                    piClearingSelectedAccountCode = selectedCode;
                     return;
                 }
                 const payload = await requestJSON(api.endpoints.piClearingAccountSetup, {
@@ -48234,6 +48289,7 @@
                 xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || xeroAccounts);
                 xeroAccountsLoaded = true;
                 piClearingSelectedAccountCode = String(state.postingSettings?.piClearingAccountCode || selectedCode).trim();
+                piClearingConfirmedAccountCode = String(piClearingSelectedAccountCode || selectedCode).trim();
             }
 
             async function openPiClearingWizardSetup() {
@@ -48419,6 +48475,8 @@
                 const lastRunInput = document.getElementById("piClearingLastRunInput");
                 const nominalSelect = document.getElementById("piClearingBatchNominalSelect");
                 const nominalMeta = document.getElementById("piClearingBatchNominalMeta");
+                const confirmNominalButton = document.getElementById("piClearingConfirmNominalButton");
+                const nominalSelectionStatus = document.getElementById("piClearingNominalSelectionStatus");
                 const confirmBatchButton = document.getElementById("piClearingConfirmBatchButton");
                 const setupState = document.getElementById("piClearingSetupState");
                 const setupSummaryGrid = document.getElementById("piClearingSetupSummaryGrid");
@@ -48515,6 +48573,25 @@
                     nominalSelect.value = String(piClearingSelectedAccountCode || "").trim();
                     nominalSelect.disabled = Boolean(settings.piClearingAccountLocked) || piClearingWorkflowRunning;
                 }
+                const resolvedNominal = piClearingResolveNominalAccount(piClearingSelectedAccountCode);
+                if (confirmNominalButton) {
+                    confirmNominalButton.disabled = piClearingWorkflowRunning || Boolean(settings.piClearingAccountLocked) || !resolvedNominal;
+                }
+                if (nominalSelectionStatus) {
+                    const lockedCode = String(settings.piClearingAccountCode || "").trim();
+                    const lockedMatch = Boolean(settings.piClearingAccountLocked && resolvedNominal?.code && lockedCode.toLowerCase() === String(resolvedNominal.code || "").toLowerCase());
+                    const confirmedMatch = Boolean(resolvedNominal?.code && String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === String(resolvedNominal.code || "").toLowerCase());
+                    if (lockedMatch || confirmedMatch) {
+                        nominalSelectionStatus.dataset.tone = "success";
+                        nominalSelectionStatus.textContent = `Confirmed source account: ${resolvedNominal?.code || lockedCode}${resolvedNominal?.name ? ` · ${resolvedNominal.name}` : ""}.`;
+                    } else if (resolvedNominal?.code) {
+                        nominalSelectionStatus.dataset.tone = "warning";
+                        nominalSelectionStatus.textContent = `Selected ${resolvedNominal.code}${resolvedNominal?.name ? ` · ${resolvedNominal.name}` : ""}. Confirm this code before running transactions.`;
+                    } else {
+                        nominalSelectionStatus.dataset.tone = "error";
+                        nominalSelectionStatus.textContent = "Select a valid Xero nominal account code from the connected chart.";
+                    }
+                }
                 if (nominalMeta) {
                     nominalMeta.textContent = settings.piClearingAccountLocked
                         ? `PI nominal locked to ${String(settings.piClearingAccountCode || piClearingSelectedAccountCode || "").trim() || "saved code"}.`
@@ -48538,6 +48615,24 @@
                     nominalSelect.dataset.piWired = "true";
                     nominalSelect.addEventListener("change", (event) => {
                         piClearingSelectedAccountCode = String(event.target.value || "").trim();
+                        piClearingConfirmedAccountCode = "";
+                        renderPiClearingAccountScreen();
+                    });
+                }
+                if (confirmNominalButton && confirmNominalButton.dataset.piWired !== "true") {
+                    confirmNominalButton.dataset.piWired = "true";
+                    confirmNominalButton.addEventListener("click", () => {
+                        const selectedValue = String(nominalSelect?.value || piClearingSelectedAccountCode || "").trim();
+                        const account = piClearingResolveNominalAccount(selectedValue);
+                        if (!account?.code) {
+                            showToast("Select a valid Xero nominal account code first.", "error");
+                            return;
+                        }
+                        const ok = window.confirm(`Confirm Xero nominal ${account.code}${account.name ? ` (${account.name})` : ""} for PI clearing transaction pulls?`);
+                        if (!ok) return;
+                        piClearingSelectedAccountCode = String(account.code || "").trim();
+                        piClearingConfirmedAccountCode = String(account.code || "").trim();
+                        showToast(`Xero account ${account.code} confirmed for PI clearing.`, "success");
                         renderPiClearingAccountScreen();
                     });
                 }
