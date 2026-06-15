@@ -1173,6 +1173,80 @@ def payroll_headcount_payload(user: dict) -> dict:
     }
 
 
+def _juk_equity_previous_month_ends(month_count: int = 12, today: date | None = None) -> list[date]:
+    count = max(1, int(month_count or 12))
+    pivot = today or utcnow().date()
+    cursor = _month_start(pivot) - timedelta(days=1)
+    month_ends: list[date] = []
+    for _ in range(count):
+        month_ends.append(cursor)
+        cursor = _month_start(cursor) - timedelta(days=1)
+    month_ends.reverse()
+    return month_ends
+
+
+async def juk_equity_payload(user: dict) -> dict:
+    connection_row = get_xero_connection_for_user(user["id"])
+    month_ends = _juk_equity_previous_month_ends(12)
+    rows: list[dict] = []
+
+    for month_end in month_ends:
+        row = {
+            "monthEnd": month_end.isoformat(),
+            "monthLabel": month_end.strftime("%b %Y"),
+            "netAssets": None,
+            "missing": True,
+            "error": "",
+        }
+        try:
+            report_payload = await xero_api_get(
+                connection_row,
+                "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet",
+                {"date": month_end.isoformat()},
+            )
+            report_lines = _xero_report_lines(report_payload if isinstance(report_payload, dict) else {})
+            header_dates = _xero_report_header_dates(report_payload if isinstance(report_payload, dict) else {})
+            net_assets, _, _ = _code_breaker_xero_net_assets_with_diagnostics(
+                report_lines,
+                as_at_date=month_end,
+                header_dates=header_dates,
+            )
+            if net_assets is None:
+                row["error"] = "Net assets value was not present in the Balance Sheet response."
+            else:
+                row["netAssets"] = float(net_assets)
+                row["missing"] = False
+        except HTTPException as exc:
+            detail = exc.detail
+            row["error"] = str(detail.get("message") if isinstance(detail, dict) else detail or "Unable to fetch Xero balance sheet.")
+        except Exception as exc:
+            row["error"] = _sync_error_message(exc)
+        rows.append(row)
+
+    available_rows = [row for row in rows if row.get("netAssets") is not None]
+    latest_row = available_rows[-1] if available_rows else None
+    oldest_row = available_rows[0] if available_rows else None
+    highest_row = max(available_rows, key=lambda row: row.get("netAssets") or float("-inf")) if available_rows else None
+    twelve_month_change = None
+    if latest_row and oldest_row:
+        twelve_month_change = _money(Decimal(str(latest_row["netAssets"])) - Decimal(str(oldest_row["netAssets"])))
+
+    return {
+        "generatedAt": _iso(utcnow()) or "",
+        "organisationName": str(connection_row.get("tenant_name") or connection_row.get("tenant_id") or "Jaccountancy").strip(),
+        "latestCompletedMonthEnd": month_ends[-1].isoformat() if month_ends else "",
+        "series": rows,
+        "latestNetAssets": latest_row.get("netAssets") if latest_row else None,
+        "twelveMonthChange": float(twelve_month_change) if twelve_month_change is not None else None,
+        "highestMonth": {
+            "monthEnd": highest_row.get("monthEnd"),
+            "monthLabel": highest_row.get("monthLabel"),
+            "netAssets": highest_row.get("netAssets"),
+        } if highest_row else None,
+        "missingMonths": [row for row in rows if row.get("missing")],
+    }
+
+
 def upsert_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     clean_tenant_id = str(tenant_id or "").strip()
     if not clean_tenant_id:
@@ -3917,6 +3991,24 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
             "order": "Date ASC",
         },
     )
+    raw_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={
+            "where": f'{date_where}&&Type=="ACCREC"&&Status!="DELETED"&&Status!="VOIDED"',
+            "order": "Date ASC",
+        },
+    )
+    raw_credit_notes = await fetch_paginated_collection(
+        connection_row,
+        CREDIT_NOTES_URL,
+        "CreditNotes",
+        params={
+            "where": f'{date_where}&&Type=="ACCRECCREDIT"&&Status!="DELETED"&&Status!="VOIDED"',
+            "order": "Date ASC",
+        },
+    )
     raw_accounts = await fetch_paginated_collection(
         connection_row,
         ACCOUNTS_URL,
@@ -3970,6 +4062,10 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
     stored = 0
     journal_processed = 0
     journal_stored = 0
+    invoice_line_processed = 0
+    invoice_line_stored = 0
+    credit_note_line_processed = 0
+    credit_note_line_stored = 0
     with get_connection() as connection:
         with connection.cursor() as cursor:
             for raw_payment in raw_payments or []:
@@ -4116,6 +4212,192 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
                     )
                     processed += 1
                     stored += 1
+            for raw_invoice in raw_invoices or []:
+                invoice = raw_invoice if isinstance(raw_invoice, dict) else {}
+                invoice_id = str(invoice.get("InvoiceID") or "").strip()
+                if not invoice_id:
+                    continue
+                invoice_date = _parse_optional_iso_date(invoice.get("DateString") or invoice.get("Date"))
+                if invoice_date is None or invoice_date < month_start or invoice_date > month_end:
+                    continue
+                contact = invoice.get("Contact") if isinstance(invoice.get("Contact"), dict) else {}
+                contact_id = str(contact.get("ContactID") or "").strip()
+                customer_id = customer_lookup.get(contact_id) or (invoice_lookup.get(invoice_id) or {}).get("customer_id")
+                line_items = invoice.get("LineItems") if isinstance(invoice.get("LineItems"), list) else []
+                if not line_items:
+                    line_items = [
+                        {
+                            "LineAmount": invoice.get("SubTotal") or invoice.get("Total") or 0,
+                            "Description": str(invoice.get("Reference") or invoice.get("InvoiceNumber") or "Invoice").strip(),
+                            "AccountCode": "",
+                        }
+                    ]
+                for line_index, line in enumerate(line_items):
+                    if not isinstance(line, dict):
+                        continue
+                    line_amount = _money(line.get("LineAmount"))
+                    if line_amount == 0:
+                        continue
+                    amount_abs = line_amount.copy_abs()
+                    account_code = str(line.get("AccountCode") or "").strip()
+                    account_name = str(line.get("Account") or "").strip() or account_name_by_code.get(account_code, "")
+                    signed_amount = -amount_abs
+                    synthetic_id = f"inv:{invoice_id}:{line_index}"
+                    raw_payload = {
+                        **invoice,
+                        "Account": {
+                            "Code": account_code,
+                            "Name": account_name,
+                        },
+                        "InvoiceType": "ACCPAY",
+                        "PI_SignedAmount": float(signed_amount),
+                        "PI_Source": "invoice_line",
+                        "PI_LineIndex": line_index,
+                        "PI_LineDescription": str(line.get("Description") or "").strip(),
+                    }
+                    cursor.execute(
+                        """
+                        INSERT INTO payments (
+                            tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                            invoice_number, payment_date, amount, currency_code, reference,
+                            status, account_name, raw, synced_at, updated_at
+                        )
+                        VALUES (
+                            %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                            %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                            %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                        )
+                        ON CONFLICT (xero_payment_id) DO UPDATE
+                        SET customer_id = EXCLUDED.customer_id,
+                            invoice_id = EXCLUDED.invoice_id,
+                            xero_invoice_id = EXCLUDED.xero_invoice_id,
+                            invoice_number = EXCLUDED.invoice_number,
+                            payment_date = EXCLUDED.payment_date,
+                            amount = EXCLUDED.amount,
+                            currency_code = EXCLUDED.currency_code,
+                            reference = EXCLUDED.reference,
+                            status = EXCLUDED.status,
+                            account_name = EXCLUDED.account_name,
+                            raw = EXCLUDED.raw,
+                            synced_at = EXCLUDED.synced_at,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        {
+                            "tenant_id": tenant_id,
+                            "customer_id": customer_id,
+                            "invoice_id": (invoice_lookup.get(invoice_id) or {}).get("id"),
+                            "xero_payment_id": synthetic_id,
+                            "xero_invoice_id": invoice_id,
+                            "invoice_number": str(invoice.get("InvoiceNumber") or "").strip(),
+                            "payment_date": invoice_date,
+                            "amount": amount_abs,
+                            "currency_code": str(invoice.get("CurrencyCode") or "GBP"),
+                            "reference": str(invoice.get("Reference") or invoice.get("InvoiceNumber") or invoice_id).strip(),
+                            "status": str(invoice.get("Status") or "").strip(),
+                            "account_name": account_name or account_code,
+                            "raw_json": json.dumps(raw_payload, default=_json_default),
+                            "synced_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    invoice_line_processed += 1
+                    invoice_line_stored += 1
+            for raw_credit_note in raw_credit_notes or []:
+                credit_note = raw_credit_note if isinstance(raw_credit_note, dict) else {}
+                credit_note_id = str(credit_note.get("CreditNoteID") or "").strip()
+                if not credit_note_id:
+                    continue
+                note_date = _parse_optional_iso_date(credit_note.get("DateString") or credit_note.get("Date"))
+                if note_date is None or note_date < month_start or note_date > month_end:
+                    continue
+                contact = credit_note.get("Contact") if isinstance(credit_note.get("Contact"), dict) else {}
+                contact_id = str(contact.get("ContactID") or "").strip()
+                customer_id = customer_lookup.get(contact_id)
+                line_items = credit_note.get("LineItems") if isinstance(credit_note.get("LineItems"), list) else []
+                if not line_items:
+                    line_items = [
+                        {
+                            "LineAmount": credit_note.get("SubTotal") or credit_note.get("Total") or 0,
+                            "Description": str(
+                                credit_note.get("Reference") or credit_note.get("CreditNoteNumber") or "Credit note"
+                            ).strip(),
+                            "AccountCode": "",
+                        }
+                    ]
+                for line_index, line in enumerate(line_items):
+                    if not isinstance(line, dict):
+                        continue
+                    line_amount = _money(line.get("LineAmount"))
+                    if line_amount == 0:
+                        continue
+                    amount_abs = line_amount.copy_abs()
+                    account_code = str(line.get("AccountCode") or "").strip()
+                    account_name = str(line.get("Account") or "").strip() or account_name_by_code.get(account_code, "")
+                    signed_amount = amount_abs
+                    synthetic_id = f"cn:{credit_note_id}:{line_index}"
+                    raw_payload = {
+                        **credit_note,
+                        "Account": {
+                            "Code": account_code,
+                            "Name": account_name,
+                        },
+                        "InvoiceType": "ACCREC",
+                        "PI_SignedAmount": float(signed_amount),
+                        "PI_Source": "credit_note_line",
+                        "PI_LineIndex": line_index,
+                        "PI_LineDescription": str(line.get("Description") or "").strip(),
+                    }
+                    cursor.execute(
+                        """
+                        INSERT INTO payments (
+                            tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                            invoice_number, payment_date, amount, currency_code, reference,
+                            status, account_name, raw, synced_at, updated_at
+                        )
+                        VALUES (
+                            %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                            %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                            %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                        )
+                        ON CONFLICT (xero_payment_id) DO UPDATE
+                        SET customer_id = EXCLUDED.customer_id,
+                            invoice_id = EXCLUDED.invoice_id,
+                            xero_invoice_id = EXCLUDED.xero_invoice_id,
+                            invoice_number = EXCLUDED.invoice_number,
+                            payment_date = EXCLUDED.payment_date,
+                            amount = EXCLUDED.amount,
+                            currency_code = EXCLUDED.currency_code,
+                            reference = EXCLUDED.reference,
+                            status = EXCLUDED.status,
+                            account_name = EXCLUDED.account_name,
+                            raw = EXCLUDED.raw,
+                            synced_at = EXCLUDED.synced_at,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        {
+                            "tenant_id": tenant_id,
+                            "customer_id": customer_id,
+                            "invoice_id": None,
+                            "xero_payment_id": synthetic_id,
+                            "xero_invoice_id": credit_note_id,
+                            "invoice_number": str(credit_note.get("CreditNoteNumber") or "").strip(),
+                            "payment_date": note_date,
+                            "amount": amount_abs,
+                            "currency_code": str(credit_note.get("CurrencyCode") or "GBP"),
+                            "reference": str(
+                                credit_note.get("Reference")
+                                or credit_note.get("CreditNoteNumber")
+                                or credit_note_id
+                            ).strip(),
+                            "status": str(credit_note.get("Status") or "").strip(),
+                            "account_name": account_name or account_code,
+                            "raw_json": json.dumps(raw_payload, default=_json_default),
+                            "synced_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    credit_note_line_processed += 1
+                    credit_note_line_stored += 1
             for raw_journal in raw_journals or []:
                 journal = raw_journal if isinstance(raw_journal, dict) else {}
                 journal_id = str(journal.get("JournalID") or journal.get("JournalNumber") or "").strip()
@@ -4213,12 +4495,18 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
         connection.commit()
     return {
         "tenantId": tenant_id,
-        "fetched": len(raw_payments or []) + len(raw_bank_transactions or []) + len(raw_journals or []),
+        "fetched": len(raw_payments or []) + len(raw_bank_transactions or []) + len(raw_invoices or []) + len(raw_credit_notes or []) + len(raw_journals or []),
         "paymentFetched": len(raw_payments or []),
         "bankTransactionFetched": len(raw_bank_transactions or []),
+        "invoiceFetched": len(raw_invoices or []),
+        "creditNoteFetched": len(raw_credit_notes or []),
         "journalFetched": len(raw_journals or []),
-        "processed": processed + journal_processed,
-        "stored": stored + journal_stored,
+        "processed": processed + invoice_line_processed + credit_note_line_processed + journal_processed,
+        "stored": stored + invoice_line_stored + credit_note_line_stored + journal_stored,
+        "invoiceLineProcessed": invoice_line_processed,
+        "invoiceLineStored": invoice_line_stored,
+        "creditNoteLineProcessed": credit_note_line_processed,
+        "creditNoteLineStored": credit_note_line_stored,
         "journalProcessed": journal_processed,
         "journalStored": journal_stored,
         "journalsError": journals_error,
@@ -5461,6 +5749,21 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     if not str(xero_refresh.get("lastRefreshedAt") or "").strip():
         xero_refresh["lastRefreshedAt"] = xero_last_refreshed_at or str(xero_refresh.get("refreshedAt") or "")
     xero_step1 = _pi_step1_xero_credit_debit_check(xero_rows)
+    if not force_refresh_xero and int(xero_step1.get("missingCreditCount") or 0) > 0:
+        has_ledger_supporting_sources = any(
+            str(row.get("source") or "").strip().lower() in {"journal_line", "invoice_line", "credit_note_line"}
+            for row in xero_rows
+        )
+        if not has_ledger_supporting_sources:
+            xero_refresh = await _pi_refresh_xero_payments_for_month(user, month_start, month_end)
+            xero_rows, tenant_id, xero_last_refreshed_at = _pi_load_xero_payments(user, month_start, month_end, account_code)
+            if not str(xero_refresh.get("lastRefreshedAt") or "").strip():
+                xero_refresh["lastRefreshedAt"] = xero_last_refreshed_at or str(xero_refresh.get("refreshedAt") or "")
+            xero_refresh["autoRefreshReason"] = (
+                "Step 1 showed missing debit coverage with cached payment-only data; "
+                "refreshed Xero and rebuilt PI ledger rows from invoices/credit notes/journals."
+            )
+            xero_step1 = _pi_step1_xero_credit_debit_check(xero_rows)
     missing_credit_payment_ids = {
         str(item).strip()
         for item in (xero_step1.get("missingCreditPaymentIds") or [])

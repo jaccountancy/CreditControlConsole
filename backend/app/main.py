@@ -225,6 +225,7 @@ from .services import (
     send_ignition_renewals_email,
     sync_payroll_headcount_with_ignition,
     sync_payroll_headcount_workspace,
+    juk_equity_payload,
     update_control_status,
     update_ignition_renewal_run,
     update_bank_statement_account,
@@ -3043,6 +3044,11 @@ async def api_void_pi_clearing_account_credit_note(
 @app.get("/api/payroll-headcount")
 def api_payroll_headcount(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **payroll_headcount_payload(user)}
+
+
+@app.get("/api/juk-equity")
+async def api_juk_equity(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await juk_equity_payload(user)}
 
 
 @app.post("/api/payroll-headcount/workspaces")

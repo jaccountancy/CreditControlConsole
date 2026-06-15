@@ -29108,6 +29108,89 @@
                 border-radius: inherit;
                 transition: width 0.2s ease;
             }
+            .juk-equity-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px;
+                margin: 12px 0 16px;
+            }
+            .juk-equity-summary-card {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.76);
+                padding: 14px 16px;
+                display: grid;
+                gap: 8px;
+            }
+            .juk-equity-summary-card span {
+                font-size: 0.76rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--muted);
+                font-weight: 700;
+            }
+            .juk-equity-summary-card strong {
+                font-size: 1.2rem;
+                letter-spacing: -0.02em;
+            }
+            .juk-equity-chart-card {
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.8);
+                padding: 14px 16px;
+            }
+            .juk-equity-chart-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+            .juk-equity-chart-head small {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 700;
+            }
+            .juk-equity-chart-shell {
+                position: relative;
+                min-height: 360px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 248, 255, 0.94));
+                padding: 8px;
+            }
+            .juk-equity-chart-shell svg {
+                width: 100%;
+                height: 360px;
+                display: block;
+            }
+            .juk-equity-chart-tooltip {
+                position: absolute;
+                z-index: 3;
+                pointer-events: none;
+                padding: 6px 8px;
+                border-radius: 8px;
+                background: rgba(30, 47, 77, 0.92);
+                color: #fff;
+                font-size: 0.75rem;
+                line-height: 1.35;
+                transform: translate(-50%, calc(-100% - 10px));
+                white-space: nowrap;
+            }
+            .juk-equity-chart-tooltip[hidden] {
+                display: none;
+            }
+            @media (max-width: 980px) {
+                .juk-equity-summary-grid {
+                    grid-template-columns: 1fr;
+                }
+                .juk-equity-chart-shell {
+                    min-height: 320px;
+                }
+                .juk-equity-chart-shell svg {
+                    height: 320px;
+                }
+            }
                 </style>
             </head>
             <body>
@@ -29277,6 +29360,10 @@
                                 <a class="app-nav-button" href="#credit-control-xero-subs-review" data-app-nav="xero-subs-review">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16v14H4z"></path><path d="M8 9h8"></path><path d="M8 13h5"></path><path d="m15 15 2 2 3-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Subs Review</strong><span>Subscription audit queue</span></span>
+                                </a>
+                                <a class="app-nav-button" href="#credit-control-juk-equity" data-app-nav="juk-equity">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 15h4"></path><path d="M11 11h4"></path><path d="M15 7h2"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>JUK Equity</strong><span>Net assets trend</span></span>
                                 </a>
                             </div>
                         </div>
@@ -34851,6 +34938,53 @@
                         </section>
                     </section>
 
+                    <section class="late-charges-screen detail-card" id="jukEquityScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Management</p>
+                                    <h3>JUK Equity</h3>
+                                    <p class="detail-meta">Tracking Jaccountancy’s month-end net asset position from Xero.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="jukEquityRefreshButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="jukEquityStatusSummary">Monthly net assets from Xero balance sheet data</p>
+                            <section class="juk-equity-summary-grid" id="jukEquitySummaryGrid">
+                                <article class="juk-equity-summary-card">
+                                    <span>Latest Net Assets</span>
+                                    <strong id="jukEquityLatestValue">--</strong>
+                                </article>
+                                <article class="juk-equity-summary-card">
+                                    <span>12-Month Change</span>
+                                    <strong id="jukEquityChangeValue">--</strong>
+                                </article>
+                                <article class="juk-equity-summary-card">
+                                    <span>Highest Month-End Position</span>
+                                    <strong id="jukEquityPeakValue">--</strong>
+                                </article>
+                            </section>
+                            <section class="juk-equity-chart-card">
+                                <div class="juk-equity-chart-head">
+                                    <div>
+                                        <p class="eyebrow">JUK Net Assets – Last 12 Months</p>
+                                        <h4>Monthly net assets trend</h4>
+                                    </div>
+                                    <small id="jukEquityLastRefreshed">Last refreshed: --</small>
+                                </div>
+                                <div class="juk-equity-chart-shell" id="jukEquityChartArea">
+                                    <div class="empty-state">
+                                        <p class="eyebrow">JUK Equity</p>
+                                        <h4>Chart area ready</h4>
+                                        <p>Loading JUK Equity data from Xero…</p>
+                                    </div>
+                                </div>
+                                <p class="detail-meta" id="jukEquityMissingMonthsNotice" hidden></p>
+                            </section>
+                        </section>
+                    </section>
+
                     <section class="late-charges-screen detail-card" id="jukInvoicesScreen" hidden>
                         <section class="detail-panel">
                             <div class="detail-hero">
@@ -37656,6 +37790,18 @@
             let clientCallStatsAiReports = [];
             let clientCallStatsLatestAiReport = null;
             let clientCallStatsEventsBound = false;
+            let jukEquityLoading = false;
+            let jukEquityError = "";
+            let jukEquityData = {
+                generatedAt: "",
+                organisationName: "",
+                latestCompletedMonthEnd: "",
+                series: [],
+                latestNetAssets: null,
+                twelveMonthChange: null,
+                highestMonth: null,
+                missingMonths: [],
+            };
             const clientCallStatsFilterPresetStorageKey = `${STORAGE_KEY}:client-call-stats-filter-presets:v1`;
             const clientCallStatsUIPrefsStorageKey = `${STORAGE_KEY}:client-call-stats-ui-prefs:v1`;
             const clientCallStatsDefaultCollapsedPanels = {
@@ -37958,6 +38104,7 @@
                 "juk-invoices": "JUK Invoices",
                 "practice-packs": "Practice Pack Generator",
                 "xero-subs-review": "Xero Subs Review",
+                "juk-equity": "JUK Equity",
                 "code-breaker": "Equity Montior",
                 "micro-analyzer": "VAT on Unregistered",
                 "payroll-headcount": "Payroll Headcount",
@@ -37998,6 +38145,7 @@
                 "juk-invoices": "Open the dedicated JUK invoice page and route into monthly-flow invoice checks and remediation.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
                 "xero-subs-review": "Review and track Xero subscriptions, ownership and renewal timing.",
+                "juk-equity": "Track Jaccountancy month-end net assets from Xero balance sheet reports.",
                 "code-breaker": "Detect post-submission deltas between filed data and live Xero changes, then generate adjustment guidance.",
                 "micro-analyzer": "Identify Ignition Micro/Starter clients and clear VAT coding from matched Xero transactions.",
                 "payroll-headcount": "Track payroll headcount changes and highlight movement trends.",
@@ -39009,6 +39157,7 @@
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
                         piClearingAccountVoidCreditNote: config.endpoints?.piClearingAccountVoidCreditNote || "/api/pi-clearing-account/runs/:runId/credit-notes/:creditNoteRecordId/void",
                         piClearingAccountDryRunPdf: config.endpoints?.piClearingAccountDryRunPdf || "/api/pi-clearing-account/runs/:runId/dry-run.pdf",
+                        jukEquity: config.endpoints?.jukEquity || "/api/juk-equity",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
                         meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
                         meReportClientStatus: config.endpoints?.meReportClientStatus || "/api/me-report/clients/:clientId/status",
@@ -42198,6 +42347,7 @@
                 if (activeView === "juk-invoices") return "juk-invoices";
                 if (activeView === "practice-packs") return "practice-packs";
                 if (activeView === "xero-subs-review") return "xero-subs-review";
+                if (activeView === "juk-equity") return "juk-equity";
                 if (activeView === "payroll-headcount") return "payroll-headcount";
                 if (activeView === "client-call-stats") return "client-call-stats";
                 if (activeView === "pi-clearing-account") return "pi-clearing-account";
@@ -42430,6 +42580,7 @@
                 if (activeView === "task-list" || activeView === "task-approvals-bouncebacks" || activeView === "task-completed" || activeView === "tasks") return "practice";
                 if (activeView === "practice-packs") return "practice";
                 if (activeView === "xero-subs-review") return "practice";
+                if (activeView === "juk-equity") return "practice";
                 if (activeView === "code-breaker") return "practice";
                 if (activeView === "micro-analyzer") return "practice";
                 if (activeView === "payroll-headcount") return "practice";
@@ -42571,6 +42722,7 @@
                 setElementVisible(document.getElementById("taskCompletedScreen"), activeView === "task-completed");
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
                 setElementVisible(document.getElementById("xeroSubsReviewScreen"), activeView === "xero-subs-review");
+                setElementVisible(document.getElementById("jukEquityScreen"), activeView === "juk-equity");
                 setElementVisible(document.getElementById("codeBreakerScreen"), activeView === "code-breaker");
                 setElementVisible(document.getElementById("microAnalyzerScreen"), activeView === "micro-analyzer");
                 setElementVisible(document.getElementById("payrollHeadcountScreen"), activeView === "payroll-headcount");
@@ -42581,7 +42733,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -42684,6 +42836,16 @@
                 scrollConsoleToTop();
             }
 
+            function openJukEquityScreen() {
+                activeView = "juk-equity";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadJukEquityData({ silent: false });
+                scrollConsoleToTop();
+            }
+
             function openPayrollHeadcountScreen() {
                 activeView = "payroll-headcount";
                 syncActiveViewShell();
@@ -42719,6 +42881,267 @@
                 const summary = document.getElementById("xeroSubsReviewSummary");
                 if (!summary) return;
                 summary.textContent = "Xero subscription review workspace is ready.";
+            }
+
+            function jukEquityValueSeries() {
+                return (jukEquityData.series || []).filter((row) => Number.isFinite(Number(row?.netAssets)));
+            }
+
+            function jukEquityDateLabel(value) {
+                const text = String(value || "").trim();
+                if (!text) return "--";
+                const parsed = new Date(text);
+                if (Number.isNaN(parsed.getTime())) return text;
+                return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(parsed);
+            }
+
+            function createSvgElement(tagName) {
+                return document.createElementNS("http://www.w3.org/2000/svg", tagName);
+            }
+
+            function renderJukEquityChart() {
+                const chartArea = document.getElementById("jukEquityChartArea");
+                if (!chartArea) return;
+                chartArea.innerHTML = "";
+                const series = Array.isArray(jukEquityData.series) ? jukEquityData.series : [];
+                const points = series.map((row, index) => ({
+                    index,
+                    monthEnd: String(row?.monthEnd || ""),
+                    monthLabel: String(row?.monthLabel || ""),
+                    netAssets: Number(row?.netAssets),
+                    hasValue: Number.isFinite(Number(row?.netAssets)),
+                }));
+                const valued = points.filter((point) => point.hasValue);
+                if (!valued.length) {
+                    const wrap = document.createElement("div");
+                    wrap.className = "empty-state";
+                    wrap.innerHTML = "<p class=\"eyebrow\">No chart data</p><h4>Net assets could not be loaded</h4><p>Use Refresh to try again after checking Xero reports access.</p>";
+                    chartArea.appendChild(wrap);
+                    return;
+                }
+
+                const width = 1040;
+                const height = 360;
+                const margin = { top: 20, right: 20, bottom: 58, left: 84 };
+                const innerWidth = width - margin.left - margin.right;
+                const innerHeight = height - margin.top - margin.bottom;
+                const xStep = points.length > 1 ? innerWidth / (points.length - 1) : 0;
+                const minValue = Math.min(...valued.map((point) => point.netAssets));
+                const maxValue = Math.max(...valued.map((point) => point.netAssets));
+                const paddedRange = maxValue - minValue === 0 ? Math.max(1, Math.abs(maxValue) * 0.2 || 1) : (maxValue - minValue) * 0.16;
+                const yMin = minValue - paddedRange;
+                const yMax = maxValue + paddedRange;
+                const yScale = (value) => {
+                    if (yMax === yMin) return margin.top + innerHeight / 2;
+                    return margin.top + ((yMax - value) / (yMax - yMin)) * innerHeight;
+                };
+                const xScale = (index) => margin.left + xStep * index;
+
+                const svg = createSvgElement("svg");
+                svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+                svg.setAttribute("role", "img");
+                svg.setAttribute("aria-label", "JUK net assets line graph for last 12 completed months");
+
+                const gridLineCount = 5;
+                for (let i = 0; i <= gridLineCount; i += 1) {
+                    const ratio = i / gridLineCount;
+                    const value = yMax - (yMax - yMin) * ratio;
+                    const y = margin.top + innerHeight * ratio;
+                    const gridLine = createSvgElement("line");
+                    gridLine.setAttribute("x1", String(margin.left));
+                    gridLine.setAttribute("x2", String(width - margin.right));
+                    gridLine.setAttribute("y1", String(y));
+                    gridLine.setAttribute("y2", String(y));
+                    gridLine.setAttribute("stroke", "rgba(61, 85, 130, 0.16)");
+                    gridLine.setAttribute("stroke-width", "1");
+                    svg.appendChild(gridLine);
+
+                    const axisLabel = createSvgElement("text");
+                    axisLabel.setAttribute("x", String(margin.left - 10));
+                    axisLabel.setAttribute("y", String(y + 4));
+                    axisLabel.setAttribute("text-anchor", "end");
+                    axisLabel.setAttribute("fill", "rgba(73, 92, 130, 0.86)");
+                    axisLabel.setAttribute("font-size", "11");
+                    axisLabel.textContent = formatCurrency(value);
+                    svg.appendChild(axisLabel);
+                }
+
+                let currentPath = [];
+                const pathData = [];
+                points.forEach((point) => {
+                    if (!point.hasValue) {
+                        if (currentPath.length) pathData.push(currentPath);
+                        currentPath = [];
+                        return;
+                    }
+                    const x = xScale(point.index);
+                    const y = yScale(point.netAssets);
+                    currentPath.push({ x, y });
+                });
+                if (currentPath.length) pathData.push(currentPath);
+                pathData.forEach((segment) => {
+                    if (!segment.length) return;
+                    const path = createSvgElement("path");
+                    const d = segment.map((item, index) => `${index === 0 ? "M" : "L"} ${item.x} ${item.y}`).join(" ");
+                    path.setAttribute("d", d);
+                    path.setAttribute("fill", "none");
+                    path.setAttribute("stroke", "#1d67f2");
+                    path.setAttribute("stroke-width", "3");
+                    path.setAttribute("stroke-linecap", "round");
+                    path.setAttribute("stroke-linejoin", "round");
+                    svg.appendChild(path);
+                });
+
+                const tooltip = document.createElement("div");
+                tooltip.className = "juk-equity-chart-tooltip";
+                tooltip.hidden = true;
+                chartArea.appendChild(tooltip);
+
+                valued.forEach((point) => {
+                    const x = xScale(point.index);
+                    const y = yScale(point.netAssets);
+                    const node = createSvgElement("circle");
+                    node.setAttribute("cx", String(x));
+                    node.setAttribute("cy", String(y));
+                    node.setAttribute("r", "4");
+                    node.setAttribute("fill", "#1d67f2");
+                    node.setAttribute("stroke", "#ffffff");
+                    node.setAttribute("stroke-width", "1.5");
+                    const title = createSvgElement("title");
+                    title.textContent = `${jukEquityDateLabel(point.monthEnd)} • ${formatCurrency(point.netAssets)}`;
+                    node.appendChild(title);
+                    node.addEventListener("mouseenter", () => {
+                        tooltip.hidden = false;
+                        tooltip.textContent = `${jukEquityDateLabel(point.monthEnd)} • ${formatCurrency(point.netAssets)}`;
+                    });
+                    node.addEventListener("mousemove", (event) => {
+                        const shell = chartArea.getBoundingClientRect();
+                        tooltip.style.left = `${event.clientX - shell.left}px`;
+                        tooltip.style.top = `${event.clientY - shell.top}px`;
+                    });
+                    node.addEventListener("mouseleave", () => {
+                        tooltip.hidden = true;
+                    });
+                    svg.appendChild(node);
+                });
+
+                points.forEach((point) => {
+                    const axisText = createSvgElement("text");
+                    axisText.setAttribute("x", String(xScale(point.index)));
+                    axisText.setAttribute("y", String(height - 22));
+                    axisText.setAttribute("text-anchor", "middle");
+                    axisText.setAttribute("fill", "rgba(73, 92, 130, 0.84)");
+                    axisText.setAttribute("font-size", "10");
+                    axisText.textContent = point.monthLabel;
+                    svg.appendChild(axisText);
+                });
+
+                chartArea.appendChild(svg);
+            }
+
+            function renderJukEquityScreen() {
+                const summary = document.getElementById("jukEquityStatusSummary");
+                if (!summary) return;
+                const refreshButton = document.getElementById("jukEquityRefreshButton");
+                if (refreshButton && refreshButton.dataset.jukEquityWired !== "true") {
+                    refreshButton.dataset.jukEquityWired = "true";
+                    refreshButton.addEventListener("click", () => {
+                        loadJukEquityData({ silent: false });
+                    });
+                }
+                if (refreshButton) {
+                    refreshButton.disabled = jukEquityLoading;
+                    refreshButton.textContent = jukEquityLoading ? "Refreshing…" : "Refresh";
+                }
+                const series = Array.isArray(jukEquityData.series) ? jukEquityData.series : [];
+                const valued = jukEquityValueSeries();
+                const latestValue = Number(jukEquityData.latestNetAssets);
+                const changeValue = Number(jukEquityData.twelveMonthChange);
+                const highestMonth = jukEquityData.highestMonth || null;
+                const loadingMessage = "Loading JUK Equity data from Xero…";
+                const errorMessage = "Unable to load JUK Equity data from Xero. Please check the Xero master connection and try again.";
+
+                if (jukEquityLoading) summary.textContent = loadingMessage;
+                else if (jukEquityError && !valued.length) summary.textContent = errorMessage;
+                else if (!series.length) summary.textContent = "Monthly net assets from Xero balance sheet data";
+                else summary.textContent = `${valued.length} of ${series.length} month-ends loaded from Xero balance sheet data.`;
+
+                const latestElement = document.getElementById("jukEquityLatestValue");
+                const changeElement = document.getElementById("jukEquityChangeValue");
+                const peakElement = document.getElementById("jukEquityPeakValue");
+                if (latestElement) latestElement.textContent = Number.isFinite(latestValue) ? formatCurrency(latestValue) : "--";
+                if (changeElement) changeElement.textContent = Number.isFinite(changeValue) ? formatCurrency(changeValue) : "--";
+                if (peakElement) {
+                    const peakValue = Number(highestMonth?.netAssets);
+                    const peakLabel = String(highestMonth?.monthLabel || "");
+                    peakElement.textContent = Number.isFinite(peakValue) ? `${formatCurrency(peakValue)} (${peakLabel})` : "--";
+                }
+
+                const refreshed = document.getElementById("jukEquityLastRefreshed");
+                if (refreshed) {
+                    refreshed.textContent = jukEquityData.generatedAt
+                        ? `Last refreshed: ${formatDateTime(jukEquityData.generatedAt)}`
+                        : "Last refreshed: --";
+                }
+
+                const missingNotice = document.getElementById("jukEquityMissingMonthsNotice");
+                if (missingNotice) {
+                    const missingMonths = (jukEquityData.missingMonths || []).map((row) => row?.monthLabel).filter(Boolean);
+                    missingNotice.hidden = missingMonths.length === 0;
+                    if (missingMonths.length) {
+                        missingNotice.textContent = `Missing month data: ${missingMonths.join(", ")}.`;
+                    }
+                }
+
+                if (jukEquityLoading && !valued.length) {
+                    const chartArea = document.getElementById("jukEquityChartArea");
+                    if (chartArea) {
+                        chartArea.innerHTML = "<div class=\"empty-state\"><p class=\"eyebrow\">Loading</p><h4>Loading JUK Equity data from Xero…</h4><p>The chart will appear as soon as month-end balance sheets are loaded.</p></div>";
+                    }
+                    return;
+                }
+
+                if (jukEquityError && !valued.length) {
+                    const chartArea = document.getElementById("jukEquityChartArea");
+                    if (chartArea) {
+                        chartArea.innerHTML = `<div class="empty-state"><p class="eyebrow">Xero connection error</p><h4>Unable to load JUK Equity data from Xero</h4><p>Please check the Xero master connection and try again.</p></div>`;
+                    }
+                    return;
+                }
+                renderJukEquityChart();
+            }
+
+            async function loadJukEquityData({ silent = false } = {}) {
+                if (jukEquityLoading) return;
+                jukEquityLoading = true;
+                if (!silent) jukEquityError = "";
+                renderJukEquityScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jukEquity);
+                    const series = Array.isArray(payload?.series) ? payload.series : [];
+                    jukEquityData = {
+                        generatedAt: String(payload?.generatedAt || ""),
+                        organisationName: String(payload?.organisationName || ""),
+                        latestCompletedMonthEnd: String(payload?.latestCompletedMonthEnd || ""),
+                        series,
+                        latestNetAssets: payload?.latestNetAssets ?? null,
+                        twelveMonthChange: payload?.twelveMonthChange ?? null,
+                        highestMonth: payload?.highestMonth || null,
+                        missingMonths: Array.isArray(payload?.missingMonths) ? payload.missingMonths : [],
+                    };
+                    if (!series.some((row) => Number.isFinite(Number(row?.netAssets)))) {
+                        jukEquityError = "Unable to load JUK Equity data from Xero.";
+                    }
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    jukEquityError = error?.message || "Unable to load JUK Equity data from Xero.";
+                    console.error("Unable to load JUK equity data", error);
+                } finally {
+                    jukEquityLoading = false;
+                    renderJukEquityScreen();
+                }
             }
 
             const JUK_INVOICE_STORE_KEY = "jenius-juksib-state-v1";
@@ -50015,6 +50438,7 @@
                 if (section === "vault") return openVaultScreen();
                 if (section === "practice-packs") return openPracticePackScreen();
                 if (section === "xero-subs-review") return openXeroSubsReviewScreen();
+                if (section === "juk-equity") return openJukEquityScreen();
                 if (section === "payroll-headcount") return openPayrollHeadcountScreen();
                 if (section === "client-call-stats") return openClientCallStatsScreen();
                 if (section === "pi-clearing-account") return openPiClearingAccountScreen();
@@ -50175,6 +50599,7 @@
                 "ignition",
                 "practice-packs",
                 "xero-subs-review",
+                "juk-equity",
             ]);
             const practiceAssuranceNavSections = new Set([
                 "risk-assessments",
@@ -50300,6 +50725,7 @@
                 "task-completed": "credit-control-task-completed",
                 "practice-packs": "credit-control-practice-packs",
                 "xero-subs-review": "credit-control-xero-subs-review",
+                "juk-equity": "credit-control-juk-equity",
                 "code-breaker": "credit-control-code-breaker",
                 "micro-analyzer": "credit-control-micro-analyzer",
                 "payroll-headcount": "credit-control-payroll-headcount",
@@ -80128,6 +80554,7 @@
                 else if (activeView === "ye-prep") activeNavSection = "ye-prep";
                 else if (activeView === "vat-return-prepare") activeNavSection = "vat-return-prepare";
                 else if (activeView === "xero-subs-review") activeNavSection = "xero-subs-review";
+                else if (activeView === "juk-equity") activeNavSection = "juk-equity";
                 else if (activeView === "code-breaker") activeNavSection = "code-breaker";
                 else if (activeView === "micro-analyzer") activeNavSection = "micro-analyzer";
                 else if (activeView === "payroll-headcount") activeNavSection = "payroll-headcount";
@@ -94131,6 +94558,7 @@
                     ["renderVatReturnPrepareScreen", () => renderVatReturnPrepareScreen()],
                     ["renderPracticePackScreen", () => renderPracticePackScreen()],
                     ["renderXeroSubsReviewScreen", () => renderXeroSubsReviewScreen()],
+                    ["renderJukEquityScreen", () => renderJukEquityScreen()],
                     ["renderTaskTrackerScreen", () => renderTaskTrackerScreen()],
                     ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],
                     ["renderMicroAnalyzerScreen", () => renderMicroAnalyzerScreen()],

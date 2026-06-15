@@ -1,4 +1,4 @@
-# Credit Control Backend
+# Jenius AI Backend
 
 This backend now owns:
 
