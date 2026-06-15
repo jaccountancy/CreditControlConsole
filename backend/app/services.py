@@ -13619,17 +13619,25 @@ def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dic
             )
             active_run = cursor.fetchone()
         connection.commit()
-    clients = [
-        _serialize_me_report_client(
-            row,
-            mappings_by_client.get(row["id"], []),
-            reviews_by_client.get(row["id"], [])[:8],
-            exceptions_by_client.get(row["id"], [])[:50],
-            reports_by_client.get(row["id"], [])[:12],
-            submissions_by_client.get(row["id"], [])[:20],
-        )
-        for row in client_rows
-    ]
+    clients: list[dict] = []
+    for row in client_rows:
+        try:
+            clients.append(
+                _serialize_me_report_client(
+                    row,
+                    mappings_by_client.get(row["id"], []),
+                    reviews_by_client.get(row["id"], [])[:8],
+                    exceptions_by_client.get(row["id"], [])[:50],
+                    reports_by_client.get(row["id"], [])[:12],
+                    submissions_by_client.get(row["id"], [])[:20],
+                )
+            )
+        except Exception:
+            logger.exception(
+                "me_report_client_serialize_failed user_id=%s client_id=%s",
+                user.get("id"),
+                row.get("id"),
+            )
     return clients, active_run, latest_run
 
 
@@ -13642,8 +13650,8 @@ def me_report_payload(user: dict) -> dict:
         if light in summary:
             summary[light] += 1
         latest_summary = client.get("summary") or {}
-        summary["estimatedCorporationTax"] += float(latest_summary.get("estimatedCorporationTax") or 0)
-        summary["dividendCapacity"] += float(latest_summary.get("dividendCapacity") or 0)
+        summary["estimatedCorporationTax"] += float(_money(latest_summary.get("estimatedCorporationTax")))
+        summary["dividendCapacity"] += float(_money(latest_summary.get("dividendCapacity")))
         if str(latest_summary.get("dlaStatus") or "").lower() == "red":
             summary["dlaRedCount"] += 1
         summary["reportsGenerated"] += len(client.get("reports") or [])
@@ -13665,7 +13673,11 @@ def me_report_payload(user: dict) -> dict:
         for row in sorted(connection_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name), reverse=True)
         if str(row.get("tenant_id") or "").strip()
     ]
-    contact_options = _me_report_contact_options(user, xero_connection.get("tenant_id") if xero_connection else None)
+    try:
+        contact_options = _me_report_contact_options(user, xero_connection.get("tenant_id") if xero_connection else None)
+    except Exception:
+        logger.exception("me_report_contact_options_failed user_id=%s", user.get("id"))
+        contact_options = []
     return {
         "summary": summary,
         "clients": clients,
