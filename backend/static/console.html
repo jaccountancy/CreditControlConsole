@@ -28847,8 +28847,10 @@
             }
             .pi-ledger-table td:nth-child(5),
             .pi-ledger-table td:nth-child(6),
+            .pi-ledger-table td:nth-child(7),
             .pi-ledger-table th:nth-child(5),
-            .pi-ledger-table th:nth-child(6) {
+            .pi-ledger-table th:nth-child(6),
+            .pi-ledger-table th:nth-child(7) {
                 text-align: right;
                 white-space: nowrap;
             }
@@ -35979,30 +35981,31 @@
                                             <tr>
                                                 <th>Date</th>
                                                 <th>Contact</th>
-                                                <th>Description</th>
-                                                <th>Source</th>
-                                                <th>Debit</th>
-                                                <th>Credit</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="piClearingWizardXeroBody"></tbody>
-                                    </table>
+                                            <th>Description</th>
+                                            <th>Source</th>
+                                            <th>Debit</th>
+                                            <th>Credit</th>
+                                            <th>Running balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="piClearingWizardXeroBody"></tbody>
+                                </table>
                                 </section>
                             </section>
                             <section class="pi-clearing-wizard-section" data-pi-wizard-section="2" hidden>
-                                <p class="detail-meta" id="piClearingWizardAnalysisSummary">Ignition payout checks and AI findings appear here after Step 1 completes.</p>
+                                <p class="detail-meta" id="piClearingWizardAnalysisSummary">Step 2 uses the same Step 1 transactions and hides same-date debit/credit pairs that net to zero. Only unmatched credit entries are shown for AI review.</p>
                                 <section class="ch-companies-table-wrap">
-                                    <table class="ch-table" aria-label="PI clearing wizard transaction rows">
+                                    <table class="ch-table pi-ledger-table" aria-label="PI clearing unmatched credit entries after same-date reconciliation">
                                         <thead>
                                             <tr>
-                                                <th>Client</th>
-                                                <th>Xero</th>
-                                                <th>Ignition (net)</th>
-                                                <th>Reversals</th>
-                                                <th>Existing CN</th>
-                                                <th>Difference</th>
-                                                <th>Contact mapped</th>
-                                                <th>Match status</th>
+                                                <th>Date</th>
+                                                <th>Contact</th>
+                                                <th>Description</th>
+                                                <th>Source</th>
+                                                <th>Credit</th>
+                                                <th>Matching debit (same date)</th>
+                                                <th>Unmatched amount</th>
+                                                <th>AI status</th>
                                             </tr>
                                         </thead>
                                         <tbody id="piClearingWizardRowsBody"></tbody>
@@ -47799,17 +47802,21 @@
                 const lockedCode = String(settings?.piClearingAccountCode || "").trim();
                 const locked = Boolean(settings?.piClearingAccountLocked);
                 const resolved = piClearingResolveNominalAccount(selectedCode) || (locked ? piClearingResolveNominalAccount(lockedCode) : null);
-                if (!resolved) {
+                const lockedFallback = locked && lockedCode
+                    ? { code: lockedCode, name: "", status: "LOCKED" }
+                    : null;
+                const effectiveAccount = resolved || lockedFallback;
+                if (!effectiveAccount) {
                     return { valid: false, tone: "warning", message: "Choose a PI nominal account before running this batch.", dayCount };
                 }
                 const confirmed = Boolean(piClearingConfirmedAccountCode)
-                    && String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === String(resolved.code || "").trim().toLowerCase();
-                const lockedMatch = locked && lockedCode && lockedCode.toLowerCase() === String(resolved.code || "").trim().toLowerCase();
+                    && String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === String(effectiveAccount.code || "").trim().toLowerCase();
+                const lockedMatch = locked && lockedCode && lockedCode.toLowerCase() === String(effectiveAccount.code || "").trim().toLowerCase();
                 if (!confirmed && !lockedMatch) {
                     return {
                         valid: false,
                         tone: "warning",
-                        message: `Confirm ${resolved.code} (${resolved.name || "Xero nominal"}) as the PI source account.`,
+                        message: `Confirm ${effectiveAccount.code} (${effectiveAccount.name || "Xero nominal"}) as the PI source account.`,
                         dayCount,
                     };
                 }
@@ -47818,7 +47825,7 @@
                     tone: "success",
                     message: `Ready to run ${dayCount.toLocaleString("en-GB")} day${dayCount === 1 ? "" : "s"} from ${formatDate(startValue)} to ${formatDate(endValue)}.`,
                     dayCount,
-                    accountCode: String(resolved.code || "").trim(),
+                    accountCode: String(effectiveAccount.code || "").trim(),
                 };
             }
 
@@ -47999,6 +48006,105 @@
                     if (leftDate !== rightDate) return leftDate - rightDate;
                     return String(left.clientName || "").localeCompare(String(right.clientName || ""));
                 });
+            }
+
+            function buildPiClearingStep2CreditReconciliation(rows = []) {
+                const tolerance = 0.01;
+                const ledgerRows = buildPiClearingXeroBreakdown(rows);
+                const rowsByDate = new Map();
+                ledgerRows.forEach((entry) => {
+                    const dateKey = String(entry?.paidOn || "").slice(0, 10) || "";
+                    const bucket = rowsByDate.get(dateKey) || { debits: [], credits: [] };
+                    const debit = Number(entry?.debit || 0);
+                    const credit = Number(entry?.credit || 0);
+                    if (debit > 0) bucket.debits.push(entry);
+                    if (credit > 0) bucket.credits.push(entry);
+                    rowsByDate.set(dateKey, bucket);
+                });
+
+                const unmatchedCredits = [];
+                let hiddenPairCount = 0;
+                let matchedCreditCount = 0;
+                let unmatchedCreditCount = 0;
+                let unmatchedCreditTotal = 0;
+
+                rowsByDate.forEach((bucket, dateKey) => {
+                    const debits = [...bucket.debits].sort((left, right) => Number(right.debit || 0) - Number(left.debit || 0));
+                    const debitUsed = new Array(debits.length).fill(false);
+                    const credits = [...bucket.credits].sort((left, right) => Number(right.credit || 0) - Number(left.credit || 0));
+
+                    credits.forEach((creditRow) => {
+                        const creditAmount = Number(creditRow?.credit || 0);
+                        let matchedIndex = -1;
+                        for (let index = 0; index < debits.length; index += 1) {
+                            if (debitUsed[index]) continue;
+                            const debitAmount = Number(debits[index]?.debit || 0);
+                            if (Math.abs(debitAmount - creditAmount) <= tolerance) {
+                                matchedIndex = index;
+                                break;
+                            }
+                        }
+                        if (matchedIndex >= 0) {
+                            debitUsed[matchedIndex] = true;
+                            hiddenPairCount += 1;
+                            matchedCreditCount += 1;
+                            return;
+                        }
+                        const dateDebitsTotal = debits.reduce((total, row) => total + Number(row?.debit || 0), 0);
+                        unmatchedCredits.push({
+                            ...creditRow,
+                            dateKey,
+                            matchingDebitTotal: 0,
+                            sameDateDebitPool: dateDebitsTotal,
+                            unmatchedAmount: creditAmount,
+                            aiStatus: "Needs review",
+                            aiHint: `No same-date debit equals ${formatCurrency(creditAmount)}.`,
+                        });
+                        unmatchedCreditCount += 1;
+                        unmatchedCreditTotal += creditAmount;
+                    });
+                });
+
+                unmatchedCredits.sort((left, right) => {
+                    const leftDate = Date.parse(left?.paidOn || 0) || 0;
+                    const rightDate = Date.parse(right?.paidOn || 0) || 0;
+                    if (leftDate !== rightDate) return leftDate - rightDate;
+                    return Number(right?.credit || 0) - Number(left?.credit || 0);
+                });
+
+                return {
+                    unmatchedCredits,
+                    hiddenPairCount,
+                    matchedCreditCount,
+                    unmatchedCreditCount,
+                    unmatchedCreditTotal,
+                };
+            }
+
+            function piStep2ReconciliationFromAnalysis(run = {}) {
+                const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
+                const step2 = analysis?.step2Reconciliation && typeof analysis.step2Reconciliation === "object"
+                    ? analysis.step2Reconciliation
+                    : null;
+                if (!step2) return null;
+                const rows = Array.isArray(step2?.rows) ? step2.rows : [];
+                return {
+                    source: String(step2?.engine || analysis?.engine || "openai").trim() || "openai",
+                    unmatchedCredits: rows.map((item) => ({
+                        paidOn: String(item?.date || "").trim(),
+                        clientName: String(item?.contact || "Unknown client").trim() || "Unknown client",
+                        description: String(item?.description || "--").trim() || "--",
+                        source: String(item?.source || "--").trim() || "--",
+                        credit: Number(item?.credit || 0),
+                        matchingDebitTotal: Number(item?.matchingDebitTotal || 0),
+                        unmatchedAmount: Number(item?.unmatchedAmount || 0),
+                        aiStatus: String(item?.aiStatus || "Needs review").trim() || "Needs review",
+                        aiHint: String(item?.aiHint || "Review this unmatched credit entry.").trim() || "Review this unmatched credit entry.",
+                    })),
+                    hiddenPairCount: Number(step2?.hiddenPairCount || 0),
+                    unmatchedCreditCount: Number(step2?.unmatchedCreditCount || rows.length || 0),
+                    unmatchedCreditTotal: Number(step2?.unmatchedCreditTotal || 0),
+                };
             }
 
             function buildPiClearingPayoutMatches(runRows = []) {
@@ -48275,29 +48381,37 @@
             }
 
             async function ensurePiClearingNominalSetup() {
-                const resolvedAccount = piClearingResolveNominalAccount(piClearingSelectedAccountCode);
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                const selectedCode = String(piClearingSelectedAccountCode || "").trim();
+                const lockedCode = String(settings.piClearingAccountCode || "").trim();
+                const resolvedAccount = piClearingResolveNominalAccount(selectedCode)
+                    || (settings.piClearingAccountLocked && lockedCode
+                        ? { code: lockedCode, name: "", status: "LOCKED" }
+                        : null);
                 if (!resolvedAccount?.code) {
                     throw new Error("Choose and confirm a valid PI nominal account code from the connected Xero chart.");
                 }
-                const selectedCode = String(resolvedAccount.code || "").trim();
-                const isConfirmed = String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase();
-                if (!isConfirmed) {
+                const effectiveCode = String(resolvedAccount.code || "").trim();
+                const isConfirmed = String(piClearingConfirmedAccountCode || "").trim().toLowerCase() === effectiveCode.toLowerCase();
+                const isLockedMatch = Boolean(settings.piClearingAccountLocked)
+                    && Boolean(lockedCode)
+                    && lockedCode.toLowerCase() === effectiveCode.toLowerCase();
+                if (!isConfirmed && !isLockedMatch) {
                     throw new Error("Confirm the Xero account code first using 'Confirm Xero account code'.");
                 }
-                const settings = normalisePostingSettings(state.postingSettings || {});
-                if (settings.piClearingAccountLocked && String(settings.piClearingAccountCode || "").trim().toLowerCase() === selectedCode.toLowerCase()) {
-                    piClearingSelectedAccountCode = selectedCode;
+                if (isLockedMatch) {
+                    piClearingSelectedAccountCode = effectiveCode;
                     return;
                 }
                 const payload = await requestJSON(api.endpoints.piClearingAccountSetup, {
                     method: "POST",
-                    body: JSON.stringify({ piClearingAccountCode: selectedCode }),
+                    body: JSON.stringify({ piClearingAccountCode: effectiveCode }),
                 });
                 state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
                 xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || xeroAccounts);
                 xeroAccountsLoaded = true;
-                piClearingSelectedAccountCode = String(state.postingSettings?.piClearingAccountCode || selectedCode).trim();
-                piClearingConfirmedAccountCode = String(piClearingSelectedAccountCode || selectedCode).trim();
+                piClearingSelectedAccountCode = String(state.postingSettings?.piClearingAccountCode || effectiveCode).trim();
+                piClearingConfirmedAccountCode = String(piClearingSelectedAccountCode || effectiveCode).trim();
             }
 
             async function openPiClearingWizardSetup() {
@@ -48905,6 +49019,7 @@
                 }
                 if (wizardXeroBody) {
                     const xeroLedgerRows = buildPiClearingXeroBreakdown(runRows);
+                    let runningBalance = 0;
                     wizardXeroBody.innerHTML = xeroLedgerRows.length
                         ? xeroLedgerRows.map((row) => {
                             const contact = String(
@@ -48919,6 +49034,7 @@
                             const source = String(row?.source || "--").trim() || "--";
                             const debit = Number(row?.debit || 0);
                             const credit = Number(row?.credit || 0);
+                            runningBalance += debit - credit;
                             return `
                                 <tr>
                                     <td>${escapeHTML(formatDate(row?.paidOn || ""))}</td>
@@ -48927,10 +49043,11 @@
                                     <td>${escapeHTML(source)}</td>
                                     <td>${escapeHTML(debit > 0 ? formatCurrency(debit) : "£0.00")}</td>
                                     <td>${escapeHTML(credit > 0 ? formatCurrency(credit) : "£0.00")}</td>
+                                    <td>${escapeHTML(formatCurrency(runningBalance))}</td>
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="6"><p class="detail-meta">No Xero account transactions found for this nominal account in the selected period.</p></td></tr>`;
+                        : `<tr><td colspan="7"><p class="detail-meta">No Xero account transactions found for this nominal account in the selected period.</p></td></tr>`;
                 }
                 if (wizardLoadButton) {
                     wizardLoadButton.disabled = piClearingWorkflowRunning;
@@ -48943,26 +49060,28 @@
                             : "Get transactions";
                     wizardLoadButton.onclick = runPiClearingWorkflow;
                 }
+                const step2FromAnalysis = piStep2ReconciliationFromAnalysis(run);
+                const step2Reconciliation = step2FromAnalysis || buildPiClearingStep2CreditReconciliation(runRows);
                 if (wizardRowsBody) {
+                    const unmatchedCredits = Array.isArray(step2Reconciliation?.unmatchedCredits) ? step2Reconciliation.unmatchedCredits : [];
                     wizardRowsBody.innerHTML = runRows.length
-                        ? runRows.map((row) => {
-                            const matchState = piRowMatchState(row);
-                            return `
+                        ? unmatchedCredits.length
+                            ? unmatchedCredits.map((row) => `
                                 <tr>
+                                    <td>${escapeHTML(formatDate(row?.paidOn || row?.date || ""))}</td>
                                     <td>${escapeHTML(String(row?.clientName || "Unknown client"))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.xeroTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.ignitionTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.ignitionReversalTotal || 0))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.existingCreditNoteTotal || 0))}</td>
+                                    <td>${escapeHTML(String(row?.description || "--"))}</td>
+                                    <td>${escapeHTML(String(row?.source || "--"))}</td>
+                                    <td>${escapeHTML(formatCurrency(Number(row?.credit || 0)))}</td>
+                                    <td>${escapeHTML(formatCurrency(Number(row?.matchingDebitTotal || 0)))}</td>
                                     <td>
-                                        ${escapeHTML(formatCurrency(row?.differenceTotal || 0))}
-                                        <span class="pi-mismatch-explainer">${escapeHTML(piRowExplainer(row))}</span>
+                                        ${escapeHTML(formatCurrency(Number(row?.unmatchedAmount || 0)))}
+                                        <span class="pi-mismatch-explainer">${escapeHTML(String(row?.aiHint || ""))}</span>
                                     </td>
-                                    <td>${row?.xeroContactId ? "Yes" : "No"}</td>
-                                    <td><span class="ch-pill ${escapeHTML(matchState.className)}">${escapeHTML(matchState.label)}</span></td>
+                                    <td><span class="ch-pill is-open">${escapeHTML(String(row?.aiStatus || "Needs review"))}</span></td>
                                 </tr>
-                            `;
-                        }).join("")
+                            `).join("")
+                            : `<tr><td colspan="8"><p class="detail-meta">All same-date credit entries are fully matched to equal debit entries. Nothing to review in Step 2.</p></td></tr>`
                         : `<tr><td colspan="8"><p class="detail-meta">Run the workflow to populate transaction rows.</p></td></tr>`;
                 }
                 if (wizardPayoutBody) {
@@ -49007,27 +49126,39 @@
                 const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
                 if (wizardAnalysisSummary) {
                     const summaryText = String(analysis?.summary || "").trim();
-                    const payoutRows = buildPiClearingPayoutBreakdown(runRows);
-                    const payoutMatches = buildPiClearingPayoutMatches(runRows);
-                    const unmatchedPayoutCount = payoutMatches.filter((item) => !item.matched).length;
-                    const ignitionIntro = payoutRows.length
-                        ? `Step 2 loaded ${formatInteger(payoutRows.length)} Ignition payout batch${payoutRows.length === 1 ? "" : "es"}; ${formatInteger(unmatchedPayoutCount)} need attention before credit notes.`
-                        : "Step 2 has no Ignition payout rows for this batch.";
+                    const hiddenPairCount = Number(step2Reconciliation?.hiddenPairCount || 0);
+                    const unmatchedCreditCount = Number(step2Reconciliation?.unmatchedCreditCount || 0);
+                    const unmatchedCreditTotal = Number(step2Reconciliation?.unmatchedCreditTotal || 0);
+                    const step2Engine = String(step2Reconciliation?.source || analysis?.engine || "local").trim().toLowerCase();
+                    const engineLabel = step2Engine.startsWith("openai") ? "OpenAI" : "Local";
+                    const ignitionIntro = runRows.length
+                        ? `Step 2 (${engineLabel}) reconciled Step 1 transactions: ${formatInteger(hiddenPairCount)} same-date debit/credit pair${hiddenPairCount === 1 ? "" : "s"} hidden; ${formatInteger(unmatchedCreditCount)} unmatched credit entr${unmatchedCreditCount === 1 ? "y" : "ies"} flagged (${formatCurrency(unmatchedCreditTotal)}).`
+                        : "Step 2 has no Step 1 transaction data yet.";
                     wizardAnalysisSummary.textContent = summaryText
                         ? `${ignitionIntro} ${summaryText}`
                         : `${ignitionIntro} AI analysis will appear after the workflow run completes.`;
                 }
                 if (wizardFindings) {
                     const findings = Array.isArray(analysis?.findings) ? analysis.findings : [];
+                    const fallbackFindings = [
+                        `${formatInteger(Number(step2Reconciliation?.hiddenPairCount || 0))} same-date debit/credit pair(s) were auto-netted and hidden from Step 2.`,
+                        `${formatInteger(Number(step2Reconciliation?.unmatchedCreditCount || 0))} unmatched credit entr${Number(step2Reconciliation?.unmatchedCreditCount || 0) === 1 ? "y" : "ies"} remain${Number(step2Reconciliation?.unmatchedCreditCount || 0) === 1 ? "s" : ""}.`,
+                        `Total unmatched credit exposure: ${formatCurrency(Number(step2Reconciliation?.unmatchedCreditTotal || 0))}.`,
+                    ];
                     wizardFindings.innerHTML = findings.length
                         ? findings.map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("")
-                        : "<li>No findings generated.</li>";
+                        : fallbackFindings.map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("");
                 }
                 if (wizardActions) {
                     const actions = Array.isArray(analysis?.actions) ? analysis.actions : [];
+                    const fallbackActions = [
+                        "Review each flagged credit and confirm whether a same-date debit should exist in PI Clearing.",
+                        "Where debit is truly missing, prepare follow-up correction or credit-note treatment in Step 3.",
+                        "Re-run Refresh transactions after posting corrections so Step 2 can auto-net the pair.",
+                    ];
                     wizardActions.innerHTML = actions.length
                         ? actions.map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("")
-                        : "<li>No actions generated.</li>";
+                        : fallbackActions.map((item) => `<li>${escapeHTML(String(item || ""))}</li>`).join("");
                 }
 
                 const creditRows = runRows.filter((row) => {

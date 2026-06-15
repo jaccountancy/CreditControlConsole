@@ -279,6 +279,87 @@ PI_CLEARING_AI_SCHEMA = {
         "findings": {"type": "array", "items": {"type": "string"}},
         "actions": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "number"},
+        "step2Reconciliation": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["engine", "hiddenPairCount", "unmatchedCreditCount", "unmatchedCreditTotal", "rows"],
+            "properties": {
+                "engine": {"type": "string"},
+                "hiddenPairCount": {"type": "number"},
+                "unmatchedCreditCount": {"type": "number"},
+                "unmatchedCreditTotal": {"type": "number"},
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "date",
+                            "contact",
+                            "description",
+                            "source",
+                            "credit",
+                            "matchingDebitTotal",
+                            "unmatchedAmount",
+                            "aiStatus",
+                            "aiHint",
+                        ],
+                        "properties": {
+                            "date": {"type": "string"},
+                            "contact": {"type": "string"},
+                            "description": {"type": "string"},
+                            "source": {"type": "string"},
+                            "credit": {"type": "number"},
+                            "matchingDebitTotal": {"type": "number"},
+                            "unmatchedAmount": {"type": "number"},
+                            "aiStatus": {"type": "string"},
+                            "aiHint": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+PI_CLEARING_STEP2_RECONCILIATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "hiddenPairCount", "unmatchedCreditCount", "unmatchedCreditTotal", "rows", "confidence"],
+    "properties": {
+        "summary": {"type": "string"},
+        "hiddenPairCount": {"type": "number"},
+        "unmatchedCreditCount": {"type": "number"},
+        "unmatchedCreditTotal": {"type": "number"},
+        "rows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "date",
+                    "contact",
+                    "description",
+                    "source",
+                    "credit",
+                    "matchingDebitTotal",
+                    "unmatchedAmount",
+                    "aiStatus",
+                    "aiHint",
+                ],
+                "properties": {
+                    "date": {"type": "string"},
+                    "contact": {"type": "string"},
+                    "description": {"type": "string"},
+                    "source": {"type": "string"},
+                    "credit": {"type": "number"},
+                    "matchingDebitTotal": {"type": "number"},
+                    "unmatchedAmount": {"type": "number"},
+                    "aiStatus": {"type": "string"},
+                    "aiHint": {"type": "string"},
+                },
+            },
+        },
+        "confidence": {"type": "number"},
     },
 }
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
@@ -4384,8 +4465,16 @@ def _pi_row_risk_and_explainer(
     return risk_level, risk_score, explainer
 
 
-async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_matching: dict | None = None) -> dict:
+async def _pi_ai_analysis(
+    month_label: str,
+    row_summaries: list[dict],
+    payout_matching: dict | None = None,
+    *,
+    step2_reconciliation: dict | None = None,
+    user_id: str | None = None,
+) -> dict:
     settings = get_settings()
+    step2_payload = step2_reconciliation if isinstance(step2_reconciliation, dict) else {}
     if not settings.openai_api_key or not row_summaries:
         return {
             "summary": "AI analysis is unavailable. Review differences and create corrective credit notes where needed.",
@@ -4393,6 +4482,7 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
             "actions": [],
             "confidence": 0.0,
             "engine": "local",
+            "step2Reconciliation": step2_payload,
         }
     top_rows = sorted(row_summaries, key=lambda row: abs(float(row.get("difference") or 0)), reverse=True)[:30]
     request_body = {
@@ -4410,6 +4500,7 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
                     f"Month: {month_label}\n"
                     f"Rows: {json.dumps(top_rows, default=_json_default)}\n"
                     f"PayoutMatching: {json.dumps(payout_matching if isinstance(payout_matching, dict) else {}, default=_json_default)}\n"
+                    f"Step2Reconciliation: {json.dumps(step2_payload, default=_json_default)}\n"
                     "Return only JSON matching the schema."
                 ),
             },
@@ -4424,7 +4515,14 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
         },
     }
     try:
-        payload = await _post_openai_responses(request_body, "PI Clearing analysis")
+        payload = await _post_openai_responses(
+            request_body,
+            "PI Clearing analysis",
+            preferred_model=settings.openai_model,
+            user_id=user_id,
+            feature="openai-core",
+            page="practice-tools",
+        )
         parsed = _load_openai_json_response(payload, "OpenAI returned invalid PI Clearing analysis JSON.")
         return {
             "summary": str(parsed.get("summary") or "").strip(),
@@ -4432,6 +4530,7 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
             "actions": [str(item).strip() for item in (parsed.get("actions") or []) if str(item).strip()][:8],
             "confidence": float(parsed.get("confidence") or 0),
             "engine": "openai",
+            "step2Reconciliation": parsed.get("step2Reconciliation") if isinstance(parsed.get("step2Reconciliation"), dict) else step2_payload,
         }
     except Exception as exc:
         logger.exception("PI clearing AI analysis failed: %s", exc)
@@ -4441,6 +4540,7 @@ async def _pi_ai_analysis(month_label: str, row_summaries: list[dict], payout_ma
             "actions": ["Review each difference row and create credit notes for positive variances."],
             "confidence": 0.0,
             "engine": "local_error",
+            "step2Reconciliation": step2_payload,
         }
 
 
@@ -4612,6 +4712,183 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
         "missingCreditPaymentIds": missing_credit_payment_ids,
         "rows": rows,
     }
+
+
+def _pi_step2_ledger_rows(xero_rows: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for row in xero_rows or []:
+        amount = _money(row.get("amount"))
+        debit = amount if amount > Decimal("0.00") else Decimal("0.00")
+        credit = amount.copy_abs() if amount < Decimal("0.00") else Decimal("0.00")
+        rows.append(
+            {
+                "paymentId": str(row.get("paymentId") or "").strip(),
+                "date": str(row.get("paidOn") or "").strip()[:10],
+                "contact": str(row.get("clientName") or "Unknown client").strip() or "Unknown client",
+                "description": str(((row.get("raw") or {}) if isinstance(row.get("raw"), dict) else {}).get("Reference") or row.get("reference") or "").strip(),
+                "source": "Receive Money" if credit > Decimal("0.00") else "Receivable Payment",
+                "debit": float(_money(debit)),
+                "credit": float(_money(credit)),
+            }
+        )
+    rows.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("contact") or "")))
+    return rows
+
+
+def _pi_local_step2_reconciliation(ledger_rows: list[dict]) -> dict:
+    tolerance = Decimal("0.01")
+    by_date: dict[str, dict] = {}
+    for row in ledger_rows or []:
+        date_key = str(row.get("date") or "").strip()
+        bucket = by_date.setdefault(date_key, {"debits": [], "credits": []})
+        debit = _money(row.get("debit"))
+        credit = _money(row.get("credit"))
+        if debit > Decimal("0.00"):
+            bucket["debits"].append(row)
+        if credit > Decimal("0.00"):
+            bucket["credits"].append(row)
+
+    unmatched_rows: list[dict] = []
+    hidden_pair_count = 0
+    unmatched_total = Decimal("0.00")
+    for date_key in sorted(by_date.keys()):
+        bucket = by_date.get(date_key) or {}
+        debits = sorted((bucket.get("debits") or []), key=lambda item: _money(item.get("debit")), reverse=True)
+        credits = sorted((bucket.get("credits") or []), key=lambda item: _money(item.get("credit")), reverse=True)
+        debit_used = [False] * len(debits)
+        for credit_row in credits:
+            credit_amount = _money(credit_row.get("credit"))
+            matched_index = -1
+            for index, debit_row in enumerate(debits):
+                if debit_used[index]:
+                    continue
+                if abs(_money(debit_row.get("debit")) - credit_amount) <= tolerance:
+                    matched_index = index
+                    break
+            if matched_index >= 0:
+                debit_used[matched_index] = True
+                hidden_pair_count += 1
+                continue
+            unmatched_total += credit_amount
+            unmatched_rows.append(
+                {
+                    "date": date_key,
+                    "contact": str(credit_row.get("contact") or "Unknown client"),
+                    "description": str(credit_row.get("description") or "").strip() or "--",
+                    "source": str(credit_row.get("source") or "").strip() or "--",
+                    "credit": float(credit_amount),
+                    "matchingDebitTotal": 0.0,
+                    "unmatchedAmount": float(credit_amount),
+                    "aiStatus": "Needs review",
+                    "aiHint": f"No same-date debit equals £{credit_amount:.2f}.",
+                }
+            )
+    return {
+        "summary": (
+            f"Hid {hidden_pair_count} same-date debit/credit pair(s). "
+            f"Flagged {len(unmatched_rows)} unmatched credit entr{'y' if len(unmatched_rows) == 1 else 'ies'} "
+            f"totalling £{_money(unmatched_total):.2f}."
+        ),
+        "engine": "local",
+        "confidence": 0.0,
+        "hiddenPairCount": hidden_pair_count,
+        "unmatchedCreditCount": len(unmatched_rows),
+        "unmatchedCreditTotal": float(_money(unmatched_total)),
+        "rows": unmatched_rows,
+    }
+
+
+async def _pi_ai_step2_reconciliation(month_label: str, ledger_rows: list[dict], user_id: str | None = None) -> dict:
+    local = _pi_local_step2_reconciliation(ledger_rows)
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip() or not ledger_rows:
+        return local
+
+    request_rows = [
+        {
+            "paymentId": str(row.get("paymentId") or ""),
+            "date": str(row.get("date") or ""),
+            "contact": str(row.get("contact") or ""),
+            "description": str(row.get("description") or ""),
+            "source": str(row.get("source") or ""),
+            "debit": float(_money(row.get("debit"))),
+            "credit": float(_money(row.get("credit"))),
+        }
+        for row in (ledger_rows or [])[:420]
+    ]
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You reconcile PI clearing ledger lines. Use only same-date matching. "
+                    "A debit can be used once. A credit is matched only when an unused same-date debit equals it within 0.01. "
+                    "Hide matched pairs. Return only unmatched credits."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Month: {month_label}\n"
+                    f"LedgerRows: {json.dumps(request_rows, default=_json_default)}\n"
+                    "Return strict JSON only."
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "pi_clearing_step2_reconciliation",
+                "schema": PI_CLEARING_STEP2_RECONCILIATION_SCHEMA,
+                "strict": True,
+            }
+        },
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "PI Clearing Step 2 reconciliation",
+            preferred_model=settings.openai_model,
+            user_id=user_id,
+            feature="openai-core",
+            page="practice-tools",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid PI Clearing Step 2 reconciliation JSON.")
+        ai_rows = []
+        for item in (parsed.get("rows") or []):
+            if not isinstance(item, dict):
+                continue
+            credit = _money(item.get("credit"))
+            unmatched = _money(item.get("unmatchedAmount"))
+            ai_rows.append(
+                {
+                    "date": str(item.get("date") or "").strip(),
+                    "contact": str(item.get("contact") or "Unknown client").strip() or "Unknown client",
+                    "description": str(item.get("description") or "").strip() or "--",
+                    "source": str(item.get("source") or "").strip() or "--",
+                    "credit": float(credit if credit > Decimal("0.00") else Decimal("0.00")),
+                    "matchingDebitTotal": float(_money(item.get("matchingDebitTotal"))),
+                    "unmatchedAmount": float(unmatched if unmatched > Decimal("0.00") else Decimal("0.00")),
+                    "aiStatus": str(item.get("aiStatus") or "Needs review").strip() or "Needs review",
+                    "aiHint": str(item.get("aiHint") or "").strip() or "Review this unmatched credit entry.",
+                }
+            )
+        unmatched_total = sum((_money(item.get("unmatchedAmount")) for item in ai_rows), start=Decimal("0.00"))
+        return {
+            "summary": str(parsed.get("summary") or "").strip() or str(local.get("summary") or ""),
+            "engine": "openai",
+            "confidence": float(parsed.get("confidence") or 0),
+            "hiddenPairCount": int(parsed.get("hiddenPairCount") or 0),
+            "unmatchedCreditCount": int(parsed.get("unmatchedCreditCount") or len(ai_rows)),
+            "unmatchedCreditTotal": float(_money(parsed.get("unmatchedCreditTotal") or unmatched_total)),
+            "rows": ai_rows,
+        }
+    except Exception as exc:
+        logger.exception("PI clearing Step 2 AI reconciliation failed: %s", exc)
+        fallback = dict(local)
+        fallback["engine"] = "local_error"
+        fallback["summary"] = f"{local.get('summary') or ''} AI reconciliation failed; using local fallback."
+        return fallback
 
 
 def _pi_payout_batches_from_ignition_rows(ignition_rows: list[dict]) -> list[dict]:
@@ -5101,6 +5378,12 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
 
     payout_matching = _pi_match_ignition_payouts_to_xero_credits(ignition_rows, xero_rows)
     daily_balance = _pi_daily_balance_analysis(xero_rows)
+    step2_ledger_rows = _pi_step2_ledger_rows(xero_rows)
+    step2_reconciliation = await _pi_ai_step2_reconciliation(
+        month_label,
+        step2_ledger_rows,
+        user_id=str(user.get("id") or ""),
+    )
 
     ai_analysis = await _pi_ai_analysis(
         month_label,
@@ -5126,6 +5409,8 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             "dailyBalance": daily_balance,
             "xeroStep1": xero_step1,
         },
+        step2_reconciliation=step2_reconciliation,
+        user_id=str(user.get("id") or ""),
     )
     xero_debit_total = sum((_money(row.get("amount")) for row in xero_rows if _money(row.get("amount")) > 0), start=Decimal("0.00"))
     xero_credit_total = sum((_money(row.get("amount")).copy_abs() for row in xero_rows if _money(row.get("amount")) < 0), start=Decimal("0.00"))
@@ -5149,6 +5434,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "payoutMatching": payout_matching,
         "dailyBalance": daily_balance,
         "xeroStep1": xero_step1,
+        "step2Reconciliation": step2_reconciliation,
     }
     status_value = "ready" if rows_to_store else "empty"
     now = utcnow()
