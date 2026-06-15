@@ -3761,6 +3761,7 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
         params={"where": 'Status=="ACTIVE"', "order": "Code ASC"},
         max_pages=8,
     )
+    raw_journals, journals_error = await _code_breaker_fetch_xero_journals(connection_row)
     account_name_by_code = {
         str(item.get("Code") or "").strip(): str(item.get("Name") or "").strip()
         for item in (raw_accounts or [])
@@ -3804,6 +3805,8 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
     now = utcnow()
     processed = 0
     stored = 0
+    journal_processed = 0
+    journal_stored = 0
     with get_connection() as connection:
         with connection.cursor() as cursor:
             for raw_payment in raw_payments or []:
@@ -3950,14 +3953,112 @@ async def _pi_refresh_xero_payments_for_month(user: dict, month_start: date, mon
                     )
                     processed += 1
                     stored += 1
+            for raw_journal in raw_journals or []:
+                journal = raw_journal if isinstance(raw_journal, dict) else {}
+                journal_id = str(journal.get("JournalID") or journal.get("JournalNumber") or "").strip()
+                if not journal_id:
+                    continue
+                journal_date = _parse_optional_iso_date(
+                    journal.get("JournalDate")
+                    or journal.get("Date")
+                    or journal.get("DateString")
+                )
+                if journal_date is None or journal_date < month_start or journal_date > month_end:
+                    continue
+                journal_reference = str(journal.get("Reference") or journal.get("Narration") or journal_id).strip()
+                lines = journal.get("JournalLines") if isinstance(journal.get("JournalLines"), list) else []
+                for line_index, line in enumerate(lines):
+                    if not isinstance(line, dict):
+                        continue
+                    account_code = str(line.get("AccountCode") or "").strip()
+                    if not account_code:
+                        continue
+                    account_name = str(line.get("AccountName") or "").strip() or account_name_by_code.get(account_code, "")
+                    net_amount = line.get("NetAmount")
+                    if net_amount is None:
+                        net_amount = line.get("LineAmount")
+                    if net_amount is None:
+                        net_amount = line.get("GrossAmount")
+                    signed_amount = _money(net_amount)
+                    if signed_amount == 0:
+                        continue
+                    synthetic_id = f"jr:{journal_id}:{line_index}"
+                    raw_payload = {
+                        "JournalID": journal_id,
+                        "JournalNumber": journal.get("JournalNumber"),
+                        "JournalDate": journal.get("JournalDate") or journal_date.isoformat(),
+                        "Reference": journal.get("Reference"),
+                        "Narration": journal.get("Narration"),
+                        "SourceType": journal.get("SourceType"),
+                        "Account": {
+                            "Code": account_code,
+                            "Name": account_name,
+                        },
+                        "InvoiceType": "ACCREC" if signed_amount > 0 else "ACCPAY",
+                        "PI_SignedAmount": float(signed_amount),
+                        "PI_Source": "journal_line",
+                        "PI_LineIndex": line_index,
+                        "PI_LineDescription": str(line.get("Description") or "").strip(),
+                    }
+                    cursor.execute(
+                        """
+                        INSERT INTO payments (
+                            tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                            invoice_number, payment_date, amount, currency_code, reference,
+                            status, account_name, raw, synced_at, updated_at
+                        )
+                        VALUES (
+                            %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                            %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                            %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                        )
+                        ON CONFLICT (xero_payment_id) DO UPDATE
+                        SET customer_id = EXCLUDED.customer_id,
+                            invoice_id = EXCLUDED.invoice_id,
+                            xero_invoice_id = EXCLUDED.xero_invoice_id,
+                            invoice_number = EXCLUDED.invoice_number,
+                            payment_date = EXCLUDED.payment_date,
+                            amount = EXCLUDED.amount,
+                            currency_code = EXCLUDED.currency_code,
+                            reference = EXCLUDED.reference,
+                            status = EXCLUDED.status,
+                            account_name = EXCLUDED.account_name,
+                            raw = EXCLUDED.raw,
+                            synced_at = EXCLUDED.synced_at,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        {
+                            "tenant_id": tenant_id,
+                            "customer_id": None,
+                            "invoice_id": None,
+                            "xero_payment_id": synthetic_id,
+                            "xero_invoice_id": "",
+                            "invoice_number": "",
+                            "payment_date": journal_date,
+                            "amount": signed_amount.copy_abs(),
+                            "currency_code": "GBP",
+                            "reference": str(line.get("Description") or journal_reference or journal_id).strip(),
+                            "status": str(journal.get("SourceType") or "JOURNAL").strip(),
+                            "account_name": account_name or account_code,
+                            "raw_json": json.dumps(raw_payload, default=_json_default),
+                            "synced_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    journal_processed += 1
+                    journal_stored += 1
         connection.commit()
     return {
         "tenantId": tenant_id,
-        "fetched": len(raw_payments or []) + len(raw_bank_transactions or []),
+        "fetched": len(raw_payments or []) + len(raw_bank_transactions or []) + len(raw_journals or []),
         "paymentFetched": len(raw_payments or []),
         "bankTransactionFetched": len(raw_bank_transactions or []),
-        "processed": processed,
-        "stored": stored,
+        "journalFetched": len(raw_journals or []),
+        "processed": processed + journal_processed,
+        "stored": stored + journal_stored,
+        "journalProcessed": journal_processed,
+        "journalStored": journal_stored,
+        "journalsError": journals_error,
     }
 
 
@@ -4088,9 +4189,15 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "invoiceType": invoice_type,
                 "accountCode": code,
                 "accountName": name,
+                "source": str(raw.get("PI_Source") or "").strip().lower(),
                 "raw": raw,
             }
         )
+    # When journal lines are available for the selected nominal account, prefer them
+    # because they represent full ledger postings (both debits and credits).
+    journal_items = [item for item in items if str(item.get("source") or "") == "journal_line"]
+    if wanted and journal_items:
+        return journal_items, tenant_id
     return items, tenant_id
 
 
