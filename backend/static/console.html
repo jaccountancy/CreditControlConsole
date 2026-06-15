@@ -49446,6 +49446,7 @@
             function piResolveStep1DifferenceFromIgnition(step1Row = {}, runRows = []) {
                 const row = step1Row && typeof step1Row === "object" ? step1Row : {};
                 const targetDate = piDateKey(row?.date || row?.paidOn || row?.creditPaidOn || "");
+                const creditPaymentId = String(row?.creditPaymentId || "").trim();
                 const creditAmount = Number(row?.creditAmount || 0);
                 const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
                 const missingDebitAmount = Math.max(0, Number(row?.missingDebitAmount || (creditAmount - matchedDebitTotal)));
@@ -49602,7 +49603,15 @@
                     return leftClient.localeCompare(rightClient);
                 };
 
-                let matchedRunRow = candidates.sort(rankCandidates)[0] || null;
+                const paymentLinkedCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
+                    if (!creditPaymentId) return false;
+                    const ids = Array.isArray(item?.xeroPaymentIds) ? item.xeroPaymentIds : [];
+                    const hasPaymentId = ids.some((value) => String(value || "").trim() === creditPaymentId);
+                    if (!hasPaymentId) return false;
+                    const resolutionStatus = String(item?.resolutionStatus || "").trim().toLowerCase();
+                    return !["credit_note_created", "balanced_by_existing_credit_note"].includes(resolutionStatus);
+                });
+                let matchedRunRow = paymentLinkedCandidates.sort(rankCandidates)[0] || candidates.sort(rankCandidates)[0] || null;
                 let usedFallbackRow = false;
                 if (!matchedRunRow) {
                     const fallbackCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
@@ -51264,7 +51273,7 @@
                                 const elapsedSeconds = Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0));
                                 const stageIndex = Math.max(0, Number(piClearingWorkflowStageIndex || 0));
                                 const stageCards = [
-                                    "Pull Ignition payout lines",
+                                    "Load same-date payout batch",
                                     "Build same-date amount combinations",
                                     "Map best match to Step 3 adjustment row",
                                 ].map((label, index) => {
@@ -51281,7 +51290,7 @@
                                                 <small>Elapsed ${escapeHTML(formatSyncDuration(elapsedSeconds))}</small>
                                             </div>
                                         </div>
-                                        <p>Using OpenAI analysis plus refreshed Ignition payout lines to find exact or split combinations that match ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(row?.date || ""))}.</p>
+                                        <p>Using cached same-date Ignition payout data to find exact or split combinations that match ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(row?.date || ""))}.</p>
                                         <div class="pi-step1-ai-live-progress" role="progressbar" aria-label="Jenius AI processing"></div>
                                         <div class="pi-step1-ai-stage-list">${stageCards}</div>
                                     </div>
@@ -51438,22 +51447,6 @@
                                     let match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, cachedRows);
                                     let matchSourceLabel = "cached backend payout data";
                                     let activeRun = cachedRun;
-                                    if (!match?.runRow?.id && !(match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length))) {
-                                        await runPiClearingWorkflow({
-                                            includeIgnition: true,
-                                            includeAI: false,
-                                            refreshXero: false,
-                                            refreshIgnition: true,
-                                            batchStart: String(run?.monthStart || piClearingBatchStart || ""),
-                                            batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
-                                            accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
-                                            targetStep: 2,
-                                        });
-                                        activeRun = currentPiClearingRun();
-                                        const refreshedRows = Array.isArray(activeRun?.rows) ? activeRun.rows : [];
-                                        match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, refreshedRows);
-                                        matchSourceLabel = "refreshed Ignition payout data";
-                                    }
                                     if (match?.runRow?.id) {
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
@@ -51475,7 +51468,7 @@
                                         );
                                         piClearingStatusMessage = `Jenius AI matched ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")} using ${matchSourceLabel} (${String(match?.payout?.payoutId || "--")}).`;
                                         piClearingStatusTone = "success";
-                                        showToast(matchSourceLabel === "cached backend payout data" ? "Jenius AI found a valid Step 3 match from cached backend data." : "Jenius AI found a valid Step 3 match from synced data.", "success");
+                                        showToast("Jenius AI found a valid Step 3 match from cached backend data.", "success");
                                     } else if (match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length)) {
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
