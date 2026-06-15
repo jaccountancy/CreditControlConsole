@@ -5703,8 +5703,7 @@ def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) 
         configured = ""
         locked = False
     if locked and configured:
-        if requested and requested.lower() != configured.lower():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"PI nominal is locked to {configured} and cannot be changed.")
+        # Defensive: honour the saved locked code even if older clients send a stale accountCode.
         return configured
     if requested:
         return requested
