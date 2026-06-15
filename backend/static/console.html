@@ -29169,6 +29169,102 @@
                 border-color: rgba(32, 98, 199, 0.24);
                 background: rgba(32, 98, 199, 0.08);
             }
+            .pi-step1-ai-live-head {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                align-items: center;
+                gap: 12px;
+            }
+            .pi-step1-ai-live-icon {
+                position: relative;
+                width: 34px;
+                height: 34px;
+                border-radius: 999px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                color: #ffffff;
+                background: linear-gradient(135deg, #215fc7, #12a37b);
+                box-shadow: 0 8px 16px rgba(33, 95, 199, 0.28);
+                font-weight: 800;
+                letter-spacing: 0.01em;
+            }
+            .pi-step1-ai-live-icon::before,
+            .pi-step1-ai-live-icon::after {
+                content: "";
+                position: absolute;
+                inset: -6px;
+                border-radius: 999px;
+                border: 1px solid rgba(33, 95, 199, 0.26);
+                animation: pi-step1-ai-ping 1.8s ease-out infinite;
+            }
+            .pi-step1-ai-live-icon::after {
+                inset: -11px;
+                border-color: rgba(18, 163, 123, 0.22);
+                animation-delay: 0.65s;
+            }
+            .pi-step1-ai-live-meta {
+                display: grid;
+                gap: 2px;
+            }
+            .pi-step1-ai-live-meta small {
+                color: #2d5699;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+            }
+            .pi-step1-ai-live-progress {
+                position: relative;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(33, 95, 199, 0.12);
+                overflow: hidden;
+            }
+            .pi-step1-ai-live-progress::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 42%;
+                border-radius: 999px;
+                background: linear-gradient(90deg, rgba(33, 95, 199, 0.15), rgba(33, 95, 199, 0.8), rgba(18, 163, 123, 0.7));
+                animation: pi-step1-ai-progress-slide 1.4s ease-in-out infinite;
+            }
+            .pi-step1-ai-stage-list {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .pi-step1-ai-stage {
+                display: grid;
+                gap: 4px;
+                padding: 8px 10px;
+                border-radius: 10px;
+                border: 1px solid rgba(30, 63, 124, 0.16);
+                background: rgba(255, 255, 255, 0.56);
+                color: #45608a;
+                font-size: 11px;
+                font-weight: 700;
+                line-height: 1.25;
+            }
+            .pi-step1-ai-stage strong {
+                color: #1f3f77;
+                font-size: 11px;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+            }
+            .pi-step1-ai-stage.is-active {
+                border-color: rgba(33, 95, 199, 0.4);
+                box-shadow: 0 6px 14px rgba(33, 95, 199, 0.2);
+                background: rgba(226, 236, 255, 0.86);
+                animation: pi-step1-ai-stage-glow 1.1s ease-in-out infinite;
+            }
+            .pi-step1-ai-stage.is-done {
+                border-color: rgba(18, 163, 123, 0.3);
+                background: rgba(214, 246, 235, 0.72);
+                color: #1e6f55;
+            }
             .pi-step1-match-table-wrap {
                 width: 100%;
                 max-width: 100%;
@@ -29211,6 +29307,20 @@
             @keyframes pi-clearing-loading-spin {
                 to { transform: rotate(360deg); }
             }
+            @keyframes pi-step1-ai-ping {
+                0% { transform: scale(0.92); opacity: 0.62; }
+                100% { transform: scale(1.18); opacity: 0; }
+            }
+            @keyframes pi-step1-ai-progress-slide {
+                0% { left: -42%; }
+                50% { left: 42%; }
+                100% { left: 100%; }
+            }
+            @keyframes pi-step1-ai-stage-glow {
+                0% { transform: translateY(0); }
+                50% { transform: translateY(-1px); }
+                100% { transform: translateY(0); }
+            }
             @keyframes pi-loading-shimmer {
                 0% { background-position: 100% 0; }
                 100% { background-position: -100% 0; }
@@ -29221,7 +29331,12 @@
                 .pi-clearing-workflow-stage-chip,
                 .pi-clearing-progress-fill,
                 .is-loading-button::before,
-                .pi-loading-bar {
+                .pi-loading-bar,
+                .pi-step1-ai-button.is-loading::before,
+                .pi-step1-ai-live-icon::before,
+                .pi-step1-ai-live-icon::after,
+                .pi-step1-ai-live-progress::before,
+                .pi-step1-ai-stage.is-active {
                     animation: none !important;
                     transition: none !important;
                 }
@@ -29265,6 +29380,9 @@
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .pi-clearing-analysis-grid {
+                    grid-template-columns: 1fr;
+                }
+                .pi-step1-ai-stage-list {
                     grid-template-columns: 1fr;
                 }
                 .pi-clearing-wizard-steps {
@@ -48831,11 +48949,14 @@
                     const ignitionRows = Array.isArray(row?.raw?.ignitionRows) ? row.raw.ignitionRows : [];
                     ignitionRows.forEach((entry) => {
                         const paidOn = String(entry?.paidOn || "").slice(0, 10);
-                        const payoutId = String(entry?.payoutId || entry?.paymentId || "").trim() || "unlabeled-batch";
-                        const key = `${paidOn}|${payoutId}`;
+                        const rawPayoutId = String(entry?.payoutId || "").trim();
+                        const payoutId = rawPayoutId || String(entry?.paymentId || "").trim() || "unlabeled-batch";
+                        const key = rawPayoutId ? `payout|${rawPayoutId}` : `${paidOn}|${payoutId}`;
                         const amount = Number(entry?.amount || 0);
                         const bucket = grouped.get(key) || {
                             paidOn,
+                            firstPaidOn: paidOn,
+                            lastPaidOn: paidOn,
                             payoutId,
                             key,
                             grossCollections: 0,
@@ -48849,6 +48970,9 @@
                         else bucket.grossCollections += amount;
                         bucket.netPayout += amount;
                         bucket.count += 1;
+                        if (!bucket.firstPaidOn || (paidOn && paidOn < bucket.firstPaidOn)) bucket.firstPaidOn = paidOn;
+                        if (!bucket.lastPaidOn || (paidOn && paidOn > bucket.lastPaidOn)) bucket.lastPaidOn = paidOn;
+                        if (!bucket.paidOn || (paidOn && paidOn > bucket.paidOn)) bucket.paidOn = paidOn;
                         const clientName = String(entry?.clientName || "").trim();
                         if (clientName) bucket.clientNames.add(clientName);
                         bucket.lines.push({
@@ -49277,12 +49401,25 @@
 
                 let bestPayout = null;
                 let bestCombination = null;
+                const targetDateEpoch = Date.parse(targetDate || 0) || 0;
                 payouts.forEach((payout) => {
-                    if (piDateKey(payout?.paidOn) !== targetDate) return;
                     const combo = findBestCombination(payout);
                     if (!combo) return;
-                    if (!bestCombination || combo.score < bestCombination.score) {
-                        bestCombination = combo;
+                    const payoutNet = Number(payout?.netPayout || 0);
+                    const payoutAmountDelta = Math.abs(payoutNet - creditAmount);
+                    const payoutDateKey = piDateKey(payout?.paidOn || "");
+                    const payoutDateEpoch = Date.parse(payoutDateKey || 0) || 0;
+                    const payoutDateDeltaDays = targetDateEpoch && payoutDateEpoch
+                        ? Math.abs(Math.round((payoutDateEpoch - targetDateEpoch) / (24 * 60 * 60 * 1000)))
+                        : 0;
+                    const score = Number(combo.score || 0)
+                        + payoutAmountDelta * 5
+                        + payoutDateDeltaDays * 0.01;
+                    if (!bestCombination || score < Number(bestCombination.score || 0)) {
+                        bestCombination = {
+                            ...combo,
+                            score,
+                        };
                         bestPayout = payout;
                     }
                 });
@@ -49299,7 +49436,8 @@
                     const differenceTotal = Math.abs(Number(item?.differenceTotal || item?.difference || 0));
                     if (!piAmountEqual(differenceTotal, missingDebitAmount, Math.max(tolerance, 0.02))) return false;
                     const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
-                    if (payoutDate && payoutDate !== targetDate) return false;
+                    const matchedPayoutDate = piDateKey(bestPayout?.paidOn || "");
+                    if (payoutDate && payoutDate !== targetDate && payoutDate !== matchedPayoutDate) return false;
                     return true;
                 });
 
@@ -50881,15 +51019,29 @@
                         const aiStatusMarkup = (() => {
                             if (isBalanced) return "";
                             if (piClearingStep1AiRunning) {
+                                const elapsedSeconds = Math.max(0, Number(piClearingWorkflowElapsedSeconds || 0));
+                                const stageIndex = Math.max(0, Number(piClearingWorkflowStageIndex || 0));
+                                const stageCards = [
+                                    "Pull Ignition payout lines",
+                                    "Build same-date amount combinations",
+                                    "Map best match to Step 3 row",
+                                ].map((label, index) => {
+                                    const tone = stageIndex > index ? "is-done" : stageIndex === index ? "is-active" : "";
+                                    const stepLabel = `Step ${index + 1}`;
+                                    return `<article class="pi-step1-ai-stage ${tone}"><strong>${escapeHTML(stepLabel)}</strong><span>${escapeHTML(label)}</span></article>`;
+                                }).join("");
                                 return `
                                     <div class="pi-step1-ai-status is-info">
-                                        <strong>Jenius AI is resolving this mismatch</strong>
+                                        <div class="pi-step1-ai-live-head">
+                                            <span class="pi-step1-ai-live-icon" aria-hidden="true">AI</span>
+                                            <div class="pi-step1-ai-live-meta">
+                                                <strong>Jenius AI is resolving this mismatch</strong>
+                                                <small>Elapsed ${escapeHTML(formatSyncDuration(elapsedSeconds))}</small>
+                                            </div>
+                                        </div>
                                         <p>Using OpenAI analysis plus refreshed Ignition payout lines to find exact or split combinations that match ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(row?.date || ""))}.</p>
-                                        <ul>
-                                            <li>Refreshing latest Ignition payout and refund breakdown</li>
-                                            <li>Checking same-date combinations (for example 100 = 50 + 50)</li>
-                                            <li>Mapping match back to Step 3 credit-note row</li>
-                                        </ul>
+                                        <div class="pi-step1-ai-live-progress" role="progressbar" aria-label="Jenius AI processing"></div>
+                                        <div class="pi-step1-ai-stage-list">${stageCards}</div>
                                     </div>
                                 `;
                             }
