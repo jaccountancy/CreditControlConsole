@@ -29341,6 +29341,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Company Secretarial</strong><span>Submissions</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-new-formations" data-app-nav="new-formations">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 20h16"></path><path d="M6 20V8l6-4 6 4v12"></path><path d="M9 12h2"></path><path d="M13 12h2"></path><path d="M11 20v-4h2v4"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>New Formations</strong><span>Dedicated workspace</span></span>
+                                </a>
                             </div>
                         </div>
                         <div class="app-nav-group" data-app-nav-group="practice-manager">
@@ -31659,6 +31663,50 @@
                                     <div class="company-secretarial-validation-list" id="companySecretarialValidationIssuesList"></div>
                                 </div>
                             </div>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="newFormationsScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Companies House</p>
+                                    <h3>New Formations</h3>
+                                    <p class="detail-meta">Use Ignition data to detect missing transactions and review them before formation actions.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="newFormationsBackButton" type="button" hidden>Back</button>
+                                    <button class="primary-button" id="newFormationsNextButton" type="button">Next</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="newFormationsSummary">Step 1 of 2: Click Next to analyse Ignition data.</p>
+                            <section id="newFormationsStep1Panel">
+                                <div class="ch-tile-grid">
+                                    <article class="detail-panel ch-detail-card">
+                                        <p class="eyebrow">Step 1</p>
+                                        <h4>Analyse Ignition Data</h4>
+                                        <p class="detail-meta">Next will load the latest Ignition dashboard payload and calculate clients with likely missing transactions (open/outstanding invoice activity).</p>
+                                    </article>
+                                </div>
+                            </section>
+                            <section id="newFormationsStep2Panel" hidden>
+                                <div class="ch-tile-grid" id="newFormationsMetrics"></div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="New formations missing transactions">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>Owner</th>
+                                                <th>Missing transactions</th>
+                                                <th>Outstanding value</th>
+                                                <th>Overdue invoices</th>
+                                                <th>Last activity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="newFormationsMissingTransactionsBody"></tbody>
+                                    </table>
+                                </div>
+                            </section>
                         </section>
                     </section>
 
@@ -38092,6 +38140,7 @@
                 "task-approvals-bouncebacks": "Approvals & Bouncebacks",
                 "task-completed": "Completed Tasks",
                 "company-secretarial": "Company Secretarial",
+                "new-formations": "New Formations",
                 "hmrc-64-8s": "HMRC 64-8s",
                 "hmrc-64-8-history": "HMRC 64-8 History",
                 "aml-verification": "AML Verification",
@@ -38133,6 +38182,7 @@
                 "task-approvals-bouncebacks": "Focus on tasks waiting for approvals or returned for rework.",
                 "task-completed": "Review completed tasks and closed delivery items.",
                 "company-secretarial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
+                "new-formations": "Open the dedicated workspace page for new company formations.",
                 "hmrc-64-8s": "Track HMRC 64-8 authority requests, evidence and status updates.",
                 "hmrc-64-8-history": "Review HMRC 64-8 audit history and sent-client summaries.",
                 "aml-verification": "Review AML/KYC readiness and unresolved compliance blockers.",
@@ -38675,6 +38725,10 @@
             let ignitionClientSortMode = "activity-desc";
             let ignitionClientFilter = "all";
             const ignitionTabKeys = new Set(["renewals"]);
+            let newFormationsStep = 1;
+            let newFormationsLoading = false;
+            let newFormationsMissingTransactions = [];
+            let newFormationsLastAnalysedAt = "";
             let activeIgnitionTab = "renewals";
             let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
             let meReportClientStatusFilter = ["active", "archived", "all"].includes(persistedUIState.meReportClientStatusFilter)
@@ -42356,6 +42410,7 @@
                 if (activeView === "identity-verification") return "identity-verification";
                 if (activeView === "vault") return "vault";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
+                if (activeView === "new-formations") return "new-formations";
                 if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
                 if (activeView === "aml-verification") return "aml-verification";
                 if (activeView === "xero-lock-date") return "xero-lock-date";
@@ -42723,6 +42778,7 @@
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
                 setElementVisible(document.getElementById("clientAuthRegisterScreen"), activeView === "client-auth-register");
                 setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secretarial" || activeView === "company-secreterial");
+                setElementVisible(document.getElementById("newFormationsScreen"), activeView === "new-formations");
                 setElementVisible(document.getElementById("hmrc648Screen"), activeView === "hmrc-64-8s");
                 setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
                 setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
@@ -42753,7 +42809,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -50436,6 +50492,7 @@
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
                 if (section === "client-auth-register") return openClientAuthRegisterScreen();
                 if (section === "company-secretarial" || section === "company-secreterial") return openCompanySecreterialScreen();
+                if (section === "new-formations") return openNewFormationsScreen();
                 if (section === "hmrc-64-8s") return openHmrc648Screen();
                 if (section === "aml-verification") return openAmlVerificationScreen();
                 if (section === "xero-lock-date") return openXeroLockDateScreen();
@@ -50614,6 +50671,7 @@
                 "confirmation-statements",
                 "company-secretarial",
                 "company-secreterial",
+                "new-formations",
             ]);
             const practiceManagerNavSections = new Set([
                 "ignition",
@@ -50727,6 +50785,7 @@
                 "client-auth-register": "credit-control-client-auth-register",
                 "company-secretarial": "credit-control-company-secretarial",
                 "company-secreterial": "credit-control-company-secreterial",
+                "new-formations": "credit-control-new-formations",
                 "hmrc-64-8s": "credit-control-hmrc-64-8s",
                 "aml-verification": "credit-control-aml-verification",
                 "xero-lock-date": "credit-control-xero-lock-date",
@@ -52258,6 +52317,7 @@
                     loadCompaniesHouseSettings();
                 }
                 setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secretarial" || activeView === "company-secreterial");
+                setElementVisible(document.getElementById("newFormationsScreen"), activeView === "new-formations");
                 setElementVisible(document.getElementById("hmrc648Screen"), activeView === "hmrc-64-8s");
                 setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
                 setElementVisible(xeroLockDateScreen, activeView === "xero-lock-date");
@@ -53916,6 +53976,126 @@
                 renderAll();
                 loadAuthCodeRegisterDirectory();
                 loadCompanySecretarialQueue();
+                scrollConsoleToTop();
+            }
+
+            function buildNewFormationsMissingTransactionsRows(payload = {}) {
+                const dashboard = payload?.ignition?.dashboard || payload?.dashboard || {};
+                const clients = Array.isArray(dashboard?.clients) ? dashboard.clients : [];
+                return clients
+                    .map((client) => {
+                        const outstandingInvoices = Math.max(0, Number(client?.outstandingInvoiceCount || 0));
+                        const overdueInvoices = Math.max(0, Number(client?.overdueInvoiceCount || 0));
+                        const outstandingValue = Number(client?.outstandingValue || 0);
+                        const missingTransactions = outstandingInvoices;
+                        return {
+                            id: String(client?.id || client?.name || "").trim(),
+                            name: String(client?.name || "Client").trim() || "Client",
+                            owner: String(client?.owner || "Unassigned").trim() || "Unassigned",
+                            missingTransactions,
+                            outstandingValue: Number.isFinite(outstandingValue) ? outstandingValue : 0,
+                            overdueInvoices,
+                            lastActivityAt: String(client?.lastActivityAt || client?.createdAt || "").trim(),
+                        };
+                    })
+                    .filter((row) => row.missingTransactions > 0 || row.outstandingValue > 0)
+                    .sort((left, right) => right.outstandingValue - left.outstandingValue || right.missingTransactions - left.missingTransactions || left.name.localeCompare(right.name, "en-GB"));
+            }
+
+            async function loadNewFormationsMissingTransactions() {
+                if (newFormationsLoading) return;
+                newFormationsLoading = true;
+                renderNewFormationsScreen();
+                try {
+                    const payload = await requestJSON(`${api.endpoints.ignition}?include_dashboard=true`);
+                    newFormationsMissingTransactions = buildNewFormationsMissingTransactionsRows(payload);
+                    newFormationsLastAnalysedAt = new Date().toISOString();
+                    newFormationsStep = 2;
+                } catch (error) {
+                    showToast(error?.message || "Unable to analyse Ignition transactions.", "error");
+                } finally {
+                    newFormationsLoading = false;
+                    renderNewFormationsScreen();
+                }
+            }
+
+            function renderNewFormationsScreen() {
+                const screen = document.getElementById("newFormationsScreen");
+                if (!screen) return;
+                const nextButton = document.getElementById("newFormationsNextButton");
+                const backButton = document.getElementById("newFormationsBackButton");
+                const summary = document.getElementById("newFormationsSummary");
+                const step1Panel = document.getElementById("newFormationsStep1Panel");
+                const step2Panel = document.getElementById("newFormationsStep2Panel");
+                const metrics = document.getElementById("newFormationsMetrics");
+                const body = document.getElementById("newFormationsMissingTransactionsBody");
+                if (!nextButton || !backButton || !summary || !step1Panel || !step2Panel || !metrics || !body) return;
+
+                const inStepTwo = newFormationsStep === 2;
+                step1Panel.hidden = inStepTwo;
+                step2Panel.hidden = !inStepTwo;
+                backButton.hidden = !inStepTwo;
+                nextButton.hidden = inStepTwo;
+                nextButton.disabled = newFormationsLoading;
+                nextButton.textContent = newFormationsLoading ? "Analysing..." : "Next";
+
+                if (newFormationsLoading) {
+                    summary.textContent = "Analysing Ignition data and calculating missing transactions...";
+                } else if (inStepTwo) {
+                    const missingCount = newFormationsMissingTransactions.reduce((sum, row) => sum + Number(row?.missingTransactions || 0), 0);
+                    const outstandingTotal = newFormationsMissingTransactions.reduce((sum, row) => sum + Number(row?.outstandingValue || 0), 0);
+                    const lastAnalysedLabel = formatDateTime(newFormationsLastAnalysedAt || "");
+                    summary.textContent = `${newFormationsMissingTransactions.length.toLocaleString("en-GB")} client${newFormationsMissingTransactions.length === 1 ? "" : "s"} with ${missingCount.toLocaleString("en-GB")} missing transaction${missingCount === 1 ? "" : "s"} · Outstanding ${formatCurrency(outstandingTotal)}${lastAnalysedLabel ? ` · Last analysed ${lastAnalysedLabel}` : ""}.`;
+                } else {
+                    summary.textContent = "Step 1 of 2: Click Next to analyse Ignition data.";
+                }
+
+                if (inStepTwo) {
+                    const missingCount = newFormationsMissingTransactions.reduce((sum, row) => sum + Number(row?.missingTransactions || 0), 0);
+                    const overdueCount = newFormationsMissingTransactions.reduce((sum, row) => sum + Number(row?.overdueInvoices || 0), 0);
+                    const outstandingTotal = newFormationsMissingTransactions.reduce((sum, row) => sum + Number(row?.outstandingValue || 0), 0);
+                    metrics.innerHTML = [
+                        `<article><span>Clients flagged</span><strong>${newFormationsMissingTransactions.length.toLocaleString("en-GB")}</strong></article>`,
+                        `<article><span>Missing transactions</span><strong>${missingCount.toLocaleString("en-GB")}</strong></article>`,
+                        `<article><span>Outstanding value</span><strong>${formatCurrency(outstandingTotal)}</strong></article>`,
+                        `<article><span>Overdue invoices</span><strong>${overdueCount.toLocaleString("en-GB")}</strong></article>`,
+                    ].join("");
+                    body.innerHTML = newFormationsMissingTransactions.length
+                        ? newFormationsMissingTransactions.map((row) => `
+                            <tr>
+                                <td><strong>${escapeHTML(row.name)}</strong></td>
+                                <td>${escapeHTML(row.owner)}</td>
+                                <td>${Number(row.missingTransactions || 0).toLocaleString("en-GB")}</td>
+                                <td>${formatCurrency(row.outstandingValue || 0)}</td>
+                                <td>${Number(row.overdueInvoices || 0).toLocaleString("en-GB")}</td>
+                                <td>${escapeHTML(formatDate(row.lastActivityAt || "") || "—")}</td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="6"><small>No missing transactions found from current Ignition data.</small></td></tr>';
+                }
+
+                if (nextButton.dataset.newFormationsWired !== "true") {
+                    nextButton.dataset.newFormationsWired = "true";
+                    nextButton.addEventListener("click", () => {
+                        loadNewFormationsMissingTransactions();
+                    });
+                }
+                if (backButton.dataset.newFormationsWired !== "true") {
+                    backButton.dataset.newFormationsWired = "true";
+                    backButton.addEventListener("click", () => {
+                        newFormationsStep = 1;
+                        renderNewFormationsScreen();
+                    });
+                }
+            }
+
+            function openNewFormationsScreen() {
+                activeView = "new-formations";
+                newFormationsStep = 1;
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
                 scrollConsoleToTop();
             }
 
@@ -80560,6 +80740,7 @@
                 else if (activeView === "client-auth-register") activeNavSection = "client-auth-register";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
                 else if (activeView === "company-secretarial" || activeView === "company-secreterial") activeNavSection = "company-secretarial";
+                else if (activeView === "new-formations") activeNavSection = "new-formations";
                 else if (activeView === "hmrc-64-8s") activeNavSection = "hmrc-64-8s";
                 else if (activeView === "aml-verification") activeNavSection = "aml-verification";
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
@@ -94563,6 +94744,7 @@
                     ["renderRiskAssessmentsScreen", () => renderRiskAssessmentsScreen()],
                     ["renderConfirmationStatementsScreen", () => renderConfirmationStatementsScreen()],
                     ["renderCompanySecretarialScreen", () => renderCompanySecretarialScreen()],
+                    ["renderNewFormationsScreen", () => renderNewFormationsScreen()],
                     ["renderHmrc648Screen", () => renderHmrc648Screen()],
                     ["renderAmlVerificationScreen", () => renderAmlVerificationScreen()],
                     ["renderXeroLockDateScreen", () => renderXeroLockDateScreen()],
