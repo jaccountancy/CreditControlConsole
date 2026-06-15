@@ -35962,15 +35962,16 @@
                                     <button class="primary-button" id="piClearingLoadTransactionsButton" type="button">Get transactions</button>
                                     <button class="ghost-button" id="piClearingToggleMatchedPairsButton" type="button">Show matched pairs</button>
                                 </div>
-                                <p class="detail-meta">Step 1 is Xero only. Each payout credit must net to same-date debit entries. Matched pairs are hidden by default.</p>
+                                <p class="detail-meta">Step 1 lists every Xero credit on this account. Green means all same-date debit entries were found; red means one or more debit entries are missing.</p>
                                 <section class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="PI Clearing Step 1 Xero-only credit/debit matching">
                                         <thead>
                                             <tr>
-                                                <th>Date</th>
-                                                <th>Payout credit</th>
-                                                <th>Matched debits</th>
-                                                <th>Missing debit</th>
+                                                <th>Credit date</th>
+                                                <th>Credit reference</th>
+                                                <th>Credit amount</th>
+                                                <th>Matched debit total</th>
+                                                <th>Missing debit total</th>
                                                 <th>Status</th>
                                             </tr>
                                         </thead>
@@ -48897,23 +48898,24 @@
                     wizardXeroBody.innerHTML = visibleRows.length
                         ? visibleRows.map((row) => {
                             const status = String(row?.status || "").toLowerCase();
-                            const badgeClass = status === "balanced" ? "is-balanced" : (status === "partial" ? "is-partial" : "is-missing");
-                            const badgeLabel = status === "balanced" ? "Matched" : (status === "partial" ? "Part-matched" : "Missing debit");
+                            const isBalanced = status === "balanced";
+                            const badgeClass = isBalanced ? "is-balanced" : "is-missing";
+                            const badgeLabel = isBalanced ? "Green: All debits found" : "Red: Missing debit entries";
                             const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
-                            const matchedCopy = matchedDebits.length
-                                ? matchedDebits.map((item) => `${formatCurrency(item?.amountUsed || 0)} · ${String(item?.reference || item?.paymentId || "debit")}`).join(" / ")
-                                : "No same-date debit match";
+                            const matchedDebitTotal = Number(row?.matchedDebitTotal ?? matchedDebits.reduce((sum, item) => sum + Number(item?.amountUsed || 0), 0));
+                            const creditReference = String(row?.creditReference || row?.creditPaymentId || "--").trim() || "--";
                             return `
-                                <tr class="pi-step1-row is-${escapeHTML(status || "missing_debits")}">
+                                <tr class="pi-step1-row is-${escapeHTML(isBalanced ? "balanced" : "missing_debits")}">
                                     <td>${escapeHTML(formatDate(row?.date || ""))}</td>
-                                    <td>${escapeHTML(formatCurrency(row?.creditAmount || 0))} <small>${escapeHTML(String(row?.creditReference || row?.creditPaymentId || "--"))}</small></td>
-                                    <td>${escapeHTML(matchedCopy)}</td>
+                                    <td>${escapeHTML(creditReference)}</td>
+                                    <td>${escapeHTML(formatCurrency(row?.creditAmount || 0))}</td>
+                                    <td>${escapeHTML(formatCurrency(matchedDebitTotal || 0))}</td>
                                     <td>${escapeHTML(formatCurrency(row?.missingDebitAmount || 0))}</td>
                                     <td><span class="pi-step1-status-badge ${badgeClass}">${escapeHTML(badgeLabel)}</span></td>
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="5"><p class="detail-meta">${step1Rows.length ? "All payout credits are matched to same-date debits. Step 1 is clean." : "No PI Clearing payout credit rows found in Master Xero for this batch."}</p></td></tr>`;
+                        : `<tr><td colspan="6"><p class="detail-meta">${step1Rows.length ? "All credits are matched to same-date debits. Step 1 is clean." : "No Xero credit rows found for this account in this batch period."}</p></td></tr>`;
                 }
                 if (wizardToggleMatchedButton) {
                     wizardToggleMatchedButton.textContent = piClearingShowMatchedStep1 ? "Hide matched pairs" : "Show matched pairs";
