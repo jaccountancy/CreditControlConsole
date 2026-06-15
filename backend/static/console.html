@@ -49414,6 +49414,20 @@
             }
 
             function piClearingStep1NeedsIgnitionAI(rows = [], run = {}) {
+                const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
+                const finalisation = summary?.finalisation && typeof summary.finalisation === "object" ? summary.finalisation : {};
+                if (finalisation?.canFinalise === true) return false;
+
+                const xeroStep1 = summary?.xeroStep1 && typeof summary.xeroStep1 === "object" ? summary.xeroStep1 : {};
+                const missingCreditCount = Number(xeroStep1?.missingCreditCount);
+                if (Number.isFinite(missingCreditCount) && missingCreditCount <= 0) return false;
+
+                const step1Rows = Array.isArray(xeroStep1?.rows) ? xeroStep1.rows : [];
+                if (step1Rows.length) {
+                    const hasUnmatchedStep1Rows = step1Rows.some((row) => String(row?.status || "").trim().toLowerCase() !== "balanced");
+                    return hasUnmatchedStep1Rows;
+                }
+
                 const progress = piClearingMatchProgress(rows);
                 if (progress.total <= 0) return false;
                 return progress.partial > 0 || progress.open > 0;
