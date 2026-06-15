@@ -1266,49 +1266,127 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                 },
                 default=_json_default,
             )
-            cursor.execute(
-                """
-                INSERT INTO payroll_headcount_monthly_snapshots (
-                    workspace_id,
-                    month_start,
-                    headcount,
-                    payroll_count,
-                    source,
-                    fetched_at,
-                    raw_payload,
-                    created_at,
-                    updated_at
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO payroll_headcount_monthly_snapshots (
+                        workspace_id,
+                        month_start,
+                        headcount,
+                        payroll_count,
+                        source,
+                        fetched_at,
+                        raw_payload,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    ON CONFLICT (workspace_id, month_start)
+                    DO UPDATE
+                    SET headcount = EXCLUDED.headcount,
+                        payroll_count = EXCLUDED.payroll_count,
+                        source = EXCLUDED.source,
+                        fetched_at = EXCLUDED.fetched_at,
+                        raw_payload = EXCLUDED.raw_payload,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING month_start,
+                              headcount,
+                              payroll_count,
+                              source,
+                              fetched_at,
+                              created_at,
+                              updated_at
+                    """,
+                    (
+                        workspace["id"],
+                        month_start,
+                        active_headcount,
+                        payroll_count,
+                        "xero-payroll",
+                        now,
+                        raw_payload,
+                        now,
+                        now,
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                ON CONFLICT (workspace_id, month_start)
-                DO UPDATE
-                SET headcount = EXCLUDED.headcount,
-                    payroll_count = EXCLUDED.payroll_count,
-                    source = EXCLUDED.source,
-                    fetched_at = EXCLUDED.fetched_at,
-                    raw_payload = EXCLUDED.raw_payload,
-                    updated_at = EXCLUDED.updated_at
-                RETURNING month_start,
-                          headcount,
-                          payroll_count,
-                          source,
-                          fetched_at,
-                          created_at,
-                          updated_at
-                """,
-                (
-                    workspace["id"],
-                    month_start,
-                    active_headcount,
-                    payroll_count,
-                    "xero-payroll",
-                    now,
-                    raw_payload,
-                    now,
-                    now,
-                ),
-            )
-            snapshot_row = cursor.fetchone() or {}
+                snapshot_row = cursor.fetchone() or {}
+            except pg_errors.InvalidColumnReference:
+                # Legacy deployments may miss the unique constraint required by ON CONFLICT.
+                connection.rollback()
+                logger.warning(
+                    "payroll_headcount_snapshot_upsert_legacy_schema user_id=%s tenant_id=%s workspace_id=%s",
+                    user.get("id"),
+                    clean_tenant_id,
+                    workspace.get("id"),
+                )
+                with connection.cursor() as legacy_cursor:
+                    legacy_cursor.execute(
+                        """
+                        UPDATE payroll_headcount_monthly_snapshots
+                        SET headcount = %s,
+                            payroll_count = %s,
+                            source = %s,
+                            fetched_at = %s,
+                            raw_payload = %s::jsonb,
+                            updated_at = %s
+                        WHERE workspace_id = %s
+                          AND month_start = %s
+                        RETURNING month_start,
+                                  headcount,
+                                  payroll_count,
+                                  source,
+                                  fetched_at,
+                                  created_at,
+                                  updated_at
+                        """,
+                        (
+                            active_headcount,
+                            payroll_count,
+                            "xero-payroll",
+                            now,
+                            raw_payload,
+                            now,
+                            workspace["id"],
+                            month_start,
+                        ),
+                    )
+                    snapshot_row = legacy_cursor.fetchone() or {}
+                    if not snapshot_row:
+                        legacy_cursor.execute(
+                            """
+                            INSERT INTO payroll_headcount_monthly_snapshots (
+                                workspace_id,
+                                month_start,
+                                headcount,
+                                payroll_count,
+                                source,
+                                fetched_at,
+                                raw_payload,
+                                created_at,
+                                updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                            RETURNING month_start,
+                                      headcount,
+                                      payroll_count,
+                                      source,
+                                      fetched_at,
+                                      created_at,
+                                      updated_at
+                            """,
+                            (
+                                workspace["id"],
+                                month_start,
+                                active_headcount,
+                                payroll_count,
+                                "xero-payroll",
+                                now,
+                                raw_payload,
+                                now,
+                                now,
+                            ),
+                        )
+                        snapshot_row = legacy_cursor.fetchone() or {}
             cursor.execute(
                 """
                 UPDATE payroll_headcount_workspaces
