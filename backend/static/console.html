@@ -49451,6 +49451,17 @@
                         .slice(0, 22)
                         .sort((left, right) => right.amountAbs - left.amountAbs);
 
+                    // Deterministic fast path:
+                    // if one payout line exactly equals the missing amount, use it directly.
+                    const exactSingleMatches = allLines.filter((line) => piAmountEqual(line.amountAbs, missingDebitAmount, tolerance));
+                    if (exactSingleMatches.length === 1) {
+                        return {
+                            score: 0,
+                            lines: [exactSingleMatches[0]],
+                            netAmount: Number(exactSingleMatches[0]?.signedAmount || 0),
+                        };
+                    }
+
                     let visited = 0;
                     let best = null;
                     const consider = (selected = [], sum = 0) => {
@@ -49486,7 +49497,9 @@
 
                 let bestPayout = null;
                 let bestCombination = null;
-                payouts.forEach((payout) => {
+                const sameDatePayouts = payouts.filter((payout) => piDateKey(payout?.paidOn || "") === targetDate);
+                const payoutCandidates = sameDatePayouts.length ? sameDatePayouts : payouts;
+                payoutCandidates.forEach((payout) => {
                     const combo = findBestCombination(payout);
                     if (!combo) return;
                     const lines = Array.isArray(combo?.lines) ? combo.lines : [];
