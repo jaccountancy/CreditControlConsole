@@ -25935,6 +25935,91 @@
             .risk-assessment-client-row:focus-within td {
                 background: rgba(29, 103, 242, 0.06);
             }
+            .risk-assessment-generating-panel {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 12px;
+                align-items: center;
+                padding: 12px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(36, 122, 85, 0.24);
+                background:
+                    radial-gradient(circle at 8% 8%, rgba(55, 172, 119, 0.18), transparent 56%),
+                    linear-gradient(135deg, rgba(238, 252, 245, 0.95), rgba(224, 247, 236, 0.92));
+                box-shadow: 0 12px 24px rgba(17, 82, 55, 0.11);
+            }
+            .risk-assessment-generating-spinner {
+                width: 34px;
+                height: 34px;
+                border-radius: 999px;
+                border: 2px solid rgba(16, 119, 75, 0.22);
+                border-top-color: rgba(16, 119, 75, 0.92);
+                border-right-color: rgba(16, 119, 75, 0.68);
+                animation: riskAssessmentGeneratingSpin 0.95s linear infinite;
+            }
+            .risk-assessment-generating-copy {
+                min-width: 0;
+                display: grid;
+                gap: 5px;
+            }
+            .risk-assessment-generating-copy strong {
+                font-size: 0.9rem;
+                color: #115e40;
+                letter-spacing: 0.01em;
+            }
+            .risk-assessment-generating-copy small {
+                color: #2d6f55;
+                font-size: 0.76rem;
+                font-weight: 700;
+                line-height: 1.4;
+            }
+            .risk-assessment-generating-track {
+                width: min(320px, 100%);
+                height: 7px;
+                border-radius: 999px;
+                background: rgba(17, 97, 65, 0.14);
+                overflow: hidden;
+            }
+            .risk-assessment-generating-track > span {
+                display: block;
+                width: 44%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, rgba(29, 147, 96, 0.25), rgba(29, 147, 96, 0.9), rgba(29, 147, 96, 0.25));
+                transform: translateX(-120%);
+                animation: riskAssessmentGeneratingSweep 1.4s ease-in-out infinite;
+            }
+            #riskAssessmentsCreateButton.is-busy,
+            #riskAssessmentsGenerateButton.is-busy {
+                position: relative;
+                isolation: isolate;
+                background: linear-gradient(120deg, #0f8a58, #1ea06a);
+                color: #fff;
+                border-color: rgba(13, 117, 74, 0.66);
+                box-shadow: 0 10px 18px rgba(15, 109, 73, 0.25);
+            }
+            #riskAssessmentsCreateButton.is-busy::after,
+            #riskAssessmentsGenerateButton.is-busy::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.22) 50%, transparent 80%);
+                transform: translateX(-100%);
+                animation: riskAssessmentGeneratingButtonSweep 1.2s ease-in-out infinite;
+                pointer-events: none;
+                z-index: -1;
+            }
+            @keyframes riskAssessmentGeneratingSpin {
+                to { transform: rotate(360deg); }
+            }
+            @keyframes riskAssessmentGeneratingSweep {
+                0% { transform: translateX(-120%); }
+                100% { transform: translateX(240%); }
+            }
+            @keyframes riskAssessmentGeneratingButtonSweep {
+                0% { transform: translateX(-110%); }
+                100% { transform: translateX(110%); }
+            }
             .xero-lock-date-mapping-input {
                 width: 156px;
                 min-height: 38px;
@@ -30771,6 +30856,14 @@
                                     <input id="riskAssessmentsBmCsvInput" type="file" accept=".csv,text/csv">
                                 </label>
                                 <p class="settings-help" id="riskAssessmentsCsvStatus">Upload a BM Client CSV to load clients for selection.</p>
+                                <div class="risk-assessment-generating-panel" id="riskAssessmentsGeneratingPanel" hidden aria-live="polite" aria-atomic="true">
+                                    <span class="risk-assessment-generating-spinner" aria-hidden="true"></span>
+                                    <div class="risk-assessment-generating-copy">
+                                        <strong id="riskAssessmentsGeneratingTitle">Generating risk assessments…</strong>
+                                        <small id="riskAssessmentsGeneratingMeta">Preparing selected clients and AI risk commentary.</small>
+                                        <div class="risk-assessment-generating-track" aria-hidden="true"><span></span></div>
+                                    </div>
+                                </div>
                                 <div class="risk-assessment-picker-controls">
                                     <input id="riskAssessmentsClientSearchInput" type="search" placeholder="Search clients">
                                     <select id="riskAssessmentsClientFilterSelect" aria-label="Filter client rows">
@@ -77974,6 +78067,9 @@
                 const builder = document.getElementById("riskAssessmentsBuilder");
                 const status = document.getElementById("riskAssessmentsCsvStatus");
                 const generateButton = document.getElementById("riskAssessmentsGenerateButton");
+                const generatingPanel = document.getElementById("riskAssessmentsGeneratingPanel");
+                const generatingTitle = document.getElementById("riskAssessmentsGeneratingTitle");
+                const generatingMeta = document.getElementById("riskAssessmentsGeneratingMeta");
                 const selectedCount = riskAssessmentSelectedClientKeys.size;
                 const filteredCount = filteredRiskAssessmentDraftClients().length;
                 const historyIds = new Set((riskAssessments || []).map((record) => String(record?.id || "")).filter(Boolean));
@@ -78007,6 +78103,7 @@
                         : riskAssessmentBuilderOpen
                             ? (selectedCount ? `Create selected (${selectedCount})` : "Select clients to create")
                             : "Create risk assessments";
+                    createButton.classList.toggle("is-busy", riskAssessmentGenerating);
                 }
                 if (deleteButton) {
                     deleteButton.disabled = riskAssessmentGenerating || selectedHistoryCount === 0;
@@ -78024,9 +78121,23 @@
                     generateButton.textContent = riskAssessmentGenerating
                         ? "Generating..."
                         : selectedCount ? `Generate selected (${selectedCount})` : "Generate selected";
+                    generateButton.classList.toggle("is-busy", riskAssessmentGenerating);
+                }
+                if (generatingPanel) generatingPanel.hidden = !riskAssessmentGenerating;
+                if (generatingTitle) {
+                    generatingTitle.textContent = riskAssessmentGenerating
+                        ? `Generating ${selectedCount.toLocaleString("en-GB")} risk assessment${selectedCount === 1 ? "" : "s"}…`
+                        : "Generating risk assessments…";
+                }
+                if (generatingMeta) {
+                    generatingMeta.textContent = riskAssessmentGenerating
+                        ? "Running AI risk evaluation, scoring and recommendations. This can take a minute for larger selections."
+                        : "Preparing selected clients and AI risk commentary.";
                 }
                 if (status && riskAssessmentBuilderOpen) {
-                    if (!riskAssessmentDraftClients.length) {
+                    if (riskAssessmentGenerating) {
+                        status.textContent = `Processing ${selectedCount.toLocaleString("en-GB")} selected client${selectedCount === 1 ? "" : "s"}…`;
+                    } else if (!riskAssessmentDraftClients.length) {
                         status.textContent = "Upload a BM Client CSV to load clients for selection.";
                     } else {
                         status.textContent = `${riskAssessmentDraftClients.length.toLocaleString("en-GB")} clients loaded from ${riskAssessmentLastCsvFileName || "CSV"} · ${filteredCount.toLocaleString("en-GB")} shown · ${selectedCount.toLocaleString("en-GB")} selected.`;
