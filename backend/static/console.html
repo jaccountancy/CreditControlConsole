@@ -29071,13 +29071,103 @@
             }
             .pi-step1-next-step {
                 display: grid;
-                gap: 10px;
+                gap: 12px;
             }
             .pi-step1-next-step p {
                 margin: 0;
             }
+            .pi-step1-ai-intro {
+                display: grid;
+                gap: 6px;
+                padding: 12px 14px;
+                border-radius: 12px;
+                background: linear-gradient(135deg, rgba(31, 85, 196, 0.08), rgba(39, 174, 96, 0.10));
+                border: 1px solid rgba(33, 95, 199, 0.16);
+            }
+            .pi-step1-ai-intro strong {
+                font-size: 13px;
+                letter-spacing: 0.01em;
+                color: #173f8f;
+            }
+            .pi-step1-ai-intro small {
+                color: #35527f;
+                font-weight: 600;
+                line-height: 1.35;
+            }
+            .pi-step1-ai-steps {
+                display: grid;
+                gap: 6px;
+                margin: 0;
+                padding-left: 18px;
+                color: #35527f;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            .pi-step1-ai-actions {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
             .pi-step1-ai-button {
                 justify-self: start;
+                min-width: 220px;
+            }
+            .pi-step1-ai-button.is-loading {
+                position: relative;
+                padding-left: 40px;
+            }
+            .pi-step1-ai-button.is-loading::before {
+                content: "";
+                position: absolute;
+                left: 14px;
+                top: 50%;
+                width: 16px;
+                height: 16px;
+                margin-top: -8px;
+                border-radius: 999px;
+                border: 2px solid rgba(255, 255, 255, 0.4);
+                border-top-color: #ffffff;
+                animation: pi-clearing-loading-spin 0.8s linear infinite;
+            }
+            .pi-step1-ai-status {
+                display: grid;
+                gap: 8px;
+                padding: 12px 14px;
+                border-radius: 12px;
+                border: 1px solid rgba(30, 63, 124, 0.14);
+                background: #f8fbff;
+            }
+            .pi-step1-ai-status strong {
+                font-size: 13px;
+                letter-spacing: 0.01em;
+            }
+            .pi-step1-ai-status p {
+                margin: 0;
+                color: #4a628d;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.35;
+            }
+            .pi-step1-ai-status ul {
+                margin: 0;
+                padding-left: 18px;
+                color: #4a628d;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.35;
+            }
+            .pi-step1-ai-status.is-success {
+                border-color: rgba(16, 138, 92, 0.26);
+                background: rgba(16, 138, 92, 0.08);
+            }
+            .pi-step1-ai-status.is-warning {
+                border-color: rgba(194, 122, 31, 0.26);
+                background: rgba(194, 122, 31, 0.08);
+            }
+            .pi-step1-ai-status.is-info {
+                border-color: rgba(32, 98, 199, 0.24);
+                background: rgba(32, 98, 199, 0.08);
             }
             .pi-step1-match-table-wrap {
                 width: 100%;
@@ -37932,6 +38022,9 @@
             let piClearingSelectedPayoutKey = "";
             let piClearingStep1DifferenceModalOpen = false;
             let piClearingStep1DifferenceRow = null;
+            let piClearingStep1AiRunning = false;
+            let piClearingStep1AiResult = null;
+            let piClearingStep1AiRowKey = "";
             let piClearingWorkflowStageTimer = null;
             let piClearingLivePollTimer = null;
             const PI_CLEARING_WORKFLOW_STAGES = [
@@ -49107,6 +49200,148 @@
                 });
             }
 
+            function piDateKey(value = "") {
+                return String(value || "").slice(0, 10);
+            }
+
+            function piAmountEqual(left, right, tolerance = 0.01) {
+                return Math.abs(Number(left || 0) - Number(right || 0)) <= tolerance;
+            }
+
+            function piResolveStep1DifferenceFromIgnition(step1Row = {}, runRows = []) {
+                const row = step1Row && typeof step1Row === "object" ? step1Row : {};
+                const targetDate = piDateKey(row?.date || row?.paidOn || row?.creditPaidOn || "");
+                const creditAmount = Number(row?.creditAmount || 0);
+                const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
+                const missingDebitAmount = Math.max(0, Number(row?.missingDebitAmount || (creditAmount - matchedDebitTotal)));
+                if (!targetDate || missingDebitAmount <= 0.005) return null;
+
+                const creditClientName = String(row?.creditClientName || "").trim().toLowerCase();
+                const payouts = buildPiClearingPayoutBreakdown(runRows);
+                const tolerance = 0.01;
+                const maxDepth = 6;
+                const maxNodes = 2500;
+
+                const findBestCombination = (payout = {}) => {
+                    const allLines = (Array.isArray(payout?.lines) ? payout.lines : [])
+                        .map((line) => {
+                            const signedAmount = Number(line?.amount || 0);
+                            const amountAbs = Math.abs(signedAmount);
+                            const lineClientName = String(line?.clientName || "").trim().toLowerCase();
+                            const clientBoost = creditClientName && lineClientName === creditClientName ? -0.5 : 0;
+                            return {
+                                ...line,
+                                signedAmount,
+                                amountAbs,
+                                lineClientName,
+                                rankScore: Math.abs(Math.abs(signedAmount) - missingDebitAmount) + clientBoost,
+                            };
+                        })
+                        .filter((line) => line.amountAbs > 0.004)
+                        .sort((left, right) => left.rankScore - right.rankScore)
+                        .slice(0, 22)
+                        .sort((left, right) => right.amountAbs - left.amountAbs);
+
+                    let visited = 0;
+                    let best = null;
+                    const consider = (selected = [], sum = 0) => {
+                        if (!selected.length) return;
+                        const delta = Math.abs(sum - missingDebitAmount);
+                        if (delta > tolerance) return;
+                        const clientHits = selected.filter((item) => creditClientName && item.lineClientName === creditClientName).length;
+                        const refunds = selected.filter((item) => item.signedAmount < 0).length;
+                        const score = delta + (selected.length - 1) * 0.05 + refunds * 0.02 - clientHits * 0.02;
+                        if (!best || score < best.score) {
+                            best = {
+                                score,
+                                lines: selected,
+                                netAmount: sum,
+                            };
+                        }
+                    };
+                    const dfs = (startIndex, selected, sum) => {
+                        visited += 1;
+                        if (visited > maxNodes) return;
+                        consider(selected, sum);
+                        if (selected.length >= maxDepth) return;
+                        for (let index = startIndex; index < allLines.length; index += 1) {
+                            const line = allLines[index];
+                            const nextSum = sum + Number(line?.signedAmount || 0);
+                            if (Math.abs(nextSum) > (missingDebitAmount * 2.2) + 1) continue;
+                            dfs(index + 1, [...selected, line], nextSum);
+                        }
+                    };
+                    dfs(0, [], 0);
+                    return best;
+                };
+
+                let bestPayout = null;
+                let bestCombination = null;
+                payouts.forEach((payout) => {
+                    if (piDateKey(payout?.paidOn) !== targetDate) return;
+                    const combo = findBestCombination(payout);
+                    if (!combo) return;
+                    if (!bestCombination || combo.score < bestCombination.score) {
+                        bestCombination = combo;
+                        bestPayout = payout;
+                    }
+                });
+
+                if (!bestPayout || !bestCombination?.lines?.length) return null;
+
+                const targetClient = String(
+                    bestCombination.lines.find((item) => String(item?.clientName || "").trim())?.clientName
+                    || row?.creditClientName
+                    || ""
+                ).trim().toLowerCase();
+
+                const candidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
+                    const differenceTotal = Math.abs(Number(item?.differenceTotal || item?.difference || 0));
+                    if (!piAmountEqual(differenceTotal, missingDebitAmount, Math.max(tolerance, 0.02))) return false;
+                    const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
+                    if (payoutDate && payoutDate !== targetDate) return false;
+                    return true;
+                });
+
+                const matchedRunRow = candidates.sort((left, right) => {
+                    const leftClient = String(left?.clientName || "").trim().toLowerCase();
+                    const rightClient = String(right?.clientName || "").trim().toLowerCase();
+                    const leftScore = leftClient && leftClient === targetClient ? 0 : 1;
+                    const rightScore = rightClient && rightClient === targetClient ? 0 : 1;
+                    return leftScore - rightScore;
+                })[0] || null;
+
+                return {
+                    targetDate,
+                    missingDebitAmount,
+                    payout: bestPayout,
+                    payoutLines: bestCombination.lines,
+                    payoutLine: bestCombination.lines[0] || null,
+                    netAmount: Number(bestCombination.netAmount || 0),
+                    runRow: matchedRunRow,
+                };
+            }
+
+            function piStep1DifferenceRowKey(row = {}) {
+                return [
+                    String(row?.creditPaymentId || "").trim(),
+                    piDateKey(row?.date || row?.paidOn || row?.creditPaidOn || ""),
+                    Number(row?.creditAmount || 0).toFixed(2),
+                    Number(row?.missingDebitAmount || 0).toFixed(2),
+                ].join("|");
+            }
+
+            function applyPiStep1AiMatch(match = {}) {
+                const matchedRowId = String(match?.runRow?.id || "").trim();
+                if (!matchedRowId) return false;
+                piClearingSelectedRowIds = new Set([matchedRowId]);
+                piClearingWizardOpen = true;
+                piClearingWizardStep = 3;
+                piClearingStep1DifferenceModalOpen = false;
+                piClearingStep1DifferenceRow = null;
+                return true;
+            }
+
             function piRiskLevel(row = {}) {
                 const level = String(row?.riskLevel || row?.raw?.riskLevel || "").trim().toLowerCase();
                 if (["high", "medium", "low"].includes(level)) return level;
@@ -49411,6 +49646,9 @@
                 piClearingSelectedPayoutKey = "";
                 piClearingStep1DifferenceModalOpen = false;
                 piClearingStep1DifferenceRow = null;
+                piClearingStep1AiRunning = false;
+                piClearingStep1AiResult = null;
+                piClearingStep1AiRowKey = "";
             }
 
             function piClearingStep1NeedsIgnitionAI(rows = [], run = {}) {
@@ -50632,12 +50870,82 @@
                                 </div>
                             `
                             : `<p class="detail-meta">No same-date debit lines were matched to this credit.</p>`;
+                        const step1RowKey = piStep1DifferenceRowKey(row || {});
+                        if (step1RowKey !== piClearingStep1AiRowKey) {
+                            piClearingStep1AiRowKey = step1RowKey;
+                            piClearingStep1AiResult = null;
+                            piClearingStep1AiRunning = false;
+                        }
+                        const aiResult = piClearingStep1AiResult;
+                        const aiStatusMarkup = (() => {
+                            if (isBalanced) return "";
+                            if (piClearingStep1AiRunning) {
+                                return `
+                                    <div class="pi-step1-ai-status is-info">
+                                        <strong>Jenius AI is resolving this mismatch</strong>
+                                        <p>Using OpenAI analysis plus refreshed Ignition payout lines to find exact or split combinations that match ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(row?.date || ""))}.</p>
+                                        <ul>
+                                            <li>Refreshing latest Ignition payout and refund breakdown</li>
+                                            <li>Checking same-date combinations (for example 100 = 50 + 50)</li>
+                                            <li>Mapping match back to Step 3 credit-note row</li>
+                                        </ul>
+                                    </div>
+                                `;
+                            }
+                            if (!aiResult || aiResult.rowKey !== step1RowKey) return "";
+                            if (aiResult.status === "matched") {
+                                const lineCount = Number(aiResult?.lineCount || 0);
+                                const payoutId = String(aiResult?.payoutId || "--");
+                                return `
+                                    <div class="pi-step1-ai-status is-success">
+                                        <strong>AI found the balancing match</strong>
+                                        <p>Matched ${escapeHTML(formatCurrency(missingDebitAmount))} on ${escapeHTML(formatDate(aiResult?.targetDate || row?.date || ""))} via payout ${escapeHTML(payoutId)} using ${escapeHTML(String(lineCount))} Ignition line${lineCount === 1 ? "" : "s"}.</p>
+                                        <div class="pi-step1-ai-actions">
+                                            <button class="primary-button" type="button" data-pi-step1-ai-apply="true">Select row and continue to Step 3</button>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                            if (aiResult.status === "payout_only") {
+                                return `
+                                    <div class="pi-step1-ai-status is-warning">
+                                        <strong>AI found payout evidence but no eligible Step 3 row</strong>
+                                        <p>We matched same-date payout lines for ${escapeHTML(formatCurrency(missingDebitAmount))}, but there is no eligible difference row to auto-select yet. Refresh and review row status/contact mapping.</p>
+                                    </div>
+                                `;
+                            }
+                            if (aiResult.status === "error") {
+                                return `
+                                    <div class="pi-step1-ai-status is-warning">
+                                        <strong>AI check failed</strong>
+                                        <p>${escapeHTML(String(aiResult?.message || "Unable to run AI check for this row."))}</p>
+                                    </div>
+                                `;
+                            }
+                            return `
+                                <div class="pi-step1-ai-status is-warning">
+                                    <strong>No matching payout combination found</strong>
+                                    <p>OpenAI reviewed same-date payout and refund lines but could not build a combination that balances ${escapeHTML(formatCurrency(missingDebitAmount))}. Confirm the missing Xero posting first.</p>
+                                </div>
+                            `;
+                        })();
                         const nextStepMarkup = isBalanced
                             ? `<span class="pi-step-success"><span class="pi-step-success-icon" aria-hidden="true">✓</span><span class="pi-step-success-copy"><strong>Reconciled</strong><small>All same-date debits are matched.</small></span></span>`
                             : `
                                 <div class="pi-step1-next-step">
-                                    <p>Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.</p>
-                                    <button class="primary-button pi-step1-ai-button" type="button" data-pi-step1-ask-ai="true">Ask Jenius AI</button>
+                                    <div class="pi-step1-ai-intro">
+                                        <strong>Ask Jenius AI to work out the missing debit logic</strong>
+                                        <small>Jenius uses OpenAI plus Ignition payout breakdown to find exact and split combinations, then maps the result to Step 3 credit-note treatment.</small>
+                                        <ol class="pi-step1-ai-steps">
+                                            <li>Refresh latest Ignition payout lines and refunds</li>
+                                            <li>Find same-date amount combinations that net to the missing value</li>
+                                            <li>Select the matching row for Step 3 credit-note creation</li>
+                                        </ol>
+                                    </div>
+                                    ${aiStatusMarkup}
+                                    <div class="pi-step1-ai-actions">
+                                        <button class="primary-button pi-step1-ai-button ${piClearingStep1AiRunning ? "is-loading" : ""}" type="button" data-pi-step1-ask-ai="true" ${piClearingStep1AiRunning ? "disabled" : ""}>${piClearingStep1AiRunning ? "Jenius AI is resolving..." : "Ask Jenius AI"}</button>
+                                    </div>
                                 </div>
                             `;
                         step1DifferenceBody.innerHTML = row
@@ -50654,20 +50962,84 @@
                         const askAiButton = step1DifferenceBody.querySelector("[data-pi-step1-ask-ai]");
                         if (askAiButton) {
                             askAiButton.addEventListener("click", async () => {
-                                piClearingStep1DifferenceModalOpen = false;
-                                piClearingStep1DifferenceRow = null;
+                                if (!row || piClearingStep1AiRunning) return;
+                                const selectedStep1Row = { ...row };
+                                const selectedRowKey = piStep1DifferenceRowKey(selectedStep1Row);
+                                piClearingStep1AiRunning = true;
+                                piClearingStep1AiResult = null;
+                                piClearingStep1AiRowKey = selectedRowKey;
                                 renderPiClearingAccountScreen();
-                                showToast("Jenius AI is checking Ignition data and preparing balancing credit note suggestions.", "info");
-                                await runPiClearingWorkflow({
-                                    includeIgnition: true,
-                                    includeAI: true,
-                                    refreshXero: false,
-                                    refreshIgnition: false,
-                                    batchStart: String(run?.monthStart || piClearingBatchStart || ""),
-                                    batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
-                                    accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
-                                    targetStep: 2,
-                                });
+                                showToast("Jenius AI is running OpenAI-assisted payout matching for this difference.", "info");
+                                try {
+                                    await runPiClearingWorkflow({
+                                        includeIgnition: true,
+                                        includeAI: true,
+                                        refreshXero: false,
+                                        refreshIgnition: true,
+                                        batchStart: String(run?.monthStart || piClearingBatchStart || ""),
+                                        batchEnd: String(run?.monthEnd || piClearingBatchEnd || ""),
+                                        accountCode: String(run?.accountCode || currentPiClearingAccountCode() || ""),
+                                        targetStep: 2,
+                                    });
+                                    const refreshedRun = currentPiClearingRun();
+                                    const refreshedRows = Array.isArray(refreshedRun?.rows) ? refreshedRun.rows : [];
+                                    const match = piResolveStep1DifferenceFromIgnition(selectedStep1Row, refreshedRows);
+                                    if (match?.runRow?.id) {
+                                        piClearingStep1AiResult = {
+                                            rowKey: selectedRowKey,
+                                            status: "matched",
+                                            targetDate: String(match?.targetDate || ""),
+                                            payoutId: String(match?.payout?.payoutId || "--"),
+                                            lineCount: Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0),
+                                            match,
+                                        };
+                                        piClearingStatusMessage = `Jenius AI matched ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")} using Ignition payout ${String(match?.payout?.payoutId || "--")}.`;
+                                        piClearingStatusTone = "success";
+                                        showToast("Jenius AI found a valid Step 3 match.", "success");
+                                    } else if (match?.payoutLine || (Array.isArray(match?.payoutLines) && match.payoutLines.length)) {
+                                        piClearingStep1AiResult = {
+                                            rowKey: selectedRowKey,
+                                            status: "payout_only",
+                                            match,
+                                        };
+                                        piClearingStatusMessage = `Jenius AI found payout evidence for ${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}, but no eligible Step 3 row is ready.`;
+                                        piClearingStatusTone = "warning";
+                                        showToast("Payout evidence found, but no eligible Step 3 row to auto-select.", "info");
+                                    } else {
+                                        piClearingStep1AiResult = {
+                                            rowKey: selectedRowKey,
+                                            status: "not_found",
+                                        };
+                                        showToast("No same-date Ignition combination matched this missing amount.", "warning");
+                                    }
+                                } catch (error) {
+                                    const message = error?.message ? String(error.message) : "Unable to complete AI check.";
+                                    piClearingStep1AiResult = {
+                                        rowKey: selectedRowKey,
+                                        status: "error",
+                                        message,
+                                    };
+                                    showToast(message, "error");
+                                } finally {
+                                    piClearingStep1AiRunning = false;
+                                    renderPiClearingAccountScreen();
+                                }
+                            });
+                        }
+                        const applyAiButton = step1DifferenceBody.querySelector("[data-pi-step1-ai-apply]");
+                        if (applyAiButton) {
+                            applyAiButton.addEventListener("click", () => {
+                                const match = piClearingStep1AiResult?.match;
+                                if (!match) return;
+                                if (!applyPiStep1AiMatch(match)) {
+                                    showToast("AI found evidence, but no Step 3 row could be selected.", "warning");
+                                    return;
+                                }
+                                const matchedClient = String(match?.runRow?.clientName || match?.payoutLine?.clientName || "the matched contact").trim();
+                                piClearingStatusMessage = `Jenius AI selected ${matchedClient} for Step 3 credit-note treatment (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
+                                piClearingStatusTone = "success";
+                                renderPiClearingAccountScreen();
+                                showToast("AI match applied. Continue in Step 3.", "success");
                             });
                         }
                     }
@@ -50678,6 +51050,9 @@
                     step1DifferenceClose.addEventListener("click", () => {
                         piClearingStep1DifferenceModalOpen = false;
                         piClearingStep1DifferenceRow = null;
+                        piClearingStep1AiRunning = false;
+                        piClearingStep1AiResult = null;
+                        piClearingStep1AiRowKey = "";
                         renderPiClearingAccountScreen();
                     });
                 }
