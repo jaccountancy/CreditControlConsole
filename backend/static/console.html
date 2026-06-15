@@ -48124,6 +48124,51 @@
                 };
             }
 
+            function buildPiClearingStep2FromStep1Rows(step1Rows = []) {
+                const rows = Array.isArray(step1Rows) ? step1Rows : [];
+                const unmatchedCredits = [];
+                let hiddenPairCount = 0;
+                let matchedCreditCount = 0;
+                let unmatchedCreditCount = 0;
+                let unmatchedCreditTotal = 0;
+
+                rows.forEach((row) => {
+                    const status = String(row?.status || "").trim().toLowerCase();
+                    const creditAmount = Number(row?.creditAmount || 0);
+                    const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
+                    const missingDebitAmount = Number(row?.missingDebitAmount || Math.max(0, creditAmount - matchedDebitTotal));
+                    if (status === "balanced") {
+                        hiddenPairCount += 1;
+                        matchedCreditCount += 1;
+                        return;
+                    }
+                    unmatchedCredits.push({
+                        paidOn: String(row?.date || "").trim(),
+                        clientName: String(row?.creditClientName || "Unknown client").trim() || "Unknown client",
+                        description: String(row?.creditReference || row?.creditPaymentId || "--").trim() || "--",
+                        source: "Step 1 Xero check",
+                        credit: creditAmount,
+                        matchingDebitTotal: matchedDebitTotal,
+                        unmatchedAmount: Math.max(0, missingDebitAmount),
+                        aiStatus: status === "partial" ? "Part-matched" : "Missing debit",
+                        aiHint: status === "partial"
+                            ? "Partially matched in Step 1. Review missing amount."
+                            : "No same-date debit fully matching this credit in Step 1.",
+                    });
+                    unmatchedCreditCount += 1;
+                    unmatchedCreditTotal += Math.max(0, missingDebitAmount);
+                });
+
+                return {
+                    source: "step1",
+                    unmatchedCredits,
+                    hiddenPairCount,
+                    matchedCreditCount,
+                    unmatchedCreditCount,
+                    unmatchedCreditTotal,
+                };
+            }
+
             function piStep2ReconciliationFromAnalysis(run = {}) {
                 const analysis = run?.analysis && typeof run.analysis === "object" ? run.analysis : {};
                 const step2 = analysis?.step2Reconciliation && typeof analysis.step2Reconciliation === "object"
@@ -48716,6 +48761,7 @@
                 const payoutDetailBody = document.getElementById("piClearingPayoutDetailBody");
                 const payoutDetailMeta = document.getElementById("piClearingPayoutDetailMeta");
                 const step1DifferenceModal = document.getElementById("piClearingStep1DifferenceModal");
+                const step1DifferenceTitle = document.getElementById("piClearingStep1DifferenceTitle");
                 const step1DifferenceMeta = document.getElementById("piClearingStep1DifferenceMeta");
                 const step1DifferenceBody = document.getElementById("piClearingStep1DifferenceBody");
                 if (!summary) return;
@@ -48928,6 +48974,7 @@
                 const runRows = Array.isArray(run?.rows) ? run.rows : [];
                 const visibleRuns = piClearingVisibleRuns();
                 const summaryRows = run?.summary && typeof run.summary === "object" ? run.summary : {};
+                const step1Rows = Array.isArray(summaryRows?.xeroStep1?.rows) ? summaryRows.xeroStep1.rows : [];
                 const differenceTotal = Number(summaryRows?.differenceTotal || 0);
                 const selectedBatchLabel = piClearingRunRangeLabel(run) || (piClearingBatchStart && piClearingBatchEnd ? `${formatDate(piClearingBatchStart)} to ${formatDate(piClearingBatchEnd)}` : "--");
                 const summaryPrefix = piClearingStatusMessage || (piClearingLoading ? "Loading PI clearing data..." : "");
@@ -49098,7 +49145,6 @@
                     }
                 }
                 if (wizardXeroBody) {
-                    const step1Rows = Array.isArray(summaryRows?.xeroStep1?.rows) ? summaryRows.xeroStep1.rows : [];
                     const rowToneClass = (statusValue = "") => {
                         const status = String(statusValue || "").trim().toLowerCase();
                         if (status === "balanced") return "is-success";
@@ -49115,9 +49161,8 @@
                         ? step1Rows.map((row, index) => {
                             const creditAmount = Number(row?.creditAmount || 0);
                             const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
-                            const missingDebitAmount = Number(row?.missingDebitAmount || 0);
                             const status = String(row?.status || "").trim().toLowerCase();
-                            const canInit = status === "partial" || status === "missing_debits";
+                            const canViewMatches = status === "balanced";
                             return `
                                 <tr>
                                     <td>${escapeHTML(formatDate(row?.date || ""))}</td>
@@ -49126,14 +49171,19 @@
                                     <td>${escapeHTML(formatCurrency(creditAmount))}</td>
                                     <td>${escapeHTML(formatCurrency(matchedDebitTotal))}</td>
                                     <td><span class="ch-pill ${escapeHTML(rowToneClass(status))}">${escapeHTML(rowLabel(status))}</span></td>
-                                    <td>${canInit ? `<button class="ghost-button" type="button" data-pi-step1-init="${escapeHTML(String(index))}">Init it</button>` : `<span class="detail-meta">No action</span>`}</td>
+                                    <td>
+                                        ${canViewMatches
+                                            ? `<button class="ghost-button" type="button" data-pi-step1-detail="${escapeHTML(String(index))}">View matches</button>`
+                                            : `<button class="ghost-button" type="button" data-pi-step1-detail="${escapeHTML(String(index))}">Init it</button>`
+                                        }
+                                    </td>
                                 </tr>
                             `;
                         }).join("")
                         : `<tr><td colspan="7"><p class="detail-meta">No Xero credit entries found for this nominal account in the selected period.</p></td></tr>`;
-                    wizardXeroBody.querySelectorAll("[data-pi-step1-init]").forEach((button) => {
+                    wizardXeroBody.querySelectorAll("[data-pi-step1-detail]").forEach((button) => {
                         button.addEventListener("click", () => {
-                            const rowIndex = Number(button.getAttribute("data-pi-step1-init"));
+                            const rowIndex = Number(button.getAttribute("data-pi-step1-detail"));
                             const targetRow = Number.isFinite(rowIndex) ? step1Rows[rowIndex] : null;
                             if (!targetRow) return;
                             piClearingStep1DifferenceRow = targetRow;
@@ -49154,10 +49204,14 @@
                     wizardLoadButton.onclick = runPiClearingWorkflow;
                 }
                 const step2FromAnalysis = piStep2ReconciliationFromAnalysis(run);
-                const step2Reconciliation = step2FromAnalysis || buildPiClearingStep2CreditReconciliation(runRows);
+                const step2FromStep1 = buildPiClearingStep2FromStep1Rows(step1Rows);
+                const step2Reconciliation = step1Rows.length
+                    ? step2FromStep1
+                    : (step2FromAnalysis || buildPiClearingStep2CreditReconciliation(runRows));
                 if (wizardRowsBody) {
                     const unmatchedCredits = Array.isArray(step2Reconciliation?.unmatchedCredits) ? step2Reconciliation.unmatchedCredits : [];
-                    wizardRowsBody.innerHTML = runRows.length
+                    const hasStep2Input = step1Rows.length > 0 || runRows.length > 0;
+                    wizardRowsBody.innerHTML = hasStep2Input
                         ? unmatchedCredits.length
                             ? unmatchedCredits.map((row) => `
                                 <tr>
@@ -49224,7 +49278,8 @@
                     const unmatchedCreditTotal = Number(step2Reconciliation?.unmatchedCreditTotal || 0);
                     const step2Engine = String(step2Reconciliation?.source || analysis?.engine || "local").trim().toLowerCase();
                     const engineLabel = step2Engine.startsWith("openai") ? "OpenAI" : "Local";
-                    const ignitionIntro = runRows.length
+                    const hasStep2Input = step1Rows.length > 0 || runRows.length > 0;
+                    const ignitionIntro = hasStep2Input
                         ? `Step 2 (${engineLabel}) reconciled Step 1 transactions: ${formatInteger(hiddenPairCount)} same-date debit/credit pair${hiddenPairCount === 1 ? "" : "s"} hidden; ${formatInteger(unmatchedCreditCount)} unmatched credit entr${unmatchedCreditCount === 1 ? "y" : "ies"} flagged (${formatCurrency(unmatchedCreditTotal)}).`
                         : "Step 2 has no Step 1 transaction data yet.";
                     wizardAnalysisSummary.textContent = summaryText
@@ -49491,16 +49546,36 @@
                 if (step1DifferenceModal) step1DifferenceModal.hidden = !piClearingStep1DifferenceModalOpen;
                 if (step1DifferenceModal && piClearingStep1DifferenceModalOpen) {
                     const row = piClearingStep1DifferenceRow && typeof piClearingStep1DifferenceRow === "object" ? piClearingStep1DifferenceRow : null;
+                    const rowStatus = String(row?.status || "").trim().toLowerCase();
+                    const isBalanced = rowStatus === "balanced";
                     const creditAmount = Number(row?.creditAmount || 0);
                     const matchedDebitTotal = Number(row?.matchedDebitTotal || 0);
-                    const missingDebitAmount = Number(row?.missingDebitAmount || 0);
+                    const missingDebitAmount = Number(row?.missingDebitAmount || Math.max(0, creditAmount - matchedDebitTotal));
+                    if (step1DifferenceTitle) {
+                        step1DifferenceTitle.textContent = isBalanced ? "Matched debit transactions" : "Work out difference";
+                    }
                     if (step1DifferenceMeta) {
                         step1DifferenceMeta.textContent = row
-                            ? `${formatDate(row?.date || "")} · Credit ${formatCurrency(creditAmount)} · Missing ${formatCurrency(missingDebitAmount)}`
+                            ? isBalanced
+                                ? `${formatDate(row?.date || "")} · Credit ${formatCurrency(creditAmount)} fully matched`
+                                : `${formatDate(row?.date || "")} · Credit ${formatCurrency(creditAmount)} · Missing ${formatCurrency(missingDebitAmount)}`
                             : "No credit entry selected.";
                     }
                     if (step1DifferenceBody) {
                         const matchedDebits = Array.isArray(row?.matchedDebits) ? row.matchedDebits : [];
+                        const matchedDebitLines = matchedDebits.length
+                            ? matchedDebits.map((item) => {
+                                const amountUsed = formatCurrency(Number(item?.amountUsed || item?.amount || 0));
+                                const paymentId = String(item?.paymentId || "").trim();
+                                const paidOn = formatDate(String(item?.paidOn || item?.date || "").trim());
+                                const parts = [
+                                    amountUsed,
+                                    paidOn && paidOn !== "--" ? paidOn : "",
+                                    paymentId ? `ID ${paymentId}` : "",
+                                ].filter(Boolean);
+                                return `<div>${escapeHTML(parts.join(" · "))}</div>`;
+                            }).join("")
+                            : "<div>None</div>";
                         step1DifferenceBody.innerHTML = row
                             ? `
                                 <tr><th>Credit payment id</th><td>${escapeHTML(String(row?.creditPaymentId || "--"))}</td></tr>
@@ -49508,8 +49583,8 @@
                                 <tr><th>Credit amount</th><td>${escapeHTML(formatCurrency(creditAmount))}</td></tr>
                                 <tr><th>Matched debit total</th><td>${escapeHTML(formatCurrency(matchedDebitTotal))}</td></tr>
                                 <tr><th>Missing debit amount</th><td>${escapeHTML(formatCurrency(missingDebitAmount))}</td></tr>
-                                <tr><th>Matched debit lines</th><td>${escapeHTML(matchedDebits.length ? matchedDebits.map((item) => `${formatCurrency(Number(item?.amountUsed || 0))}${item?.paymentId ? ` (${item.paymentId})` : ""}`).join(", ") : "None")}</td></tr>
-                                <tr><th>Next step</th><td>Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions.</td></tr>
+                                <tr><th>Matched debit lines</th><td>${matchedDebitLines}</td></tr>
+                                <tr><th>Next step</th><td>${isBalanced ? "No action needed. This credit is fully matched by same-date debits." : "Trace the missing same-date debit line in Xero, post/correct it, then refresh transactions."}</td></tr>
                             `
                             : `<tr><td><p class="detail-meta">No row selected.</p></td></tr>`;
                     }
