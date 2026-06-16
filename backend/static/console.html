@@ -49498,6 +49498,24 @@
                     const clientName = normalizeClient(item?.clientName || "");
                     if (clientName) expectedClientNames.add(clientName);
                 });
+                const scopePaymentIds = new Set([
+                    ...matchedDebitPaymentIds,
+                    ...(creditPaymentId ? [creditPaymentId] : []),
+                ]);
+                const scopedPayoutKeys = new Set();
+                (Array.isArray(runRows) ? runRows : []).forEach((item) => {
+                    const ids = Array.isArray(item?.xeroPaymentIds) ? item.xeroPaymentIds.map((value) => String(value || "").trim()).filter(Boolean) : [];
+                    const overlapsScope = ids.some((id) => scopePaymentIds.has(id));
+                    if (!overlapsScope) return;
+                    const ignitionRows = Array.isArray(item?.raw?.ignitionRows) ? item.raw.ignitionRows : [];
+                    ignitionRows.forEach((entry) => {
+                        const rawPayoutId = String(entry?.payoutId || "").trim();
+                        const paidOn = piDateKey(entry?.paidOn || "");
+                        const payoutId = rawPayoutId || String(entry?.paymentId || "").trim() || "unlabeled-batch";
+                        const key = rawPayoutId ? `payout|${rawPayoutId}` : `${paidOn}|${payoutId}`;
+                        if (key) scopedPayoutKeys.add(key);
+                    });
+                });
                 const parseAmountCandidate = (value) => {
                     if (Number.isFinite(value)) return Number(value);
                     const text = String(value ?? "").trim();
@@ -49750,6 +49768,10 @@
                     piAmountEqual(Math.abs(Number(payout?.netPayout || 0)), Math.abs(creditAmount), Math.max(tolerance, 0.02))
                 );
                 const payoutCandidates = (() => {
+                    if (scopedPayoutKeys.size) {
+                        const scoped = payouts.filter((payout) => scopedPayoutKeys.has(String(payout?.key || "")));
+                        if (scoped.length) return scoped;
+                    }
                     const ordered = [
                         ...netAlignedPayouts,
                         ...(sameDatePayouts.length ? sameDatePayouts : []),
@@ -51949,19 +51971,9 @@
                                 if (!row || piClearingStep1AiRunning) return;
                                 const selectedStep1Row = { ...row };
                                 const selectedRowKey = piStep1DifferenceRowKey(selectedStep1Row);
-                                const currentRun = currentPiClearingRun();
-                                const currentRunId = String(currentRun?.id || "");
-                                const cacheHit = piClearingStep1AiCache.get(selectedRowKey);
-                                if (cacheHit && cacheHit.runId === currentRunId) {
-                                    piClearingStep1AiResult = {
-                                        ...cacheHit.result,
-                                        rowKey: selectedRowKey,
-                                    };
-                                    piClearingStep1AiRowKey = selectedRowKey;
-                                    renderPiClearingAccountScreen();
-                                    showToast("Jenius AI reused cached match for this row.", "success");
-                                    return;
-                                }
+                                // Do not reuse prior Step 1 cache blindly: payout scoping rules can change
+                                // and stale cached matches may point to the wrong batch.
+                                piClearingStep1AiCache.delete(selectedRowKey);
                                 piClearingStep1AiRunning = true;
                                 piClearingStep1AiResult = null;
                                 piClearingStep1AiRowKey = selectedRowKey;
