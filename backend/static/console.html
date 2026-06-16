@@ -49557,6 +49557,93 @@
                     if (Number.isFinite(signedAmount)) variants.push(Math.abs(signedAmount));
                     return [...new Set(variants.map((value) => Number(value.toFixed(2))).filter((value) => value > 0.004))];
                 };
+                const solveMissingSubsetFromPayout = (payout = {}) => {
+                    if (!matchedDebitAmounts.length || missingDebitAmount <= 0.005) return null;
+                    const payoutLines = Array.isArray(payout?.lines) ? payout.lines : [];
+                    if (!payoutLines.length) return null;
+                    const mapped = payoutLines.map((line, index) => {
+                        const signedAmount = Number(line?.amount || 0);
+                        const variants = lineAmountVariants(line, signedAmount);
+                        const usable = variants
+                            .filter((value) => value > 0.004 && value <= missingDebitAmount + 0.05)
+                            .sort((a, b) => b - a);
+                        return {
+                            index,
+                            line,
+                            signedAmount,
+                            variants,
+                            usable,
+                        };
+                    });
+                    const selectable = mapped.filter((item) => item.usable.length);
+                    if (!selectable.length) return null;
+                    const maxLines = Math.min(4, selectable.length);
+                    const toleranceLocal = Math.max(tolerance, 0.02);
+                    const solutions = [];
+                    const dfs = (start, sum, picks) => {
+                        if (picks.length > maxLines) return;
+                        if (sum > missingDebitAmount + toleranceLocal) return;
+                        const delta = Math.abs(sum - missingDebitAmount);
+                        if (delta <= toleranceLocal && picks.length) {
+                            solutions.push({ picks: [...picks], sum, delta });
+                        }
+                        for (let idx = start; idx < selectable.length; idx += 1) {
+                            const row = selectable[idx];
+                            row.usable.forEach((candidate) => {
+                                dfs(idx + 1, sum + candidate, [...picks, { rowIndex: row.index, candidate }]);
+                            });
+                        }
+                    };
+                    dfs(0, 0, []);
+                    if (!solutions.length) return null;
+                    const best = solutions
+                        .map((solution) => {
+                            const selectedIds = new Set(solution.picks.map((pick) => pick.rowIndex));
+                            const remaining = mapped.filter((item) => !selectedIds.has(item.index));
+                            let covered = 0;
+                            matchedDebitAmounts.forEach((target) => {
+                                const targetMatched = remaining.some((item) =>
+                                    (Array.isArray(item?.variants) ? item.variants : []).some((value) =>
+                                        piAmountEqual(value, target, toleranceLocal)
+                                    )
+                                );
+                                if (targetMatched) covered += 1;
+                            });
+                            const missingCoverage = matchedDebitAmounts.length - covered;
+                            const netDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - Math.abs(creditAmount));
+                            const score = (solution.delta * 100)
+                                + (missingCoverage * 4)
+                                + (solution.picks.length * 0.25)
+                                + (netDelta * 0.05);
+                            return {
+                                ...solution,
+                                score,
+                                missingCoverage,
+                            };
+                        })
+                        .sort((left, right) => {
+                            if (!piAmountEqual(left?.score || 0, right?.score || 0, 0.005)) return (left?.score || 0) - (right?.score || 0);
+                            return (left?.picks?.length || 0) - (right?.picks?.length || 0);
+                        })[0];
+                    if (!best || !Array.isArray(best?.picks) || !best.picks.length) return null;
+                    const lines = best.picks
+                        .map((pick) => {
+                            const base = mapped.find((item) => item.index === pick.rowIndex);
+                            if (!base) return null;
+                            return {
+                                ...base.line,
+                                signedAmount: Number(base?.signedAmount || 0),
+                                selectedAmount: Number(pick?.candidate || 0),
+                                amountVariants: base.variants,
+                            };
+                        })
+                        .filter(Boolean);
+                    if (!lines.length) return null;
+                    return {
+                        lines,
+                        netAmount: Number(best?.sum || 0),
+                    };
+                };
 
                 const findBestCombination = (payout = {}) => {
                     const allLines = (Array.isArray(payout?.lines) ? payout.lines : [])
@@ -49871,6 +49958,32 @@
                             score: 0,
                             lines: [picked],
                             netAmount: Number(picked?.signedAmount || (Array.isArray(picked?.candidates) ? picked.candidates[0] : 0)),
+                        };
+                    }
+                }
+
+                if (!bestPayout || !bestCombination?.lines?.length) {
+                    const subsetFallback = (sameDatePayouts.length ? sameDatePayouts : payoutCandidates)
+                        .map((payout) => {
+                            const solved = solveMissingSubsetFromPayout(payout);
+                            if (!solved) return null;
+                            const netDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - Math.abs(creditAmount));
+                            const lineCount = Array.isArray(solved?.lines) ? solved.lines.length : 0;
+                            const score = Math.abs(Number(solved?.netAmount || 0) - missingDebitAmount) + (lineCount * 0.1) + (netDelta * 0.05);
+                            return {
+                                payout,
+                                solved,
+                                score,
+                            };
+                        })
+                        .filter(Boolean)
+                        .sort((left, right) => left.score - right.score)[0];
+                    if (subsetFallback?.payout && subsetFallback?.solved?.lines?.length) {
+                        bestPayout = subsetFallback.payout;
+                        bestCombination = {
+                            score: Number(subsetFallback?.score || 0),
+                            lines: subsetFallback.solved.lines,
+                            netAmount: Number(subsetFallback?.solved?.netAmount || 0),
                         };
                     }
                 }
