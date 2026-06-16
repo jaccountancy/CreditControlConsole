@@ -49793,6 +49793,88 @@
                     }
                 }
 
+                if ((!bestPayout || !bestCombination?.lines?.length) && matchedDebitAmounts.length) {
+                    const byNetAlignedResidual = (sameDatePayouts.length ? sameDatePayouts : payoutCandidates).map((payout) => {
+                        const lines = (Array.isArray(payout?.lines) ? payout.lines : []).map((line) => {
+                            const signedAmount = Number(line?.amount || 0);
+                            const amountVariants = lineAmountVariants(line, signedAmount);
+                            const candidates = amountVariants.length
+                                ? amountVariants.map((value) => Number(Math.abs(value).toFixed(2)))
+                                : [Number(Math.abs(signedAmount).toFixed(2))];
+                            return {
+                                ...line,
+                                signedAmount,
+                                candidates,
+                            };
+                        }).filter((line) => (Array.isArray(line?.candidates) ? line.candidates.length : 0));
+                        const debitTargets = [...matchedDebitAmounts];
+                        const usedLines = new Set();
+                        const targetOrder = debitTargets
+                            .map((value, index) => ({ value, index }))
+                            .sort((left, right) => right.value - left.value);
+                        const lineOrder = lines
+                            .map((line, index) => ({ line, index, maxCandidate: Math.max(...(line.candidates || [0])) }))
+                            .sort((left, right) => right.maxCandidate - left.maxCandidate);
+                        const canMatch = (target, line) =>
+                            (Array.isArray(line?.candidates) ? line.candidates : []).some((candidate) =>
+                                piAmountEqual(candidate, target, Math.max(tolerance, 0.02))
+                            );
+                        targetOrder.forEach((targetEntry) => {
+                            const targetValue = Number(targetEntry?.value || 0);
+                            let bestIndex = -1;
+                            let bestDelta = Number.POSITIVE_INFINITY;
+                            lineOrder.forEach((entry) => {
+                                if (usedLines.has(entry.index)) return;
+                                if (!canMatch(targetValue, entry.line)) return;
+                                const delta = Math.min(...entry.line.candidates.map((candidate) => Math.abs(candidate - targetValue)));
+                                if (delta < bestDelta) {
+                                    bestDelta = delta;
+                                    bestIndex = entry.index;
+                                }
+                            });
+                            if (bestIndex >= 0) usedLines.add(bestIndex);
+                        });
+                        const residualLines = lines.filter((_, index) => !usedLines.has(index));
+                        const exactResidual = residualLines.filter((line) =>
+                            (Array.isArray(line?.candidates) ? line.candidates : []).some((candidate) =>
+                                piAmountEqual(candidate, missingDebitAmount, Math.max(tolerance, 0.02))
+                            )
+                        );
+                        const netDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - Math.abs(creditAmount));
+                        const lineCountDelta = Math.abs(lines.length - (matchedDebitAmounts.length + 1));
+                        return {
+                            payout,
+                            residualLines,
+                            exactResidual,
+                            netDelta,
+                            lineCountDelta,
+                            matchedCount: usedLines.size,
+                            totalLines: lines.length,
+                        };
+                    }).sort((left, right) => {
+                        const leftExact = left?.exactResidual?.length || 0;
+                        const rightExact = right?.exactResidual?.length || 0;
+                        if (leftExact !== rightExact) return rightExact - leftExact;
+                        if (!piAmountEqual(left?.lineCountDelta || 0, right?.lineCountDelta || 0, 0.005)) return (left?.lineCountDelta || 0) - (right?.lineCountDelta || 0);
+                        if (!piAmountEqual(left?.netDelta || 0, right?.netDelta || 0, 0.005)) return (left?.netDelta || 0) - (right?.netDelta || 0);
+                        return (right?.matchedCount || 0) - (left?.matchedCount || 0);
+                    })[0];
+                    if (
+                        byNetAlignedResidual?.payout
+                        && byNetAlignedResidual?.exactResidual?.length === 1
+                        && piAmountEqual(byNetAlignedResidual?.netDelta || 0, 0, Math.max(tolerance, 0.02))
+                        && Number(byNetAlignedResidual?.lineCountDelta || 99) <= 1
+                    ) {
+                        const picked = byNetAlignedResidual.exactResidual[0];
+                        bestPayout = byNetAlignedResidual.payout;
+                        bestCombination = {
+                            score: 0,
+                            lines: [picked],
+                            netAmount: Number(picked?.signedAmount || (Array.isArray(picked?.candidates) ? picked.candidates[0] : 0)),
+                        };
+                    }
+                }
+
                 if (!bestPayout || !bestCombination?.lines?.length) return null;
 
                 const targetClients = new Set(
