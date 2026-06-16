@@ -49467,6 +49467,11 @@
                         .map((item) => String(item?.paymentId || item?.debitPaymentId || "").trim())
                         .filter(Boolean)
                 );
+                const matchedDebitAmounts = (Array.isArray(row?.matchedDebits) ? row.matchedDebits : [])
+                    .map((item) => Number(item?.amountUsed || item?.amount || 0))
+                    .filter((value) => Number.isFinite(value) && Math.abs(value) > 0.004)
+                    .map((value) => Number(Math.abs(value).toFixed(2)));
+                const amountKey = (value) => Number(value || 0).toFixed(2);
                 (Array.isArray(runRows) ? runRows : []).forEach((item) => {
                     const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
                     if (!payoutDate || payoutDate !== targetDate) return;
@@ -49701,6 +49706,70 @@
                             score: 0,
                             lines: [fallback.exactUnmatched[0]],
                             netAmount: Number(fallback.exactUnmatched[0]?.signedAmount || fallback.exactUnmatched[0]?.closestAmount || 0),
+                        };
+                    }
+                }
+
+                if (!bestPayout || !bestCombination?.lines?.length) {
+                    const amountTargets = new Set([
+                        ...matchedDebitAmounts.map(amountKey),
+                        amountKey(missingDebitAmount),
+                    ]);
+                    const payoutByResidual = (sameDatePayouts.length ? sameDatePayouts : payoutCandidates)
+                        .map((payout) => {
+                            const mappedLines = (Array.isArray(payout?.lines) ? payout.lines : []).map((line) => {
+                                const signedAmount = Number(line?.amount || 0);
+                                const amountVariants = lineAmountVariants(line, signedAmount);
+                                const chosenAmount = (() => {
+                                    const matchingVariant = amountVariants.find((value) => amountTargets.has(amountKey(value)));
+                                    if (Number.isFinite(matchingVariant)) return Number(Math.abs(matchingVariant).toFixed(2));
+                                    if (amountVariants.length) return Number(Math.abs(amountVariants[0]).toFixed(2));
+                                    return Number(Math.abs(signedAmount).toFixed(2));
+                                })();
+                                return {
+                                    ...line,
+                                    signedAmount,
+                                    chosenAmount,
+                                    chosenKey: amountKey(chosenAmount),
+                                };
+                            });
+                            const remainingCounts = new Map();
+                            matchedDebitAmounts.forEach((value) => {
+                                const key = amountKey(value);
+                                remainingCounts.set(key, Number(remainingCounts.get(key) || 0) + 1);
+                            });
+                            const unmatchedLines = [];
+                            mappedLines.forEach((line) => {
+                                const available = Number(remainingCounts.get(line.chosenKey) || 0);
+                                if (available > 0) {
+                                    remainingCounts.set(line.chosenKey, available - 1);
+                                } else {
+                                    unmatchedLines.push(line);
+                                }
+                            });
+                            const payoutAmountDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - Math.abs(creditAmount));
+                            return {
+                                payout,
+                                unmatchedLines,
+                                payoutAmountDelta,
+                            };
+                        })
+                        .sort((left, right) => {
+                            const leftExact = left?.unmatchedLines?.filter((line) => piAmountEqual(line?.chosenAmount || 0, missingDebitAmount, Math.max(tolerance, 0.02))).length || 0;
+                            const rightExact = right?.unmatchedLines?.filter((line) => piAmountEqual(line?.chosenAmount || 0, missingDebitAmount, Math.max(tolerance, 0.02))).length || 0;
+                            if (leftExact !== rightExact) return rightExact - leftExact;
+                            if (!piAmountEqual(left?.payoutAmountDelta || 0, right?.payoutAmountDelta || 0, 0.005)) return (left?.payoutAmountDelta || 0) - (right?.payoutAmountDelta || 0);
+                            return (left?.unmatchedLines?.length || 0) - (right?.unmatchedLines?.length || 0);
+                        })[0];
+                    const exactMissing = payoutByResidual?.unmatchedLines?.filter((line) =>
+                        piAmountEqual(line?.chosenAmount || 0, missingDebitAmount, Math.max(tolerance, 0.02))
+                    ) || [];
+                    if (payoutByResidual?.payout && exactMissing.length === 1) {
+                        bestPayout = payoutByResidual.payout;
+                        bestCombination = {
+                            score: 0,
+                            lines: [exactMissing[0]],
+                            netAmount: Number(exactMissing[0]?.signedAmount || exactMissing[0]?.chosenAmount || 0),
                         };
                     }
                 }
