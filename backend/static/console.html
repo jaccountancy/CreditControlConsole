@@ -49746,7 +49746,23 @@
                 let bestPayout = null;
                 let bestCombination = null;
                 const sameDatePayouts = payouts.filter((payout) => piDateKey(payout?.paidOn || "") === targetDate);
-                const payoutCandidates = sameDatePayouts.length ? sameDatePayouts : payouts;
+                const netAlignedPayouts = payouts.filter((payout) =>
+                    piAmountEqual(Math.abs(Number(payout?.netPayout || 0)), Math.abs(creditAmount), Math.max(tolerance, 0.02))
+                );
+                const payoutCandidates = (() => {
+                    const ordered = [
+                        ...(sameDatePayouts.length ? sameDatePayouts : []),
+                        ...netAlignedPayouts,
+                        ...payouts,
+                    ];
+                    const dedup = new Map();
+                    ordered.forEach((item) => {
+                        const key = String(item?.key || "");
+                        if (!key || dedup.has(key)) return;
+                        dedup.set(key, item);
+                    });
+                    return [...dedup.values()];
+                })();
                 payoutCandidates.forEach((payout) => {
                     const combo = findBestCombination(payout);
                     if (!combo) return;
@@ -49948,17 +49964,53 @@
                     })[0];
                     if (
                         byNetAlignedResidual?.payout
-                        && byNetAlignedResidual?.exactResidual?.length === 1
+                        && (byNetAlignedResidual?.exactResidual?.length || 0) >= 1
                         && piAmountEqual(byNetAlignedResidual?.netDelta || 0, 0, Math.max(tolerance, 0.02))
-                        && Number(byNetAlignedResidual?.lineCountDelta || 99) <= 1
                     ) {
-                        const picked = byNetAlignedResidual.exactResidual[0];
+                        const picked = byNetAlignedResidual.exactResidual
+                            .sort((left, right) => {
+                                const leftClient = normalizeClient(left?.clientName || "");
+                                const rightClient = normalizeClient(right?.clientName || "");
+                                const leftPrefer = expectedClientNames.has(leftClient) ? 0 : 1;
+                                const rightPrefer = expectedClientNames.has(rightClient) ? 0 : 1;
+                                if (leftPrefer !== rightPrefer) return leftPrefer - rightPrefer;
+                                return String(left?.paymentId || "").localeCompare(String(right?.paymentId || ""));
+                            })[0];
                         bestPayout = byNetAlignedResidual.payout;
                         bestCombination = {
                             score: 0,
                             lines: [picked],
                             netAmount: Number(picked?.signedAmount || (Array.isArray(picked?.candidates) ? picked.candidates[0] : 0)),
                         };
+                    }
+                }
+
+                if (!bestPayout || !bestCombination?.lines?.length) {
+                    if (netAlignedPayouts.length === 1) {
+                        const aligned = netAlignedPayouts[0];
+                        const alignedLines = (Array.isArray(aligned?.lines) ? aligned.lines : []).map((line) => {
+                            const signedAmount = Number(line?.amount || 0);
+                            const variants = lineAmountVariants(line, signedAmount);
+                            return {
+                                ...line,
+                                signedAmount,
+                                variants,
+                            };
+                        });
+                        const exactAligned = alignedLines.filter((line) =>
+                            (Array.isArray(line?.variants) ? line.variants : []).some((value) =>
+                                piAmountEqual(value, missingDebitAmount, Math.max(tolerance, 0.02))
+                            )
+                        );
+                        if (exactAligned.length) {
+                            const picked = exactAligned[0];
+                            bestPayout = aligned;
+                            bestCombination = {
+                                score: 0,
+                                lines: [picked],
+                                netAmount: Number(picked?.signedAmount || 0),
+                            };
+                        }
                     }
                 }
 
@@ -50091,6 +50143,30 @@
                     Number(row?.creditAmount || 0).toFixed(2),
                     Number(row?.missingDebitAmount || 0).toFixed(2),
                 ].join("|");
+            }
+
+            function piSuggestStep1PayoutBatch(step1Row = {}, runRows = []) {
+                const row = step1Row && typeof step1Row === "object" ? step1Row : {};
+                const targetDate = piDateKey(row?.date || row?.paidOn || row?.creditPaidOn || "");
+                const creditAmount = Math.abs(Number(row?.creditAmount || 0));
+                const payouts = buildPiClearingPayoutBreakdown(runRows);
+                if (!payouts.length) return null;
+                const ranked = payouts
+                    .map((payout) => {
+                        const payoutDate = piDateKey(payout?.paidOn || "");
+                        const dayDelta = (() => {
+                            const left = Date.parse(targetDate || 0) || 0;
+                            const right = Date.parse(payoutDate || 0) || 0;
+                            if (!left || !right) return 999;
+                            return Math.abs(Math.round((left - right) / (24 * 60 * 60 * 1000)));
+                        })();
+                        const netDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - creditAmount);
+                        const lineCount = Array.isArray(payout?.lines) ? payout.lines.length : 0;
+                        const score = (netDelta * 100) + (dayDelta * 1.2) - Math.min(lineCount, 12) * 0.05;
+                        return { payout, netDelta, dayDelta, score };
+                    })
+                    .sort((left, right) => left.score - right.score);
+                return ranked[0]?.payout || null;
             }
 
             function applyPiStep1AiMatch(match = {}) {
@@ -51902,9 +51978,11 @@
                                         piClearingStatusTone = "warning";
                                         showToast("Payout evidence found, but no eligible Step 3 row to auto-select.", "info");
                                     } else {
+                                        const suggestedPayout = piSuggestStep1PayoutBatch(selectedStep1Row, cachedRows);
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
                                             status: "not_found",
+                                            match: suggestedPayout ? { payout: suggestedPayout } : null,
                                         };
                                         showToast("No same-date Ignition combination matched this missing amount.", "warning");
                                     }
@@ -51927,9 +52005,15 @@
                         if (openPayoutButton) {
                             openPayoutButton.addEventListener("click", () => {
                                 const match = piClearingStep1AiResult?.match;
-                                const payoutKey = String(match?.payout?.key || "").trim();
+                                let payoutKey = String(match?.payout?.key || "").trim();
                                 if (!payoutKey) {
-                                    showToast("No payout batch key is available for this match yet.", "info");
+                                    const currentRun = currentPiClearingRun();
+                                    const currentRows = Array.isArray(currentRun?.rows) ? currentRun.rows : [];
+                                    const suggestedPayout = piSuggestStep1PayoutBatch(row || {}, currentRows);
+                                    payoutKey = String(suggestedPayout?.key || "").trim();
+                                }
+                                if (!payoutKey) {
+                                    showToast("No payout batch key is available yet for this row.", "info");
                                     return;
                                 }
                                 piClearingSelectedPayoutKey = payoutKey;
