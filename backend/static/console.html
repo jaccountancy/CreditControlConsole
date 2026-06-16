@@ -48857,21 +48857,22 @@
                 const lastRun = piClearingLastRun();
                 const lastEnd = String(lastRun?.monthEnd || "").trim();
                 const hardStart = new Date(`${PI_CLEARING_BATCH_HARD_START}T00:00:00`);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
                 if (!lastEnd) return PI_CLEARING_BATCH_HARD_START;
-                const dayAfter = new Date(`${lastEnd}T00:00:00`);
-                if (Number.isNaN(dayAfter.getTime())) return PI_CLEARING_BATCH_HARD_START;
-                dayAfter.setDate(dayAfter.getDate() + 1);
-                const start = dayAfter < hardStart ? hardStart : dayAfter;
-                if (start > today) return today.toISOString().slice(0, 10);
+                const lastEndDate = new Date(`${lastEnd}T00:00:00`);
+                if (Number.isNaN(lastEndDate.getTime())) return PI_CLEARING_BATCH_HARD_START;
+                const nextMonthStart = new Date(lastEndDate.getFullYear(), lastEndDate.getMonth() + 1, 1);
+                const start = nextMonthStart < hardStart ? hardStart : nextMonthStart;
                 return start.toISOString().slice(0, 10);
             }
 
             function piClearingDefaultBatchEndISO() {
+                const suggestedStart = piClearingDateOnly(piClearingDefaultBatchStartISO());
+                if (!suggestedStart) return piClearingTodayISO();
+                const monthEnd = new Date(suggestedStart.getFullYear(), suggestedStart.getMonth() + 1, 0);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                return today.toISOString().slice(0, 10);
+                const end = monthEnd > today ? today : monthEnd;
+                return end.toISOString().slice(0, 10);
             }
 
             function piClearingTodayISO() {
