@@ -5745,6 +5745,21 @@ def pi_clearing_payload(user: dict) -> dict:
                 for row in cursor.fetchall() or []:
                     run_id = str(row.get("run_id") or "")
                     raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+                    raw_xero_rows = raw_payload.get("xeroRows") if isinstance(raw_payload.get("xeroRows"), list) else []
+                    recalculated_xero_total = sum(
+                        (
+                            _money(item.get("amount")).copy_abs()
+                            for item in raw_xero_rows
+                            if isinstance(item, dict) and _money(item.get("amount")) < Decimal("0.00")
+                        ),
+                        start=Decimal("0.00"),
+                    )
+                    stored_xero_total = _money(row.get("xero_total"))
+                    xero_total = recalculated_xero_total if raw_xero_rows else stored_xero_total
+                    ignition_total = _money(row.get("ignition_total"))
+                    existing_credit_note_total = _money(raw_payload.get("existingCreditNoteTotal"))
+                    raw_difference = (xero_total - ignition_total).quantize(Decimal("0.01"))
+                    difference_total = (raw_difference - existing_credit_note_total).quantize(Decimal("0.01"))
                     rows_by_run.setdefault(run_id, []).append(
                         {
                             "id": str(row.get("id") or ""),
@@ -5754,18 +5769,18 @@ def pi_clearing_payload(user: dict) -> dict:
                             "xeroPaymentIds": row.get("xero_payment_ids") if isinstance(row.get("xero_payment_ids"), list) else [],
                             "ignitionPaymentIds": row.get("ignition_payment_ids") if isinstance(row.get("ignition_payment_ids"), list) else [],
                             "currencyCode": str(row.get("currency_code") or "GBP"),
-                            "xeroTotal": float(_money(row.get("xero_total"))),
-                            "ignitionTotal": float(_money(row.get("ignition_total"))),
+                            "xeroTotal": float(_money(xero_total)),
+                            "ignitionTotal": float(_money(ignition_total)),
                             "ignitionGrossTotal": float(_money(raw_payload.get("ignitionGrossTotal"))),
                             "ignitionReversalTotal": float(_money(raw_payload.get("ignitionReversalTotal"))),
-                            "rawDifference": float(_money(raw_payload.get("rawDifference"))),
-                            "existingCreditNoteTotal": float(_money(raw_payload.get("existingCreditNoteTotal"))),
+                            "rawDifference": float(_money(raw_difference)),
+                            "existingCreditNoteTotal": float(_money(existing_credit_note_total)),
                             "riskLevel": str(raw_payload.get("riskLevel") or "low"),
                             "riskScore": int(raw_payload.get("riskScore") or 0),
                             "explainer": str(raw_payload.get("explainer") or ""),
                             "payoutDate": str(raw_payload.get("payoutDate") or ""),
                             "step1MissingDebitTotal": float(_money(raw_payload.get("step1MissingDebitTotal"))),
-                            "differenceTotal": float(_money(row.get("difference_total"))),
+                            "differenceTotal": float(_money(difference_total)),
                             "recommendation": str(row.get("recommendation") or ""),
                             "resolutionStatus": str(row.get("resolution_status") or "pending"),
                             "raw": raw_payload,
@@ -5800,7 +5815,54 @@ def pi_clearing_payload(user: dict) -> dict:
                         }
                     )
         connection.commit()
-    runs = [_pi_run_payload(row, rows_by_run.get(str(row.get("id") or ""), []), notes_by_run.get(str(row.get("id") or ""), [])) for row in run_rows]
+    runs: list[dict] = []
+    for row in run_rows:
+        run_id = str(row.get("id") or "")
+        run_rows_payload = rows_by_run.get(run_id, [])
+        run_credit_notes = notes_by_run.get(run_id, [])
+        payload = _pi_run_payload(row, run_rows_payload, run_credit_notes)
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        recalculated_xero_total = sum((_money(item.get("xeroTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_ignition_total = sum((_money(item.get("ignitionTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_ignition_gross_total = sum((_money(item.get("ignitionGrossTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_ignition_reversal_total = sum((_money(item.get("ignitionReversalTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_existing_cn_total = sum((_money(item.get("existingCreditNoteTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_difference_total = sum((_money(item.get("differenceTotal")) for item in run_rows_payload), start=Decimal("0.00"))
+        recalculated_difference_count = sum(1 for item in run_rows_payload if _money(item.get("differenceTotal")).copy_abs() > Decimal("0.005"))
+        recalculated_credit_note_candidate_count = sum(
+            1 for item in run_rows_payload
+            if _money(item.get("differenceTotal")) > Decimal("0.00") and str(item.get("xeroContactId") or "").strip()
+        )
+        xero_net_total = Decimal("0.00")
+        xero_debit_total = Decimal("0.00")
+        xero_credit_total = Decimal("0.00")
+        for item in run_rows_payload:
+            raw_payload = item.get("raw") if isinstance(item.get("raw"), dict) else {}
+            raw_xero_rows = raw_payload.get("xeroRows") if isinstance(raw_payload.get("xeroRows"), list) else []
+            for xero_row in raw_xero_rows:
+                if not isinstance(xero_row, dict):
+                    continue
+                amount = _money(xero_row.get("amount"))
+                xero_net_total += amount
+                if amount > Decimal("0.00"):
+                    xero_debit_total += amount
+                elif amount < Decimal("0.00"):
+                    xero_credit_total += amount.copy_abs()
+        payload["summary"] = {
+            **summary,
+            "xeroTotal": float(_money(recalculated_xero_total)),
+            "xeroNetTotal": float(_money(xero_net_total)),
+            "xeroDebitTotal": float(_money(xero_debit_total)),
+            "xeroCreditTotal": float(_money(xero_credit_total or recalculated_xero_total)),
+            "ignitionTotal": float(_money(recalculated_ignition_total)),
+            "ignitionGrossTotal": float(_money(recalculated_ignition_gross_total)),
+            "ignitionReversalTotal": float(_money(recalculated_ignition_reversal_total)),
+            "existingCreditNoteTotal": float(_money(recalculated_existing_cn_total)),
+            "differenceTotal": float(_money(recalculated_difference_total)),
+            "differenceCount": int(recalculated_difference_count),
+            "creditNoteCandidateCount": int(recalculated_credit_note_candidate_count),
+        }
+        runs.append(payload)
     return {"runs": runs}
 
 
@@ -6061,6 +6123,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "xeroContactId": row.get("xeroContactId") or "",
                 "currencyCode": row.get("currencyCode") or "GBP",
                 "xeroTotal": Decimal("0.00"),
+                "xeroNetTotal": Decimal("0.00"),
                 "ignitionTotal": Decimal("0.00"),
                 "ignitionGrossTotal": Decimal("0.00"),
                 "ignitionReversalTotal": Decimal("0.00"),
@@ -6070,7 +6133,12 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "ignitionRows": [],
             },
         )
-        group["xeroTotal"] += _money(row.get("amount"))
+        signed_amount = _money(row.get("amount"))
+        # Reconciliation is against payout credits (money out), not net movement.
+        # Keep xeroTotal as payout-credit total so row/summary Difference is like-for-like with Ignition net payouts.
+        group["xeroNetTotal"] += signed_amount
+        if signed_amount < Decimal("0.00"):
+            group["xeroTotal"] += signed_amount.copy_abs()
         group["xeroPaymentIds"].append(str(row.get("paymentId") or ""))
         group["xeroRows"].append(row)
         if not group.get("xeroContactId") and row.get("xeroContactId"):
@@ -6084,6 +6152,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "xeroContactId": "",
                 "currencyCode": row.get("currencyCode") or "GBP",
                 "xeroTotal": Decimal("0.00"),
+                "xeroNetTotal": Decimal("0.00"),
                 "ignitionTotal": Decimal("0.00"),
                 "ignitionGrossTotal": Decimal("0.00"),
                 "ignitionReversalTotal": Decimal("0.00"),
@@ -6151,6 +6220,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "xeroContactId": str(group.get("xeroContactId") or ""),
                 "currencyCode": str(group.get("currencyCode") or "GBP"),
                 "xeroTotal": group["xeroTotal"],
+                "xeroNetTotal": group["xeroNetTotal"],
                 "ignitionTotal": group["ignitionTotal"],
                 "ignitionGrossTotal": group["ignitionGrossTotal"],
                 "ignitionReversalTotal": group["ignitionReversalTotal"],
@@ -6169,6 +6239,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 "raw": {
                     "xeroRows": group.get("xeroRows") or [],
                     "ignitionRows": group.get("ignitionRows") or [],
+                    "xeroNetTotal": float(_money(group.get("xeroNetTotal"))),
                     "ignitionGrossTotal": float(_money(group.get("ignitionGrossTotal"))),
                     "ignitionReversalTotal": float(_money(group.get("ignitionReversalTotal"))),
                     "rawDifference": float(_money(raw_difference)),
@@ -6203,6 +6274,7 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
                 {
                     "clientName": row.get("clientName"),
                     "xeroTotal": float(row.get("xeroTotal") or 0),
+                    "xeroNetTotal": float(row.get("xeroNetTotal") or 0),
                     "ignitionTotal": float(row.get("ignitionTotal") or 0),
                     "ignitionGrossTotal": float(row.get("ignitionGrossTotal") or 0),
                     "ignitionReversalTotal": float(row.get("ignitionReversalTotal") or 0),
@@ -6250,7 +6322,8 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "ignitionCount": len(ignition_rows),
         "differenceCount": sum(1 for row in rows_to_store if _money(row.get("difference")) != 0),
         "creditNoteCandidateCount": sum(1 for row in rows_to_store if _money(row.get("difference")) > 0 and str(row.get("xeroContactId") or "").strip()),
-        "xeroTotal": float(sum((_money(row.get("amount")) for row in xero_rows), start=Decimal("0.00"))),
+        "xeroTotal": float(xero_credit_total),
+        "xeroNetTotal": float(sum((_money(row.get("amount")) for row in xero_rows), start=Decimal("0.00"))),
         "xeroDebitTotal": float(xero_debit_total),
         "xeroCreditTotal": float(xero_credit_total),
         "ignitionTotal": float(sum((_money(row.get("amount")) for row in ignition_rows), start=Decimal("0.00"))),
