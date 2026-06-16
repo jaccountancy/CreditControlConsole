@@ -49094,6 +49094,7 @@
                             paymentId: String(entry?.paymentId || "").trim(),
                             payoutId,
                             isReversal: amount < 0 || Boolean(entry?.isReversal),
+                            raw: entry?.raw && typeof entry.raw === "object" ? entry.raw : null,
                         });
                         grouped.set(key, bucket);
                     });
@@ -49467,20 +49468,86 @@
                     const clientName = normalizeClient(item?.clientName || "");
                     if (clientName) expectedClientNames.add(clientName);
                 });
+                const parseAmountCandidate = (value) => {
+                    if (Number.isFinite(value)) return Number(value);
+                    const text = String(value ?? "").trim();
+                    if (!text) return null;
+                    const cleaned = text.replace(/,/g, "");
+                    const direct = Number(cleaned);
+                    if (Number.isFinite(direct)) return direct;
+                    const stripped = cleaned.replace(/[^0-9.-]/g, "");
+                    if (!stripped) return null;
+                    const parsed = Number(stripped);
+                    return Number.isFinite(parsed) ? parsed : null;
+                };
+                const readFirstAmount = (source = {}, keyPaths = []) => {
+                    const root = source && typeof source === "object" ? source : {};
+                    for (const path of keyPaths) {
+                        const keys = String(path || "").split(".");
+                        let node = root;
+                        let valid = true;
+                        for (const key of keys) {
+                            if (!node || typeof node !== "object" || !(key in node)) {
+                                valid = false;
+                                break;
+                            }
+                            node = node[key];
+                        }
+                        if (!valid) continue;
+                        const parsed = parseAmountCandidate(node);
+                        if (Number.isFinite(parsed)) return parsed;
+                    }
+                    return null;
+                };
+                const lineAmountVariants = (line = {}, signedAmount = 0) => {
+                    const raw = line?.raw && typeof line.raw === "object" ? line.raw : {};
+                    const variants = [];
+                    const netCandidates = [
+                        parseAmountCandidate(line?.amount),
+                        parseAmountCandidate(line?.signedAmount),
+                        readFirstAmount(raw, ["amount", "net_amount", "netAmount", "disbursement", "net_disbursement"]),
+                    ];
+                    const grossCandidates = [
+                        readFirstAmount(raw, ["gross_amount", "grossAmount", "amount_paid", "amountPaid", "payment_amount", "paymentAmount", "collection_amount", "collectionAmount"]),
+                    ];
+                    const feeCandidate = readFirstAmount(raw, ["fee", "fees", "processing_fee", "processingFee", "fee_amount", "feeAmount"]);
+                    netCandidates.forEach((value) => {
+                        if (Number.isFinite(value)) variants.push(Math.abs(value));
+                    });
+                    grossCandidates.forEach((value) => {
+                        if (Number.isFinite(value)) variants.push(Math.abs(value));
+                    });
+                    if (Number.isFinite(feeCandidate)) {
+                        const feeAbs = Math.abs(feeCandidate);
+                        netCandidates.forEach((value) => {
+                            if (!Number.isFinite(value)) return;
+                            variants.push(Math.abs(value) + feeAbs);
+                        });
+                    }
+                    if (Number.isFinite(signedAmount)) variants.push(Math.abs(signedAmount));
+                    return [...new Set(variants.map((value) => Number(value.toFixed(2))).filter((value) => value > 0.004))];
+                };
 
                 const findBestCombination = (payout = {}) => {
                     const allLines = (Array.isArray(payout?.lines) ? payout.lines : [])
                         .map((line) => {
                             const signedAmount = Number(line?.amount || 0);
-                            const amountAbs = Math.abs(signedAmount);
+                            const amountVariants = lineAmountVariants(line, signedAmount);
+                            const amountAbs = amountVariants.length
+                                ? Math.min(...amountVariants)
+                                : Math.abs(signedAmount);
                             const lineClientName = String(line?.clientName || "").trim().toLowerCase();
                             const clientBoost = creditClientName && lineClientName === creditClientName ? -0.5 : 0;
+                            const closestVariantDelta = amountVariants.length
+                                ? Math.min(...amountVariants.map((candidate) => Math.abs(candidate - missingDebitAmount)))
+                                : Math.abs(Math.abs(signedAmount) - missingDebitAmount);
                             return {
                                 ...line,
                                 signedAmount,
                                 amountAbs,
+                                amountVariants,
                                 lineClientName,
-                                rankScore: Math.abs(Math.abs(signedAmount) - missingDebitAmount) + clientBoost,
+                                rankScore: closestVariantDelta + clientBoost,
                             };
                         })
                         .filter((line) => line.amountAbs > 0.004)
@@ -49490,7 +49557,11 @@
 
                     // Deterministic fast path:
                     // if one payout line exactly equals the missing amount, use it directly.
-                    const exactSingleMatches = allLines.filter((line) => piAmountEqual(line.amountAbs, missingDebitAmount, tolerance));
+                    const exactSingleMatches = allLines.filter((line) =>
+                        (Array.isArray(line?.amountVariants) ? line.amountVariants : []).some((candidate) =>
+                            piAmountEqual(candidate, missingDebitAmount, tolerance)
+                        )
+                    );
                     if (exactSingleMatches.length === 1) {
                         return {
                             score: 0,
@@ -49552,7 +49623,11 @@
                     const combo = findBestCombination(payout);
                     if (!combo) return;
                     const lines = Array.isArray(combo?.lines) ? combo.lines : [];
-                    const exactLineHits = lines.filter((line) => piAmountEqual(Math.abs(Number(line?.signedAmount || line?.amount || 0)), missingDebitAmount)).length;
+                    const exactLineHits = lines.filter((line) =>
+                        (Array.isArray(line?.amountVariants) ? line.amountVariants : []).some((candidate) =>
+                            piAmountEqual(candidate, missingDebitAmount)
+                        )
+                    ).length;
                     const payoutLineCount = Array.isArray(payout?.lines) ? payout.lines.length : 0;
                     const score = Number(combo.score || 0)
                         - (exactLineHits * 0.4)
