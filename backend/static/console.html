@@ -49077,6 +49077,7 @@
                             count: 0,
                             clientNames: new Set(),
                             lines: [],
+                            lineSignatures: new Set(),
                         };
                         if (amount < 0) bucket.reversals += Math.abs(amount);
                         else bucket.grossCollections += amount;
@@ -49087,11 +49088,25 @@
                         if (!bucket.paidOn || (paidOn && paidOn > bucket.paidOn)) bucket.paidOn = paidOn;
                         const clientName = String(entry?.clientName || "").trim();
                         if (clientName) bucket.clientNames.add(clientName);
+                        const paymentId = String(entry?.paymentId || "").trim();
+                        const lineSignature = [
+                            paymentId || "--",
+                            clientName || "unknown-client",
+                            Number(amount || 0).toFixed(2),
+                            paidOn || "--",
+                            rawPayoutId || payoutId || "--",
+                            amount < 0 || Boolean(entry?.isReversal) ? "reversal" : "collection",
+                        ].join("|");
+                        if (bucket.lineSignatures.has(lineSignature)) {
+                            grouped.set(key, bucket);
+                            return;
+                        }
+                        bucket.lineSignatures.add(lineSignature);
                         bucket.lines.push({
                             clientName: clientName || "Unknown client",
                             paidOn,
                             amount,
-                            paymentId: String(entry?.paymentId || "").trim(),
+                            paymentId,
                             payoutId,
                             isReversal: amount < 0 || Boolean(entry?.isReversal),
                             raw: entry?.raw && typeof entry.raw === "object" ? entry.raw : null,
@@ -49100,6 +49115,11 @@
                     });
                 });
                 return [...grouped.values()]
+                    .map((bucket) => {
+                        const nextBucket = { ...bucket };
+                        delete nextBucket.lineSignatures;
+                        return nextBucket;
+                    })
                     .sort((left, right) => {
                         const leftDate = Date.parse(left.paidOn || 0) || 0;
                         const rightDate = Date.parse(right.paidOn || 0) || 0;
@@ -49600,8 +49620,7 @@
                                 netAmount: Number(nameMatchedExact[0]?.signedAmount || 0),
                             };
                         }
-                        // Ambiguous exact-amount lines: don't auto-pick a client.
-                        if (nameMatchedExact.length > 1 || expectedClientNames.size === 0) return null;
+                        // Ambiguous exact-amount lines: continue to DFS/scoring instead of failing early.
                     }
 
                     let visited = 0;
