@@ -49751,8 +49751,8 @@
                 );
                 const payoutCandidates = (() => {
                     const ordered = [
-                        ...(sameDatePayouts.length ? sameDatePayouts : []),
                         ...netAlignedPayouts,
+                        ...(sameDatePayouts.length ? sameDatePayouts : []),
                         ...payouts,
                     ];
                     const dedup = new Map();
@@ -50167,6 +50167,60 @@
                     })
                     .sort((left, right) => left.score - right.score);
                 return ranked[0]?.payout || null;
+            }
+
+            function piDiagnoseStep1Difference(step1Row = {}, runRows = []) {
+                const row = step1Row && typeof step1Row === "object" ? step1Row : {};
+                const creditAmount = Math.abs(Number(row?.creditAmount || 0));
+                const missingDebitAmount = Math.abs(Number(row?.missingDebitAmount || 0));
+                const matchedDebitAmounts = (Array.isArray(row?.matchedDebits) ? row.matchedDebits : [])
+                    .map((item) => Number(item?.amountUsed || item?.amount || 0))
+                    .filter((value) => Number.isFinite(value) && Math.abs(value) > 0.004)
+                    .map((value) => Number(Math.abs(value).toFixed(2)));
+                const amountKey = (value) => Number(value || 0).toFixed(2);
+                const payouts = buildPiClearingPayoutBreakdown(runRows);
+                const diagnostics = payouts.map((payout) => {
+                    const lines = (Array.isArray(payout?.lines) ? payout.lines : []).map((line) => {
+                        const rawAmount = Math.abs(Number(line?.amount || 0));
+                        return {
+                            paymentId: String(line?.paymentId || ""),
+                            clientName: String(line?.clientName || ""),
+                            amount: Number(rawAmount.toFixed(2)),
+                        };
+                    });
+                    const counts = new Map();
+                    matchedDebitAmounts.forEach((value) => {
+                        const key = amountKey(value);
+                        counts.set(key, Number(counts.get(key) || 0) + 1);
+                    });
+                    const residual = [];
+                    lines.forEach((line) => {
+                        const key = amountKey(line.amount);
+                        const left = Number(counts.get(key) || 0);
+                        if (left > 0) counts.set(key, left - 1);
+                        else residual.push(line);
+                    });
+                    const exactResidual = residual.filter((line) => Math.abs(line.amount - missingDebitAmount) <= 0.02);
+                    const netDelta = Math.abs(Math.abs(Number(payout?.netPayout || 0)) - creditAmount);
+                    return {
+                        payoutKey: String(payout?.key || ""),
+                        payoutId: String(payout?.payoutId || ""),
+                        payoutDate: String(payout?.paidOn || ""),
+                        netPayout: Number(Number(payout?.netPayout || 0).toFixed(2)),
+                        netDelta: Number(netDelta.toFixed(2)),
+                        lineCount: lines.length,
+                        residualCount: residual.length,
+                        exactResidualCount: exactResidual.length,
+                        residualTop: residual.slice(0, 3),
+                    };
+                });
+                return diagnostics
+                    .sort((left, right) => {
+                        if (left.exactResidualCount !== right.exactResidualCount) return right.exactResidualCount - left.exactResidualCount;
+                        if (left.netDelta !== right.netDelta) return left.netDelta - right.netDelta;
+                        return left.residualCount - right.residualCount;
+                    })
+                    .slice(0, 4);
             }
 
             function applyPiStep1AiMatch(match = {}) {
@@ -51842,6 +51896,17 @@
                                 <div class="pi-step1-ai-status is-warning">
                                     <strong>No matching payout combination found</strong>
                                     <p>OpenAI reviewed same-date payout and refund lines but could not build a combination that balances ${escapeHTML(formatCurrency(missingDebitAmount))}. Confirm the missing Xero posting first.</p>
+                                    ${(() => {
+                                        const debugRows = Array.isArray(aiResult?.debug) ? aiResult.debug : [];
+                                        if (!debugRows.length) return "";
+                                        const rowsMarkup = debugRows.map((item) => {
+                                            const residualPreview = Array.isArray(item?.residualTop) && item.residualTop.length
+                                                ? item.residualTop.map((line) => `${line.clientName || "Unknown"} ${formatCurrency(line.amount || 0)}`).join(", ")
+                                                : "None";
+                                            return `<li><strong>${escapeHTML(item?.payoutId || "--")}</strong> · ${escapeHTML(formatDate(item?.payoutDate || ""))} · Net ${escapeHTML(formatCurrency(item?.netPayout || 0))} (Δ ${escapeHTML(formatCurrency(item?.netDelta || 0))}) · Residual ${escapeHTML(String(item?.residualCount || 0))} · Exact ${escapeHTML(String(item?.exactResidualCount || 0))}<br><small>${escapeHTML(residualPreview)}</small></li>`;
+                                        }).join("");
+                                        return `<div class="detail-meta" style="margin-top:8px;"><strong>Matcher diagnostics</strong><ul style="margin:6px 0 0 18px; padding:0;">${rowsMarkup}</ul></div>`;
+                                    })()}
                                     <div class="pi-step1-ai-actions">
                                         <button class="ghost-button" type="button" data-pi-step1-open-payout="true">Open payout lines</button>
                                     </div>
@@ -51979,10 +52044,12 @@
                                         showToast("Payout evidence found, but no eligible Step 3 row to auto-select.", "info");
                                     } else {
                                         const suggestedPayout = piSuggestStep1PayoutBatch(selectedStep1Row, cachedRows);
+                                        const diagnostics = piDiagnoseStep1Difference(selectedStep1Row, cachedRows);
                                         piClearingStep1AiResult = {
                                             rowKey: selectedRowKey,
                                             status: "not_found",
                                             match: suggestedPayout ? { payout: suggestedPayout } : null,
+                                            debug: diagnostics,
                                         };
                                         showToast("No same-date Ignition combination matched this missing amount.", "warning");
                                     }
