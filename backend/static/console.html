@@ -50256,6 +50256,44 @@
                 return true;
             }
 
+            function piIsEligiblePostingRow(row = {}, missingAmount = 0, targetDate = "") {
+                const rowId = String(row?.id || "").trim();
+                if (!rowId) return false;
+                const resolutionStatus = String(row?.resolutionStatus || "").trim().toLowerCase();
+                if (["credit_note_created", "balanced_by_existing_credit_note"].includes(resolutionStatus)) return false;
+                const rowAmount = Math.abs(Number(row?.differenceTotal || row?.difference || 0));
+                if (!piAmountEqual(rowAmount, Math.abs(Number(missingAmount || 0)), 0.02)) return false;
+                if (targetDate) {
+                    const payoutDate = piDateKey(row?.payoutDate || row?.date || row?.raw?.payoutDate || row?.raw?.paidOn || "");
+                    if (payoutDate && payoutDate !== targetDate) return false;
+                }
+                return true;
+            }
+
+            function piResolveEligibleRunRowForMatch(match = {}, runRows = []) {
+                const safeMatch = match && typeof match === "object" ? match : {};
+                const rows = Array.isArray(runRows) ? runRows : [];
+                const missingAmount = Math.abs(Number(safeMatch?.missingDebitAmount || 0));
+                const targetDate = piDateKey(safeMatch?.targetDate || safeMatch?.payout?.paidOn || "");
+                const currentRunRow = safeMatch?.runRow && typeof safeMatch.runRow === "object" ? safeMatch.runRow : null;
+                if (currentRunRow && piIsEligiblePostingRow(currentRunRow, missingAmount, targetDate)) return currentRunRow;
+                const payoutClient = String(safeMatch?.payoutLine?.clientName || "").trim().toLowerCase();
+                const ranked = rows
+                    .filter((row) => piIsEligiblePostingRow(row, missingAmount, targetDate))
+                    .sort((left, right) => {
+                        const leftClient = String(left?.clientName || "").trim().toLowerCase();
+                        const rightClient = String(right?.clientName || "").trim().toLowerCase();
+                        const leftClientMatch = payoutClient && leftClient === payoutClient ? 0 : 1;
+                        const rightClientMatch = payoutClient && rightClient === payoutClient ? 0 : 1;
+                        if (leftClientMatch !== rightClientMatch) return leftClientMatch - rightClientMatch;
+                        const leftHasContact = Boolean(String(left?.xeroContactId || "").trim());
+                        const rightHasContact = Boolean(String(right?.xeroContactId || "").trim());
+                        if (leftHasContact !== rightHasContact) return leftHasContact ? -1 : 1;
+                        return leftClient.localeCompare(rightClient);
+                    });
+                return ranked[0] || null;
+            }
+
             function openPiClearingFixDifferenceModal(match = {}) {
                 if (!applyPiStep1AiMatch(match)) return false;
                 piClearingFixDifferenceMatch = {
@@ -51836,19 +51874,26 @@
                                 ? persistedRow.raw.step1AiFix
                                 : null;
                             if (persistedFix) {
+                                const seededMatch = {
+                                    targetDate: String(persistedFix?.targetDate || row?.date || ""),
+                                    missingDebitAmount: Number(persistedFix?.missingDebitAmount || missingDebitAmount),
+                                    payout: { payoutId: String(persistedFix?.payoutId || "--") },
+                                    payoutLine: { clientName: String(persistedFix?.payoutClientName || persistedFix?.clientName || "") },
+                                    payoutLines: [],
+                                    runRow: persistedRow || null,
+                                };
+                                const resolvedRunRow = piResolveEligibleRunRowForMatch(seededMatch, runRows);
+                                const resolvedMatch = {
+                                    ...seededMatch,
+                                    runRow: resolvedRunRow,
+                                };
                                 piClearingStep1AiResult = {
                                     rowKey: step1RowKey,
-                                    status: "matched",
+                                    status: resolvedRunRow ? "matched" : "payout_only",
                                     targetDate: String(persistedFix?.targetDate || row?.date || ""),
                                     payoutId: String(persistedFix?.payoutId || "--"),
                                     lineCount: Number(persistedFix?.lineCount || 0),
-                                    match: {
-                                        targetDate: String(persistedFix?.targetDate || row?.date || ""),
-                                        missingDebitAmount: Number(persistedFix?.missingDebitAmount || missingDebitAmount),
-                                        payout: { payoutId: String(persistedFix?.payoutId || "--") },
-                                        payoutLines: [],
-                                        runRow: persistedRow || null,
-                                    },
+                                    match: resolvedMatch,
                                 };
                                 piClearingStep1AiCache.set(step1RowKey, {
                                     runId: String(run?.id || ""),
@@ -51891,6 +51936,20 @@
                                 const lineCount = Number(aiResult?.lineCount || 0);
                                 const payoutId = String(aiResult?.payoutId || "--");
                                 const match = aiResult?.match && typeof aiResult.match === "object" ? aiResult.match : {};
+                                const hasPostingRow = Boolean(
+                                    piResolveEligibleRunRowForMatch(match, runRows)?.id
+                                );
+                                if (!hasPostingRow) {
+                                    return `
+                                        <div class="pi-step1-ai-status is-warning">
+                                            <strong>AI found payout evidence but no eligible Step 3 row</strong>
+                                            <p>We found a payout match for ${escapeHTML(formatCurrency(missingDebitAmount))}, but the posting row is stale/invalid. Refresh and re-run AI for this row.</p>
+                                            <div class="pi-step1-ai-actions">
+                                                <button class="ghost-button" type="button" data-pi-step1-open-payout="true">Open payout lines</button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
                                 const payoutClient = String(match?.payoutLine?.clientName || "").trim() || "Unknown";
                                 const mappedClient = String(match?.runRow?.clientName || payoutClient).trim();
                                 const decisionMode = Boolean(match?.usedFallbackRow) ? "Fallback row" : "Direct row";
@@ -52119,14 +52178,21 @@
                             applyAiButton.addEventListener("click", () => {
                                 const match = piClearingStep1AiResult?.match;
                                 if (!match) return;
-                                if (!openPiClearingFixDifferenceModal(match)) {
+                                const currentRun = currentPiClearingRun();
+                                const currentRows = Array.isArray(currentRun?.rows) ? currentRun.rows : [];
+                                const resolvedRunRow = piResolveEligibleRunRowForMatch(match, currentRows);
+                                const preparedMatch = {
+                                    ...match,
+                                    runRow: resolvedRunRow,
+                                };
+                                if (!openPiClearingFixDifferenceModal(preparedMatch)) {
                                     showToast("AI found evidence, but no adjustment row could be prepared.", "warning");
                                     return;
                                 }
-                                const matchedClient = String(match?.runRow?.clientName || match?.payoutLine?.clientName || "the matched contact").trim();
+                                const matchedClient = String(preparedMatch?.runRow?.clientName || preparedMatch?.payoutLine?.clientName || "the matched contact").trim();
                                 piClearingStep1DifferenceModalOpen = false;
                                 piClearingStep1DifferenceRow = null;
-                                piClearingStatusMessage = `Jenius AI prepared a posting fix for ${matchedClient} (${formatCurrency(match?.missingDebitAmount || 0)} on ${formatDate(match?.targetDate || "")}).`;
+                                piClearingStatusMessage = `Jenius AI prepared a posting fix for ${matchedClient} (${formatCurrency(preparedMatch?.missingDebitAmount || 0)} on ${formatDate(preparedMatch?.targetDate || "")}).`;
                                 piClearingStatusTone = "success";
                                 renderPiClearingAccountScreen();
                                 showToast("Review and confirm the posting fix.", "success");
