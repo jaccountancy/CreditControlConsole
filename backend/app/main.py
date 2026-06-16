@@ -2998,8 +2998,9 @@ async def api_run_pi_clearing_account_workflow(request: Request, user: dict = De
 
 
 @app.delete("/api/pi-clearing-account/runs/{run_id}")
-async def api_delete_pi_clearing_account_run(run_id: str, user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **await delete_pi_clearing_run(user, run_id)}
+async def api_delete_pi_clearing_account_run(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **await delete_pi_clearing_run(user, run_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes")
