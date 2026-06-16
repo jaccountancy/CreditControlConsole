@@ -5737,15 +5737,10 @@ async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None =
     requested_run_id = str(run_id or "").strip()
     if not requested_run_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing run id is required.")
-    safe_payload = payload if isinstance(payload, dict) else {}
-    void_active_credit_notes = bool(
-        safe_payload.get("voidActiveCreditNotes")
-        or safe_payload.get("autoVoid")
-        or safe_payload.get("forceDelete")
-    )
+    # Batch delete is intentionally local-only.
+    # Posted Xero documents are left untouched.
     run_row = None
     resolved_run_id = requested_run_id
-    active_notes: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -5762,56 +5757,8 @@ async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None =
             if not run_row:
                 updated = pi_clearing_payload(user)
                 return {"deletedRunId": requested_run_id, "alreadyDeleted": True, "runs": updated.get("runs") or []}
-            cursor.execute(
-                """
-                SELECT id, run_row_id, xero_credit_note_id, status, raw_payload
-                FROM pi_clearing_credit_notes
-                WHERE run_id::text = %s
-                  AND user_id = %s
-                  AND COALESCE(status, 'created') NOT IN ('voided', 'deleted')
-                """,
-                (resolved_run_id, user["id"]),
-            )
-            active_notes = cursor.fetchall() or []
-            active_credit_notes = len(active_notes)
             resolved_run_id = str(run_row.get("id") or requested_run_id).strip()
-            if active_credit_notes > 0 and not void_active_credit_notes:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This batch has active credit notes. Confirm delete with auto-void enabled.",
-                )
         connection.commit()
-
-    if active_notes and void_active_credit_notes:
-        connection_row = get_master_xero_connection_for_user(user["id"])
-        voided_note_ids: list[str] = []
-        for note in active_notes:
-            note_id = str(note.get("id") or "").strip()
-            xero_credit_note_id = str(note.get("xero_credit_note_id") or "").strip()
-            note_raw_payload = note.get("raw_payload") if isinstance(note.get("raw_payload"), dict) else {}
-            document_type = str(note_raw_payload.get("documentType") or "credit_note").strip().lower()
-            if xero_credit_note_id:
-                if document_type == "invoice":
-                    await update_invoice_status(connection_row, xero_credit_note_id, "VOIDED")
-                else:
-                    await update_credit_note_status(connection_row, xero_credit_note_id, "VOIDED")
-            if note_id:
-                voided_note_ids.append(note_id)
-        if voided_note_ids:
-            now = utcnow()
-            with get_connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE pi_clearing_credit_notes
-                        SET status = 'voided',
-                            updated_at = %s
-                        WHERE id = ANY(%s)
-                          AND user_id = %s
-                        """,
-                        (now, voided_note_ids, user["id"]),
-                    )
-                connection.commit()
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -5827,7 +5774,6 @@ async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None =
     updated = pi_clearing_payload(user)
     return {
         "deletedRunId": resolved_run_id,
-        "voidedCreditNotes": len(active_notes) if void_active_credit_notes else 0,
         "runs": updated.get("runs") or [],
     }
 

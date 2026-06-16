@@ -50863,23 +50863,13 @@
                 if (piClearingDeletingRunIds.has(cleanRunId)) return;
                 const run = (Array.isArray(piClearingRuns) ? piClearingRuns : []).find((entry) => String(entry?.id || "") === cleanRunId);
                 const runLabel = piClearingRunRangeLabel(run || {});
-                const hasActiveCreditNotes = Array.isArray(run?.createdCreditNotes)
-                    && run.createdCreditNotes.some((note) => {
-                        const noteStatus = String(note?.status || "").trim().toLowerCase();
-                        return !["voided", "deleted"].includes(noteStatus);
-                    });
-                const confirmMessage = hasActiveCreditNotes
-                    ? `Delete PI clearing batch ${runLabel || cleanRunId}?\n\nThis batch has active posted items. Jenius will void them in Xero first, then delete the batch.`
-                    : `Delete PI clearing batch ${runLabel || cleanRunId}?`;
+                const confirmMessage = `Delete PI clearing batch ${runLabel || cleanRunId}?\n\nThis only deletes the local PI batch data. Posted Xero items are not changed.`;
                 if (!window.confirm(confirmMessage)) return;
                 piClearingDeletingRunIds.add(cleanRunId);
                 renderPiClearingAccountScreen();
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccountDeleteRun, {
                         method: "DELETE",
-                        body: JSON.stringify({
-                            voidActiveCreditNotes: true,
-                        }),
                     }, { runId: cleanRunId });
                     if (Array.isArray(payload?.runs)) {
                         piClearingRuns = payload.runs;
@@ -50888,10 +50878,7 @@
                     if (!stillExists && String(piClearingSelectedRunId || "") === cleanRunId) {
                         piClearingSelectedRunId = String(piClearingRuns?.[0]?.id || "");
                     }
-                    const voidedCount = Number(payload?.voidedCreditNotes || 0);
-                    piClearingStatusMessage = voidedCount > 0
-                        ? `PI clearing batch deleted after voiding ${formatInteger(voidedCount)} posted item${voidedCount === 1 ? "" : "s"}.`
-                        : "PI clearing batch deleted.";
+                    piClearingStatusMessage = "PI clearing batch deleted locally. Xero credit notes/invoices were not changed.";
                     piClearingStatusTone = "success";
                     showToast(piClearingStatusMessage, "success");
                 } catch (error) {
