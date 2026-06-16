@@ -49462,6 +49462,11 @@
                 const maxNodes = 2500;
                 const expectedClientNames = new Set();
                 if (creditClientName) expectedClientNames.add(creditClientName);
+                const matchedDebitPaymentIds = new Set(
+                    (Array.isArray(row?.matchedDebits) ? row.matchedDebits : [])
+                        .map((item) => String(item?.paymentId || item?.debitPaymentId || "").trim())
+                        .filter(Boolean)
+                );
                 (Array.isArray(runRows) ? runRows : []).forEach((item) => {
                     const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
                     if (!payoutDate || payoutDate !== targetDate) return;
@@ -49538,6 +49543,8 @@
                                 : Math.abs(signedAmount);
                             const lineClientName = String(line?.clientName || "").trim().toLowerCase();
                             const clientBoost = creditClientName && lineClientName === creditClientName ? -0.5 : 0;
+                            const paymentId = String(line?.paymentId || "").trim();
+                            const alreadyMatchedDebit = Boolean(paymentId) && matchedDebitPaymentIds.has(paymentId);
                             const closestVariantDelta = amountVariants.length
                                 ? Math.min(...amountVariants.map((candidate) => Math.abs(candidate - missingDebitAmount)))
                                 : Math.abs(Math.abs(signedAmount) - missingDebitAmount);
@@ -49547,7 +49554,9 @@
                                 amountAbs,
                                 amountVariants,
                                 lineClientName,
-                                rankScore: closestVariantDelta + clientBoost,
+                                paymentId,
+                                alreadyMatchedDebit,
+                                rankScore: closestVariantDelta + clientBoost + (alreadyMatchedDebit ? 0.35 : 0),
                             };
                         })
                         .filter((line) => line.amountAbs > 0.004)
@@ -49562,6 +49571,14 @@
                             piAmountEqual(candidate, missingDebitAmount, tolerance)
                         )
                     );
+                    const exactUnmatchedDebit = exactSingleMatches.filter((line) => !line?.alreadyMatchedDebit);
+                    if (exactUnmatchedDebit.length === 1) {
+                        return {
+                            score: 0,
+                            lines: [exactUnmatchedDebit[0]],
+                            netAmount: Number(exactUnmatchedDebit[0]?.signedAmount || 0),
+                        };
+                    }
                     if (exactSingleMatches.length === 1) {
                         return {
                             score: 0,
@@ -49629,8 +49646,10 @@
                         )
                     ).length;
                     const payoutLineCount = Array.isArray(payout?.lines) ? payout.lines.length : 0;
+                    const unmatchedDebitHits = lines.filter((line) => !line?.alreadyMatchedDebit).length;
                     const score = Number(combo.score || 0)
                         - (exactLineHits * 0.4)
+                        - (unmatchedDebitHits * 0.2)
                         - (Math.min(payoutLineCount, 30) * 0.01);
                     if (!bestCombination || score < Number(bestCombination.score || 0)) {
                         bestCombination = {
@@ -49640,6 +49659,51 @@
                         bestPayout = payout;
                     }
                 });
+
+                if ((!bestPayout || !bestCombination?.lines?.length) && sameDatePayouts.length && matchedDebitPaymentIds.size) {
+                    const fallback = sameDatePayouts.map((payout) => {
+                        const mappedLines = (Array.isArray(payout?.lines) ? payout.lines : []).map((line) => {
+                            const signedAmount = Number(line?.amount || 0);
+                            const amountVariants = lineAmountVariants(line, signedAmount);
+                            const closestAmount = amountVariants.length
+                                ? amountVariants.reduce((best, value) => (Math.abs(value - missingDebitAmount) < Math.abs(best - missingDebitAmount) ? value : best), amountVariants[0])
+                                : Math.abs(signedAmount);
+                            const paymentId = String(line?.paymentId || "").trim();
+                            return {
+                                ...line,
+                                paymentId,
+                                signedAmount,
+                                amountVariants,
+                                closestAmount,
+                                alreadyMatchedDebit: Boolean(paymentId) && matchedDebitPaymentIds.has(paymentId),
+                            };
+                        });
+                        const unmatchedLines = mappedLines.filter((line) => !line.alreadyMatchedDebit);
+                        const exactUnmatched = unmatchedLines.filter((line) => piAmountEqual(line.closestAmount, missingDebitAmount, Math.max(tolerance, 0.02)));
+                        const positiveTotal = mappedLines.reduce((sum, line) => sum + Math.max(0, Number(line?.closestAmount || 0)), 0);
+                        const residual = Math.abs(positiveTotal - matchedDebitTotal);
+                        return {
+                            payout,
+                            mappedLines,
+                            unmatchedLines,
+                            exactUnmatched,
+                            residual,
+                        };
+                    }).sort((left, right) => {
+                        const leftScore = Math.abs(Number(left?.residual || 0) - missingDebitAmount);
+                        const rightScore = Math.abs(Number(right?.residual || 0) - missingDebitAmount);
+                        if (!piAmountEqual(leftScore, rightScore, 0.005)) return leftScore - rightScore;
+                        return (left?.exactUnmatched?.length || 0) === 1 ? -1 : 1;
+                    })[0];
+                    if (fallback?.exactUnmatched?.length === 1) {
+                        bestPayout = fallback.payout;
+                        bestCombination = {
+                            score: 0,
+                            lines: [fallback.exactUnmatched[0]],
+                            netAmount: Number(fallback.exactUnmatched[0]?.signedAmount || fallback.exactUnmatched[0]?.closestAmount || 0),
+                        };
+                    }
+                }
 
                 if (!bestPayout || !bestCombination?.lines?.length) return null;
 
