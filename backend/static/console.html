@@ -36913,16 +36913,16 @@
                         <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="piClearingFixDifferenceTitle">
                             <div class="company-secretarial-modal-head">
                                 <div>
-                                    <p class="eyebrow">PI Clearing · Credit note confirmation</p>
+                                    <p class="eyebrow">PI Clearing · Posting confirmation</p>
                                     <h4 id="piClearingFixDifferenceTitle">Fix difference</h4>
-                                    <p class="detail-meta">Review the credit note that will be created, then confirm posting to Xero.</p>
+                                    <p class="detail-meta">Review the posting that will be created, then confirm posting to Xero.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="piClearingFixDifferenceCloseButton" type="button">Close</button>
                                 </div>
                             </div>
                             <section class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="Credit note confirmation details">
+                                <table class="ch-table" aria-label="PI clearing posting confirmation details">
                                     <tbody id="piClearingFixDifferenceBody"></tbody>
                                 </table>
                             </section>
@@ -50735,6 +50735,7 @@
             async function createPiClearingCreditNotes(options = {}) {
                 const run = currentPiClearingRun();
                 if (!run?.id) return showToast("Run the workflow first.", "info");
+                const skipConfirmation = Boolean(options?.skipConfirmation);
                 const overrideRowIds = Array.isArray(options?.rowIds)
                     ? options.rowIds.map((item) => String(item || "").trim()).filter(Boolean)
                     : [];
@@ -50750,7 +50751,7 @@
                     `Total amount: ${formatCurrency(totalAmount)}.`,
                     `This will post ${creditNoteRowCount} credit note${creditNoteRowCount === 1 ? "" : "s"} and ${refundRowCount} invoice${refundRowCount === 1 ? "" : "s"} to Xero for the selected rows.`,
                 ].join("\n");
-                if (!window.confirm(confirmationMessage)) return;
+                if (!skipConfirmation && !window.confirm(confirmationMessage)) return;
                 if (piClearingCreditNotesRunning) return;
                 piClearingCreditNotesRunning = true;
                 renderPiClearingAccountScreen();
@@ -52147,6 +52148,8 @@
                 }
                 if (fixDifferenceModal) fixDifferenceModal.hidden = !piClearingFixDifferenceModalOpen;
                 if (fixDifferenceModal && piClearingFixDifferenceModalOpen && fixDifferenceBody) {
+                    const fixDifferenceTitle = document.getElementById("piClearingFixDifferenceTitle");
+                    const fixDifferenceMeta = fixDifferenceModal.querySelector(".company-secretarial-modal-head .detail-meta");
                     const match = piClearingFixDifferenceMatch && typeof piClearingFixDifferenceMatch === "object"
                         ? piClearingFixDifferenceMatch
                         : null;
@@ -52167,6 +52170,14 @@
                         payoutClientName || mappedClientName || "",
                         String(payoutId || "").trim() && payoutId !== "--" ? payoutId : "",
                     ].filter(Boolean).join(" · ");
+                    if (fixDifferenceTitle) {
+                        fixDifferenceTitle.textContent = isRefundAdjustment ? "Create invoice to fix difference" : "Create credit note to fix difference";
+                    }
+                    if (fixDifferenceMeta) {
+                        fixDifferenceMeta.textContent = isRefundAdjustment
+                            ? "This mismatch is a refund pattern, so Jenius will create an invoice in Xero. Confirm to post and reconcile this row."
+                            : "This mismatch is a missing payment pattern, so Jenius will create a credit note in Xero. Confirm to post and reconcile this row.";
+                    }
                     const actionDetail = isRefundAdjustment
                         ? `Create an authorised invoice in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`
                         : `Create an authorised credit note in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`;
@@ -52185,7 +52196,9 @@
                         : `<tr><td><p class="detail-meta">No fix is prepared yet.</p></td></tr>`;
                     if (fixDifferenceConfirm) {
                         fixDifferenceConfirm.disabled = piClearingCreditNotesRunning || !String(runRow?.id || "").trim();
-                        fixDifferenceConfirm.textContent = piClearingCreditNotesRunning ? "Posting..." : "Confirm and post to Xero";
+                        fixDifferenceConfirm.textContent = piClearingCreditNotesRunning
+                            ? "Posting..."
+                            : (isRefundAdjustment ? "Confirm and create invoice in Xero" : "Confirm and create credit note in Xero");
                     }
                 }
                 const fixDifferenceClose = document.getElementById("piClearingFixDifferenceCloseButton");
@@ -52209,7 +52222,7 @@
                     fixDifferenceConfirm.addEventListener("click", async () => {
                         const rowId = String(piClearingFixDifferenceMatch?.runRow?.id || "").trim();
                         if (!rowId || piClearingCreditNotesRunning) return;
-                        await createPiClearingCreditNotes({ rowIds: [rowId] });
+                        await createPiClearingCreditNotes({ rowIds: [rowId], skipConfirmation: true });
                     });
                 }
             }
