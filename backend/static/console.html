@@ -27950,7 +27950,7 @@
             .juk-step1-card-row {
                 display: grid;
                 gap: 12px;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 align-items: stretch;
             }
             .juk-step1-main {
@@ -27964,6 +27964,15 @@
                 padding: 12px;
                 display: grid;
                 gap: 10px;
+            }
+            .juk-step1-insight.is-compact {
+                gap: 8px;
+            }
+            .juk-step1-settings-card {
+                grid-column: 1 / -1;
+                order: -1;
+                border-color: rgba(29, 103, 242, 0.3);
+                background: linear-gradient(135deg, rgba(231, 242, 255, 0.95) 0%, rgba(255, 255, 255, 0.96) 56%);
             }
             .juk-step1-insight .eyebrow {
                 margin: 0;
@@ -27986,13 +27995,18 @@
             }
             .juk-step1-settings-stack {
                 display: grid;
-                gap: 10px;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 8px;
             }
             .juk-step1-settings-field {
                 display: grid;
                 gap: 6px;
                 font-size: 12px;
                 color: var(--ink-soft);
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.84);
+                padding: 8px;
             }
             .juk-step1-settings-card .juk-toggle-group {
                 display: grid;
@@ -29454,6 +29468,9 @@
                 .juk-step1-card-row {
                     grid-template-columns: 1fr;
                 }
+                .juk-step1-settings-stack {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
                 .juk-step1-shell {
                     grid-template-columns: 1fr;
                 }
@@ -29497,6 +29514,11 @@
                     bottom: 0;
                 }
                 .pi-clearing-setup-summary {
+                    grid-template-columns: 1fr;
+                }
+            }
+            @media (max-width: 680px) {
+                .juk-step1-settings-stack {
                     grid-template-columns: 1fr;
                 }
             }
@@ -35604,44 +35626,44 @@
                                         </section>
                                     </div>
                                     <div class="juk-step1-card-row">
-                                        <aside class="juk-step1-insight" aria-live="polite">
+                                        <aside class="juk-step1-insight is-compact" aria-live="polite">
                                             <p class="eyebrow">Live setup</p>
                                             <h5>Import profile</h5>
-                                            <p id="jukInvoicesStep1LiveSummary">Preparing import profile…</p>
+                                            <p id="jukInvoicesStep1LiveSummary">Current import profile and publish mode.</p>
                                             <div class="juk-step1-kpis">
                                                 <article>
                                                     <span>Scope</span>
                                                     <strong id="jukInvoicesStep1ScopeValue">Since last batch</strong>
-                                                    <small id="jukInvoicesStep1ScopeDetail">Smartly resumes from your previous run.</small>
+                                                    <small id="jukInvoicesStep1ScopeDetail">Resumes cleanly from prior run.</small>
                                                 </article>
                                                 <article>
                                                     <span>Publish Mode</span>
                                                     <strong id="jukInvoicesStep1ModeValue">Draft test mode</strong>
-                                                    <small id="jukInvoicesStep1ModeDetail">Safe dry run into review flow.</small>
+                                                    <small id="jukInvoicesStep1ModeDetail">Switch between live and test.</small>
                                                 </article>
                                             </div>
                                         </aside>
-                                        <aside class="juk-step1-insight" aria-live="polite">
+                                        <aside class="juk-step1-insight is-compact" aria-live="polite">
                                             <p class="eyebrow">Batch context</p>
                                             <h5>Date and coverage</h5>
-                                            <p>Current range and last successful import marker for quick validation.</p>
+                                            <p>Quick check of date window and last completed batch marker.</p>
                                             <div class="juk-step1-kpis">
                                                 <article>
                                                     <span>Date Window</span>
                                                     <strong id="jukInvoicesStep1WindowValue">Not set</strong>
-                                                    <small id="jukInvoicesStep1WindowDetail">Set from and to dates before import.</small>
+                                                    <small id="jukInvoicesStep1WindowDetail">Set from/to before import.</small>
                                                 </article>
                                                 <article>
                                                     <span>Invoices Up To</span>
                                                     <strong id="jukInvoicesStep1LastInvoicedValue">Not available</strong>
-                                                    <small id="jukInvoicesStep1LastInvoicedDetail">No completed batch yet.</small>
+                                                    <small id="jukInvoicesStep1LastInvoicedDetail">Last completed coverage marker.</small>
                                                 </article>
                                             </div>
                                         </aside>
                                         <aside class="juk-step1-insight juk-step1-settings-card" aria-live="polite">
                                             <p class="eyebrow">Import settings</p>
-                                            <h5>Vertical setup</h5>
-                                            <p>Configuration is grouped here to keep the batch form focused on dates.</p>
+                                            <h5>Quick controls</h5>
+                                            <p>Core import controls are grouped here for faster setup.</p>
                                             <div class="juk-step1-settings-stack">
                                                 <label class="juk-step1-settings-field">Import Scope
                                                     <div class="juk-toggle-group" role="radiogroup" aria-label="Import Scope" data-juk-toggle-for="jukInvoicesScopeSelect">
@@ -49060,7 +49082,14 @@
                 (Array.isArray(rows) ? rows : []).forEach((row) => {
                     const ignitionRows = Array.isArray(row?.raw?.ignitionRows) ? row.raw.ignitionRows : [];
                     ignitionRows.forEach((entry) => {
-                        const paidOn = String(entry?.paidOn || "").slice(0, 10);
+                        const paidOn = String(
+                            entry?.payoutPaidOn
+                            || entry?.payoutDate
+                            || row?.payoutDate
+                            || entry?.paidOn
+                            || ""
+                        ).slice(0, 10);
+                        const sourcePaidOn = String(entry?.paidOn || paidOn || "").slice(0, 10);
                         const rawPayoutId = String(entry?.payoutId || "").trim();
                         const payoutId = rawPayoutId || String(entry?.paymentId || "").trim() || "unlabeled-batch";
                         const key = rawPayoutId ? `payout|${rawPayoutId}` : `${paidOn}|${payoutId}`;
@@ -49093,7 +49122,7 @@
                             paymentId || "--",
                             clientName || "unknown-client",
                             Number(amount || 0).toFixed(2),
-                            paidOn || "--",
+                            sourcePaidOn || "--",
                             rawPayoutId || payoutId || "--",
                             amount < 0 || Boolean(entry?.isReversal) ? "reversal" : "collection",
                         ].join("|");
@@ -49104,7 +49133,8 @@
                         bucket.lineSignatures.add(lineSignature);
                         bucket.lines.push({
                             clientName: clientName || "Unknown client",
-                            paidOn,
+                            paidOn: sourcePaidOn,
+                            payoutPaidOn: paidOn,
                             amount,
                             paymentId,
                             payoutId,
@@ -50108,43 +50138,14 @@
                     const resolutionStatus = String(item?.resolutionStatus || "").trim().toLowerCase();
                     return !["credit_note_created", "balanced_by_existing_credit_note"].includes(resolutionStatus);
                 });
-                let matchedRunRow = paymentLinkedCandidates.sort(rankCandidates)[0] || candidates.sort(rankCandidates)[0] || null;
-                let usedFallbackRow = false;
-                if (!matchedRunRow) {
-                    const fallbackCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
-                        const differenceTotal = Math.abs(Number(item?.differenceTotal || item?.difference || 0));
-                        return piAmountEqual(differenceTotal, missingDebitAmount, Math.max(tolerance, 0.02));
-                    });
-                    matchedRunRow = fallbackCandidates.sort(rankCandidates)[0] || null;
-                    usedFallbackRow = Boolean(matchedRunRow);
-                }
-                if (!matchedRunRow) {
-                    const matchedPayoutDate = piDateKey(bestPayout?.paidOn || "");
-                    const clientFallbackCandidates = (Array.isArray(runRows) ? runRows : []).filter((item) => {
-                        const rowClient = normalizeClient(item?.clientName || "");
-                        if (!rowClient || !targetClients.has(rowClient)) return false;
-                        const resolutionStatus = String(item?.resolutionStatus || "").trim().toLowerCase();
-                        if (["credit_note_created", "balanced_by_existing_credit_note"].includes(resolutionStatus)) return false;
-                        const payoutDate = piDateKey(item?.payoutDate || item?.date || item?.raw?.payoutDate || item?.raw?.paidOn || "");
-                        if (matchedPayoutDate && payoutDate && payoutDate !== matchedPayoutDate) return false;
-                        return true;
-                    });
-                    if (clientFallbackCandidates.length) {
-                        const clientRank = (left, right) => {
-                            const leftHasContact = Boolean(String(left?.xeroContactId || "").trim());
-                            const rightHasContact = Boolean(String(right?.xeroContactId || "").trim());
-                            if (leftHasContact !== rightHasContact) return leftHasContact ? -1 : 1;
-                            const leftDiff = Math.abs(Number(left?.differenceTotal || left?.difference || 0));
-                            const rightDiff = Math.abs(Number(right?.differenceTotal || right?.difference || 0));
-                            if (!piAmountEqual(leftDiff, rightDiff, 0.005)) return leftDiff - rightDiff;
-                            const leftClient = normalizeClient(left?.clientName || "");
-                            const rightClient = normalizeClient(right?.clientName || "");
-                            return leftClient.localeCompare(rightClient);
-                        };
-                        matchedRunRow = clientFallbackCandidates.sort(clientRank)[0] || null;
-                        usedFallbackRow = Boolean(matchedRunRow);
-                    }
-                }
+                const matchedRunRow = paymentLinkedCandidates.sort(rankCandidates)[0] || candidates.sort(rankCandidates)[0] || null;
+                const usedFallbackRow = false;
+
+                const description = [
+                    "PI Adjustment through Jenius AI",
+                    String(bestCombination.lines?.[0]?.clientName || "").trim(),
+                    String(bestPayout?.payoutId || "").trim(),
+                ].filter(Boolean).join(" · ");
 
                 return {
                     targetDate: piDateKey(bestPayout?.paidOn || "") || targetDate,
@@ -50155,6 +50156,7 @@
                     netAmount: Number(bestCombination.netAmount || 0),
                     runRow: matchedRunRow,
                     usedFallbackRow,
+                    description,
                 };
             }
 
@@ -50247,7 +50249,9 @@
 
             function applyPiStep1AiMatch(match = {}) {
                 const matchedRowId = String(match?.runRow?.id || "").trim();
-                if (!matchedRowId) return false;
+                const rowAmount = Math.abs(Number(match?.runRow?.differenceTotal || match?.runRow?.difference || 0));
+                const missingAmount = Math.abs(Number(match?.missingDebitAmount || 0));
+                if (!matchedRowId || !piAmountEqual(rowAmount, missingAmount, 0.02)) return false;
                 piClearingSelectedRowIds = new Set([matchedRowId]);
                 return true;
             }
@@ -50284,7 +50288,9 @@
                     missingDebitAmount: Number(match?.missingDebitAmount || 0),
                     payoutId: String(match?.payout?.payoutId || "").trim(),
                     lineCount: Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0),
-                    clientName: String(match?.payoutLine?.clientName || match?.runRow?.clientName || "").trim(),
+                    clientName: String(match?.runRow?.clientName || match?.payoutLine?.clientName || "").trim(),
+                    payoutClientName: String(match?.payoutLine?.clientName || "").trim(),
+                    description: String(match?.description || "").trim(),
                     xeroContactId: String(match?.runRow?.xeroContactId || fallbackContact || "").trim(),
                 };
                 try {
@@ -51775,7 +51781,7 @@
                                             <tr>
                                                 <th>Debit amount used</th>
                                                 <th>Contact</th>
-                                                <th>Debit payment id</th>
+                                                <th>Client ID</th>
                                                 <th>Reference</th>
                                             </tr>
                                         </thead>
@@ -51790,13 +51796,21 @@
                                                     || item?.name
                                                     || ""
                                                 ).trim() || "Unknown contact";
-                                                const paymentId = String(item?.paymentId || item?.debitPaymentId || "--").trim() || "--";
+                                                const idCandidates = [
+                                                    item?.clientId,
+                                                    item?.clientCode,
+                                                    item?.customerId,
+                                                    item?.paymentId,
+                                                    item?.debitPaymentId,
+                                                ].map((value) => String(value || "").trim()).filter(Boolean);
+                                                const preferredClientId = idCandidates.find((value) => /^j/i.test(value));
+                                                const clientId = preferredClientId || idCandidates[0] || "--";
                                                 const reference = String(item?.reference || item?.debitReference || "--").trim() || "--";
                                                 return `
                                                     <tr>
                                                         <td>${escapeHTML(amountUsed)}</td>
                                                         <td>${escapeHTML(contactName)}</td>
-                                                        <td>${escapeHTML(paymentId)}</td>
+                                                        <td>${escapeHTML(clientId)}</td>
                                                         <td>${escapeHTML(reference)}</td>
                                                     </tr>
                                                 `;
@@ -52137,24 +52151,35 @@
                         ? piClearingFixDifferenceMatch
                         : null;
                     const runRow = match?.runRow && typeof match.runRow === "object" ? match.runRow : null;
-                    const clientName = String(runRow?.clientName || match?.payoutLine?.clientName || "Unknown client").trim();
+                    const mappedClientName = String(runRow?.clientName || "").trim();
+                    const payoutClientName = String(match?.payoutLine?.clientName || "").trim();
+                    const clientName = mappedClientName || payoutClientName || "Unknown client";
                     const payoutDate = String(match?.payout?.paidOn || runRow?.payoutDate || match?.targetDate || "").trim();
-                    const amount = Math.abs(Number(runRow?.differenceTotal || match?.missingDebitAmount || 0));
+                    const amount = Math.abs(Number(match?.missingDebitAmount || runRow?.differenceTotal || 0));
                     const payoutId = String(match?.payout?.payoutId || "--").trim() || "--";
                     const lineCount = Array.isArray(match?.payoutLines) ? match.payoutLines.length : (match?.payoutLine ? 1 : 0);
                     const contactState = String(runRow?.xeroContactId || "").trim() ? "Mapped" : "Missing contact";
                     const isRefundAdjustment = Number(runRow?.raw?.ignitionReversalTotal || 0) > 0;
                     const actionTypeLabel = isRefundAdjustment ? "Invoice" : "Credit note";
+                    const previewDescriptionBase = isRefundAdjustment ? "PI Refund Adjustment through Jenius AI" : "PI Adjustment through Jenius AI";
+                    const previewDescription = [
+                        previewDescriptionBase,
+                        payoutClientName || mappedClientName || "",
+                        String(payoutId || "").trim() && payoutId !== "--" ? payoutId : "",
+                    ].filter(Boolean).join(" · ");
                     const actionDetail = isRefundAdjustment
                         ? `Create an authorised invoice in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`
                         : `Create an authorised credit note in Xero marked as Awaiting Payment so PI imbalance is reduced by ${formatCurrency(amount)}.`;
                     fixDifferenceBody.innerHTML = match
                         ? `
                             <tr><th>Client</th><td>${escapeHTML(clientName)}</td></tr>
+                            <tr><th>Mapped posting client</th><td>${escapeHTML(mappedClientName || "Not mapped")}</td></tr>
+                            <tr><th>Ignition payout client</th><td>${escapeHTML(payoutClientName || "Unknown client")}</td></tr>
                             <tr><th>Payout date</th><td>${escapeHTML(formatDate(payoutDate))}</td></tr>
                             <tr><th>${escapeHTML(actionTypeLabel)} amount</th><td>${escapeHTML(formatCurrency(amount))}</td></tr>
                             <tr><th>Ignition payout evidence</th><td>${escapeHTML(payoutId)} (${escapeHTML(String(lineCount))} line${lineCount === 1 ? "" : "s"})</td></tr>
                             <tr><th>Xero contact</th><td>${escapeHTML(contactState)}</td></tr>
+                            <tr><th>${escapeHTML(actionTypeLabel)} description</th><td>${escapeHTML(previewDescription)}</td></tr>
                             <tr><th>Action</th><td>${escapeHTML(actionDetail)}</td></tr>
                         `
                         : `<tr><td><p class="detail-meta">No fix is prepared yet.</p></td></tr>`;

@@ -4609,6 +4609,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                        p.account_name,
                        p.synced_at,
                        p.raw,
+                       c.id AS customer_id,
                        c.name AS customer_name,
                        c.xero_contact_id
                 FROM payments p
@@ -4673,6 +4674,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
         raw_contact_name = str(raw_contact.get("Name") or "").strip()
         client_name = str(row.get("customer_name") or raw_contact_name or "Unknown client").strip()
         xero_contact_id = str(row.get("xero_contact_id") or raw_contact.get("ContactID") or "").strip()
+        customer_id = str(row.get("customer_id") or "").strip()
         items.append(
             {
                 "paymentId": str(row.get("xero_payment_id") or ""),
@@ -4683,6 +4685,7 @@ def _pi_load_xero_payments(user: dict, month_start: date, month_end: date, accou
                 "currencyCode": str(row.get("currency_code") or "GBP"),
                 "clientName": client_name,
                 "clientKey": _pi_client_key(client_name),
+                "clientId": customer_id,
                 "xeroContactId": xero_contact_id,
                 "reference": str(row.get("reference") or ""),
                 "invoiceType": invoice_type,
@@ -4976,6 +4979,7 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
             "amount": amount,
             "reference": str(row.get("reference") or "").strip(),
             "clientName": str(row.get("clientName") or "").strip(),
+            "clientId": str(row.get("clientId") or "").strip(),
             "source": str(row.get("source") or "").strip().lower(),
         }
         if amount > Decimal("0.00"):
@@ -5040,6 +5044,7 @@ def _pi_step1_xero_credit_debit_check(xero_rows: list[dict]) -> dict:
                 matched_debits.append(
                     {
                         "paymentId": str(debit.get("paymentId") or ""),
+                        "clientId": str(debit.get("clientId") or ""),
                         "amountUsed": float(_money(consumed)),
                         "reference": str(debit.get("reference") or ""),
                         "clientName": str(debit.get("clientName") or ""),
@@ -6441,6 +6446,40 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         return {"created": [], "skipped": [], "message": "No eligible non-zero difference rows were selected."}
 
     connection_row = get_master_xero_connection_for_user(user["id"])
+    xero_accounts = await _fetch_xero_chart_of_accounts(connection_row)
+    account_by_code = {str(account.get("code") or "").strip().lower(): account for account in xero_accounts}
+    account_by_name = {str(account.get("name") or "").strip().lower(): account for account in xero_accounts}
+
+    def _resolve_selected_pi_account(candidate_value: str) -> str:
+        raw_value = str(candidate_value or "").strip()
+        if not raw_value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Select a PI nominal account before posting the adjustment.",
+            )
+        selected_account = account_by_code.get(raw_value.lower())
+        if selected_account is None:
+            selected_account = account_by_name.get(raw_value.lower())
+        if selected_account is None and "·" in raw_value:
+            code_hint = raw_value.split("·", 1)[0].strip().lower()
+            if code_hint:
+                selected_account = account_by_code.get(code_hint)
+        if selected_account is None:
+            fuzzy = [
+                account for account in xero_accounts
+                if raw_value.lower() in str(account.get("code") or "").strip().lower()
+                or raw_value.lower() in str(account.get("name") or "").strip().lower()
+            ]
+            if len(fuzzy) == 1:
+                selected_account = fuzzy[0]
+        if selected_account is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"PI nominal '{raw_value}' is not in the connected Xero chart of accounts. Re-select the PI nominal in Batch setup.",
+            )
+        return str(selected_account.get("code") or "").strip()
+
+    account_code = _resolve_selected_pi_account(account_code)
     created: list[dict] = []
     skipped: list[dict] = []
     for row in target_rows:
@@ -6494,16 +6533,25 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
             continue
         note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
+        line_description = str(step1_fix.get("description") or "").strip() if step1_fix else ""
+        if not line_description:
+            line_description = "PI Refund Adjustment through Jenius AI" if has_refund else "PI Adjustment through Jenius AI"
+        payout_identifier = str(step1_fix.get("payoutId") or "").strip() if step1_fix else ""
+        payout_line_client = str(step1_fix.get("clientName") or "").strip() if step1_fix else ""
+        if payout_line_client and payout_line_client.lower() not in line_description.lower():
+            line_description = f"{line_description} · {payout_line_client}"
+        if payout_identifier and payout_identifier.lower() not in line_description.lower():
+            line_description = f"{line_description} · {payout_identifier}"
         adjustment_payload = {
             "Type": "ACCREC" if has_refund else "ACCRECCREDIT",
-            "Contact": {"ContactID": contact_id, "Name": client_name},
+            "Contact": {"ContactID": contact_id},
             "Date": note_date.isoformat(),
             "LineAmountTypes": "NoTax",
             "Status": "AUTHORISED",
             "Reference": "PI Refund Adjustment" if has_refund else "Client Payment",
             "LineItems": [
                 {
-                    "Description": "PI Refund Adjustment through Jenius AI" if has_refund else "PI Adjustment through Jenius AI",
+                    "Description": line_description,
                     "Quantity": 1,
                     "UnitAmount": float(amount),
                     "AccountCode": account_code,
@@ -6597,6 +6645,7 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 "amount": float(amount),
                 "currencyCode": currency_code,
                 "accountCode": account_code,
+                "description": line_description,
             }
         )
 
