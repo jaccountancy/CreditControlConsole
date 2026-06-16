@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
@@ -3081,7 +3082,29 @@ async def api_upsert_payroll_headcount_workspace(request: Request, user: dict = 
 
 @app.post("/api/payroll-headcount/workspaces/{tenant_id}/sync")
 async def api_sync_payroll_headcount_workspace(tenant_id: str, user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **await sync_payroll_headcount_workspace(user, tenant_id)}
+    try:
+        return {"status": "ok", **await sync_payroll_headcount_workspace(user, tenant_id)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        error_id = str(uuid4())
+        logger.exception(
+            "payroll_headcount_workspace_sync_failed user_id=%s tenant_id=%s phase=route_handler error_id=%s",
+            user.get("id"),
+            str(tenant_id or "").strip(),
+            error_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Payroll headcount sync failed due to an unexpected backend error.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+                "tenantId": str(tenant_id or "").strip(),
+                "phase": "route_handler",
+                "errorId": error_id,
+            },
+        ) from exc
 
 
 @app.post("/api/payroll-headcount/ignition-sync")

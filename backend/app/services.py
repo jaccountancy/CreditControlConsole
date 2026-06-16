@@ -1439,6 +1439,24 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
             if not _repair_schema_once():
                 raise
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "payroll_headcount_workspace_upsert_failed user_id=%s tenant_id=%s phase=workspace_upsert",
+                user.get("id"),
+                clean_tenant_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Payroll headcount sync failed while creating or updating the workspace.",
+                    "phase": "workspace_upsert",
+                    "error": _sync_error_message(exc),
+                    "tenantId": clean_tenant_id,
+                    "hint": "Check the payroll_headcount_workspaces schema and constraints in the database.",
+                },
+            ) from exc
 
     workspace_id = str(workspace.get("id") or "").strip()
     if not workspace_id:
@@ -1447,7 +1465,25 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
             detail="Payroll workspace sync failed because the workspace id could not be resolved.",
         )
 
-    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    try:
+        connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "payroll_headcount_connection_resolve_failed user_id=%s tenant_id=%s phase=connection_resolve",
+            user.get("id"),
+            clean_tenant_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Payroll headcount sync failed while resolving the Xero tenant connection.",
+                "phase": "connection_resolve",
+                "error": _sync_error_message(exc),
+                "tenantId": clean_tenant_id,
+            },
+        ) from exc
 
     errors: list[str] = []
 
@@ -1456,7 +1492,15 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
             payload = await xero_api_get(connection_row, url)
             return payload if isinstance(payload, dict) else {}
         except Exception as exc:
-            errors.append(f"{label} sync failed: {_sync_error_message(exc)}")
+            error_message = _sync_error_message(exc)
+            errors.append(f"{label} sync failed: {error_message}")
+            logger.warning(
+                "payroll_headcount_xero_fetch_failed user_id=%s tenant_id=%s phase=xero_fetch dataset=%s error=%s",
+                user.get("id"),
+                clean_tenant_id,
+                label,
+                error_message,
+            )
             return {}
 
     employees_payload, payruns_payload = await asyncio.gather(
@@ -1660,6 +1704,30 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
             if not _repair_schema_once():
                 raise
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "payroll_headcount_snapshot_write_failed user_id=%s tenant_id=%s workspace_id=%s phase=snapshot_upsert active_headcount=%s payroll_count=%s employee_rows=%s payrun_rows=%s",
+                user.get("id"),
+                clean_tenant_id,
+                workspace_id,
+                active_headcount,
+                payroll_count,
+                len(employees),
+                len(payruns),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Payroll headcount sync failed while saving the monthly snapshot.",
+                    "phase": "snapshot_upsert",
+                    "error": _sync_error_message(exc),
+                    "tenantId": clean_tenant_id,
+                    "workspaceId": workspace_id,
+                    "hint": "Check payroll_headcount_monthly_snapshots table schema and unique constraint on (workspace_id, month_start).",
+                },
+            ) from exc
 
     snapshot = {
         "monthStart": _payroll_headcount_month_start_iso(snapshot_row.get("month_start")),
@@ -1683,15 +1751,18 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         raise
     except Exception as exc:
         logger.exception(
-            "payroll_headcount_payload_failed user_id=%s tenant_id=%s",
+            "payroll_headcount_payload_failed user_id=%s tenant_id=%s phase=payload_build",
             user.get("id"),
             clean_tenant_id,
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
-                "message": "Payroll headcount sync could not complete right now.",
+                "message": "Payroll headcount sync saved data but failed while rebuilding the dashboard payload.",
+                "phase": "payload_build",
                 "error": _sync_error_message(exc),
+                "tenantId": clean_tenant_id,
+                "workspaceId": workspace_id,
             },
         ) from exc
     return {

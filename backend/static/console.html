@@ -41335,6 +41335,106 @@
                 };
             }
 
+            function payrollHeadcountFailureContext(endpoint, statusCode, payload) {
+                const path = responsePath(endpoint);
+                const isPayrollHeadcountSync = /\/api\/payroll-headcount\/workspaces\/[^/]+\/sync$/.test(path);
+                if (!isPayrollHeadcountSync) return null;
+                const code = Number(statusCode || 0);
+                const detail = payload && typeof payload === "object" ? payload : {};
+                const phase = String(detail.phase || "").trim();
+                const hint = String(detail.hint || "").trim();
+                const errorId = String(detail.errorId || "").trim();
+                const tenantId = String(detail.tenantId || "").trim();
+                const workspaceId = String(detail.workspaceId || "").trim();
+                const errorText = (() => {
+                    if (typeof detail.error === "string" && detail.error.trim()) return detail.error.trim();
+                    if (typeof detail.message === "string" && detail.message.trim()) return detail.message.trim();
+                    if (typeof payload === "string" && payload.trim()) return payload.trim();
+                    return "";
+                })();
+
+                if (phase === "workspace_upsert") {
+                    return {
+                        title: "Payroll sync failed during workspace setup",
+                        summary: "The backend could not create or update the payroll workspace record.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            errorText,
+                            hint,
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                if (phase === "connection_resolve") {
+                    return {
+                        title: "Payroll sync failed to resolve Xero connection",
+                        summary: "The backend could not resolve the selected tenant connection.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            errorText,
+                            "Reconnect Xero and ensure the correct tenant is available.",
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                if (phase === "snapshot_upsert") {
+                    return {
+                        title: "Payroll sync failed while saving snapshot",
+                        summary: "Payroll data was fetched, but writing monthly snapshot data failed.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            workspaceId ? `Workspace: ${workspaceId}` : "",
+                            errorText,
+                            hint,
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                if (phase === "payload_build") {
+                    return {
+                        title: "Payroll sync partially completed",
+                        summary: "Snapshot data was saved, but rebuilding the dashboard payload failed.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            workspaceId ? `Workspace: ${workspaceId}` : "",
+                            errorText,
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                if (phase === "route_handler") {
+                    return {
+                        title: "Payroll sync failed unexpectedly",
+                        summary: "An unhandled backend error occurred while processing the request.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            errorText,
+                            errorId ? `Reference: ${errorId}` : "",
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+
+                if (code === 409) {
+                    return {
+                        title: "Payroll data unavailable for this tenant",
+                        summary: "Xero payroll endpoints could not be read for the selected organisation.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            errorText,
+                            "Reconnect with payroll scopes and verify Payroll is enabled on this Xero tenant.",
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                if (code >= 500) {
+                    return {
+                        title: "Payroll sync failed on server",
+                        summary: "The backend failed while syncing payroll headcount data.",
+                        message: [
+                            tenantId ? `Tenant: ${tenantId}` : "",
+                            errorText,
+                            errorId ? `Reference: ${errorId}` : "",
+                        ].filter(Boolean).join(" "),
+                    };
+                }
+                return null;
+            }
+
             async function requestJSON(template, options = {}, params = {}) {
                 const {
                     suppressFailurePanel = false,
@@ -41448,7 +41548,9 @@
                     const message = diagnostic && !messageText.includes(diagnostic)
                         ? `${messageText} ${diagnostic}`
                         : messageText;
-                    const specialisedFailure = companiesHouseBulkSubmissionFailureContext(resolvedEndpoint, response.status, detail || payload);
+                    const specialisedFailure =
+                        payrollHeadcountFailureContext(resolvedEndpoint, response.status, detail || payload)
+                        || companiesHouseBulkSubmissionFailureContext(resolvedEndpoint, response.status, detail || payload);
                     if (trackActivity) {
                         logAPIActivity("api.failed", activityContext, {
                             statusCode: response.status,
