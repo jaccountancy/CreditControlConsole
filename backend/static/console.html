@@ -1692,6 +1692,7 @@
                 top: 108px;
                 left: 10px;
                 z-index: 5;
+                display: none;
                 border: 1px solid rgba(110, 154, 232, 0.34);
                 border-radius: 10px;
                 background: linear-gradient(155deg, rgba(247, 251, 255, 0.98), rgba(229, 240, 255, 0.92));
@@ -1713,6 +1714,9 @@
                 background: linear-gradient(155deg, rgba(251, 253, 255, 1), rgba(234, 243, 255, 0.96));
                 transform: translateY(-1px);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 10px 16px rgba(29, 103, 242, 0.2);
+            }
+            .app-sidebar.is-notification-centre-mode .sidebar-notify-trigger {
+                display: inline-block;
             }
             .sidebar-search-trigger.is-active {
                 border-color: rgba(29, 103, 242, 0.54);
@@ -85248,14 +85252,9 @@
                     });
                     bulkArchiveButton.addEventListener("click", () => {
                         let updated = 0;
-                        let blocked = 0;
                         notificationSelectedIds.forEach((id) => {
                             updateNotificationRecord(id, (record) => {
                                 if (record.status === "archived") return record;
-                                if (!record.reviewedAt) {
-                                    blocked += 1;
-                                    return record;
-                                }
                                 updated += 1;
                                 return {
                                     ...record,
@@ -85268,7 +85267,6 @@
                             });
                         });
                         if (updated) showToast(`${updated} notification${updated === 1 ? "" : "s"} archived`, "success");
-                        if (blocked) showToast(`${blocked} require review before archive`, "warning");
                         renderNotificationsScreen();
                     });
                     notificationsList.addEventListener("click", (event) => {
@@ -85305,11 +85303,6 @@
                             return;
                         }
                         if (action === "archive") {
-                            const record = notificationRecords.find((item) => item.id === rowId);
-                            if (record && !record.reviewedAt) {
-                                showToast("Review is required before archive", "warning");
-                                return;
-                            }
                             updateNotificationRecord(rowId, (target) => ({
                                 ...target,
                                 status: "archived",
