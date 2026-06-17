@@ -1631,19 +1631,36 @@
                 background: linear-gradient(165deg, rgba(255, 255, 255, 0.98), rgba(241, 248, 255, 0.94));
                 padding: 8px 9px;
                 color: var(--ink);
+                display: grid;
+                gap: 6px;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 4px 12px rgba(23, 56, 107, 0.09);
+                transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+            }
+            .sidebar-mini-notification-open {
+                width: 100%;
+                border: 0;
+                padding: 0;
+                background: transparent;
+                color: inherit;
                 text-align: left;
                 display: grid;
                 gap: 3px;
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 4px 12px rgba(23, 56, 107, 0.09);
-                transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+                transition: transform 0.18s ease, color 0.18s ease;
             }
-            .sidebar-mini-notification-item:hover,
-            .sidebar-mini-notification-item:focus-visible {
+            .sidebar-mini-notification-open:hover,
+            .sidebar-mini-notification-open:focus-visible {
                 outline: none;
                 transform: translateY(-1px);
+                color: #1f3f73;
+            }
+            .sidebar-mini-notification-item:hover {
                 border-color: rgba(79, 121, 217, 0.55);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 10px 16px rgba(23, 56, 107, 0.13);
                 background: linear-gradient(162deg, rgba(249, 252, 255, 1), rgba(232, 243, 255, 0.97));
+            }
+            .sidebar-mini-notification-open:focus-visible {
+                box-shadow: 0 0 0 3px rgba(79, 121, 217, 0.18);
+                border-radius: 8px;
             }
             .sidebar-mini-notification-item strong {
                 font-size: 0.78rem;
@@ -1661,7 +1678,33 @@
                 font-size: 0.66rem;
                 color: #8597b2;
                 font-weight: 680;
-                justify-self: end;
+            }
+            .sidebar-mini-notification-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .sidebar-mini-notification-archive {
+                border: 1px solid rgba(126, 156, 212, 0.38);
+                border-radius: 8px;
+                background: rgba(239, 247, 255, 0.96);
+                color: #32548a;
+                font: inherit;
+                font-size: 0.64rem;
+                font-weight: 780;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                min-height: 24px;
+                padding: 4px 8px;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+            }
+            .sidebar-mini-notification-archive:hover,
+            .sidebar-mini-notification-archive:focus-visible {
+                outline: none;
+                border-color: rgba(81, 122, 198, 0.62);
+                background: rgba(224, 238, 255, 0.98);
+                color: #1f427b;
             }
             .sidebar-mini-notification-empty {
                 border: 1px dashed rgba(134, 162, 213, 0.42);
@@ -1721,7 +1764,7 @@
                 display: grid;
                 grid-template-rows: auto auto minmax(0, 1fr);
                 gap: 8px;
-                padding: 4px 2px 6px;
+                padding: 12px 2px 6px;
                 overflow: hidden;
             }
             .sidebar-mini-search-head {
@@ -31222,9 +31265,9 @@
                         <section class="sidebar-mini-search-panel" id="sidebarMiniSearchPanel" hidden>
                             <header class="sidebar-mini-search-head">
                                 <h4>Search Menu</h4>
-                                <p>Find app tools and settings quickly.</p>
+                                <p>Search client register and open client files.</p>
                             </header>
-                            <input class="sidebar-mini-search-input" id="sidebarMiniSearchInput" type="search" placeholder="Search tools, pages, settings" autocomplete="off" aria-label="Search sidebar menu">
+                            <input class="sidebar-mini-search-input" id="sidebarMiniSearchInput" type="search" placeholder="Search client name, email, company no" autocomplete="off" aria-label="Search client register">
                             <div class="sidebar-mini-search-results" id="sidebarMiniSearchResults"></div>
                         </section>
                         <div class="app-sidebar-bottom">
@@ -85115,7 +85158,10 @@
                         if (!record || typeof record !== "object") return false;
                         const assignedToMe = String(record.assignedToId || "") === String(current.id || "");
                         const createdByMe = String(record.createdById || "") === String(current.id || "");
-                        return assignedToMe || createdByMe;
+                        if (!(assignedToMe || createdByMe)) return false;
+                        const source = String(record.source || "").toLowerCase();
+                        if (source.includes("system") || source.includes("assistant")) return false;
+                        return true;
                     })
                     .sort((left, right) => (Date.parse(right.createdAt || "") || 0) - (Date.parse(left.createdAt || "") || 0));
             }
@@ -85146,11 +85192,16 @@
                     return text;
                 };
                 const buildItem = (record, archived = false) => `
-                    <button class="sidebar-mini-notification-item${archived ? " is-archived" : ""}" type="button" data-sidebar-mini-notification-id="${escapeHTML(record.id || "")}">
-                        <strong>${escapeHTML(record.subject || "Notification")}</strong>
-                        <small>${escapeHTML(conciseSummary(record))}</small>
-                        <time>${escapeHTML(formatActivityTime(record.createdAt || record.updatedAt || ""))}</time>
-                    </button>
+                    <article class="sidebar-mini-notification-item${archived ? " is-archived" : ""}" data-sidebar-mini-notification-id="${escapeHTML(record.id || "")}">
+                        <button class="sidebar-mini-notification-open" type="button" data-sidebar-mini-notification-open="${escapeHTML(record.id || "")}">
+                            <strong>${escapeHTML(record.subject || "Notification")}</strong>
+                            <small>${escapeHTML(conciseSummary(record))}</small>
+                        </button>
+                        <div class="sidebar-mini-notification-row">
+                            <time>${escapeHTML(formatDateTime(record.createdAt || record.updatedAt || ""))}</time>
+                            <button class="sidebar-mini-notification-archive" type="button" data-sidebar-mini-notification-archive="${escapeHTML(record.id || "")}">Archive</button>
+                        </div>
+                    </article>
                 `;
 
                 activeList.innerHTML = activeRows.length
@@ -85159,22 +85210,39 @@
             }
 
             function sidebarMiniSearchCandidates() {
-                const candidates = [];
-                document.querySelectorAll(".app-nav [data-app-nav], .app-nav [data-settings-nav]").forEach((item) => {
-                    const navId = String(item.dataset.appNav || "").trim();
-                    const settingsId = String(item.dataset.settingsNav || "").trim();
-                    if (!navId && !settingsId) return;
-                    const title = String(item.querySelector(".app-nav-copy strong")?.textContent || "").trim();
-                    const subtitle = String(item.querySelector(".app-nav-copy span")?.textContent || "").trim();
-                    if (!title) return;
-                    candidates.push({
-                        id: navId || settingsId,
-                        title,
-                        subtitle,
-                        kind: navId ? "app" : "settings",
-                    });
-                });
-                return candidates;
+                return (Array.isArray(state?.customers) ? state.customers : []).map((customer) => {
+                    const companyNo = confirmationStatementCompanyNumber(customer) || "";
+                    const contact = String(customer.contact || "").trim();
+                    return {
+                        id: String(customer.id || "").trim(),
+                        title: String(customer.name || "Unnamed client").trim(),
+                        email: String(customer.email || "").trim(),
+                        contact,
+                        companyNo: String(companyNo || "").trim(),
+                    };
+                }).filter((item) => item.id);
+            }
+
+            function openSidebarMiniClientResult(clientId) {
+                const id = String(clientId || "").trim();
+                if (!id) return;
+                const customer = (Array.isArray(state?.customers) ? state.customers : []).find((item) => String(item?.id || "").trim() === id) || null;
+                if (!customer) {
+                    showToast("Client not found in register.", "error");
+                    return;
+                }
+                const invoices = Array.isArray(customer.invoices) ? customer.invoices : [];
+                if (invoices.length) {
+                    openClientWorkspace(invoices[0], "", "invoices");
+                    return;
+                }
+                selectedClientId = customer.id;
+                selectedInvoiceId = null;
+                activeView = "client";
+                activeClientSection = "invoices";
+                syncActiveViewShell();
+                renderAll();
+                scrollConsoleToTop();
             }
 
             function renderSidebarMiniSearchPanel() {
@@ -85191,20 +85259,22 @@
                 if (!input || !results) return;
                 const query = String(input.value || "").trim().toLowerCase();
                 const candidates = sidebarMiniSearchCandidates();
-                const filtered = query
-                    ? candidates.filter((item) => {
-                        const haystack = `${item.title} ${item.subtitle} ${item.id}`.toLowerCase();
-                        return haystack.includes(query);
-                    }).slice(0, 24)
-                    : candidates.slice(0, 18);
+                if (!query) {
+                    results.innerHTML = '<div class="sidebar-mini-search-empty">Type to search the client register.</div>';
+                    return;
+                }
+                const filtered = candidates.filter((item) => {
+                    const haystack = `${item.title} ${item.email} ${item.contact} ${item.companyNo} ${item.id}`.toLowerCase();
+                    return haystack.includes(query);
+                }).slice(0, 24);
                 if (!filtered.length) {
-                    results.innerHTML = '<div class="sidebar-mini-search-empty">No matches in sidebar navigation.</div>';
+                    results.innerHTML = '<div class="sidebar-mini-search-empty">No matching clients found in the register.</div>';
                     return;
                 }
                 results.innerHTML = filtered.map((item) => `
-                    <button class="sidebar-mini-search-result" type="button" data-sidebar-search-kind="${escapeHTML(item.kind)}" data-sidebar-search-target="${escapeHTML(item.id)}">
+                    <button class="sidebar-mini-search-result" type="button" data-sidebar-search-client-id="${escapeHTML(item.id)}">
                         <strong>${escapeHTML(item.title)}</strong>
-                        <small>${escapeHTML(item.kind === "settings" ? `Settings · ${item.subtitle || item.id}` : `App · ${item.subtitle || item.id}`)}</small>
+                        <small>${escapeHTML([item.email || item.contact, item.companyNo ? `Co. ${item.companyNo}` : ""].filter(Boolean).join(" · ") || "Client register entry")}</small>
                     </button>
                 `).join("");
             }
@@ -104503,8 +104573,28 @@
                 if (sidebarMiniNotificationCentre && sidebarMiniNotificationCentre.dataset.wired !== "true") {
                     sidebarMiniNotificationCentre.dataset.wired = "true";
                     sidebarMiniNotificationCentre.addEventListener("click", (event) => {
-                        const row = event.target.closest?.("[data-sidebar-mini-notification-id]");
-                        if (!row) return;
+                        const archiveTrigger = event.target.closest?.("[data-sidebar-mini-notification-archive]");
+                        if (archiveTrigger) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const recordId = String(archiveTrigger.dataset.sidebarMiniNotificationArchive || "").trim();
+                            if (!recordId) return;
+                            const changed = updateNotificationRecord(recordId, (record) => ({
+                                ...record,
+                                status: "archived",
+                                history: [
+                                    ...(Array.isArray(record.history) ? record.history : []),
+                                    notificationHistoryEvent("archived", notificationCurrentUser().name, "Archived from sidebar")
+                                ]
+                            }));
+                            if (changed) {
+                                renderSidebarMiniNotificationCentre();
+                                showToast("Notification archived.", "success");
+                            }
+                            return;
+                        }
+                        const openTrigger = event.target.closest?.("[data-sidebar-mini-notification-open], [data-sidebar-mini-notification-id]");
+                        if (!openTrigger) return;
                         event.preventDefault();
                         openNotificationsScreen();
                     });
@@ -104518,7 +104608,7 @@
                     });
                     sidebarMiniSearchInput.addEventListener("keydown", (event) => {
                         if (event.key !== "Enter") return;
-                        const firstResult = document.querySelector("#sidebarMiniSearchResults [data-sidebar-search-target]");
+                        const firstResult = document.querySelector("#sidebarMiniSearchResults [data-sidebar-search-client-id]");
                         if (!firstResult) return;
                         event.preventDefault();
                         firstResult.click();
@@ -104528,18 +104618,16 @@
                 if (sidebarMiniSearchResults && sidebarMiniSearchResults.dataset.wired !== "true") {
                     sidebarMiniSearchResults.dataset.wired = "true";
                     sidebarMiniSearchResults.addEventListener("click", (event) => {
-                        const row = event.target.closest?.("[data-sidebar-search-target]");
+                        const row = event.target.closest?.("[data-sidebar-search-client-id]");
                         if (!row) return;
                         event.preventDefault();
-                        const target = String(row.dataset.sidebarSearchTarget || "").trim();
-                        const kind = String(row.dataset.sidebarSearchKind || "").trim();
+                        const target = String(row.dataset.sidebarSearchClientId || "").trim();
                         sidebarSearchMiniMode = false;
                         if (!target) {
                             renderAll();
                             return;
                         }
-                        if (kind === "settings") openSettingsScreen(target, "settings");
-                        else handleAppNavigation(target);
+                        openSidebarMiniClientResult(target);
                     });
                 }
                 const menuLateChargesButton = document.getElementById("menuLateChargesButton");
