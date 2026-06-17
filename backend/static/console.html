@@ -882,7 +882,7 @@
                 min-width: 0;
                 width: 100%;
                 display: grid;
-                gap: 2px;
+                gap: 0;
                 align-content: start;
             }
             .sidebar-user-copy strong {
@@ -895,13 +895,7 @@
                 hyphens: none;
             }
             .sidebar-user-copy small {
-                font-size: 0.68rem;
-                color: color-mix(in srgb, var(--muted) 85%, #4f79d9 15%);
-                font-weight: 600;
-                line-height: 1.18;
-                white-space: normal;
-                overflow-wrap: break-word;
-                word-break: normal;
+                display: none;
             }
             .sidebar-user-chevron {
                 font-size: 0.68rem;
@@ -1790,6 +1784,7 @@
                 border-radius: 999px;
             }
             .sidebar-mini-notification-item {
+                position: relative;
                 width: 100%;
                 border: 1px solid rgba(130, 161, 220, 0.3);
                 border-radius: 11px;
@@ -1808,7 +1803,7 @@
             .sidebar-mini-notification-open {
                 width: 100%;
                 border: 0;
-                padding: 0;
+                padding: 0 28px 0 0;
                 background: transparent;
                 color: inherit;
                 text-align: left;
@@ -1868,26 +1863,51 @@
                 justify-content: space-between;
                 gap: 8px;
             }
-            .sidebar-mini-notification-archive {
+            .sidebar-mini-notification-meta {
+                display: grid;
+                justify-items: end;
+                gap: 3px;
+                min-width: 0;
+            }
+            .sidebar-mini-notification-dismiss {
+                position: absolute;
+                top: 6px;
+                right: 6px;
                 border: 1px solid rgba(126, 156, 212, 0.38);
-                border-radius: 8px;
+                border-radius: 999px;
                 background: rgba(239, 247, 255, 0.96);
                 color: #32548a;
                 font: inherit;
-                font-size: 0.64rem;
-                font-weight: 780;
-                letter-spacing: 0.06em;
-                text-transform: uppercase;
-                min-height: 24px;
-                padding: 4px 8px;
-                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+                font-size: 0.74rem;
+                font-weight: 900;
+                line-height: 1;
+                width: 20px;
+                height: 20px;
+                display: grid;
+                place-items: center;
+                padding: 0;
+                cursor: pointer;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
             }
-            .sidebar-mini-notification-archive:hover,
-            .sidebar-mini-notification-archive:focus-visible {
+            .sidebar-mini-notification-client {
+                display: inline-block;
+                max-width: 132px;
+                font-size: 0.6rem;
+                line-height: 1.15;
+                font-weight: 760;
+                color: #5f7394;
+                text-align: right;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .sidebar-mini-notification-dismiss:hover,
+            .sidebar-mini-notification-dismiss:focus-visible {
                 outline: none;
                 border-color: rgba(81, 122, 198, 0.62);
                 background: rgba(224, 238, 255, 0.98);
                 color: #1f427b;
+                transform: translateY(-1px);
             }
             .sidebar-mini-notification-empty {
                 border: 1px dashed rgba(134, 162, 213, 0.42);
@@ -1992,34 +2012,35 @@
                 min-height: 0;
                 overflow-y: auto;
                 display: grid;
-                gap: 6px;
+                gap: 4px;
                 align-content: start;
                 padding: 0 4px 2px;
             }
             .sidebar-mini-search-result {
                 width: 100%;
                 border: 1px solid rgba(124, 157, 217, 0.3);
-                border-radius: 10px;
+                border-radius: 9px;
                 background: rgba(245, 250, 255, 0.95);
                 color: #244073;
                 text-align: left;
                 font: inherit;
-                padding: 8px 9px;
+                padding: 6px 8px;
                 display: grid;
-                gap: 2px;
+                gap: 1px;
                 transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
             }
             .sidebar-mini-search-result strong {
-                font-size: 0.74rem;
-                line-height: 1.22;
+                font-size: 0.71rem;
+                line-height: 1.18;
                 letter-spacing: 0.01em;
             }
             .sidebar-mini-search-result small {
-                font-size: 0.66rem;
+                font-size: 0.62rem;
                 color: #6f83a5;
                 text-transform: uppercase;
-                letter-spacing: 0.05em;
+                letter-spacing: 0.04em;
                 font-weight: 760;
+                line-height: 1.18;
             }
             .sidebar-mini-search-result:hover,
             .sidebar-mini-search-result:focus-visible {
@@ -2101,49 +2122,49 @@
                 border-top: 1px solid rgba(61, 85, 130, 0.10);
             }
             .app-nav-group {
+                --main-group-accent: var(--blue);
+                --main-group-accent-soft: rgba(233, 241, 255, 0.72);
                 position: relative;
                 display: grid;
                 gap: 1px;
                 transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1), margin 0.22s ease;
             }
-            .app-nav-group-toggle {
-                --main-group-accent: var(--blue);
-                --main-group-accent-soft: rgba(233, 241, 255, 0.72);
-                grid-template-columns: 22px minmax(0, 1fr) 14px;
-                align-items: center;
-                column-gap: 5px;
-            }
-            .app-nav-group-toggle[data-app-nav-toggle="credit-control"] {
+            .app-nav-group[data-app-nav-group="credit-control"] {
                 --main-group-accent: #2d7bff;
                 --main-group-accent-soft: rgba(233, 241, 255, 0.82);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="practice-tools"] {
+            .app-nav-group[data-app-nav-group="practice-tools"] {
                 --main-group-accent: #2e9a74;
                 --main-group-accent-soft: rgba(232, 248, 238, 0.82);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="tasks"] {
+            .app-nav-group[data-app-nav-group="tasks"] {
                 --main-group-accent: #2b86bd;
                 --main-group-accent-soft: rgba(231, 245, 252, 0.84);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="companies-house"] {
+            .app-nav-group[data-app-nav-group="companies-house"] {
                 --main-group-accent: #1f8a7a;
                 --main-group-accent-soft: rgba(228, 247, 243, 0.84);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="practice-manager"] {
+            .app-nav-group[data-app-nav-group="practice-manager"] {
                 --main-group-accent: #5f76e8;
                 --main-group-accent-soft: rgba(236, 241, 255, 0.84);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="practice-assurance"] {
+            .app-nav-group[data-app-nav-group="practice-assurance"] {
                 --main-group-accent: #7c5cff;
                 --main-group-accent-soft: rgba(239, 235, 255, 0.84);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="practice-preps"] {
+            .app-nav-group[data-app-nav-group="practice-preps"] {
                 --main-group-accent: #da8d28;
                 --main-group-accent-soft: rgba(255, 243, 223, 0.82);
             }
-            .app-nav-group-toggle[data-app-nav-toggle="settings"] {
+            .app-nav-group[data-app-nav-group="settings"] {
                 --main-group-accent: #6c73ff;
                 --main-group-accent-soft: rgba(238, 232, 255, 0.84);
+            }
+            .app-nav-group-toggle {
+                grid-template-columns: 22px minmax(0, 1fr) 14px;
+                align-items: center;
+                column-gap: 5px;
             }
             .app-nav-group-toggle .app-nav-icon {
                 color: var(--main-group-accent);
@@ -2151,6 +2172,7 @@
                 border-color: color-mix(in srgb, var(--main-group-accent) 34%, #ffffff);
             }
             .app-nav-submenu {
+                position: relative;
                 display: grid;
                 gap: 2px;
                 margin-top: 0;
@@ -2163,12 +2185,31 @@
                 pointer-events: none;
                 transition: max-height 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease;
             }
+            .app-nav-submenu::before {
+                content: "";
+                position: absolute;
+                top: 2px;
+                bottom: 2px;
+                left: 5px;
+                width: 2px;
+                border-radius: 999px;
+                background: color-mix(in srgb, var(--main-group-accent) 42%, #ffffff);
+                opacity: 0;
+                transform: scaleY(0.92);
+                transform-origin: top;
+                transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+                pointer-events: none;
+            }
             .app-nav-group.is-open .app-nav-submenu {
                 max-height: 420px;
                 opacity: 1;
                 padding: 1px 0 2px 12px;
                 transform: translateY(0) scaleY(1);
                 pointer-events: auto;
+            }
+            .app-nav-group.is-open .app-nav-submenu::before {
+                opacity: 1;
+                transform: scaleY(1);
             }
             .app-nav-group.is-open > .app-nav-button {
                 border-color: color-mix(in srgb, var(--main-group-accent) 24%, #ffffff);
@@ -85560,7 +85601,11 @@
                     const source = String(record.content || "").replace(/\s+/g, " ").trim();
                     const category = String(record.category || "").replace(/[-_]/g, " ").trim();
                     const status = String(record.status || "").trim().toLowerCase();
-                    let text = source;
+                    let text = source
+                        .replace(/\s*[·|]\s*client\s*:\s*[^·|]+/gi, "")
+                        .replace(/\s*[·|]\s*task\s*:\s*[^·|]+/gi, "")
+                        .replace(/\s+/g, " ")
+                        .trim();
                     if (!text && category) text = `${category} update`;
                     if (!text) text = "Open notification";
                     text = text.replace(/\b(please|kindly|action required|for your information)\b/gi, "").replace(/\s+/g, " ").trim();
@@ -85568,18 +85613,31 @@
                     if (status === "draft") text = `Draft: ${text}`;
                     return text;
                 };
-                const buildItem = (record, archived = false) => `
-                    <article class="sidebar-mini-notification-item${archived ? " is-archived" : ""}${notificationIsUrgent(record) ? " is-urgent" : ""}" data-sidebar-mini-notification-id="${escapeHTML(record.id || "")}">
-                        <button class="sidebar-mini-notification-open" type="button" data-sidebar-mini-notification-open="${escapeHTML(record.id || "")}">
-                            <strong>${escapeHTML(record.subject || "Notification")}</strong>
-                            <small>${escapeHTML(conciseSummary(record))}</small>
-                        </button>
-                        <div class="sidebar-mini-notification-row">
-                            <time>${escapeHTML(formatDateTime(record.createdAt || record.updatedAt || ""))}</time>
-                            <button class="sidebar-mini-notification-archive" type="button" data-sidebar-mini-notification-archive="${escapeHTML(record.id || "")}">Archive</button>
-                        </div>
-                    </article>
-                `;
+                const extractClientName = (record) => {
+                    const direct = String(record?.clientName || "").trim();
+                    if (direct) return direct;
+                    const content = String(record?.content || "");
+                    const match = content.match(/(?:^|[·|])\s*client\s*:\s*([^·|]+)/i);
+                    return String(match?.[1] || "").trim();
+                };
+                const buildItem = (record, archived = false) => {
+                    const clientName = extractClientName(record);
+                    return `
+                        <article class="sidebar-mini-notification-item${archived ? " is-archived" : ""}${notificationIsUrgent(record) ? " is-urgent" : ""}" data-sidebar-mini-notification-id="${escapeHTML(record.id || "")}">
+                            <button class="sidebar-mini-notification-dismiss" type="button" data-sidebar-mini-notification-archive="${escapeHTML(record.id || "")}" aria-label="Archive notification" title="Archive notification">×</button>
+                            <button class="sidebar-mini-notification-open" type="button" data-sidebar-mini-notification-open="${escapeHTML(record.id || "")}">
+                                <strong>${escapeHTML(record.subject || "Notification")}</strong>
+                                <small>${escapeHTML(conciseSummary(record))}</small>
+                            </button>
+                            <div class="sidebar-mini-notification-row">
+                                <time>${escapeHTML(formatDateTime(record.createdAt || record.updatedAt || ""))}</time>
+                                <div class="sidebar-mini-notification-meta">
+                                    ${clientName ? `<span class="sidebar-mini-notification-client" title="${escapeHTML(clientName)}">${escapeHTML(clientName)}</span>` : ""}
+                                </div>
+                            </div>
+                        </article>
+                    `;
+                };
 
                 activeList.innerHTML = activeRows.length
                     ? activeRows.map((record) => buildItem(record)).join("")
@@ -85606,11 +85664,13 @@
                 return (Array.isArray(state?.customers) ? state.customers : []).map((customer) => {
                     const companyNo = confirmationStatementCompanyNumber(customer) || "";
                     const contact = String(customer.contact || "").trim();
+                    const manager = String(customer.manager || customer.internalClientOwner || "").trim() || "Unassigned";
                     return {
                         id: String(customer.id || "").trim(),
                         title: String(customer.name || "Unnamed client").trim(),
                         email: String(customer.email || "").trim(),
                         contact,
+                        manager,
                         companyNo: String(companyNo || "").trim(),
                     };
                 }).filter((item) => item.id);
@@ -85657,7 +85717,7 @@
                     return;
                 }
                 const filtered = candidates.filter((item) => {
-                    const haystack = `${item.title} ${item.email} ${item.contact} ${item.companyNo} ${item.id}`.toLowerCase();
+                    const haystack = `${item.title} ${item.id} ${item.manager} ${item.companyNo} ${item.contact} ${item.email}`.toLowerCase();
                     return haystack.includes(query);
                 }).slice(0, 24);
                 if (!filtered.length) {
@@ -85667,7 +85727,7 @@
                 results.innerHTML = filtered.map((item) => `
                     <button class="sidebar-mini-search-result" type="button" data-sidebar-search-client-id="${escapeHTML(item.id)}">
                         <strong>${escapeHTML(item.title)}</strong>
-                        <small>${escapeHTML([item.email || item.contact, item.companyNo ? `Co. ${item.companyNo}` : ""].filter(Boolean).join(" · ") || "Client register entry")}</small>
+                        <small>${escapeHTML(`ID: ${item.id} · Manager: ${item.manager}`)}</small>
                     </button>
                 `).join("");
             }
@@ -85772,8 +85832,7 @@
                     name.title = name.textContent;
                 }
                 if (meta) {
-                    const roleLabel = userRoleLabel(user.role, user.isSuperAdmin);
-                    meta.textContent = roleLabel;
+                    meta.textContent = "";
                 }
             }
 
