@@ -30328,10 +30328,10 @@
                         </div>
                         </nav>
                         <div class="app-sidebar-bottom">
-                            <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
+                            <button class="app-sidebar-link" id="sidebarLogoutButton" type="button">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
-                                <span class="app-nav-copy"><strong>Back to Jenius</strong><span>Main site</span></span>
-                            </a>
+                                <span class="app-nav-copy"><strong>Log Out</strong><span>End this session</span></span>
+                            </button>
                         </div>
                     </div>
                 </aside>
@@ -30798,7 +30798,7 @@
                                     <a id="connectXeroButton" href="https://jenius.jaccountancy.co.uk/auth/xero/start?include_all_scopes=1">Connect Xero</a>
                                     <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                                     <button type="button" id="developerLogButton">Developer log</button>
-                                    <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
+                                    <button type="button" id="menuLogoutButton">Log Out</button>
                                 </div>
                             </div>
                         </div>
@@ -38526,7 +38526,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Where things are</h4>
-                                <p>The left sidebar holds Home, Credit Control, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                                <p>The left sidebar holds Home, Credit Control, Invoices, LPCs, Settings, Xero login/resync, and Log Out. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                             </section>
                             <section class="help-section">
                                 <h4>First sync</h4>
@@ -38568,7 +38568,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Leaving the console</h4>
-                                <p>Use Back to Jenius at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                                <p>Use Log Out at the bottom of the left sidebar to end your session and return to the login page. Closing this Help panel returns you to the same screen you were using.</p>
                             </section>
                         </div>
                     </div>
@@ -40186,6 +40186,7 @@
                         securityUserStatus: config.endpoints?.securityUserStatus || "/api/security/users/:userId/status",
                         securityUserForceLogout: config.endpoints?.securityUserForceLogout || "/api/security/users/:userId/force-logout",
                         securityUserDelete: config.endpoints?.securityUserDelete || "/api/security/users/:userId",
+                        logout: config.endpoints?.logout || "/auth/logout",
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
@@ -102009,6 +102010,20 @@
             }
 
             function wireLoginButtons() {
+                const logoutUser = async () => {
+                    closeTopbarMenu();
+                    try {
+                        await fetch(endpointURL(api.endpoints.logout), {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { ...api.headers, "Content-Type": "application/json" },
+                            body: "{}",
+                        });
+                    } catch (error) {
+                        console.warn("Logout request failed, continuing to login page.", error);
+                    }
+                    window.location.assign("/login");
+                };
                 const topbarMenuButton = document.getElementById("topbarMenuButton");
                 if (topbarMenuButton) {
                     topbarMenuButton.setAttribute("aria-expanded", "false");
@@ -102103,6 +102118,12 @@
                 if (developerLogButton) developerLogButton.addEventListener("click", (event) => {
                     event.preventDefault();
                     openDeveloperLog();
+                });
+                document.querySelectorAll("#sidebarLogoutButton, #menuLogoutButton").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        logoutUser();
+                    });
                 });
                 document.querySelectorAll("#refreshDeveloperLogButton, #settingsRefreshDeveloperLogButton").forEach((button) => {
                     button.addEventListener("click", loadDeveloperLog);
