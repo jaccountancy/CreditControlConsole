@@ -31378,7 +31378,7 @@
                             <div class="app-nav-submenu" role="group" aria-label="Client sections">
                                 <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
+                                    <span class="app-nav-copy"><strong>Client List</strong><span>CH auth code directory</span></span>
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-nlac-list" data-app-nav="nlac-list">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path><path d="M8 6v12"></path></svg></span>
@@ -40813,7 +40813,7 @@
                 "contact-archive": "Contact Archive",
                 "risk-assessments": "Risk Assessments",
                 "confirmation-statements": "Confirmation Statements",
-                "client-auth-register": "Client Register",
+                "client-auth-register": "Client List",
                 "nlac-list": "NLAC List",
                 "add-new-client": "Add a new Client",
                 "outstanding-esigns": "Outstanding ESigns",
@@ -40859,7 +40859,7 @@
                 "contact-archive": "Review Jaccountancy Xero customer contacts, flag those missing from the Jenius Client Register, and archive in bulk.",
                 "risk-assessments": "Review client credit exposure and maintain a consistent risk assessment process.",
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
-                "client-auth-register": "Access the shared client register and auth-code directory from one standalone screen.",
+                "client-auth-register": "Access the shared client list and auth-code directory from one standalone screen.",
                 "nlac-list": "Review and manage the NLAC client list workspace.",
                 "add-new-client": "Create and capture core details for a new client record.",
                 "outstanding-esigns": "Monitor documents that are still waiting for signature.",
@@ -40901,7 +40901,7 @@
                 "xero-connection": "Manage the linked Xero organisation and disconnect only when switching accounts.",
                 "ignition-connection": "Connect or reconnect the Ignition account used for Reporting API syncs.",
                 "renewal-settings": "Unlock finalised renewal batches so they can be edited again.",
-                "client-auth-register": "Open and maintain the shared client register and Companies House auth code directory.",
+                "client-auth-register": "Open and maintain the shared client list and Companies House auth code directory.",
                 mapping: "Review posting defaults and chart-of-account assumptions.",
                 outbox: "Review queued Xero actions waiting for a successful push.",
                 letters: "Create and edit reminder templates used from client pages.",
@@ -45686,7 +45686,7 @@
             }
 
             function insightsTopbarTitle() {
-                return `Welcome to Jenius Tools, ${insightsWelcomeName()}`;
+                return "Home Page";
             }
 
             function activeIdentityVerificationClientLabel() {
@@ -55560,6 +55560,27 @@
                     .forEach((item) => container.appendChild(item));
             }
 
+            function sortClientsSidebarButtons(container) {
+                if (!container) return;
+                const items = [...container.children].filter((child) => child.matches?.(".app-nav-button"));
+                if (!items.length) return;
+                const preferredOrder = new Map([
+                    ["client-auth-register", 0],
+                    ["add-new-client", 1],
+                    ["nlac-list", 2],
+                ]);
+                items
+                    .sort((a, b) => {
+                        const aKey = String(a.dataset?.appNav || "").trim();
+                        const bKey = String(b.dataset?.appNav || "").trim();
+                        const aRank = preferredOrder.has(aKey) ? preferredOrder.get(aKey) : 99;
+                        const bRank = preferredOrder.has(bKey) ? preferredOrder.get(bKey) : 99;
+                        if (aRank !== bRank) return aRank - bRank;
+                        return sidebarSortLabel(a).localeCompare(sidebarSortLabel(b), undefined, { sensitivity: "base" });
+                    })
+                    .forEach((item) => container.appendChild(item));
+            }
+
             function sortSettingsSidebarGroupBlocks(container) {
                 if (!container) return;
                 const labels = [...container.children].filter((child) => child.matches?.("[data-settings-group-label]"));
@@ -55582,7 +55603,7 @@
 
             function sortSidebarsAlphabetically() {
                 sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"credit-control\"] .app-nav-submenu"));
-                sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"clients\"] .app-nav-submenu"));
+                sortClientsSidebarButtons(document.querySelector(".app-nav-group[data-app-nav-group=\"clients\"] .app-nav-submenu"));
                 sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"e-signitures\"] .app-nav-submenu"));
                 sortTasksSidebarButtons(document.querySelector(".app-nav-group[data-app-nav-group=\"tasks\"] .app-nav-submenu"));
                 sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"practice-tools\"] .app-nav-submenu"));
@@ -84729,7 +84750,7 @@
                     "contact-archive": "Contact Archive",
                     "risk-assessments": "Risk Assessments",
                     "confirmation-statements": "Confirmation Statements",
-                    "client-auth-register": "Client Register",
+                    "client-auth-register": "Client List",
                     "nlac-list": "NLAC List",
                     "add-new-client": "Add a new Client",
                     "outstanding-esigns": "Outstanding ESigns",
