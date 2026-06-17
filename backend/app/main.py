@@ -1360,6 +1360,136 @@ def health() -> dict:
     return {"status": "ok", "environment": get_settings().app_env}
 
 
+def _login_role_label(user: dict | None) -> str:
+    role = str((user or {}).get("role") or "").strip().lower()
+    if role in {"admin", "practice_admin", "owner"}:
+        return "Practice admin"
+    if role in {"manager", "team_lead"}:
+        return "Team lead"
+    if role in {"accountant", "analyst"}:
+        return "Analyst"
+    if role in {"staff", "member"}:
+        return "Team member"
+    return "Team member"
+
+
+def _login_landing_payload(request: Request) -> dict:
+    settings = get_settings()
+    user = current_user_from_request(request)
+    viewer_name = str((user or {}).get("full_name") or (user or {}).get("name") or "").strip()
+    role_label = _login_role_label(user) if user else ""
+    xero_configured = bool(settings.xero_client_id and settings.xero_client_secret and settings.xero_redirect_uri)
+    gmail_configured = gmail_oauth_configured()
+
+    services = {
+        "xero": {"label": "Xero", "state": "setup", "detail": "Connect your account to continue."},
+        "gmail": {"label": "Gmail", "state": "setup", "detail": "Connect to send and schedule updates."},
+        "hmrc": {"label": "HMRC", "state": "setup", "detail": "Connect to enable filing workflows."},
+    }
+    if not xero_configured:
+        services["xero"] = {"label": "Xero", "state": "unavailable", "detail": "OAuth is not configured in this environment."}
+    if not gmail_configured:
+        services["gmail"] = {"label": "Gmail", "state": "unavailable", "detail": "OAuth is not configured in this environment."}
+
+    if user and user.get("id"):
+        try:
+            connection = get_xero_connection_for_user(user["id"])
+            tenant_name = str(connection.get("tenant_name") or "").strip()
+            services["xero"] = {
+                "label": "Xero",
+                "state": "connected",
+                "detail": f"Connected to {tenant_name}." if tenant_name else "Connected and ready.",
+            }
+        except HTTPException:
+            if xero_configured:
+                services["xero"] = {"label": "Xero", "state": "disconnected", "detail": "Not connected for this user."}
+
+        gmail_connected = False
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM gmail_connections
+                    WHERE user_id = %s
+                      AND status = 'connected'
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                )
+                gmail_connected = bool(cursor.fetchone())
+            connection.commit()
+        if gmail_configured:
+            services["gmail"] = {
+                "label": "Gmail",
+                "state": "connected" if gmail_connected else "disconnected",
+                "detail": "Connected and ready." if gmail_connected else "Not connected for this user.",
+            }
+
+        hmrc_status = hmrc_mtd_oauth_status(user)
+        hmrc_connected = bool(hmrc_status.get("connected"))
+        hmrc_configured = bool(hmrc_status.get("configured"))
+        services["hmrc"] = {
+            "label": "HMRC",
+            "state": "connected" if hmrc_connected else ("disconnected" if hmrc_configured else "unavailable"),
+            "detail": "Connected and ready." if hmrc_connected else ("Not connected for this user." if hmrc_configured else "OAuth is not configured in this environment."),
+        }
+
+    active_users = None
+    connected_workspaces = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM users WHERE COALESCE(status, 'active') = 'active'")
+            row = cursor.fetchone() or {}
+            active_users = int(row.get("count") or 0)
+
+            cursor.execute("SELECT COUNT(*) AS count FROM xero_connections")
+            row = cursor.fetchone() or {}
+            connected_workspaces = int(row.get("count") or 0)
+        connection.commit()
+
+    return {
+        "status": "ok",
+        "viewer": {
+            "name": viewer_name,
+            "roleLabel": role_label,
+        },
+        "services": services,
+        "proof": {
+            "activeUsers": active_users,
+            "connectedWorkspaces": connected_workspaces,
+            "automations": 12,
+        },
+        "metrics": {
+            "integrations": 4,
+            "availability": "24/7",
+            "consoleCount": 1,
+        },
+        "updates": [
+            {
+                "date": "June 17, 2026",
+                "title": "Landing refresh",
+                "summary": "Improved sign-in UX, trust surfaces, and mobile readability.",
+            },
+            {
+                "date": "June 14, 2026",
+                "title": "Workflow upgrades",
+                "summary": "Expanded Companies House and ledger task visibility.",
+            },
+            {
+                "date": "June 8, 2026",
+                "title": "Security hardening",
+                "summary": "Strengthened role checks and session controls.",
+            },
+        ],
+    }
+
+
+@app.get("/api/login/landing")
+def api_login_landing(request: Request):
+    return _login_landing_payload(request)
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     user = current_user_from_request(request)
@@ -1367,7 +1497,17 @@ def login_page(request: Request):
         response = xero_connected_redirect(request, "/")
         if response:
             return response
-    return templates.TemplateResponse(request, "login.html", template_context(request))
+    viewer_name = str((user or {}).get("full_name") or (user or {}).get("name") or "").strip()
+    first_name = viewer_name.split(" ", 1)[0] if viewer_name else ""
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        template_context(
+            request,
+            login_welcome_name=first_name,
+            login_role_label=_login_role_label(user) if user else "",
+        ),
+    )
 
 
 @app.get("/login/approval", response_class=HTMLResponse)
