@@ -40975,6 +40975,8 @@
             let activeInsightsSection = persistedUIState.activeInsightsSection || "copilot";
             if (activeInsightsSection !== "copilot") activeInsightsSection = "copilot";
             let insightsClockTimer = null;
+            let insightsQuickAccessOpen = false;
+            let insightsQuickAccessDocumentBound = false;
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
             let statePersistenceDisabled = false;
@@ -86955,10 +86957,113 @@
                 </section>`;
             }
 
+            function runInsightsAction(action) {
+                const key = String(action || "").trim();
+                if (!key) return;
+                const actionHandlers = {
+                    "task-list": typeof openTaskTrackerScreen === "function" ? openTaskTrackerScreen : null,
+                    "confirmation-statements": typeof openConfirmationStatementsScreen === "function" ? openConfirmationStatementsScreen : null,
+                    renewals: typeof openIgnitionScreen === "function" ? openIgnitionScreen : null,
+                    "risk-assessments": typeof openRiskAssessmentsScreen === "function" ? openRiskAssessmentsScreen : null,
+                    "bank-statements": typeof openBankStatementsScreen === "function" ? openBankStatementsScreen : null,
+                    "late-payment-charges": typeof openLateChargesScreen === "function" ? openLateChargesScreen : null,
+                    "write-off-bad-debt": typeof openBadDebtScreen === "function" ? openBadDebtScreen : null,
+                    "review-debtors-ledger": typeof openLedgerSection === "function" ? () => openLedgerSection("clients") : null,
+                    "generate-practice-packs": typeof openPracticePackScreen === "function" ? openPracticePackScreen : null,
+                    "analyze-vat-return": typeof openVatReturnPrepareScreen === "function" ? openVatReturnPrepareScreen : null,
+                    "juk-invoices": typeof openJukInvoicesScreen === "function" ? openJukInvoicesScreen : null,
+                    "analyze-year-end": typeof openYePrepScreen === "function" ? openYePrepScreen : null,
+                    "review-xero-lock-dates": typeof openXeroLockDateScreen === "function" ? openXeroLockDateScreen : null,
+                    "review-equity-reconciliation": typeof openCodeBreakerScreen === "function" ? openCodeBreakerScreen : null,
+                    "review-client-headcounts": typeof openPayrollHeadcountScreen === "function" ? openPayrollHeadcountScreen : null,
+                    "review-client-call-stats": typeof openClientCallStatsScreen === "function" ? openClientCallStatsScreen : null,
+                    "xero-connect": typeof runXeroSync === "function" ? () => runXeroSync({ allowBackendConnectionCheck: false }) : null,
+                    "xero-sync-now": typeof runXeroSync === "function" ? () => runXeroSync({ allowBackendConnectionCheck: true }) : null,
+                    "xero-open-import": typeof openSettingsScreen === "function" ? () => openSettingsScreen("data-import", "settings") : null,
+                    "xero-open-settings": typeof openSettingsScreen === "function" ? () => openSettingsScreen("xero-connection", "settings") : null,
+                    "xero-show-warning": typeof showToast === "function" ? () => showToast(insightsXeroWarningMessage(), "info") : null,
+                };
+                const runAction = actionHandlers[key];
+                if (typeof runAction === "function") runAction();
+            }
+
+            function setInsightsQuickAccessOpen(isOpen) {
+                const menu = document.getElementById("insightsQuickAccessMenu");
+                const toggle = document.getElementById("insightsQuickAccessToggle");
+                insightsQuickAccessOpen = Boolean(isOpen);
+                if (menu) menu.hidden = !insightsQuickAccessOpen;
+                if (toggle) {
+                    toggle.setAttribute("aria-expanded", insightsQuickAccessOpen ? "true" : "false");
+                    toggle.textContent = insightsQuickAccessOpen ? "Quick Access ▴" : "Quick Access ▾";
+                }
+            }
+
+            function renderInsightsQuickAccessMenu() {
+                const body = document.getElementById("insightsQuickAccessMenuBody");
+                const menu = document.getElementById("insightsQuickAccessMenu");
+                const toggle = document.getElementById("insightsQuickAccessToggle");
+                if (!body || !menu || !toggle) return;
+
+                const quickActions = [
+                    { key: "confirmation-statements", icon: "📄", title: "File Confirmation Statement", subtitle: "Compliance workflow", badge: "Open" },
+                    { key: "risk-assessments", icon: "🛡️", title: "Prepare Risk Assessments", subtitle: "Due diligence", badge: "Open" },
+                    { key: "renewals", icon: "♻️", title: "Process Renewals", subtitle: "Practice manager", badge: "Open" },
+                    { key: "bank-statements", icon: "🏦", title: "Extract Bank Statements", subtitle: "Bank extraction", badge: "Open" },
+                    { key: "late-payment-charges", icon: "✈️", title: "Raise LPCs", subtitle: "Collections", badge: "Open" },
+                    { key: "write-off-bad-debt", icon: "🧾", title: "Write Off Invoices", subtitle: "Bad debt", badge: "Open" },
+                    { key: "review-debtors-ledger", icon: "👁", title: "Review Debtors", subtitle: "Credit control", badge: "Open" },
+                    { key: "generate-practice-packs", icon: "📦", title: "Practice Packs", subtitle: "Batch outputs", badge: "Open" },
+                    { key: "analyze-vat-return", icon: "💰", title: "VAT Return Work", subtitle: "VAT workflow", badge: "Open" },
+                    { key: "juk-invoices", icon: "🗂️", title: "JUK Invoices", subtitle: "Billing flows", badge: "Open" },
+                ];
+
+                body.innerHTML = `<section class="insights-quick-access-group">
+                    <h5>Main Home Quick Actions</h5>
+                    <div class="insights-quick-access-grid">
+                        ${quickActions.map((item) => `
+                            <button type="button" class="insights-home-action-button is-secondary is-info" data-insights-action="${escapeHTML(item.key)}">
+                                <span class="insights-home-action-emoji" aria-hidden="true">${escapeHTML(item.icon)}</span>
+                                <span class="insights-home-action-label-wrap">
+                                    <span class="insights-home-action-title">${escapeHTML(item.title)}</span>
+                                    <span class="insights-home-action-subtitle">${escapeHTML(item.subtitle)}</span>
+                                </span>
+                                <span class="insights-home-action-pill">${escapeHTML(item.badge)}</span>
+                            </button>
+                        `).join("")}
+                    </div>
+                </section>`;
+
+                body.querySelectorAll("[data-insights-action]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        runInsightsAction(button.getAttribute("data-insights-action"));
+                        setInsightsQuickAccessOpen(false);
+                    });
+                });
+
+                toggle.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setInsightsQuickAccessOpen(!insightsQuickAccessOpen);
+                };
+
+                if (!insightsQuickAccessDocumentBound) {
+                    document.addEventListener("click", (event) => {
+                        if (!insightsQuickAccessOpen) return;
+                        const target = event.target;
+                        if (target && typeof target.closest === "function" && target.closest("#insightsHeroGreetingBar")) return;
+                        setInsightsQuickAccessOpen(false);
+                    });
+                    insightsQuickAccessDocumentBound = true;
+                }
+
+                setInsightsQuickAccessOpen(false);
+            }
+
             function renderInsightsScreen() {
                 const screen = document.getElementById("insightsScreen");
                 if (!screen) return;
                 if (activeView !== "insights") {
+                    setInsightsQuickAccessOpen(false);
                     screen.hidden = true;
                     return;
                 }
@@ -86996,6 +87101,7 @@
                 }
                 if (greetingBar) greetingBar.classList.remove("is-hidden-for-loading");
                 target.innerHTML = aiCopilotHomeInsights(analytics, ai);
+                renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
             }
 
@@ -87035,32 +87141,7 @@
                 scope.querySelectorAll("[data-insights-action]").forEach((button) => {
                     button.addEventListener("click", () => {
                         const action = String(button.dataset.insightsAction || "").trim();
-                        if (!action) return;
-                        const actionHandlers = {
-                            "task-list": typeof openTaskTrackerScreen === "function" ? openTaskTrackerScreen : null,
-                            "confirmation-statements": typeof openConfirmationStatementsScreen === "function" ? openConfirmationStatementsScreen : null,
-                            renewals: typeof openIgnitionScreen === "function" ? openIgnitionScreen : null,
-                            "risk-assessments": typeof openRiskAssessmentsScreen === "function" ? openRiskAssessmentsScreen : null,
-                            "bank-statements": typeof openBankStatementsScreen === "function" ? openBankStatementsScreen : null,
-                            "late-payment-charges": typeof openLateChargesScreen === "function" ? openLateChargesScreen : null,
-                            "write-off-bad-debt": typeof openBadDebtScreen === "function" ? openBadDebtScreen : null,
-                            "review-debtors-ledger": typeof openLedgerSection === "function" ? () => openLedgerSection("clients") : null,
-                            "generate-practice-packs": typeof openPracticePackScreen === "function" ? openPracticePackScreen : null,
-                            "analyze-vat-return": typeof openVatReturnPrepareScreen === "function" ? openVatReturnPrepareScreen : null,
-                            "juk-invoices": typeof openJukInvoicesScreen === "function" ? openJukInvoicesScreen : null,
-                            "analyze-year-end": typeof openYePrepScreen === "function" ? openYePrepScreen : null,
-                            "review-xero-lock-dates": typeof openXeroLockDateScreen === "function" ? openXeroLockDateScreen : null,
-                            "review-equity-reconciliation": typeof openCodeBreakerScreen === "function" ? openCodeBreakerScreen : null,
-                            "review-client-headcounts": typeof openPayrollHeadcountScreen === "function" ? openPayrollHeadcountScreen : null,
-                            "review-client-call-stats": typeof openClientCallStatsScreen === "function" ? openClientCallStatsScreen : null,
-                            "xero-connect": typeof runXeroSync === "function" ? () => runXeroSync({ allowBackendConnectionCheck: false }) : null,
-                            "xero-sync-now": typeof runXeroSync === "function" ? () => runXeroSync({ allowBackendConnectionCheck: true }) : null,
-                            "xero-open-import": typeof openSettingsScreen === "function" ? () => openSettingsScreen("data-import", "settings") : null,
-                            "xero-open-settings": typeof openSettingsScreen === "function" ? () => openSettingsScreen("xero-connection", "settings") : null,
-                            "xero-show-warning": typeof showToast === "function" ? () => showToast(insightsXeroWarningMessage(), "info") : null,
-                        };
-                        const runAction = actionHandlers[action];
-                        if (typeof runAction === "function") runAction();
+                        runInsightsAction(action);
                     });
                 });
             }
