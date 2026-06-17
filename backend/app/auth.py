@@ -268,10 +268,6 @@ def session_token_from_request(request: Request) -> str:
     cookie_token = request.cookies.get(COOKIE_NAME)
     if cookie_token:
         return cookie_token
-
-    authorization = request.headers.get("Authorization", "")
-    if authorization.startswith("Bearer "):
-        return authorization.removeprefix("Bearer ").strip()
     return ""
 
 

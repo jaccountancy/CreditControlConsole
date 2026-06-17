@@ -38667,7 +38667,7 @@
             };
             const persistedUIState = loadPersistedUIState();
             const state = loadState();
-            let panelSessionToken = loadPanelSessionToken();
+            let panelSessionToken = "";
             let currentSessionUser = null;
             const syncScopeLabels = {
                 outstanding_only: "Outstanding invoices only",
@@ -41206,22 +41206,8 @@
                 }
             }
 
-            function loadPanelSessionToken() {
-                try {
-                    return localStorage.getItem(SESSION_TOKEN_KEY) || "";
-                } catch {
-                    return "";
-                }
-            }
-
             function storePanelSessionToken(token) {
                 panelSessionToken = String(token || "").trim();
-                try {
-                    if (panelSessionToken) localStorage.setItem(SESSION_TOKEN_KEY, panelSessionToken);
-                    else localStorage.removeItem(SESSION_TOKEN_KEY);
-                } catch {
-                    // Browser storage can be blocked in embedded contexts; the cookie path still applies.
-                }
             }
 
             function clearPanelSessionToken() {
@@ -41666,7 +41652,6 @@
                     const hashLooksParametric = url.hash.includes("=");
                     const hashParams = hashLooksParametric ? new URLSearchParams(url.hash.slice(1)) : new URLSearchParams();
                     const connected = url.searchParams.get("xero") === "connected" || hashParams.get("xero") === "connected";
-                    const sessionToken = url.searchParams.get("panel_session") || hashParams.get("panel_session") || "";
                     const syncRunId = url.searchParams.get("sync_run") || hashParams.get("sync_run") || "";
                     const syncStarted = url.searchParams.get("sync_started") || hashParams.get("sync_started") || "";
                     const newTenants = url.searchParams.get("xero_new_tenants") || hashParams.get("xero_new_tenants") || "";
@@ -41674,10 +41659,8 @@
                     const totalTenants = url.searchParams.get("xero_total_tenants") || hashParams.get("xero_total_tenants") || "";
                     const newTenantNamesText = url.searchParams.get("xero_new_tenant_names") || hashParams.get("xero_new_tenant_names") || "";
                     const targetSection = url.searchParams.get("xero_target") || hashParams.get("xero_target") || "";
-                    if (!connected && !sessionToken && !syncRunId) return result;
-                    if (sessionToken) storePanelSessionToken(sessionToken);
+                    if (!connected && !syncRunId) return result;
                     url.searchParams.delete("xero");
-                    url.searchParams.delete("panel_session");
                     url.searchParams.delete("sync_run");
                     url.searchParams.delete("sync_started");
                     url.searchParams.delete("xero_new_tenants");
@@ -41687,7 +41670,6 @@
                     url.searchParams.delete("xero_target");
                     if (hashLooksParametric) {
                         hashParams.delete("xero");
-                        hashParams.delete("panel_session");
                         hashParams.delete("sync_run");
                         hashParams.delete("sync_started");
                         hashParams.delete("xero_new_tenants");
@@ -41699,7 +41681,7 @@
                         url.hash = nextHash ? `#${nextHash}` : "";
                     }
                     window.history.replaceState(window.history.state, document.title, url.toString());
-                    result.connected = connected || Boolean(sessionToken);
+                    result.connected = connected;
                     result.syncRunId = syncRunId;
                     result.syncStarted = syncStarted === "1" || syncStarted === "true";
                     result.newTenantsCount = Math.max(0, Number(newTenants || 0) || 0);

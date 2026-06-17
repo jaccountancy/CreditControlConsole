@@ -635,7 +635,6 @@ def xero_connected_redirect(request: Request, redirect_to: str) -> RedirectRespo
 
     session_token = create_session(user["id"], "Web panel")
     redirect_to = add_query_params(redirect_to, {"xero": "connected"})
-    redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
     response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
     set_session_cookie(response, session_token)
     return response
@@ -1779,7 +1778,6 @@ async def auth_xero_callback(
                     "sync_started": "1" if sync_started else "0",
                 },
             )
-        redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
         response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
         set_session_cookie(response, session_token)
         return response
@@ -1902,7 +1900,6 @@ async def api_login_approval_complete(request: Request):
                     "sync_started": "1" if sync_started else "0",
                 },
             )
-        redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
         response = JSONResponse({"status": "approved", "redirectUrl": redirect_to})
         set_session_cookie(response, session_token)
         return response
