@@ -29,11 +29,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("XERO_ENABLE_PAYROLL_SCOPES", "XERO_INCLUDE_PAYROLL_SCOPES"),
     )
     xero_primary_tenant_name: str = "jaccountancy"
-    panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
+    panel_allowed_origins: str = "https://jenius.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
     ignition_state_ttl_seconds: int = 3600
     device_code_ttl_minutes: int = 10
-    session_ttl_days: int = 30
+    session_ttl_days: int = 1
     statutory_interest_rate: float = 0.08
     late_payment_charge_account_code: str = "1222"
     late_payment_charge_tax_type: str = "OUTPUT2"

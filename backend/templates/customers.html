@@ -7,20 +7,22 @@
     </div>
 </header>
 <section class="panel">
-    <table>
+    <div class="table-wrap">
+    <table class="responsive-table">
         <thead><tr><th>Name</th><th>Total Due</th><th>Overdue</th><th>Status</th></tr></thead>
         <tbody>
             {% for customer in customers %}
             <tr>
-                <td><a href="/customers/{{ customer.id }}">{{ customer.name }}</a></td>
-                <td>£{{ "%.2f"|format(customer.total_due) }}</td>
-                <td>£{{ "%.2f"|format(customer.overdue_amount) }}</td>
-                <td>{{ customer.status }}</td>
+                <td data-label="Name"><a href="/customers/{{ customer.id }}">{{ customer.name }}</a></td>
+                <td data-label="Total Due">£{{ "%.2f"|format(customer.total_due) }}</td>
+                <td data-label="Overdue">£{{ "%.2f"|format(customer.overdue_amount) }}</td>
+                <td data-label="Status"><span class="status-pill">{{ customer.status }}</span></td>
             </tr>
             {% else %}
             <tr><td colspan="4">No customers synced yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </section>
 {% endblock %}

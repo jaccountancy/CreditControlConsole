@@ -11,7 +11,7 @@
                 Optional live-data injection example:
                 <script>
                 window.HYMN_PANEL_API = {
-                  baseUrl: "https://creditcontrolconsole-production.up.railway.app"
+                  baseUrl: "https://jenius.jaccountancy.co.uk"
                 };
                 </script>
                 -->
@@ -516,6 +516,9 @@
             .settings-nav-group-label[data-settings-group-label="communications"] {
                 --group-accent: #da8d28;
             }
+            .settings-nav-group-label[data-settings-group-label="security-settings"] {
+                --group-accent: #cf3d5a;
+            }
             .settings-nav-group-label[data-settings-group-label="technical-settings"] {
                 --group-accent: #6c73ff;
             }
@@ -582,9 +585,21 @@
                 --settings-accent: #1e2f4d;
                 --settings-accent-soft: rgba(30, 47, 77, 0.08);
             }
+            .settings-sidebar-button[data-settings-nav="security-users"],
+            .settings-sidebar-button[data-settings-nav="security-audit"],
+            .settings-sidebar-button[data-settings-nav="security-hardening"] {
+                --settings-accent: #cf3d5a;
+                --settings-accent-soft: rgba(207, 61, 90, 0.1);
+            }
             .settings-sidebar-button[data-settings-nav="developer-log"] .settings-sidebar-icon {
                 background: linear-gradient(135deg, rgba(234, 238, 246, 0.96), rgba(219, 227, 240, 0.9));
                 border-color: rgba(30, 47, 77, 0.2);
+            }
+            .settings-sidebar-button[data-settings-nav="security-users"] .settings-sidebar-icon,
+            .settings-sidebar-button[data-settings-nav="security-audit"] .settings-sidebar-icon,
+            .settings-sidebar-button[data-settings-nav="security-hardening"] .settings-sidebar-icon {
+                background: linear-gradient(135deg, rgba(255, 235, 239, 0.96), rgba(255, 223, 230, 0.9));
+                border-color: rgba(207, 61, 90, 0.24);
             }
             .settings-sidebar-button.danger-button {
                 --settings-accent: var(--red);
@@ -805,6 +820,180 @@
             }
             .app-sidebar-bottom {
                 transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), margin 0.22s ease, padding 0.22s ease;
+            }
+            .sidebar-user-card {
+                position: relative;
+                margin-top: 4px;
+                margin-bottom: 4px;
+            }
+            .sidebar-user-trigger {
+                width: 100%;
+                min-height: 48px;
+                display: grid;
+                grid-template-columns: 34px minmax(0, 1fr) 16px;
+                align-items: center;
+                gap: 8px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.9);
+                color: var(--ink);
+                text-align: left;
+                padding: 6px 8px;
+                font: inherit;
+                transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+            }
+            .sidebar-user-trigger:hover,
+            .sidebar-user-trigger:focus-visible {
+                border-color: rgba(29, 103, 242, 0.32);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                transform: translateY(-1px);
+                outline: none;
+            }
+            .sidebar-user-avatar {
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 10px;
+                color: #fff;
+                background: linear-gradient(135deg, var(--blue), var(--purple));
+                font-size: 0.82rem;
+                font-weight: 900;
+                letter-spacing: 0.01em;
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.2);
+            }
+            .sidebar-user-copy {
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+            }
+            .sidebar-user-copy strong {
+                font-size: 0.82rem;
+                font-weight: 900;
+                line-height: 1.1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .sidebar-user-copy small {
+                font-size: 0.68rem;
+                color: var(--muted);
+                font-weight: 800;
+                line-height: 1.1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .sidebar-user-chevron {
+                font-size: 0.72rem;
+                color: var(--muted);
+                transition: transform 0.18s ease;
+            }
+            .sidebar-user-trigger[aria-expanded="true"] .sidebar-user-chevron {
+                transform: rotate(180deg);
+            }
+            .sidebar-user-menu {
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 14;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 14px 22px rgba(30, 47, 77, 0.14);
+                padding: 6px;
+            }
+            .sidebar-user-menu-item {
+                width: 100%;
+                min-height: 34px;
+                border: 0;
+                border-radius: 8px;
+                background: transparent;
+                color: var(--ink);
+                text-align: left;
+                font: inherit;
+                font-size: 0.78rem;
+                font-weight: 800;
+                padding: 7px 8px;
+            }
+            .sidebar-user-menu-item:hover,
+            .sidebar-user-menu-item:focus-visible {
+                background: rgba(233, 241, 255, 0.86);
+                outline: none;
+            }
+            .sidebar-user-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 2400;
+                display: grid;
+                place-items: center;
+                background: rgba(15, 24, 38, 0.45);
+                padding: 18px;
+            }
+            .sidebar-user-modal-card {
+                width: min(540px, 100%);
+                border-radius: 18px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                background: #fff;
+                box-shadow: 0 24px 44px rgba(30, 47, 77, 0.22);
+                padding: 18px;
+                display: grid;
+                gap: 14px;
+            }
+            .sidebar-user-modal-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .sidebar-user-modal-head h3 {
+                margin: 0;
+                font-size: 1.2rem;
+                color: var(--ink);
+            }
+            .sidebar-user-modal-head p {
+                margin: 4px 0 0;
+                color: var(--muted);
+                font-size: 0.86rem;
+            }
+            .sidebar-user-modal-close {
+                width: 34px;
+                height: 34px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                border-radius: 10px;
+                background: #fff;
+                color: var(--ink);
+                font: inherit;
+                font-size: 1.1rem;
+                font-weight: 700;
+                line-height: 1;
+            }
+            .sidebar-user-modal-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .sidebar-user-modal-item {
+                border: 1px solid rgba(61, 85, 130, 0.12);
+                border-radius: 11px;
+                background: #f8fbff;
+                padding: 10px;
+                display: grid;
+                gap: 5px;
+            }
+            .sidebar-user-modal-item span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .sidebar-user-modal-item strong {
+                color: var(--ink);
+                font-size: 0.92rem;
+                font-weight: 800;
+                overflow-wrap: anywhere;
             }
             .app-sidebar-brand::before {
                 content: "";
@@ -11064,7 +11253,156 @@
                 font-weight: 750;
                 line-height: 1.35;
             }
-            @media (max-width: 1220px) {
+
+            .security-filter-row {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+                margin: 12px 0 14px;
+            }
+            .security-filter-row label {
+                display: grid;
+                gap: 6px;
+            }
+            .security-status-pill {
+                display: inline-flex;
+                padding: 4px 10px;
+                border-radius: 999px;
+                font-size: 0.74rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                border: 1px solid transparent;
+            }
+            .security-status-pill.is-green {
+                background: rgba(39, 176, 95, 0.14);
+                color: #146b3f;
+                border-color: rgba(39, 176, 95, 0.25);
+            }
+            .security-status-pill.is-orange {
+                background: rgba(255, 159, 47, 0.17);
+                color: #8a4f00;
+                border-color: rgba(255, 159, 47, 0.3);
+            }
+            .security-status-pill.is-red {
+                background: rgba(255, 83, 83, 0.15);
+                color: #9b1f31;
+                border-color: rgba(255, 83, 83, 0.25);
+            }
+            .security-user-link {
+                appearance: none;
+                border: 0;
+                background: transparent;
+                color: inherit;
+                font: inherit;
+                padding: 0;
+                margin: 0;
+                cursor: pointer;
+                text-align: left;
+                font-weight: 800;
+            }
+            .security-user-link:hover,
+            .security-user-link:focus-visible {
+                color: var(--blue);
+                text-decoration: underline;
+            }
+            .security-user-modal-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .security-user-modal-grid article {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.86);
+                padding: 10px 12px;
+                display: grid;
+                gap: 4px;
+            }
+            .security-user-modal-grid span {
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+                color: var(--muted);
+                text-transform: uppercase;
+            }
+            .security-user-modal-grid strong {
+                font-size: 0.92rem;
+            }
+            .security-user-modal-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .security-user-modal-timeline {
+                display: grid;
+                gap: 10px;
+                max-height: 54vh;
+                overflow: auto;
+                padding-right: 2px;
+            }
+            .security-user-modal-timeline .developer-log-entry {
+                margin: 0;
+            }
+            body.security-user-modal-open {
+                overflow: hidden;
+            }
+            .security-checklist {
+                margin-top: 12px;
+                display: grid;
+                gap: 8px;
+            }
+            .security-checklist article {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.12);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: rgba(255, 255, 255, 0.72);
+            }
+            .security-checklist span.ok {
+                color: #1f7a44;
+                font-weight: 700;
+            }
+            .security-checklist span.warn {
+                color: #9a5a04;
+                font-weight: 700;
+            }
+            @media (max-width: 1080px) {
+                .security-filter-row {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+            @media (max-width: 760px) {
+                .security-filter-row {
+                    grid-template-columns: 1fr;
+                }
+                #settingsSecurityUsersKpis,
+                #settingsSecurityOverviewCards {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .security-checklist article {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+                .security-user-modal-grid {
+                    grid-template-columns: 1fr;
+                }
+                #settingsSecurityUsersPanel .ch-companies-table-wrap,
+                [data-settings-section="security-users"] .ch-companies-table-wrap {
+                    overflow-x: auto;
+                }
+            }
+            @media (max-width: 520px) {
+                #settingsSecurityUsersKpis,
+                #settingsSecurityOverviewCards {
+                    grid-template-columns: 1fr;
+                }
+            }
+@media (max-width: 1220px) {
                 .bad-debt-ai-row {
                     grid-template-columns: minmax(0, 1fr) auto;
                     align-items: start;
@@ -29678,6 +30016,19 @@
                                 <div class="sidebar-support-history" id="sidebarSupportHistory" hidden></div>
                             </span>
                         </button>
+                        <div class="sidebar-user-card" id="sidebarUserCard" hidden>
+                            <button class="sidebar-user-trigger" id="sidebarUserTrigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarUserMenu">
+                                <span class="sidebar-user-avatar" id="sidebarUserAvatar" aria-hidden="true">--</span>
+                                <span class="sidebar-user-copy">
+                                    <strong id="sidebarUserName">Signed in user</strong>
+                                    <small id="sidebarUserMeta">Loading profile…</small>
+                                </span>
+                                <span class="sidebar-user-chevron" aria-hidden="true">▾</span>
+                            </button>
+                            <div class="sidebar-user-menu" id="sidebarUserMenu" role="menu" hidden>
+                                <button class="sidebar-user-menu-item" id="sidebarUserOpenSettings" type="button" role="menuitem">User settings</button>
+                            </div>
+                        </div>
                         <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
@@ -29927,6 +30278,19 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Monthly Flows</strong><span>Email snapshots</span></span>
                                 </button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="security-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 11v4"></path><path d="M12 8h.01"></path></svg></span><span class="settings-nav-group-text">Security</span></button>
+                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-users">
+                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+                                <span class="app-nav-copy"><strong>Users & Login</strong><span>Create and manage users</span></span>
+                            </button>
+                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
+                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
+                                <span class="app-nav-copy"><strong>Audit</strong><span>Login and approval events</span></span>
+                            </button>
+                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-hardening">
+                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M9 12l2 2 4-4"></path></svg></span>
+                                <span class="app-nav-copy"><strong>Security</strong><span>Controls and status</span></span>
+                            </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                             <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="system-status">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
@@ -30036,6 +30400,19 @@
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="me-report-email">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Monthly Flows</strong><span>Email snapshots</span></span>
+                            </button>
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="security-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 11v4"></path><path d="M12 8h.01"></path></svg></span><span class="settings-nav-group-text">Security</span></button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-users">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Users & Login</strong><span>Create and manage users</span></span>
+                            </button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Audit</strong><span>Login and approval events</span></span>
+                            </button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-hardening">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M9 12l2 2 4-4"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Security</strong><span>Controls and status</span></span>
                             </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="system-status">
@@ -30244,7 +30621,7 @@
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                                 <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Create flows from Xero clients</button>
                                 <button class="ghost-button" id="bulkDeployMeReportTenantsButton" type="button">Deploy flows (all tenants)</button>
-                                <a class="ghost-button" id="connectAdditionalXeroButton" data-xero-connect-target="me-report" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start?force=1&include_all_scopes=1">Connect additional Xero</a>
+                                <a class="ghost-button" id="connectAdditionalXeroButton" data-xero-connect-target="me-report" href="https://jenius.jaccountancy.co.uk/auth/xero/start?force=1&include_all_scopes=1">Connect additional Xero</a>
                                 <details class="xero-lock-columns me-report-flow-columns" id="meReportFlowColumns">
                                     <summary class="ghost-button">Columns</summary>
                                     <div class="xero-lock-columns-menu">
@@ -30286,7 +30663,7 @@
                             <button class="primary-button" id="jukInvoicesNewBatchButton" type="button">Start New Batch</button>
                         </div>
                         <div class="header-xero-action" id="headerXeroAction">
-                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start?include_all_scopes=1" aria-label="Connect Xero" title="Connect Xero">
+                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://jenius.jaccountancy.co.uk/auth/xero/start?include_all_scopes=1" aria-label="Connect Xero" title="Connect Xero">
                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg>
                                 <span class="header-connect-label">Connect Xero</span>
                             </a>
@@ -30418,7 +30795,7 @@
                                     <button type="button" id="menuIgnitionButton">Renewals</button>
                                     <button type="button" id="menuMeReportButton">Monthly Flows</button>
                                     <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
-                                    <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start?include_all_scopes=1">Connect Xero</a>
+                                    <a id="connectXeroButton" href="https://jenius.jaccountancy.co.uk/auth/xero/start?include_all_scopes=1">Connect Xero</a>
                                     <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                                     <button type="button" id="developerLogButton">Developer log</button>
                                     <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
@@ -30726,7 +31103,7 @@
                                 <div class="ch-settings-form domain-settings-form">
                                     <label>
                                         Public domain
-                                        <input id="domainSettingsHostInput" type="text" placeholder="jeniusai.jaccountancy.co.uk">
+                                        <input id="domainSettingsHostInput" type="text" placeholder="jenius.jaccountancy.co.uk">
                                     </label>
                                     <label>
                                         Expected CNAME target
@@ -30734,7 +31111,7 @@
                                     </label>
                                     <label>
                                         Verification TXT host
-                                        <input id="domainSettingsTxtHostInput" type="text" placeholder="_railway-verify.jeniusai.jaccountancy.co.uk">
+                                        <input id="domainSettingsTxtHostInput" type="text" placeholder="_railway-verify.jenius.jaccountancy.co.uk">
                                     </label>
                                     <label>
                                         Expected TXT value
@@ -31218,6 +31595,174 @@
                                         <button class="ghost-button" id="reloadMeReportEmailSettingsButton" type="button">Reload from backend</button>
                                     </div>
                                 </form>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="security-users">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Users & Login</p>
+                                        <h3>Access and account operations</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsSecurityUsersRefreshButton" type="button">Refresh</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="settingsSecurityUsersSummary">Users created here can log in immediately with Xero. No invite-link acceptance is required.</p>
+                                <div class="database-metrics-grid" id="settingsSecurityUsersKpis">
+                                    <article class="database-metric-card"><span>Active</span><strong>--</strong><small>Can log in now</small></article>
+                                    <article class="database-metric-card"><span>Pending</span><strong>--</strong><small>Blocked from login</small></article>
+                                    <article class="database-metric-card"><span>Suspended</span><strong>--</strong><small>Access disabled</small></article>
+                                    <article class="database-metric-card"><span>Owners</span><strong>--</strong><small>Privileged accounts</small></article>
+                                </div>
+                                <form class="stack-form letter-template-fields" id="settingsSecurityCreateUserForm">
+                                    <input id="settingsSecurityCreateUserName" type="text" placeholder="Full name" required>
+                                    <input id="settingsSecurityCreateUserEmail" type="email" placeholder="Email address" required>
+                                    <select id="settingsSecurityCreateUserRole" aria-label="Role">
+                                        <option value="staff">Staff</option>
+                                        <option value="manager">Manager</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="read_only">Read Only</option>
+                                        <option value="owner">Owner</option>
+                                    </select>
+                                    <select id="settingsSecurityCreateUserStatus" aria-label="Status">
+                                        <option value="active">Active (can log in now)</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="suspended">Suspended</option>
+                                    </select>
+                                    <textarea id="settingsSecurityCreateUserNotes" rows="3" placeholder="Optional notes"></textarea>
+                                    <div class="letter-action-row">
+                                        <button class="primary-button" type="submit">Create / Update user</button>
+                                    </div>
+                                </form>
+                                <div class="security-filter-row">
+                                    <label>
+                                        <span class="eyebrow">Search</span>
+                                        <input id="settingsSecurityUsersSearch" type="search" placeholder="Search user or email">
+                                    </label>
+                                    <label>
+                                        <span class="eyebrow">Status</span>
+                                        <select id="settingsSecurityUsersStatusFilter">
+                                            <option value="all">All statuses</option>
+                                            <option value="active">Active</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="suspended">Suspended</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span class="eyebrow">Role</span>
+                                        <select id="settingsSecurityUsersRoleFilter">
+                                            <option value="all">All roles</option>
+                                            <option value="owner">Owner</option>
+                                            <option value="admin">Admin</option>
+                                            <option value="manager">Manager</option>
+                                            <option value="staff">Staff</option>
+                                            <option value="read_only">Read Only</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Security users table">
+                                        <thead>
+                                            <tr>
+                                                <th>User</th>
+                                                <th>Role</th>
+                                                <th>Status</th>
+                                                <th>Last Login</th>
+                                                <th>Last Approved</th>
+                                                <th>Sessions</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="settingsSecurityUsersTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </section>
+                            <div class="usage-inspector-modal" id="settingsSecurityUserModal" hidden>
+                                <section class="usage-inspector-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsSecurityUserModalTitle">
+                                    <div class="usage-inspector-modal-head">
+                                        <div>
+                                            <h4 id="settingsSecurityUserModalTitle">User activity</h4>
+                                            <p id="settingsSecurityUserModalSubtitle">Login and security timeline</p>
+                                        </div>
+                                        <button class="ghost-button" id="closeSettingsSecurityUserModalButton" type="button">Close</button>
+                                    </div>
+                                    <div class="usage-inspector-modal-body">
+                                        <div class="security-user-modal-grid" id="settingsSecurityUserModalMetrics"></div>
+                                        <div class="security-user-modal-actions" id="settingsSecurityUserModalActions"></div>
+                                        <div class="developer-log-list settings-developer-log-list security-user-modal-timeline" id="settingsSecurityUserTimeline">
+                                            <div class="empty-state"><p class="eyebrow">Timeline</p><h4>Select a user</h4><p>User login and access events will appear here.</p></div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="security-audit">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Audit</p>
+                                        <h3>Security event timeline</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsSecurityAuditRefreshButton" type="button">Refresh</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="settingsSecurityAuditSummary">Login, approval, and session events are shown here.</p>
+                                <div class="security-filter-row">
+                                    <label>
+                                        <span class="eyebrow">Search</span>
+                                        <input id="settingsSecurityAuditSearch" type="search" placeholder="Search name, email, or label">
+                                    </label>
+                                    <label>
+                                        <span class="eyebrow">Type</span>
+                                        <select id="settingsSecurityAuditTypeFilter">
+                                            <option value="all">All types</option>
+                                            <option value="xero_login_session">Xero login session</option>
+                                            <option value="jenius_auth_login_approval">Jenius Auth approval</option>
+                                            <option value="device_login_approval">Device approval</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span class="eyebrow">Status</span>
+                                        <select id="settingsSecurityAuditStatusFilter">
+                                            <option value="all">All statuses</option>
+                                            <option value="success">Success</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="denied">Denied</option>
+                                            <option value="expired">Expired</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="developer-log-list settings-developer-log-list" id="settingsSecurityAuditList">
+                                    <div class="empty-state"><p class="eyebrow">Audit</p><h4>No security events loaded</h4><p>Refresh to load recent login and approval events.</p></div>
+                                </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="security-hardening">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Security</p>
+                                        <h3>Platform security posture</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsSecurityOverviewRefreshButton" type="button">Refresh</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="settingsSecurityOverviewSummary">Security controls and current posture are shown here.</p>
+                                <div class="database-metrics-grid" id="settingsSecurityOverviewCards">
+                                    <article class="database-metric-card"><span>Active users</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                    <article class="database-metric-card"><span>Pending</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                    <article class="database-metric-card"><span>Suspended</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                    <article class="database-metric-card"><span>Owners</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                </div>
+                                <div class="security-checklist" id="settingsSecurityChecklist">
+                                    <article><strong>Xero-only authentication</strong><span>Checking...</span></article>
+                                    <article><strong>Jenius Auth app approval</strong><span>Checking...</span></article>
+                                    <article><strong>Session protection</strong><span>Checking...</span></article>
+                                </div>
+                                <div class="developer-log-list settings-developer-log-list" id="settingsSecurityRecentEvents">
+                                    <div class="empty-state"><p class="eyebrow">Recent events</p><h4>Waiting for security data</h4><p>Refresh to load the latest posture events.</p></div>
+                                </div>
                             </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="usage">
@@ -38045,10 +38590,31 @@
                     </div>
                 </section>
 
+                <section class="sidebar-user-modal" id="sidebarUserModal" aria-modal="true" role="dialog" aria-labelledby="sidebarUserModalTitle" hidden>
+                    <div class="sidebar-user-modal-card">
+                        <header class="sidebar-user-modal-head">
+                            <div>
+                                <h3 id="sidebarUserModalTitle">User settings</h3>
+                                <p>Your signed-in profile details for this session.</p>
+                            </div>
+                            <button class="sidebar-user-modal-close" id="sidebarUserModalClose" type="button" aria-label="Close user settings">&times;</button>
+                        </header>
+                        <div class="sidebar-user-modal-grid">
+                            <article class="sidebar-user-modal-item"><span>Name</span><strong id="sidebarUserModalName">--</strong></article>
+                            <article class="sidebar-user-modal-item"><span>Email</span><strong id="sidebarUserModalEmail">--</strong></article>
+                            <article class="sidebar-user-modal-item"><span>Role</span><strong id="sidebarUserModalRole">--</strong></article>
+                            <article class="sidebar-user-modal-item"><span>Status</span><strong id="sidebarUserModalStatus">--</strong></article>
+                            <article class="sidebar-user-modal-item"><span>Last login</span><strong id="sidebarUserModalLastLogin">--</strong></article>
+                            <article class="sidebar-user-modal-item"><span>Last approved login</span><strong id="sidebarUserModalLastApproved">--</strong></article>
+                        </div>
+                    </div>
+                </section>
+
                 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
                 <script>
             const STORAGE_KEY = "hymn-credit-control-ledger";
+            const STORAGE_PREFIXES = [STORAGE_KEY, "creditControl.", "jenius-"];
             const TOAST_DURATION_MS = 7000;
             const ERROR_TOAST_DURATION_MS = 9000;
             const ACTION_TOAST_DURATION_MS = 9000;
@@ -38076,7 +38642,7 @@
             const SUPPLIER_RECONCILIATION_STATEMENTS_KEY = `${STORAGE_KEY}:supplier-reconciliation-statements`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
-            const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
+            const PRODUCTION_API_BASE_URL = "https://jenius.jaccountancy.co.uk";
             const DEFAULT_API_BASE_URL = window.location.protocol === "file:" || /(^|\.)team\.jaccountancy\.co\.uk$/i.test(window.location.hostname)
                 ? PRODUCTION_API_BASE_URL
                 : window.location.origin;
@@ -38105,6 +38671,7 @@
             const persistedUIState = loadPersistedUIState();
             const state = loadState();
             let panelSessionToken = loadPanelSessionToken();
+            let currentSessionUser = null;
             const syncScopeLabels = {
                 outstanding_only: "Outstanding invoices only",
                 outstanding_plus_500_paid: "Outstanding + 500 paid invoices",
@@ -38703,6 +39270,9 @@
                 letters: "Create and edit reminder templates used from client pages.",
                 "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
                 "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
+                "security-users": "Create users directly in Jenius so they can log straight in with Xero without invite-link acceptance.",
+                "security-audit": "Review recent login sessions and app approval activity.",
+                "security-hardening": "Review security posture and hardening controls.",
                 usage: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features.",
                 "developer-log": "Inspect sync events, backend errors, and API calls.",
                 "system-status": "Check stored record counts, database size, and backend health indicators.",
@@ -38737,6 +39307,20 @@
             let developerLogDateFilter = "";
             let developerLogModeFilter = activeSettingsSection === "developer-log" ? "system" : "all";
             let developerLogSeverityFilter = activeSettingsSection === "developer-log" ? "error" : "all";
+            let securityUsersData = { summary: {}, users: [] };
+            let securityAuditData = { events: [] };
+            let securityOverviewData = { overview: {}, recentEvents: [] };
+            let securityUsersLoading = false;
+            let securityAuditLoading = false;
+            let securityOverviewLoading = false;
+            let securityUsersSearchTerm = "";
+            let securityUsersStatusFilter = "all";
+            let securityUsersRoleFilter = "all";
+            let securityAuditSearchTerm = "";
+            let securityAuditTypeFilter = "all";
+            let securityAuditStatusFilter = "all";
+            let securityUserDetailModalOpen = false;
+            let securityUserDetailSelection = null;
             let developerLogClearBusyStartedAt = 0;
             let developerLogClearBusyTick = null;
             let userActivityEntries = loadUserActivityLog();
@@ -38786,9 +39370,9 @@
             let pendingXeroActionsLoading = false;
             let pendingXeroActionsSyncing = false;
             const defaultDomainHealthSettings = {
-                domainHost: "jeniusai.jaccountancy.co.uk",
+                domainHost: "jenius.jaccountancy.co.uk",
                 expectedCname: "nre1fi0v.up.railway.app",
-                txtHost: "_railway-verify.jeniusai.jaccountancy.co.uk",
+                txtHost: "_railway-verify.jenius.jaccountancy.co.uk",
                 expectedTxt: "railway-verify=1d07eded8b67d194213a1066bd16cda85a67678367bac800ef2e1e8602023ec3",
             };
             let domainHealthSettings = loadDomainHealthSettings();
@@ -39596,6 +40180,12 @@
                         settingsUsage: config.endpoints?.settingsUsage || "/api/settings/usage",
                         settingsUsageDetail: config.endpoints?.settingsUsageDetail || "/api/settings/usage/detail",
                         settingsReleases: config.endpoints?.settingsReleases || "/api/settings/releases",
+                        securityUsers: config.endpoints?.securityUsers || "/api/security/users",
+                        securityAudit: config.endpoints?.securityAudit || "/api/security/audit",
+                        securityOverview: config.endpoints?.securityOverview || "/api/security/overview",
+                        securityUserStatus: config.endpoints?.securityUserStatus || "/api/security/users/:userId/status",
+                        securityUserForceLogout: config.endpoints?.securityUserForceLogout || "/api/security/users/:userId/force-logout",
+                        securityUserDelete: config.endpoints?.securityUserDelete || "/api/security/users/:userId",
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
@@ -39803,6 +40393,44 @@
                     postingSettings: normalisePostingSettings(payload.postingSettings || emptyData.postingSettings),
                     databaseMetrics: payload.databaseMetrics || {}
                 };
+            }
+
+            function normaliseCurrentSessionUser(payload) {
+                if (!payload || typeof payload !== "object") return null;
+                const fullName = String(payload.fullName || payload.full_name || payload.name || "").trim();
+                const email = String(payload.email || "").trim().toLowerCase();
+                const role = String(payload.role || "staff").trim().toLowerCase() || "staff";
+                const status = String(payload.status || "active").trim().toLowerCase() || "active";
+                if (!fullName && !email) return null;
+                return {
+                    id: String(payload.id || ""),
+                    fullName: fullName || email,
+                    email,
+                    role,
+                    status,
+                    isSuperAdmin: Boolean(payload.isSuperAdmin || payload.is_super_admin),
+                    lastLoginAt: String(payload.lastLoginAt || payload.last_login_at || ""),
+                    lastApprovedLoginAt: String(payload.lastApprovedLoginAt || payload.last_approved_login_at || ""),
+                };
+            }
+
+            function userRoleLabel(role, isSuperAdmin = false) {
+                if (isSuperAdmin) return "Owner / Super Admin";
+                const value = String(role || "staff").replace(/_/g, " ").trim();
+                return value ? value.replace(/\b\w/g, (char) => char.toUpperCase()) : "Staff";
+            }
+
+            function userStatusLabel(status) {
+                const value = String(status || "active").replace(/_/g, " ").trim();
+                return value ? value.replace(/\b\w/g, (char) => char.toUpperCase()) : "Active";
+            }
+
+            function userInitials(user) {
+                const raw = String(user?.fullName || user?.email || "").trim();
+                if (!raw) return "--";
+                const parts = raw.split(/\s+/).filter(Boolean);
+                if (parts.length >= 2) return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+                return raw.slice(0, 2).toUpperCase();
             }
 
             function payloadHasActiveXeroRateLimit(payload) {
@@ -40563,6 +41191,21 @@
             function loadState() {
                 const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
                 return injected;
+            }
+
+            function clearSensitiveBrowserStorage() {
+                try {
+                    const keysToRemove = [];
+                    for (let index = 0; index < localStorage.length; index += 1) {
+                        const key = localStorage.key(index);
+                        if (!key) continue;
+                        const shouldRemove = STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
+                        if (shouldRemove) keysToRemove.push(key);
+                    }
+                    keysToRemove.forEach((key) => localStorage.removeItem(key));
+                } catch {
+                    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+                }
             }
 
             function loadPanelSessionToken() {
@@ -41675,25 +42318,25 @@
 
             function markAuthenticationRequired(message) {
                 clearPanelSessionToken();
-                state.organisation = {
-                    ...emptyData.organisation,
-                    status: "Sign in required",
-                    lastSync: "Sign in required",
-                    xeroConnected: false
-                };
+                currentSessionUser = null;
+                state.organisation = { ...emptyData.organisation, status: "Sign in required", lastSync: "Redirecting to login…", xeroConnected: false };
+                state.dashboard = { ...emptyData.dashboard };
+                state.customers = [];
+                state.audit = [];
                 state.selectedInvoice = null;
                 selectedInvoiceId = null;
                 selectedInvoiceIds.clear();
-                persistState();
+                clearSensitiveBrowserStorage();
                 clearSyncFailureBanner();
                 renderAll();
-                showToast(message || "Sign in with Xero again before syncing.", "error", {
-                    label: "Connect Xero",
-                    onClick: () => window.location.assign(loginURL())
-                });
+                showToast(message || "Sign in with Xero again before syncing.", "error");
+                window.setTimeout(() => {
+                    window.location.replace(loginURL());
+                }, 80);
             }
 
             function applyPanelPayload(payload) {
+                currentSessionUser = normaliseCurrentSessionUser(payload?.currentUser || currentSessionUser);
                 if (payload?.panelError) {
                     const signature = `${payload.panelError.type || "PanelError"}:${payload.panelError.error || payload.panelError.message || ""}`;
                     if (signature && signature !== lastPanelErrorSignature) {
@@ -43442,6 +44085,10 @@
                     }
                     if (domainHealthTroubleshooterModalOpen) {
                         setDomainTroubleshooterModalOpen(false);
+                    }
+                    if (securityUserDetailModalOpen || document.body.classList.contains("security-user-modal-open")) {
+                        securityUserDetailSelection = null;
+                        setSecurityUserModalOpen(false);
                     }
                 }
                 const activeNav = activeNavForView();
@@ -82754,6 +83401,54 @@
                 }
             }
 
+            function closeSidebarUserMenu() {
+                const trigger = document.getElementById("sidebarUserTrigger");
+                const menu = document.getElementById("sidebarUserMenu");
+                if (menu) menu.hidden = true;
+                if (trigger) trigger.setAttribute("aria-expanded", "false");
+            }
+
+            function openSidebarUserModal() {
+                const modal = document.getElementById("sidebarUserModal");
+                if (!modal) return;
+                const user = currentSessionUser;
+                document.getElementById("sidebarUserModalName").textContent = user?.fullName || "--";
+                document.getElementById("sidebarUserModalEmail").textContent = user?.email || "--";
+                document.getElementById("sidebarUserModalRole").textContent = userRoleLabel(user?.role, user?.isSuperAdmin);
+                document.getElementById("sidebarUserModalStatus").textContent = userStatusLabel(user?.status);
+                document.getElementById("sidebarUserModalLastLogin").textContent = user?.lastLoginAt ? formatDate(user.lastLoginAt) : "--";
+                document.getElementById("sidebarUserModalLastApproved").textContent = user?.lastApprovedLoginAt ? formatDate(user.lastApprovedLoginAt) : "--";
+                modal.hidden = false;
+            }
+
+            function closeSidebarUserModal() {
+                const modal = document.getElementById("sidebarUserModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function renderSidebarUserProfile() {
+                const card = document.getElementById("sidebarUserCard");
+                const trigger = document.getElementById("sidebarUserTrigger");
+                if (!card || !trigger) return;
+                const user = currentSessionUser;
+                if (!user) {
+                    card.hidden = true;
+                    closeSidebarUserMenu();
+                    closeSidebarUserModal();
+                    return;
+                }
+                card.hidden = false;
+                const avatar = document.getElementById("sidebarUserAvatar");
+                const name = document.getElementById("sidebarUserName");
+                const meta = document.getElementById("sidebarUserMeta");
+                if (avatar) avatar.textContent = userInitials(user);
+                if (name) name.textContent = user.fullName || user.email || "Signed in user";
+                if (meta) {
+                    const roleLabel = userRoleLabel(user.role, user.isSuperAdmin);
+                    meta.textContent = user.email ? `${roleLabel} · ${user.email}` : roleLabel;
+                }
+            }
+
             function renderChrome() {
                 document.body.classList.toggle("is-syncing", isSyncing);
                 document.body.classList.toggle("is-jashflow-view", activeView === "jashflow");
@@ -82796,6 +83491,7 @@
                 syncProductReleasesAutoRefresh();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
                 renderTopbarIdentity(topbarClient);
+                renderSidebarUserProfile();
                 const syncStamp = document.getElementById("syncStamp");
                 if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
                 const connected = isXeroConnected();
@@ -100212,6 +100908,21 @@
                     title: "Gmail Account",
                     meta: "Connect or reconnect the Gmail inbox used for report email sending."
                 },
+                "security-users": {
+                    eyebrow: "Users & Login",
+                    title: "Users and Login Access",
+                    meta: "Create users directly in Jenius; invited users can log in immediately with Xero and do not need an invite-link acceptance flow."
+                },
+                "security-audit": {
+                    eyebrow: "Audit",
+                    title: "Security Audit Timeline",
+                    meta: "Review Xero login sessions and Jenius Auth approval activity."
+                },
+                "security-hardening": {
+                    eyebrow: "Security",
+                    title: "Security Controls",
+                    meta: "Review posture, active controls, and security readiness metrics."
+                },
                 usage: {
                     eyebrow: "API usage",
                     title: "Usage and Cost Analytics",
@@ -100266,6 +100977,9 @@
                 letters: "communications",
                 "gmail-connection": "communications",
                 "me-report-email": "communications",
+                "security-users": "security-settings",
+                "security-audit": "security-settings",
+                "security-hardening": "security-settings",
                 "factory-reset": "technical-settings",
                 "system-status": "technical-settings",
                 "domain-settings": "technical-settings",
@@ -100399,6 +101113,9 @@
                 if (activeSettingsSection === "renewal-settings") renderRenewalSettings();
                 if (activeSettingsSection === "juk-invoice-settings") renderJukInvoiceSettingsSection();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") renderDomainHealthPanels();
+                if (activeSettingsSection === "security-users") renderSecurityUsers();
+                if (activeSettingsSection === "security-audit") renderSecurityAudit();
+                if (activeSettingsSection === "security-hardening") renderSecurityOverview();
             }
 
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
@@ -100429,6 +101146,9 @@
                 if (activeSettingsSection === "juk-invoice-settings") void loadJukInvoiceSettings(true);
                 if (activeSettingsSection === "usage" || activeSettingsSection === "product-releases") loadSettingsUsage();
                 if (activeSettingsSection === "product-releases") loadProductReleases();
+                if (activeSettingsSection === "security-users") loadSecurityUsers();
+                if (activeSettingsSection === "security-audit") loadSecurityAudit();
+                if (activeSettingsSection === "security-hardening") loadSecurityOverview();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") {
                     renderDomainHealthPanels();
                     const lastCheckedAt = Date.parse(String(domainHealthLastResult?.checkedAt || ""));
@@ -100576,6 +101296,340 @@
                 }
             }
 
+            function normaliseSecurityUserStatus(value) {
+                const s = String(value || "active").trim().toLowerCase();
+                if (["pending", "pending_invitation", "pending_approval", "invited"].includes(s)) return "pending";
+                if (["suspended", "disabled", "inactive"].includes(s)) return "suspended";
+                return "active";
+            }
+
+            function findSecurityUserById(userId) {
+                const users = Array.isArray(securityUsersData.users) ? securityUsersData.users : [];
+                const targetId = String(userId || "");
+                return users.find((row) => String(row.id || "") === targetId) || null;
+            }
+
+            function userSecurityEventTimeline(userRow) {
+                const events = Array.isArray(securityAuditData.events) ? securityAuditData.events : [];
+                if (!userRow) return [];
+                const userId = String(userRow.id || "").trim();
+                const userEmail = String(userRow.email || "").trim().toLowerCase();
+                return events.filter((event) => {
+                    const eventUserId = String(event.user_id || event.userId || "").trim();
+                    const eventEmail = String(event.email || "").trim().toLowerCase();
+                    return (userId && eventUserId && userId === eventUserId) || (userEmail && eventEmail && userEmail === eventEmail);
+                });
+            }
+
+            function setSecurityUserModalOpen(open) {
+                securityUserDetailModalOpen = Boolean(open && securityUserDetailSelection);
+                const modal = document.getElementById("settingsSecurityUserModal");
+                if (modal) modal.hidden = !securityUserDetailModalOpen;
+                document.body.classList.toggle("security-user-modal-open", securityUserDetailModalOpen);
+            }
+
+            function renderSecurityUserModal() {
+                const metricsTarget = document.getElementById("settingsSecurityUserModalMetrics");
+                const actionsTarget = document.getElementById("settingsSecurityUserModalActions");
+                const timelineTarget = document.getElementById("settingsSecurityUserTimeline");
+                const title = document.getElementById("settingsSecurityUserModalTitle");
+                const subtitle = document.getElementById("settingsSecurityUserModalSubtitle");
+                if (!metricsTarget || !actionsTarget || !timelineTarget || !title || !subtitle) return;
+                const row = securityUserDetailSelection;
+                if (!row) {
+                    title.textContent = "User activity";
+                    subtitle.textContent = "Login and security timeline";
+                    metricsTarget.innerHTML = "";
+                    actionsTarget.innerHTML = "";
+                    timelineTarget.innerHTML = '<div class="empty-state"><p class="eyebrow">Timeline</p><h4>Select a user</h4><p>User login and access events will appear here.</p></div>';
+                    setSecurityUserModalOpen(false);
+                    return;
+                }
+                const statusValue = normaliseSecurityUserStatus(row.status);
+                const statusPillClass = statusValue === "active" ? "is-green" : (statusValue === "pending" ? "is-orange" : "is-red");
+                const founder = String(row.email || "").trim().toLowerCase() === "jay@jaccountancy.co.uk";
+                const timelineEvents = userSecurityEventTimeline(row);
+                title.textContent = row.full_name || row.fullName || row.email || "User activity";
+                subtitle.textContent = `${row.email || "No email"} · ${String(row.role || "staff").replace(/_/g, " ")}`;
+                metricsTarget.innerHTML = `
+                    <article><span>Status</span><strong><span class="security-status-pill ${statusPillClass}">${escapeHTML(statusValue)}</span></strong></article>
+                    <article><span>Last login</span><strong>${escapeHTML(formatDate(row.last_login_at || row.lastLoginAt || row.created_at || row.createdAt || ""))}</strong></article>
+                    <article><span>Last approved</span><strong>${escapeHTML(formatDate(row.last_approved_login_at || row.lastApprovedLoginAt || ""))}</strong></article>
+                    <article><span>Active sessions</span><strong>${Number(row.active_sessions || 0).toLocaleString("en-GB")}</strong></article>
+                `;
+                if (founder) {
+                    actionsTarget.innerHTML = '<small>Founding account protections are enabled for this user.</small>';
+                } else {
+                    actionsTarget.innerHTML = `
+                        <button class="ghost-button" type="button" data-security-modal-action="${statusValue === "suspended" ? "activate" : "suspend"}" data-security-user-id="${escapeHTML(String(row.id || ""))}">
+                            ${statusValue === "suspended" ? "Reactivate user" : "Suspend user"}
+                        </button>
+                        <button class="ghost-button" type="button" data-security-modal-action="force-logout" data-security-user-id="${escapeHTML(String(row.id || ""))}">
+                            Force logout
+                        </button>
+                    `;
+                }
+                if (!timelineEvents.length) {
+                    timelineTarget.innerHTML = '<div class="empty-state"><p class="eyebrow">Timeline</p><h4>No activity yet</h4><p>No matching login or security events were found for this user.</p></div>';
+                } else {
+                    timelineTarget.innerHTML = timelineEvents.map((event) => {
+                        const status = String(event.status || "unknown").toLowerCase();
+                        const levelClass = status.includes("deny") || status.includes("expired") ? "is-error" : (status.includes("pending") ? "is-warning" : "");
+                        return `
+                            <article class="developer-log-entry ${levelClass}">
+                                <div class="developer-log-meta">
+                                    <span>${escapeHTML(String(event.type || "security_event").replace(/_/g, " "))}</span>
+                                    <span>${escapeHTML(formatDate(event.created_at || ""))}</span>
+                                    <span>${escapeHTML(String(event.status || "unknown"))}</span>
+                                </div>
+                                <strong>${escapeHTML(event.label || "Security event")}</strong>
+                                <small>Completed: ${escapeHTML(formatDate(event.completed_at || ""))}</small>
+                            </article>
+                        `;
+                    }).join("");
+                }
+                setSecurityUserModalOpen(true);
+            }
+
+            async function openSecurityUserModal(userId) {
+                const row = findSecurityUserById(userId);
+                if (!row) return;
+                securityUserDetailSelection = row;
+                renderSecurityUserModal();
+                if (!Array.isArray(securityAuditData.events) || !securityAuditData.events.length) {
+                    await loadSecurityAudit(true);
+                }
+                renderSecurityUserModal();
+            }
+
+            function renderSecurityUsers() {
+                const summary = securityUsersData.summary || {};
+                const users = Array.isArray(securityUsersData.users) ? securityUsersData.users : [];
+                const summaryTarget = document.getElementById("settingsSecurityUsersSummary");
+                const tableBody = document.getElementById("settingsSecurityUsersTableBody");
+                const kpis = document.getElementById("settingsSecurityUsersKpis");
+                const searchTerm = String(securityUsersSearchTerm || "").trim().toLowerCase();
+                const filteredUsers = users.filter((row) => {
+                    const role = String(row.role || "staff").toLowerCase();
+                    const status = normaliseSecurityUserStatus(row.status);
+                    const name = String(row.full_name || row.fullName || "").toLowerCase();
+                    const email = String(row.email || "").toLowerCase();
+                    const matchSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
+                    const matchStatus = securityUsersStatusFilter === "all" || status === securityUsersStatusFilter;
+                    const matchRole = securityUsersRoleFilter === "all" || role === securityUsersRoleFilter;
+                    return matchSearch && matchStatus && matchRole;
+                });
+
+                if (summaryTarget) {
+                    if (securityUsersLoading) summaryTarget.textContent = "Loading users and login controls...";
+                    else summaryTarget.textContent = `${Number(summary.activeUsers || 0).toLocaleString("en-GB")} active, ${Number(summary.pendingInvites || 0).toLocaleString("en-GB")} pending, ${Number(summary.suspendedUsers || 0).toLocaleString("en-GB")} suspended, ${Number(summary.ownerUsers || 0).toLocaleString("en-GB")} owners. ${filteredUsers.length.toLocaleString("en-GB")} users match current filters.`;
+                }
+                if (kpis) {
+                    kpis.innerHTML = `
+                        <article class="database-metric-card"><span>Active</span><strong>${Number(summary.activeUsers || 0).toLocaleString("en-GB")}</strong><small>Can log in now</small></article>
+                        <article class="database-metric-card"><span>Pending</span><strong>${Number(summary.pendingInvites || 0).toLocaleString("en-GB")}</strong><small>Blocked from login</small></article>
+                        <article class="database-metric-card"><span>Suspended</span><strong>${Number(summary.suspendedUsers || 0).toLocaleString("en-GB")}</strong><small>Access disabled</small></article>
+                        <article class="database-metric-card"><span>Owners</span><strong>${Number(summary.ownerUsers || 0).toLocaleString("en-GB")}</strong><small>Privileged accounts</small></article>
+                    `;
+                }
+                if (!tableBody) return;
+                if (securityUsersLoading && !users.length) {
+                    tableBody.innerHTML = '<tr><td colspan="7"><div class="ch-empty-state">Loading users...</div></td></tr>';
+                    return;
+                }
+                if (!filteredUsers.length) {
+                    tableBody.innerHTML = '<tr><td colspan="7"><div class="ch-empty-state">No users match current filters.</div></td></tr>';
+                    return;
+                }
+                tableBody.innerHTML = filteredUsers.map((row) => {
+                    const id = String(row.id || "");
+                    const role = String(row.role || "staff");
+                    const statusValue = normaliseSecurityUserStatus(row.status);
+                    const founder = String(row.email || "").trim().toLowerCase() === "jay@jaccountancy.co.uk";
+                    const statusPillClass = statusValue === "active" ? "is-green" : (statusValue === "pending" ? "is-orange" : "is-red");
+                    const actions = founder
+                        ? `
+                            <div class="detail-actions">
+                                <button class="ghost-button" type="button" data-security-open-user="${escapeHTML(id)}">User log</button>
+                                <small>Founding account</small>
+                            </div>
+                        `
+                        : `
+                            <div class="detail-actions">
+                                <button class="ghost-button" type="button" data-security-open-user="${escapeHTML(id)}">User log</button>
+                                <button class="ghost-button" type="button" data-security-action="${statusValue === "suspended" ? "activate" : "suspend"}" data-security-user-id="${escapeHTML(id)}">${statusValue === "suspended" ? "Reactivate" : "Suspend"}</button>
+                                <button class="ghost-button" type="button" data-security-action="force-logout" data-security-user-id="${escapeHTML(id)}">Force logout</button>
+                                <button class="ghost-button danger-button" type="button" data-security-action="remove" data-security-user-id="${escapeHTML(id)}">Remove</button>
+                            </div>
+                        `;
+                    return `
+                        <tr>
+                            <td><button class="security-user-link" type="button" data-security-open-user="${escapeHTML(id)}">${escapeHTML(row.full_name || row.email || "User")}</button><br><small>${escapeHTML(row.email || "")}</small></td>
+                            <td><small>${escapeHTML(role)}</small></td>
+                            <td><span class="security-status-pill ${statusPillClass}">${escapeHTML(statusValue)}</span></td>
+                            <td><small>${escapeHTML(formatDate(row.last_login_at || row.lastLoginAt || row.created_at || row.createdAt || ""))}</small></td>
+                            <td><small>${escapeHTML(formatDate(row.last_approved_login_at || row.lastApprovedLoginAt || ""))}</small></td>
+                            <td><small>${Number(row.active_sessions || 0).toLocaleString("en-GB")}</small></td>
+                            <td>${actions}</td>
+                        </tr>
+                    `;
+                }).join("");
+            }
+
+            async function loadSecurityUsers(force = false) {
+                if (securityUsersLoading && !force) return;
+                securityUsersLoading = true;
+                renderSecurityUsers();
+                try {
+                    const payload = await requestJSON(api.endpoints.securityUsers);
+                    securityUsersData = {
+                        summary: payload.summary || {},
+                        users: Array.isArray(payload.users) ? payload.users : [],
+                    };
+                    if (securityUserDetailSelection?.id) {
+                        securityUserDetailSelection = findSecurityUserById(securityUserDetailSelection.id);
+                    }
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load security users", "error");
+                } finally {
+                    securityUsersLoading = false;
+                    renderSecurityUsers();
+                    renderSecurityUserModal();
+                }
+            }
+
+            function renderSecurityAudit() {
+                const list = document.getElementById("settingsSecurityAuditList");
+                const summary = document.getElementById("settingsSecurityAuditSummary");
+                const events = Array.isArray(securityAuditData.events) ? securityAuditData.events : [];
+                const searchTerm = String(securityAuditSearchTerm || "").trim().toLowerCase();
+                const filteredEvents = events.filter((event) => {
+                    const type = String(event.type || "").toLowerCase();
+                    const statusValue = String(event.status || "unknown").toLowerCase();
+                    const haystack = `${String(event.full_name || "")} ${String(event.email || "")} ${String(event.label || "")} ${type}`.toLowerCase();
+                    const matchSearch = !searchTerm || haystack.includes(searchTerm);
+                    const matchType = securityAuditTypeFilter === "all" || type === securityAuditTypeFilter;
+                    const matchStatus = securityAuditStatusFilter === "all" || statusValue.includes(securityAuditStatusFilter);
+                    return matchSearch && matchType && matchStatus;
+                });
+                if (summary) {
+                    summary.textContent = securityAuditLoading
+                        ? "Loading security events..."
+                        : `${events.length.toLocaleString("en-GB")} events loaded · ${filteredEvents.length.toLocaleString("en-GB")} visible with current filters.`;
+                }
+                if (!list) return;
+                if (securityAuditLoading && !events.length) {
+                    list.innerHTML = '<div class="empty-state"><p class="eyebrow">Audit</p><h4>Loading events</h4><p>Reading latest login and approval events.</p></div>';
+                    return;
+                }
+                if (!filteredEvents.length) {
+                    list.innerHTML = '<div class="empty-state"><p class="eyebrow">Audit</p><h4>No matching events</h4><p>Adjust search or filters to widen the timeline.</p></div>';
+                    return;
+                }
+                list.innerHTML = filteredEvents.map((event) => {
+                    const statusValue = String(event.status || "unknown").toLowerCase();
+                    const levelClass = statusValue.includes("deny") || statusValue.includes("expired") ? "is-error" : (statusValue.includes("pending") ? "is-warning" : "");
+                    return `
+                    <article class="developer-log-entry ${levelClass}">
+                        <div class="developer-log-meta">
+                            <span>${escapeHTML(String(event.type || "security_event").replace(/_/g, " "))}</span>
+                            <span>${escapeHTML(formatDate(event.created_at || ""))}</span>
+                            <span>${escapeHTML(String(event.status || "unknown"))}</span>
+                        </div>
+                        <strong>${escapeHTML(event.full_name || event.email || "Unknown user")}</strong>
+                        <p>${escapeHTML(event.label || "")}</p>
+                        <small>Completed: ${escapeHTML(formatDate(event.completed_at || ""))}</small>
+                    </article>
+                `;
+                }).join("");
+            }
+
+            async function loadSecurityAudit(force = false) {
+                if (securityAuditLoading && !force) return;
+                securityAuditLoading = true;
+                renderSecurityAudit();
+                try {
+                    const payload = await requestJSON(api.endpoints.securityAudit);
+                    securityAuditData = { events: Array.isArray(payload.events) ? payload.events : [] };
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load security audit", "error");
+                } finally {
+                    securityAuditLoading = false;
+                    renderSecurityAudit();
+                    renderSecurityUserModal();
+                }
+            }
+
+            function renderSecurityOverview() {
+                const summary = document.getElementById("settingsSecurityOverviewSummary");
+                const cards = document.getElementById("settingsSecurityOverviewCards");
+                const checklist = document.getElementById("settingsSecurityChecklist");
+                const recentEvents = document.getElementById("settingsSecurityRecentEvents");
+                const overview = securityOverviewData.overview || {};
+                const events = Array.isArray(securityOverviewData.recentEvents) ? securityOverviewData.recentEvents : [];
+                if (summary) {
+                    summary.textContent = securityOverviewLoading
+                        ? "Loading security posture..."
+                        : `Xero-only auth: ${overview.xeroOnlyAuthEnforced ? "enforced" : "off"} · App approval required: ${overview.appApprovalRequired ? "enabled" : "off"} · Recent events: ${Number(overview.recentEvents || 0).toLocaleString("en-GB")}.`;
+                }
+                if (cards) {
+                    cards.innerHTML = `
+                        <article class="database-metric-card"><span>Active users</span><strong>${Number(overview.activeUsers || 0).toLocaleString("en-GB")}</strong><small>Can log in</small></article>
+                        <article class="database-metric-card"><span>Pending users</span><strong>${Number(overview.pendingInvites || 0).toLocaleString("en-GB")}</strong><small>Blocked from login</small></article>
+                        <article class="database-metric-card"><span>Suspended users</span><strong>${Number(overview.suspendedUsers || 0).toLocaleString("en-GB")}</strong><small>Blocked from login</small></article>
+                        <article class="database-metric-card"><span>Owner accounts</span><strong>${Number(overview.ownerUsers || 0).toLocaleString("en-GB")}</strong><small>Privileged access</small></article>
+                    `;
+                }
+                if (checklist) {
+                    checklist.innerHTML = `
+                        <article><strong>Xero-only authentication</strong><span class="${overview.xeroOnlyAuthEnforced ? 'ok' : 'warn'}">${overview.xeroOnlyAuthEnforced ? 'Enforced' : 'Not enforced'}</span></article>
+                        <article><strong>Jenius Auth app approval</strong><span class="${overview.appApprovalRequired ? 'ok' : 'warn'}">${overview.appApprovalRequired ? 'Required' : 'Not required'}</span></article>
+                        <article><strong>Session control</strong><span class="ok">Cookie + server session validation active</span></article>
+                    `;
+                }
+                if (!recentEvents) return;
+                if (securityOverviewLoading && !events.length) {
+                    recentEvents.innerHTML = '<div class="empty-state"><p class="eyebrow">Recent events</p><h4>Loading events</h4><p>Reading latest posture-linked security events.</p></div>';
+                    return;
+                }
+                if (!events.length) {
+                    recentEvents.innerHTML = '<div class="empty-state"><p class="eyebrow">Recent events</p><h4>No events loaded</h4><p>Refresh to load latest posture events.</p></div>';
+                    return;
+                }
+                recentEvents.innerHTML = events.slice(0, 8).map((event) => `
+                    <article class="developer-log-entry">
+                        <div class="developer-log-meta">
+                            <span>${escapeHTML(String(event.type || "security_event").replace(/_/g, " "))}</span>
+                            <span>${escapeHTML(formatDate(event.created_at || ""))}</span>
+                            <span>${escapeHTML(String(event.status || "unknown"))}</span>
+                        </div>
+                        <strong>${escapeHTML(event.full_name || event.email || "Unknown user")}</strong>
+                        <p>${escapeHTML(event.label || "")}</p>
+                    </article>
+                `).join("");
+            }
+
+            async function loadSecurityOverview(force = false) {
+                if (securityOverviewLoading && !force) return;
+                securityOverviewLoading = true;
+                renderSecurityOverview();
+                try {
+                    const payload = await requestJSON(api.endpoints.securityOverview);
+                    securityOverviewData = {
+                        overview: payload.overview || {},
+                        recentEvents: Array.isArray(payload.recentEvents) ? payload.recentEvents : [],
+                    };
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load security overview", "error");
+                } finally {
+                    securityOverviewLoading = false;
+                    renderSecurityOverview();
+                }
+            }
+
             function renderFactoryResetGuard() {
                 const revealButton = document.getElementById("factoryResetRevealButton");
                 const resetButton = document.getElementById("factoryResetButton");
@@ -100602,13 +101656,7 @@
             }
 
             function clearLocalConsoleState(panel = null) {
-                localStorage.removeItem(STORAGE_KEY);
-                localStorage.removeItem(SYNC_SETTINGS_KEY);
-                localStorage.removeItem(IGNITION_RENEWAL_BATCH_REFS_KEY);
-                localStorage.removeItem(LETTER_TEMPLATES_KEY);
-                localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
-                localStorage.removeItem(PRACTICE_PACK_HISTORY_KEY);
-                localStorage.removeItem(PRODUCT_RELEASES_KEY);
+                clearSensitiveBrowserStorage();
                 statePersistenceDisabled = false;
                 syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
@@ -100632,6 +101680,7 @@
                 state.cacheStatus = panel?.cacheStatus || {};
                 state.postingSettings = normalisePostingSettings(panel?.postingSettings || emptyData.postingSettings);
                 state.databaseMetrics = panel?.databaseMetrics || {};
+                currentSessionUser = normaliseCurrentSessionUser(panel?.currentUser || null);
                 persistState();
                 persistSyncSettings();
                 persistLetterTemplates();
@@ -101012,6 +102061,39 @@
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
                     button.addEventListener("click", () => navigateApp(button.dataset.appNav));
                 });
+                const sidebarUserTrigger = document.getElementById("sidebarUserTrigger");
+                if (sidebarUserTrigger && sidebarUserTrigger.dataset.wired !== "true") {
+                    sidebarUserTrigger.dataset.wired = "true";
+                    sidebarUserTrigger.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        const menu = document.getElementById("sidebarUserMenu");
+                        const willOpen = Boolean(menu?.hidden);
+                        closeSidebarUserMenu();
+                        if (menu) menu.hidden = !willOpen;
+                        sidebarUserTrigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+                    });
+                }
+                const sidebarUserOpenSettings = document.getElementById("sidebarUserOpenSettings");
+                if (sidebarUserOpenSettings && sidebarUserOpenSettings.dataset.wired !== "true") {
+                    sidebarUserOpenSettings.dataset.wired = "true";
+                    sidebarUserOpenSettings.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        closeSidebarUserMenu();
+                        openSidebarUserModal();
+                    });
+                }
+                const sidebarUserModalClose = document.getElementById("sidebarUserModalClose");
+                if (sidebarUserModalClose && sidebarUserModalClose.dataset.wired !== "true") {
+                    sidebarUserModalClose.dataset.wired = "true";
+                    sidebarUserModalClose.addEventListener("click", closeSidebarUserModal);
+                }
+                const sidebarUserModal = document.getElementById("sidebarUserModal");
+                if (sidebarUserModal && sidebarUserModal.dataset.wired !== "true") {
+                    sidebarUserModal.dataset.wired = "true";
+                    sidebarUserModal.addEventListener("click", (event) => {
+                        if (event.target?.id === "sidebarUserModal") closeSidebarUserModal();
+                    });
+                }
                 const helpButton = document.getElementById("helpButton");
                 if (helpButton) helpButton.addEventListener("click", (event) => {
                     event.preventDefault();
@@ -101074,6 +102156,9 @@
                 if (helpPanel) helpPanel.addEventListener("click", (event) => {
                     if (event.target.id === "helpPanel") closeHelpPanel();
                 });
+                document.addEventListener("click", (event) => {
+                    if (!event.target.closest?.("#sidebarUserCard")) closeSidebarUserMenu();
+                });
                 document.querySelectorAll("#disconnectXeroButton, #settingsDisconnectXeroButton").forEach((button) => {
                     button.addEventListener("click", disconnectXero);
                 });
@@ -101117,6 +102202,144 @@
                 });
                 document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
                 document.getElementById("settingsUsageRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
+                document.getElementById("settingsSecurityUsersRefreshButton")?.addEventListener("click", () => loadSecurityUsers(true));
+                document.getElementById("settingsSecurityAuditRefreshButton")?.addEventListener("click", () => loadSecurityAudit(true));
+                document.getElementById("settingsSecurityOverviewRefreshButton")?.addEventListener("click", () => loadSecurityOverview(true));
+                document.getElementById("settingsSecurityUsersSearch")?.addEventListener("input", (event) => {
+                    securityUsersSearchTerm = String(event.target?.value || "");
+                    renderSecurityUsers();
+                });
+                document.getElementById("settingsSecurityUsersStatusFilter")?.addEventListener("change", (event) => {
+                    securityUsersStatusFilter = String(event.target?.value || "all");
+                    renderSecurityUsers();
+                });
+                document.getElementById("settingsSecurityUsersRoleFilter")?.addEventListener("change", (event) => {
+                    securityUsersRoleFilter = String(event.target?.value || "all");
+                    renderSecurityUsers();
+                });
+                document.getElementById("settingsSecurityAuditSearch")?.addEventListener("input", (event) => {
+                    securityAuditSearchTerm = String(event.target?.value || "");
+                    renderSecurityAudit();
+                });
+                document.getElementById("settingsSecurityAuditTypeFilter")?.addEventListener("change", (event) => {
+                    securityAuditTypeFilter = String(event.target?.value || "all");
+                    renderSecurityAudit();
+                });
+                document.getElementById("settingsSecurityAuditStatusFilter")?.addEventListener("change", (event) => {
+                    securityAuditStatusFilter = String(event.target?.value || "all");
+                    renderSecurityAudit();
+                });
+                document.getElementById("settingsSecurityCreateUserForm")?.addEventListener("submit", async (event) => {
+                    event.preventDefault();
+                    const fullName = String(document.getElementById("settingsSecurityCreateUserName")?.value || "").trim();
+                    const email = String(document.getElementById("settingsSecurityCreateUserEmail")?.value || "").trim();
+                    const role = String(document.getElementById("settingsSecurityCreateUserRole")?.value || "staff").trim();
+                    const userStatus = String(document.getElementById("settingsSecurityCreateUserStatus")?.value || "active").trim();
+                    const notes = String(document.getElementById("settingsSecurityCreateUserNotes")?.value || "").trim();
+                    if (!fullName || !email) return showToast("Name and email are required", "error");
+                    try {
+                        await requestJSON(api.endpoints.securityUsers, {
+                            method: "POST",
+                            body: JSON.stringify({
+                                full_name: fullName,
+                                email,
+                                role,
+                                status: userStatus,
+                                notes,
+                            }),
+                        });
+                        showToast("User saved. They can log in immediately when status is Active.", "success");
+                        const form = document.getElementById("settingsSecurityCreateUserForm");
+                        if (form && typeof form.reset === "function") form.reset();
+                        await loadSecurityUsers(true);
+                        await loadSecurityOverview(true);
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to save user", "error");
+                    }
+                });
+                document.getElementById("settingsSecurityUsersTableBody")?.addEventListener("click", async (event) => {
+                    const openUserTrigger = event.target.closest?.("[data-security-open-user]");
+                    if (openUserTrigger) {
+                        const userId = String(openUserTrigger.dataset.securityOpenUser || "").trim();
+                        if (userId) await openSecurityUserModal(userId);
+                        return;
+                    }
+                    const button = event.target.closest?.("[data-security-action]");
+                    if (!button) return;
+                    const userId = String(button.dataset.securityUserId || "").trim();
+                    const action = String(button.dataset.securityAction || "").trim();
+                    if (!userId || !action) return;
+                    try {
+                        if (action === "activate" || action === "suspend") {
+                            await requestJSON(api.endpoints.securityUserStatus, {
+                                method: "POST",
+                                body: JSON.stringify({ status: action === "activate" ? "active" : "suspended" }),
+                            }, { userId });
+                        } else if (action === "force-logout") {
+                            await requestJSON(api.endpoints.securityUserForceLogout, { method: "POST", body: JSON.stringify({}) }, { userId });
+                        } else if (action === "remove") {
+                            if (!window.confirm("Remove this user account?")) return;
+                            await requestJSON(api.endpoints.securityUserDelete, { method: "DELETE" }, { userId });
+                        } else {
+                            return;
+                        }
+                        await loadSecurityUsers(true);
+                        await loadSecurityAudit(true);
+                        await loadSecurityOverview(true);
+                        if (securityUserDetailSelection?.id && String(securityUserDetailSelection.id) === userId) {
+                            securityUserDetailSelection = findSecurityUserById(userId);
+                            renderSecurityUserModal();
+                        }
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to update user", "error");
+                    }
+                });
+                document.getElementById("settingsSecurityUserModalActions")?.addEventListener("click", async (event) => {
+                    const button = event.target.closest?.("[data-security-modal-action]");
+                    if (!button) return;
+                    const userId = String(button.dataset.securityUserId || "").trim();
+                    const action = String(button.dataset.securityModalAction || "").trim();
+                    if (!userId || !action) return;
+                    try {
+                        if (action === "activate" || action === "suspend") {
+                            await requestJSON(api.endpoints.securityUserStatus, {
+                                method: "POST",
+                                body: JSON.stringify({ status: action === "activate" ? "active" : "suspended" }),
+                            }, { userId });
+                        } else if (action === "force-logout") {
+                            await requestJSON(api.endpoints.securityUserForceLogout, { method: "POST", body: JSON.stringify({}) }, { userId });
+                        } else {
+                            return;
+                        }
+                        await loadSecurityUsers(true);
+                        await loadSecurityAudit(true);
+                        await loadSecurityOverview(true);
+                        securityUserDetailSelection = findSecurityUserById(userId);
+                        renderSecurityUserModal();
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to update user", "error");
+                    }
+                });
+                const settingsSecurityUserModal = document.getElementById("settingsSecurityUserModal");
+                if (settingsSecurityUserModal && settingsSecurityUserModal.dataset.securityWired !== "true") {
+                    settingsSecurityUserModal.dataset.securityWired = "true";
+                    settingsSecurityUserModal.addEventListener("click", (event) => {
+                        if (event.target?.id !== "settingsSecurityUserModal") return;
+                        securityUserDetailSelection = null;
+                        setSecurityUserModalOpen(false);
+                    });
+                }
+                const closeSettingsSecurityUserModalButton = document.getElementById("closeSettingsSecurityUserModalButton");
+                if (closeSettingsSecurityUserModalButton && closeSettingsSecurityUserModalButton.dataset.securityWired !== "true") {
+                    closeSettingsSecurityUserModalButton.dataset.securityWired = "true";
+                    closeSettingsSecurityUserModalButton.addEventListener("click", () => {
+                        securityUserDetailSelection = null;
+                        setSecurityUserModalOpen(false);
+                    });
+                }
                 const captureDomainHealthSettingsFromInputs = () => {
                     domainHealthSettings = {
                         domainHost: String(document.getElementById("domainSettingsHostInput")?.value || "").trim(),
@@ -101215,6 +102438,10 @@
                         if (event.key !== "Escape") return;
                         if (settingsUsageInspectorModalOpen) setSettingsUsageInspectorModalOpen(false);
                         if (domainHealthTroubleshooterModalOpen) setDomainTroubleshooterModalOpen(false);
+                        if (securityUserDetailModalOpen) {
+                            securityUserDetailSelection = null;
+                            setSecurityUserModalOpen(false);
+                        }
                     });
                 }
                 document.getElementById("productReleasesRefreshButton")?.addEventListener("click", async () => {

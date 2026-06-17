@@ -42,7 +42,11 @@ XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve reports, journals, invoice, credit note, "
     "allocation, and contact note write-back access, then try again."
 )
-
+UNAPPROVED_ACCOUNT_MESSAGE = (
+    "Your Xero login was successful, but your Jenius Tools account has not yet been approved. "
+    "Please contact Jay Wilson or an administrator."
+)
+SUSPENDED_ACCOUNT_MESSAGE = "Your Jenius Tools account is suspended. Please contact Jay Wilson or an administrator."
 
 class XeroConfigurationError(RuntimeError):
     pass
@@ -520,7 +524,13 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
     chosen = _choose_xero_connection(connections, settings.xero_primary_tenant_name)
     tenant_id = chosen["tenantId"]
     expires_at = utcnow() + timedelta(seconds=token_payload["expires_in"])
-    email = profile.get("email") or f'{profile.get("sub")}@xero.local'
+    xero_user_id = str(profile.get("sub") or "").strip()
+    if not xero_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Xero login did not include a valid user identifier."},
+        )
+    email = profile.get("email") or f"{xero_user_id}@xero.local"
     full_name = (
         profile.get("name")
         or " ".join(part for part in [profile.get("given_name"), profile.get("family_name")] if part)
@@ -531,15 +541,48 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO users (email, full_name, last_login_at)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (email) DO UPDATE
-                SET full_name = EXCLUDED.full_name,
-                    last_login_at = EXCLUDED.last_login_at,
+                SELECT *
+                FROM users
+                WHERE lower(email) = lower(%s)
+                """,
+                (email,),
+            )
+            user = cursor.fetchone()
+            if user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"message": UNAPPROVED_ACCOUNT_MESSAGE, "code": "USER_NOT_APPROVED"},
+                )
+
+            user_status = str(user.get("status") or "active").strip().lower()
+            if user_status in {"pending", "pending_invitation", "pending_approval", "invited"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"message": UNAPPROVED_ACCOUNT_MESSAGE, "code": "USER_NOT_APPROVED"},
+                )
+            if user_status in {"suspended", "disabled", "inactive"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"message": SUSPENDED_ACCOUNT_MESSAGE, "code": "USER_SUSPENDED"},
+                )
+
+            auth_method = str(user.get("auth_method") or "xero_only").strip().lower()
+            if auth_method not in {"xero_only", "xero"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"message": "This account is not configured for Xero-only authentication."},
+                )
+            cursor.execute(
+                """
+                UPDATE users
+                SET full_name = %s,
+                    xero_user_id = %s,
+                    last_login_at = %s,
                     updated_at = %s
+                WHERE id = %s
                 RETURNING *
                 """,
-                (email, full_name, utcnow(), utcnow()),
+                (full_name, xero_user_id, utcnow(), utcnow(), user["id"]),
             )
             user = cursor.fetchone()
             cursor.execute(
@@ -600,7 +643,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                     """,
                     (
                         user["id"],
-                        profile.get("sub", ""),
+                        xero_user_id,
                         candidate_tenant_id,
                         tenant_name,
                         connection_item.get("tenantType"),

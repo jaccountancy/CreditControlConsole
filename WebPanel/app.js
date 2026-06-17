@@ -1,5 +1,6 @@
 const STORAGE_KEY = "hymn-credit-control-ledger";
-const DEFAULT_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
+const STORAGE_PREFIXES = [STORAGE_KEY, "creditControl.", "jenius-"];
+const DEFAULT_API_BASE_URL = window.location.origin;
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
     organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
@@ -9,6 +10,7 @@ const emptyData = {
     selectedInvoice: null
 };
 const state = loadState();
+let authRedirectScheduled = false;
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
 let selectedClientId = null;
@@ -67,17 +69,40 @@ function normaliseState(payload) {
 
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return injected;
-        return normaliseState({ ...injected, ...JSON.parse(stored) });
-    } catch {
-        return injected;
-    }
+    return injected;
 }
 
 function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function clearSensitiveState() {
+    state.organisation = { ...emptyData.organisation };
+    state.dashboard = { ...emptyData.dashboard };
+    state.customers = [];
+    state.audit = [];
+    state.selectedInvoice = null;
+    selectedInvoiceId = null;
+    selectedClientId = null;
+    activeView = "ledger";
+    currentPage = 1;
+    searchTerm = "";
+    clearSensitiveStorage();
+}
+
+function clearSensitiveStorage() {
+    try {
+        const keys = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+            if (!key) continue;
+            const shouldRemove = STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
+            if (shouldRemove) keys.push(key);
+        }
+        keys.forEach((key) => localStorage.removeItem(key));
+    } catch {
+        localStorage.removeItem(STORAGE_KEY);
+    }
 }
 
 function replaceState(next) {
@@ -150,17 +175,17 @@ async function requestJSON(template, options = {}, params = {}) {
 }
 
 function markAuthenticationRequired(message) {
-    state.organisation = {
-        ...emptyData.organisation,
-        status: "Sign in required",
-        lastSync: "Sign in required",
-        xeroConnected: false
-    };
-    state.selectedInvoice = null;
-    selectedInvoiceId = null;
-    persistState();
+    clearSensitiveState();
+    state.organisation.status = "Sign in required";
+    state.organisation.lastSync = "Redirecting to login…";
     renderAll();
     console.warn(message || "Sign in with Xero again before syncing.");
+    if (!authRedirectScheduled) {
+        authRedirectScheduled = true;
+        window.setTimeout(() => {
+            window.location.replace("/login");
+        }, 80);
+    }
 }
 
 async function hydrateFromAPI() {
@@ -730,6 +755,9 @@ function wireForms() {
             renderAll();
         } catch (error) {
             console.error("Unable to save invoice note", error);
+            if (error instanceof AuthRequiredError) {
+                markAuthenticationRequired(error.message);
+            }
         }
     });
 
@@ -760,6 +788,9 @@ function wireForms() {
             renderAll();
         } catch (error) {
             console.error("Unable to save bulk status", error);
+            if (error instanceof AuthRequiredError) {
+                markAuthenticationRequired(error.message);
+            }
         }
     });
 }

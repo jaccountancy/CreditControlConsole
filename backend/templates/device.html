@@ -8,10 +8,33 @@
     {% else %}
     <h2>Approve a device code</h2>
     <p>If the macOS app shows a verification code, enter it here after logging in with Xero.</p>
-    <form method="post" action="/device/approve" class="stack">
-        <input name="verification_code" value="{{ verification_code or '' }}" placeholder="Verification code" />
-        <button class="button" type="submit">Approve Device</button>
+    <form method="post" action="/device/approve" class="stack feedback-form">
+        <label for="verificationCode">Verification code</label>
+        <input
+            id="verificationCode"
+            name="verification_code"
+            value="{{ verification_code or '' }}"
+            placeholder="Enter 8-character code"
+            autocomplete="one-time-code"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+        />
+        <p class="form-hint">Use the code shown in the desktop app. This code expires quickly for security.</p>
+        <button class="button" type="submit" data-loading-text="Approving device...">Approve Device</button>
     </form>
     {% endif %}
 </section>
+<script>
+    (() => {
+        const form = document.querySelector(".feedback-form");
+        const button = form?.querySelector("button[type='submit']");
+        if (!form || !button) return;
+        form.addEventListener("submit", () => {
+            button.textContent = button.getAttribute("data-loading-text") || "Submitting...";
+            button.disabled = true;
+            button.setAttribute("aria-disabled", "true");
+        });
+    })();
+</script>
 {% endblock %}

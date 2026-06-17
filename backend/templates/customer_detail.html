@@ -8,16 +8,17 @@
     </div>
 </header>
 <section class="panel">
-    <table>
+    <div class="table-wrap">
+    <table class="responsive-table">
         <thead><tr><th>Invoice</th><th>Status</th><th>Due</th><th>Amount Due</th><th>Late Payment</th></tr></thead>
         <tbody>
             {% for invoice in invoices %}
             <tr>
-                <td><a href="/invoices/{{ invoice.id }}">{{ invoice.invoice_number }}</a></td>
-                <td>{{ invoice.control_status }}</td>
-                <td>{{ invoice.due_date or "-" }}</td>
-                <td>£{{ "%.2f"|format(invoice.amount_due) }}</td>
-                <td>
+                <td data-label="Invoice"><a href="/invoices/{{ invoice.id }}">{{ invoice.invoice_number }}</a></td>
+                <td data-label="Status"><span class="status-pill">{{ invoice.control_status }}</span></td>
+                <td data-label="Due">{{ invoice.due_date or "-" }}</td>
+                <td data-label="Amount Due">£{{ "%.2f"|format(invoice.amount_due) }}</td>
+                <td data-label="Late Payment">
                     £{{ "%.2f"|format(invoice.late_payment.interest) }} interest
                     <span class="muted"> · £{{ invoice.late_payment.court_cost }} court costs</span>
                 </td>
@@ -27,5 +28,6 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </section>
 {% endblock %}

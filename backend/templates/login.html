@@ -1,10 +1,105 @@
-{% extends "base.html" %}
+{% extends "auth_base.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
-<section class="hero-card">
-    <p class="eyebrow">Authentication</p>
-    <h2>Login with Xero</h2>
-    <p>Use Xero OAuth to connect the organisation, retain refresh tokens, and unlock the full credit control panel.</p>
-    <a class="button" href="/auth/xero/start?include_all_scopes=1">Continue with Xero</a>
+<section class="login-blueprint">
+    <aside class="login-blueprint-brand" aria-label="Jenius platform overview">
+        <div class="login-brand-top">
+            <img src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy" class="login-brand-wordmark">
+            <span class="login-brand-pill-divider" aria-hidden="true"></span>
+            <p>Powered by Jenius AI</p>
+            <span class="login-brand-ai-pill">AI</span>
+        </div>
+
+        <div class="login-brand-orb" aria-hidden="true">
+            <span class="ring ring-a"></span>
+            <span class="ring ring-b"></span>
+            <span class="ring ring-c"></span>
+            <span class="core"></span>
+        </div>
+
+        <div class="login-brand-copy">
+            <h1>Rethink. <span>Accountancy.</span></h1>
+            <p>Jaccountancy · Jenius AI</p>
+        </div>
+
+        <div class="login-brand-connectors" aria-label="Connected services">
+            <p class="eyebrow">Connects with</p>
+            <div class="login-service-chips">
+                <span>Xero</span>
+                <span>Ignition</span>
+                <span>Companies House</span>
+                <span>HMRC</span>
+            </div>
+        </div>
+        <ul class="login-brand-highlights" aria-label="Platform highlights">
+            <li><strong>Voice-first</strong><span>speak naturally, get instant answers</span></li>
+            <li><strong>Real numbers</strong><span>VAT, payroll, self-assessment</span></li>
+            <li><strong>Always on</strong><span>24/7, no waiting rooms</span></li>
+        </ul>
+    </aside>
+
+    <section class="login-blueprint-auth">
+        <article class="login-auth-card" aria-live="polite">
+            <section class="login-inline-alert" id="loginInlineAlert" hidden role="status" aria-live="polite"></section>
+
+            <div class="login-auth-avatar" aria-hidden="true">
+                <img src="/static/JaccountancyBlueIcon.png" alt="" class="login-auth-avatar-image">
+            </div>
+            <h2 class="login-auth-title-desktop">Welcome to Jenius</h2>
+            <h2 class="login-auth-title-mobile">Sign in</h2>
+            <p class="login-auth-subtitle">Sign in to your Jaccountancy account</p>
+
+            <div class="login-demo-fields" aria-hidden="true">
+                <label>Email address</label>
+                <div class="login-demo-input">you@yourbusiness.co.uk <span>◻</span></div>
+                <label>Password</label>
+                <div class="login-demo-input">••••••••• <span>◻</span></div>
+                <p class="login-demo-help">Xero handles your credentials securely.</p>
+            </div>
+
+            <a class="button login-xero-button" href="/auth/xero/start?include_all_scopes=1" id="xeroSignInButton">
+                Continue with Xero
+            </a>
+
+            <div class="login-divider" role="presentation"><span>or</span></div>
+
+            <a class="ghost button login-refresh-button" href="/login">Refresh login status</a>
+
+            <p class="login-auth-footnote">New to Jaccountancy? <strong>Ask an admin to create your active user account.</strong></p>
+
+            <div class="login-trust-badges" aria-label="Security posture">
+                <span>Xero-only auth</span>
+                <span>Role-based access</span>
+                <span>Secure session cookies</span>
+            </div>
+        </article>
+    </section>
 </section>
+
+<script>
+    (() => {
+        const xeroSignInButton = document.getElementById("xeroSignInButton");
+        const inlineAlert = document.getElementById("loginInlineAlert");
+        if (!xeroSignInButton) return;
+
+        const issueCopy = {
+            callback_error: "Xero sign-in did not complete. Please retry.",
+            auth_required: "Please sign in to continue.",
+        };
+
+        const params = new URLSearchParams(window.location.search);
+        const issueCode = params.get("reason") || params.get("error") || "";
+        const issueMessage = issueCopy[issueCode] || "";
+        if (inlineAlert && issueMessage) {
+            inlineAlert.hidden = false;
+            inlineAlert.classList.add("is-error");
+            inlineAlert.textContent = issueMessage;
+        }
+        xeroSignInButton?.addEventListener("click", () => {
+            xeroSignInButton.textContent = "Opening Xero…";
+            xeroSignInButton.setAttribute("aria-disabled", "true");
+            xeroSignInButton.classList.add("is-loading");
+        });
+    })();
+</script>
 {% endblock %}

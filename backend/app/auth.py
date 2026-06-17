@@ -165,10 +165,10 @@ def xero_scope_string_all_available(configured_scopes: str) -> str:
 
 
 def allowed_panel_origins() -> set[str]:
-    base_url = os.getenv("BASE_URL", "https://creditcontrolconsole-production.up.railway.app")
+    base_url = os.getenv("BASE_URL", "https://jenius.jaccountancy.co.uk")
     panel_allowed_origins = os.getenv(
         "PANEL_ALLOWED_ORIGINS",
-        "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk",
+        "https://jenius.jaccountancy.co.uk",
     )
     origins = {base_url.rstrip("/")}
     origins.update(
@@ -283,7 +283,7 @@ def user_for_session_token(token: str) -> dict | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT users.*, sessions.id AS session_id
+                SELECT users.*, sessions.id AS session_id, sessions.label AS session_label
                 FROM sessions
                 JOIN users ON users.id = sessions.user_id
                 WHERE sessions.token_hash = %s
@@ -293,6 +293,12 @@ def user_for_session_token(token: str) -> dict | None:
             )
             row = cursor.fetchone()
             if row is None:
+                return None
+
+            user_status = str(row.get("status") or "active").strip().lower()
+            if user_status != "active":
+                cursor.execute("DELETE FROM sessions WHERE id = %s", (row["session_id"],))
+                connection.commit()
                 return None
 
             cursor.execute(
@@ -311,12 +317,18 @@ def user_for_session_token(token: str) -> dict | None:
 
 def set_session_cookie(response, token: str) -> None:
     settings = get_settings()
+    configured_samesite = str(os.getenv("SESSION_COOKIE_SAMESITE", "lax")).strip().lower()
+    if configured_samesite not in {"lax", "strict", "none"}:
+        configured_samesite = "lax"
+    secure_cookie = settings.base_url.startswith("https://")
+    if configured_samesite == "none" and not secure_cookie:
+        configured_samesite = "lax"
     response.set_cookie(
         COOKIE_NAME,
         token,
         httponly=True,
-        samesite="none" if settings.base_url.startswith("https://") else "lax",
-        secure=settings.base_url.startswith("https://"),
+        samesite=configured_samesite,
+        secure=secure_cookie,
         max_age=settings.session_ttl_days * 24 * 60 * 60,
     )
 

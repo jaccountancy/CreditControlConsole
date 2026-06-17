@@ -1,0 +1,275 @@
+{% extends "auth_base.html" %}
+{% block title %}Approval Required{% endblock %}
+{% block content %}
+<section class="login-experience approval-experience" data-approval-root data-approval-token="{{ approval_token }}">
+    <div class="login-brand">
+        <img src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy" class="login-brand-mark login-brand-mark-horizontal approval-brand-mark">
+        <p class="eyebrow">Jenius Tools</p>
+        <h2>Approve this secure sign-in in Jenius Auth</h2>
+        <p>You have completed Xero sign-in. Final access is unlocked only after approval in your Jenius Auth iPhone app.</p>
+        <div class="login-brand-features" aria-hidden="true">
+            <span>Xero identity verified</span>
+            <span>Jenius Auth approval required</span>
+            <span>Server-side session protection</span>
+        </div>
+    </div>
+
+    <div class="login-wizard approval-wizard" data-current-step="2" aria-live="polite">
+        <div class="login-progress">
+            <span class="login-progress-dot is-active" data-dot="1">1</span>
+            <span class="login-progress-bar"></span>
+            <span class="login-progress-dot is-active" data-dot="2">2</span>
+        </div>
+        <p class="login-progress-label">Step 2 of 2 · Jenius Auth approval</p>
+
+        <article class="login-step is-active" data-step="2" aria-hidden="false">
+            <p class="eyebrow">Pending approval</p>
+            <h3>Waiting for approval from your Jenius Auth iPhone app</h3>
+            <p>Open Jenius Auth and approve or deny this login request. This request expires after {{ approval_ttl_seconds }} seconds.</p>
+
+            <div class="approval-status-row">
+                <span class="approval-spinner" aria-hidden="true"></span>
+                <strong id="approvalStatusText" aria-live="polite">Waiting for iPhone approval...</strong>
+                <span class="approval-state-pill is-pending" id="approvalStatePill">Pending</span>
+            </div>
+
+            <p class="muted" id="approvalCountdown">Time remaining: {{ approval_ttl_seconds }}s</p>
+            <div class="approval-progress" aria-hidden="true">
+                <span id="approvalProgressBar"></span>
+            </div>
+
+            <div class="approval-context">
+                <p><strong>Device:</strong> <span id="approvalDeviceLabel">Detecting...</span></p>
+                <p><strong>Location:</strong> <span id="approvalLocationLabel">Detecting...</span></p>
+                <p><strong>Requested:</strong> <span id="approvalRequestedAtLabel">Detecting...</span></p>
+            </div>
+            <p class="muted" id="approvalRetryHint">Checking every 2 seconds.</p>
+            <section class="approval-events" aria-label="Approval timeline">
+                <h4>Approval timeline</h4>
+                <ul class="approval-events-list" id="approvalEventsList">
+                    <li class="is-active"><strong>Request created</strong><span>Waiting for device telemetry...</span></li>
+                    <li><strong>Push delivered</strong><span>Waiting for app acknowledgement...</span></li>
+                    <li><strong>Decision received</strong><span>Pending...</span></li>
+                </ul>
+            </section>
+
+            <div class="toolbar">
+                <button type="button" class="button" id="approvalResendButton">Resend prompt</button>
+                <a class="ghost button" href="/login">Cancel and return to login</a>
+                <a class="ghost button" href="/login" id="approvalStartOverButton" hidden>Start over</a>
+            </div>
+        </article>
+
+        <section class="login-trust-strip" aria-label="Security controls">
+            <article>
+                <strong>Xero verified</strong>
+                <span>Step 1 complete</span>
+            </article>
+            <article>
+                <strong>Jenius Auth</strong>
+                <span>Approve or deny in app</span>
+            </article>
+            <article>
+                <strong>Secure session</strong>
+                <span>Issued only after approval</span>
+            </article>
+        </section>
+    </div>
+</section>
+
+<script>
+    (() => {
+        const root = document.querySelector("[data-approval-root]");
+        if (!root) return;
+        const token = String(root.dataset.approvalToken || "").trim();
+        const statusEl = document.getElementById("approvalStatusText");
+        const countdownEl = document.getElementById("approvalCountdown");
+        const progressBar = document.getElementById("approvalProgressBar");
+        const deviceLabel = document.getElementById("approvalDeviceLabel");
+        const locationLabel = document.getElementById("approvalLocationLabel");
+        const requestedAtLabel = document.getElementById("approvalRequestedAtLabel");
+        const resendButton = document.getElementById("approvalResendButton");
+        const statePill = document.getElementById("approvalStatePill");
+        const retryHint = document.getElementById("approvalRetryHint");
+        const eventsList = document.getElementById("approvalEventsList");
+        const startOverButton = document.getElementById("approvalStartOverButton");
+
+        const setStatus = (text, tone = "pending") => {
+            if (statusEl) statusEl.textContent = text;
+            if (!statePill) return;
+            statePill.classList.remove("is-pending", "is-success", "is-error");
+            if (tone === "success") statePill.classList.add("is-success");
+            else if (tone === "error") statePill.classList.add("is-error");
+            else statePill.classList.add("is-pending");
+            statePill.textContent = tone === "success" ? "Approved" : (tone === "error" ? "Blocked" : "Pending");
+        };
+
+        if (!token) {
+            setStatus("Missing approval token. Please sign in again.", "error");
+            return;
+        }
+
+        let isComplete = false;
+        let intervalId = null;
+        let latestExpiresAt = null;
+        let consecutivePollFailures = 0;
+        let pollDelayMs = 2000;
+
+        const setEventState = (index, title, subtitle, isActive = false, isCompleteState = false) => {
+            if (!eventsList) return;
+            const item = eventsList.children[index];
+            if (!item) return;
+            const titleEl = item.querySelector("strong");
+            const copyEl = item.querySelector("span");
+            if (titleEl && title) titleEl.textContent = title;
+            if (copyEl && subtitle) copyEl.textContent = subtitle;
+            item.classList.toggle("is-active", isActive);
+            item.classList.toggle("is-complete", isCompleteState);
+        };
+
+        const showStartOver = () => {
+            if (startOverButton) startOverButton.hidden = false;
+            if (resendButton) resendButton.hidden = true;
+        };
+
+        const schedulePoll = () => {
+            if (isComplete) return;
+            if (intervalId) clearInterval(intervalId);
+            intervalId = window.setInterval(poll, pollDelayMs);
+        };
+
+        const updateCountdown = (expiresAt) => {
+            if (!countdownEl || !expiresAt) return;
+            const expires = new Date(expiresAt).getTime();
+            const remaining = Math.max(0, Math.floor((expires - Date.now()) / 1000));
+            countdownEl.textContent = `Time remaining: ${remaining}s`;
+            if (progressBar) {
+                const total = {{ approval_ttl_seconds }};
+                const ratio = Math.max(0, Math.min(1, remaining / total));
+                progressBar.style.width = `${Math.round(ratio * 100)}%`;
+            }
+        };
+
+        const setContext = (payload) => {
+            if (!payload) return;
+            if (deviceLabel) deviceLabel.textContent = payload.requestedFrom || "Unknown device";
+            if (locationLabel) locationLabel.textContent = payload.locationHint || "Unknown location";
+            if (requestedAtLabel) {
+                const requestedAt = payload.requestedAt ? new Date(payload.requestedAt) : null;
+                requestedAtLabel.textContent = requestedAt && !Number.isNaN(requestedAt.getTime())
+                    ? requestedAt.toLocaleString()
+                    : "Unknown time";
+            }
+            setEventState(0, "Request created", payload.requestedAt ? "Request timestamp captured." : "Request captured.", true, true);
+            setEventState(1, "Push delivered", payload.requestedFrom ? "Prompt sent to your iPhone app." : "Waiting for app acknowledgement...", !!payload.requestedFrom, !!payload.requestedFrom);
+        };
+
+        const complete = async () => {
+            const response = await fetch("/api/auth/login-approval/complete", {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ token }),
+            });
+            if (!response.ok) {
+                const errorPayload = await response.json().catch(() => ({}));
+                const detail = String(errorPayload.detail || "Unable to complete approval.");
+                setStatus(detail, "error");
+                setEventState(2, "Decision received", "Could not finalise login. Start over.", true, false);
+                showStartOver();
+                isComplete = true;
+                return;
+            }
+            const payload = await response.json();
+            window.location.href = payload.redirectUrl || "/";
+        };
+
+        const resend = async () => {
+            if (!resendButton || isComplete) return;
+            resendButton.disabled = true;
+            try {
+                const response = await fetch("/api/auth/login-approval/resend", {
+                    method: "POST",
+                    credentials: "include",
+                    cache: "no-store",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ token }),
+                });
+                if (!response.ok) {
+                    setStatus("Unable to resend prompt right now.", "error");
+                    return;
+                }
+                const payload = await response.json();
+                latestExpiresAt = payload.expiresAt || latestExpiresAt;
+                setStatus("Approval prompt resent to your Jenius Auth app.", "pending");
+                setEventState(1, "Push delivered", "Prompt resent and waiting for confirmation...", true, false);
+            } finally {
+                resendButton.disabled = false;
+            }
+        };
+
+        const poll = async () => {
+            if (isComplete) return;
+            try {
+                const response = await fetch(`/api/auth/login-approval/status?token=${encodeURIComponent(token)}`, {
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (!response.ok) {
+                    setStatus("Approval request could not be found. Please sign in again.", "error");
+                    isComplete = true;
+                    return;
+                }
+                const payload = await response.json();
+                consecutivePollFailures = 0;
+                pollDelayMs = 2000;
+                if (retryHint) retryHint.textContent = "Checking every 2 seconds.";
+                schedulePoll();
+                latestExpiresAt = payload.expiresAt || latestExpiresAt;
+                setContext(payload);
+                updateCountdown(payload.expiresAt);
+                if (payload.status === "approved") {
+                    setStatus("Approved. Finalising secure session...", "success");
+                    setEventState(2, "Decision received", "Approved in Jenius Auth.", true, true);
+                    isComplete = true;
+                    await complete();
+                    return;
+                }
+                if (payload.status === "denied") {
+                    setStatus("This login was denied in Jenius Auth.", "error");
+                    setEventState(2, "Decision received", "Denied in Jenius Auth.", true, false);
+                    showStartOver();
+                    isComplete = true;
+                    await complete();
+                    return;
+                }
+                if (payload.status === "expired") {
+                    setStatus("Approval request expired. Please sign in again.", "error");
+                    setEventState(2, "Decision received", "Request expired before approval.", true, false);
+                    showStartOver();
+                    isComplete = true;
+                    await complete();
+                    return;
+                }
+                setStatus("Waiting for iPhone approval...", "pending");
+            } catch (error) {
+                consecutivePollFailures += 1;
+                pollDelayMs = Math.min(10000, 2000 * Math.max(1, consecutivePollFailures));
+                if (retryHint) retryHint.textContent = `Connection issue. Retrying every ${Math.round(pollDelayMs / 1000)}s.`;
+                schedulePoll();
+                setStatus("Connection issue while checking approval. Retrying…", "pending");
+            }
+        };
+
+        intervalId = setInterval(poll, 2000);
+        poll();
+        resendButton?.addEventListener("click", resend);
+        window.setInterval(() => updateCountdown(latestExpiresAt), 1000);
+
+        window.addEventListener("beforeunload", () => {
+            if (intervalId) clearInterval(intervalId);
+        });
+    })();
+</script>
+{% endblock %}

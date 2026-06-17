@@ -7,7 +7,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import (
+    COOKIE_NAME,
     allowed_panel_origins,
     approve_device_code,
     clear_session_cookie,
@@ -83,7 +84,7 @@ from .companies_house import (
 )
 from .config import get_settings
 from .database import ensure_schema, get_connection
-from .security import create_session
+from .security import create_session, hash_token
 from .services import (
     add_customer_note,
     add_note,
@@ -354,12 +355,161 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+PANEL_ENTRY_PATHS = {
+    "/",
+    "/console",
+    "/standalone.html",
+    "/app.js",
+    "/styles.css",
+}
+PUBLIC_STATIC_ASSETS = {
+    "/static/styles.css",
+    "/static/jACCOUNTANCYBLUEHORIZONTLE.PNG",
+}
+PUBLIC_API_PREFIXES = (
+    "/api/snackccountancy/",
+)
+PUBLIC_API_PATHS = {
+    "/api/auth/login-approval/status",
+    "/api/auth/login-approval/complete",
+    "/api/auth/login-approval/resend",
+    "/api/device/start",
+    "/api/device/poll",
+    "/api/stripe/snackccountancy-webhook",
+    "/api/hmrc-64-8/oauth/callback",
+    "/api/ignition/callback",
+}
+RBAC_DEFAULT_READ_ROLES = {"owner", "admin", "manager", "staff", "read_only"}
+RBAC_DEFAULT_WRITE_ROLES = {"owner", "admin", "manager", "staff"}
+RBAC_OWNER_ADMIN_ROLES = {"owner", "admin"}
+RBAC_READ_ONLY_METHODS = {"GET", "HEAD", "OPTIONS"}
+RBAC_RULES = {
+    "/api/panel/session": {"read": RBAC_DEFAULT_READ_ROLES, "write": RBAC_DEFAULT_READ_ROLES},
+    "/api/security/": {"read": {"owner", "admin", "manager"}, "write": RBAC_OWNER_ADMIN_ROLES},
+    "/api/developer/": {"read": RBAC_OWNER_ADMIN_ROLES, "write": RBAC_OWNER_ADMIN_ROLES},
+    "/api/panel/factory-reset": {"read": RBAC_OWNER_ADMIN_ROLES, "write": RBAC_OWNER_ADMIN_ROLES},
+}
+CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+CSRF_EXEMPT_PATHS = {
+    "/api/stripe/snackccountancy-webhook",
+}
+
+
+def _normalise_path_for_guard(path: str) -> str:
+    if path == "/":
+        return path
+    cleaned = str(path or "/").strip() or "/"
+    return cleaned.rstrip("/") or "/"
+
+
+def _is_public_api_path(request_path: str) -> bool:
+    if request_path in PUBLIC_API_PATHS:
+        return True
+    return any(request_path.startswith(prefix) for prefix in PUBLIC_API_PREFIXES)
+
+
+def _is_public_web_path(request_path: str) -> bool:
+    if request_path in {"/login", "/login/approval", "/health"}:
+        return True
+    if request_path.startswith("/auth/xero/"):
+        return True
+    if request_path.startswith("/auth/login-approval/"):
+        return True
+    if request_path.startswith("/device"):
+        return True
+    return False
+
+
+def _normalise_rbac_role(user: dict | None) -> str:
+    role = str((user or {}).get("role") or "").strip().lower()
+    role_aliases = {
+        "finance_admin": "admin",
+        "client_manager": "manager",
+        "readonly": "read_only",
+    }
+    if role in role_aliases:
+        return role_aliases[role]
+    if role in {"owner", "admin", "manager", "staff", "read_only"}:
+        return role
+    return "staff"
+
+
+def _allowed_roles_for_api_path(request_path: str, request_method: str) -> set[str]:
+    mode = "read" if request_method in RBAC_READ_ONLY_METHODS else "write"
+    for prefix, policy in RBAC_RULES.items():
+        if request_path.startswith(prefix):
+            return set(policy.get(mode) or RBAC_DEFAULT_READ_ROLES)
+    if mode == "read":
+        return set(RBAC_DEFAULT_READ_ROLES)
+    return set(RBAC_DEFAULT_WRITE_ROLES)
+
+
+@app.middleware("http")
+async def enforce_panel_login(request: Request, call_next):
+    request_path = _normalise_path_for_guard(request.url.path)
+    request_method = str(request.method or "").upper()
+    if request_method == "OPTIONS":
+        return await call_next(request)
+    user = current_user_from_request(request)
+    is_authenticated = user is not None
+
+    if not is_authenticated:
+        if request_path.startswith("/api/") and not _is_public_api_path(request_path):
+            if wants_json(request):
+                return JSONResponse(
+                    {"detail": "Authentication required. Sign in with Xero to continue."},
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                )
+            return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
+
+        if request_path in PANEL_ENTRY_PATHS:
+            return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
+
+        if request_path.startswith("/static/") and request_path not in PUBLIC_STATIC_ASSETS:
+            if request_path.endswith(".html") or request_path.endswith(".js"):
+                return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
+
+        if request_path.endswith(".html") and not _is_public_web_path(request_path):
+            return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
+
+    if request_path.startswith("/api/") and not _is_public_api_path(request_path) and is_authenticated:
+        allowed_roles = _allowed_roles_for_api_path(request_path, request_method)
+        actor_role = _normalise_rbac_role(user)
+        is_super_admin = bool((user or {}).get("is_super_admin"))
+        if not is_super_admin and actor_role not in allowed_roles:
+            return JSONResponse(
+                {
+                    "detail": (
+                        f"Role '{actor_role}' is not permitted for this endpoint. "
+                        f"Allowed roles: {', '.join(sorted(allowed_roles))}."
+                    )
+                },
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def enforce_cookie_csrf_for_unsafe_methods(request: Request, call_next):
+    request_path = _normalise_path_for_guard(request.url.path)
+    request_method = str(request.method or "").upper()
+    panel_session_cookie = request.cookies.get(COOKIE_NAME)
+    if (
+        panel_session_cookie
+        and request_method in CSRF_UNSAFE_METHODS
+        and request_path not in CSRF_EXEMPT_PATHS
+    ):
+        require_cookie_csrf(request)
+    return await call_next(request)
+
+
 logger = logging.getLogger(__name__)
 BACKGROUND_JOB_MAX_WORKERS = 8
 background_job_executor = ThreadPoolExecutor(
     max_workers=BACKGROUND_JOB_MAX_WORKERS,
     thread_name_prefix="panel-bg",
 )
+LOGIN_APPROVAL_TTL_SECONDS = 60
 
 
 def _submit_background_job(name: str, target, *args, **kwargs) -> None:
@@ -411,27 +561,13 @@ def template_context(request: Request, **extra):
 
 def reusable_xero_user(request: Request) -> dict | None:
     user = current_user_from_request(request)
-    if user and user.get("id"):
-        try:
-            get_xero_connection_for_user(user["id"])
-            return user
-        except HTTPException:
-            pass
-
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT users.*
-                FROM xero_connections
-                JOIN users ON users.id = xero_connections.user_id
-                ORDER BY xero_connections.updated_at DESC NULLS LAST, xero_connections.created_at DESC
-                LIMIT 1
-                """
-            )
-            row = cursor.fetchone()
-        connection.commit()
-    return row
+    if not (user and user.get("id")):
+        return None
+    try:
+        get_xero_connection_for_user(user["id"])
+        return user
+    except HTTPException:
+        return None
 
 
 def panel_session_response(user: dict) -> JSONResponse:
@@ -482,6 +618,7 @@ def panel_session_response(user: dict) -> JSONResponse:
             "status": "ok",
             "sessionToken": session_token,
             **panel,
+            "currentUser": serialise_current_user(user),
             "panelError": panel_error,
             "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
             "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
@@ -504,10 +641,364 @@ def xero_connected_redirect(request: Request, redirect_to: str) -> RedirectRespo
     return response
 
 
+def serialise_current_user(user: dict | None) -> dict | None:
+    if not user:
+        return None
+    full_name = str(user.get("full_name") or user.get("name") or "").strip()
+    email = str(user.get("email") or "").strip().lower()
+    role = str(user.get("role") or "staff").strip().lower() or "staff"
+    status_value = str(user.get("status") or "active").strip().lower() or "active"
+    if not (full_name or email):
+        return None
+    return {
+        "id": str(user.get("id") or ""),
+        "fullName": full_name or email,
+        "email": email,
+        "role": role,
+        "status": status_value,
+        "isSuperAdmin": bool(user.get("is_super_admin")),
+        "lastLoginAt": user.get("last_login_at"),
+        "lastApprovedLoginAt": user.get("last_approved_login_at"),
+    }
+
+
 def wants_json(request: Request) -> bool:
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
     return "application/json" in accept or "application/json" in content_type
+
+
+def _normalise_origin(origin: str | None) -> str:
+    return str(origin or "").strip().rstrip("/")
+
+
+def _csrf_origin_allowed(origin: str | None) -> bool:
+    candidate = _normalise_origin(origin)
+    if not candidate:
+        return False
+    return candidate in allowed_panel_origins()
+
+
+def require_cookie_csrf(request: Request) -> None:
+    authorization = str(request.headers.get("authorization") or "").strip().lower()
+    if authorization.startswith("bearer "):
+        return
+    origin = request.headers.get("origin")
+    if _csrf_origin_allowed(origin):
+        return
+    referer = request.headers.get("referer")
+    if referer:
+        parts = urlsplit(referer)
+        referer_origin = f"{parts.scheme}://{parts.netloc}"
+        if _csrf_origin_allowed(referer_origin):
+            return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request origin.")
+
+
+def require_auth_app_client(request: Request, user: dict) -> None:
+    app_client_header = str(request.headers.get("x-jenius-auth-client") or "").strip().lower()
+    app_device_header = str(request.headers.get("x-jenius-auth-device") or "").strip()
+    session_label = str((user or {}).get("session_label") or "").strip().lower()
+    has_app_session = session_label.startswith("jenius auth")
+    has_app_headers = app_client_header in {"ios", "iphone", "jenius-auth-ios"} and bool(app_device_header)
+    if has_app_session or has_app_headers:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Jenius Auth iPhone app verification is required for this action.",
+    )
+
+
+def _security_is_admin(user: dict) -> bool:
+    role = str((user or {}).get("role") or "").strip().lower()
+    return bool((user or {}).get("is_super_admin")) or role in {"owner", "admin", "finance_admin"}
+
+
+def require_security_admin(user: dict) -> dict:
+    if _security_is_admin(user):
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have permission to manage security settings.",
+    )
+
+
+def _security_founder_email() -> str:
+    return "jay@jaccountancy.co.uk"
+
+
+def _security_actor_is_owner_or_super_admin(user_row: dict | None) -> bool:
+    role = str((user_row or {}).get("role") or "").strip().lower()
+    return bool((user_row or {}).get("is_super_admin")) or role == "owner"
+
+
+def _security_target_is_privileged(user_row: dict | None) -> bool:
+    role = str((user_row or {}).get("role") or "").strip().lower()
+    return bool((user_row or {}).get("is_super_admin")) or role == "owner"
+
+
+def _security_is_founder(user_row: dict | None) -> bool:
+    email = str((user_row or {}).get("email") or "").strip().lower()
+    return email == _security_founder_email()
+
+
+def _normalise_security_role(role_value: str | None) -> str:
+    role = str(role_value or "").strip().lower()
+    if role in {"owner", "admin", "manager", "staff", "read_only", "readonly"}:
+        return "read_only" if role == "readonly" else role
+    return "staff"
+
+
+def _normalise_security_status(status_value: str | None) -> str:
+    status_text = str(status_value or "").strip().lower()
+    if status_text in {"active", "pending", "pending_invitation", "suspended"}:
+        return status_text
+    return "active"
+
+
+def _security_can_manage_target(actor: dict, target: dict) -> None:
+    if _security_is_founder(target) and not bool(actor.get("is_super_admin")) and str(actor.get("role") or "").strip().lower() != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The founding owner account can only be managed by Owner/Super Admin.",
+        )
+    if _security_target_is_privileged(target) and not _security_actor_is_owner_or_super_admin(actor):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner/Super Admin can manage owner or super admin accounts.",
+        )
+
+
+def _security_assert_role_assignment_allowed(actor: dict, role: str, is_super_admin: bool) -> None:
+    if (role == "owner" or is_super_admin) and not _security_actor_is_owner_or_super_admin(actor):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner/Super Admin can assign owner or super admin permissions.",
+        )
+
+
+def _security_record_audit_event(
+    actor: dict,
+    target_user_id: str,
+    event_type: str,
+    payload: dict | None = None,
+) -> None:
+    actor_user_id = str((actor or {}).get("id") or "").strip() or None
+    event_payload = payload if isinstance(payload, dict) else {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
+                """,
+                (
+                    "security_user",
+                    str(target_user_id or ""),
+                    str(event_type or "security.user.event"),
+                    json.dumps(event_payload),
+                    actor_user_id,
+                ),
+            )
+        connection.commit()
+
+
+def _security_create_user(payload: dict, actor: dict) -> dict:
+    email = str(payload.get("email") or "").strip()
+    email_normalised = email.lower()
+    full_name = str(payload.get("full_name") or payload.get("name") or "").strip()
+    role = _normalise_security_role(payload.get("role"))
+    status_value = _normalise_security_status(payload.get("status") or "active")
+    requested_is_super_admin = bool(payload.get("is_super_admin"))
+    notes = str(payload.get("notes") or "").strip()
+    if not email_normalised or "@" not in email_normalised:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A valid email is required.")
+    if not full_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A full name is required.")
+    _security_assert_role_assignment_allowed(actor, role, requested_is_super_admin)
+    if email_normalised == _security_founder_email():
+        if not _security_actor_is_owner_or_super_admin(actor):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Owner/Super Admin can modify the founding owner account.",
+            )
+        role = "owner"
+        status_value = "active"
+        requested_is_super_admin = True
+    action_type = "security.user.created"
+    target_user_id = ""
+    final_role = role
+    final_is_super_admin = requested_is_super_admin or role == "owner"
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM users
+                WHERE lower(email) = lower(%s)
+                """,
+                (email_normalised,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                _security_can_manage_target(actor, existing)
+                is_founder = email_normalised == _security_founder_email()
+                final_role = "owner" if is_founder else role
+                final_is_super_admin = True if is_founder else (requested_is_super_admin or role == "owner")
+                _security_assert_role_assignment_allowed(actor, final_role, final_is_super_admin)
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET
+                        full_name = %s,
+                        role = %s,
+                        status = %s,
+                        auth_method = 'xero_only',
+                        two_factor_method = 'none',
+                        is_super_admin = %s,
+                        notes = CASE WHEN %s = '' THEN notes ELSE %s END,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING *
+                    """,
+                    (
+                        full_name,
+                        final_role,
+                        "active" if is_founder else status_value,
+                        final_is_super_admin,
+                        notes,
+                        notes,
+                        existing["id"],
+                    ),
+                )
+                action_type = "security.user.updated"
+            else:
+                _security_assert_role_assignment_allowed(actor, final_role, final_is_super_admin)
+                cursor.execute(
+                    """
+                    INSERT INTO users (
+                        email,
+                        full_name,
+                        role,
+                        status,
+                        auth_method,
+                        two_factor_method,
+                        is_super_admin,
+                        notes,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, 'xero_only', 'none', %s, %s, NOW())
+                    RETURNING *
+                    """,
+                    (
+                        email_normalised,
+                        full_name,
+                        final_role,
+                        status_value,
+                        final_is_super_admin,
+                        notes,
+                    ),
+                )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create or update user.")
+            target_user_id = str(row.get("id") or "")
+        connection.commit()
+    if target_user_id:
+        _security_record_audit_event(
+            actor,
+            target_user_id,
+            action_type,
+            {
+                "email": email_normalised,
+                "full_name": full_name,
+                "role": final_role,
+                "status": status_value if final_role != "owner" else "active",
+                "is_super_admin": bool(final_is_super_admin),
+            },
+        )
+    return row
+
+
+def _security_change_user_status(target_user_id: str, status_value: str, actor: dict) -> dict:
+    actor_id = str((actor or {}).get("id") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (target_user_id,))
+            target = cursor.fetchone()
+            if target is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            if actor_id and actor_id == str(target.get("id") or ""):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot change your own account status.")
+            _security_can_manage_target(actor, target)
+            previous_status = str(target.get("status") or "active").strip().lower()
+            next_status = _normalise_security_status(status_value)
+            cursor.execute(
+                """
+                UPDATE users
+                SET status = %s, updated_at = NOW()
+                WHERE id = %s
+                RETURNING *
+                """,
+                (next_status, target_user_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    _security_record_audit_event(
+        actor,
+        target_user_id,
+        "security.user.status_changed",
+        {"from": previous_status, "to": next_status},
+    )
+    return row
+
+
+def _security_force_logout(target_user_id: str, actor: dict) -> None:
+    actor_id = str((actor or {}).get("id") or "").strip()
+    deleted_sessions = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (target_user_id,))
+            target = cursor.fetchone()
+            if target is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            if actor_id and actor_id == str(target.get("id") or ""):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot force logout your own account.")
+            _security_can_manage_target(actor, target)
+            cursor.execute("DELETE FROM sessions WHERE user_id = %s", (target_user_id,))
+            deleted_sessions = int(cursor.rowcount or 0)
+        connection.commit()
+    _security_record_audit_event(
+        actor,
+        target_user_id,
+        "security.user.force_logout",
+        {"deleted_sessions": deleted_sessions},
+    )
+
+
+def _security_delete_user(target_user_id: str, actor: dict) -> None:
+    actor_id = str((actor or {}).get("id") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (target_user_id,))
+            target = cursor.fetchone()
+            if target is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            if actor_id and actor_id == str(target.get("id") or ""):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot remove your own account.")
+            if _security_is_founder(target):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The founding owner account cannot be removed.")
+            _security_can_manage_target(actor, target)
+            deleted_email = str(target.get("email") or "").strip().lower()
+            deleted_role = str(target.get("role") or "").strip().lower()
+            cursor.execute("DELETE FROM users WHERE id = %s", (target_user_id,))
+        connection.commit()
+    _security_record_audit_event(
+        actor,
+        target_user_id,
+        "security.user.deleted",
+        {"email": deleted_email, "role": deleted_role},
+    )
 
 
 def companies_house_bulk_submission_error_detail(exc: Exception) -> dict:
@@ -528,6 +1019,256 @@ def companies_house_bulk_submission_error_detail(exc: Exception) -> dict:
             "Deploy/restart the backend so startup schema updates are applied, then retry bulk submission."
         )
     return detail
+
+
+def _security_users_payload() -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    email,
+                    full_name,
+                    role,
+                    status,
+                    auth_method,
+                    two_factor_method,
+                    is_super_admin,
+                    notes,
+                    xero_user_id,
+                    created_at,
+                    updated_at,
+                    last_login_at,
+                    last_approved_login_at
+                FROM users
+                ORDER BY
+                    CASE
+                        WHEN lower(role) = 'owner' OR is_super_admin THEN 0
+                        WHEN lower(status) = 'active' THEN 1
+                        WHEN lower(status) IN ('pending', 'pending_invitation', 'pending_approval', 'invited') THEN 2
+                        ELSE 3
+                    END,
+                    COALESCE(last_login_at, created_at) DESC
+                """
+            )
+            users = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    s.user_id,
+                    MAX(s.last_seen_at) AS last_seen_at,
+                    MAX(s.created_at) AS session_created_at,
+                    COUNT(*) FILTER (WHERE s.expires_at > NOW()) AS active_sessions
+                FROM sessions s
+                GROUP BY s.user_id
+                """
+            )
+            session_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    user_id,
+                    COUNT(*) FILTER (WHERE status = 'pending' AND expires_at > NOW()) AS pending_device_requests
+                FROM device_logins
+                WHERE user_id IS NOT NULL
+                GROUP BY user_id
+                """
+            )
+            device_rows = cursor.fetchall() or []
+        connection.commit()
+
+    sessions_by_user_id = {str(row.get("user_id") or ""): row for row in session_rows}
+    device_by_user_id = {str(row.get("user_id") or ""): row for row in device_rows}
+
+    users_out: list[dict] = []
+    counts = {
+        "activeUsers": 0,
+        "pendingInvites": 0,
+        "suspendedUsers": 0,
+        "ownerUsers": 0,
+    }
+
+    for row in users:
+        user_id = str(row.get("id") or "")
+        status_value = str(row.get("status") or "active").strip().lower()
+        if status_value == "active":
+            counts["activeUsers"] += 1
+        elif status_value in {"pending", "pending_invitation", "pending_approval", "invited"}:
+            counts["pendingInvites"] += 1
+        elif status_value in {"suspended", "disabled", "inactive"}:
+            counts["suspendedUsers"] += 1
+        if str(row.get("role") or "").strip().lower() == "owner" or bool(row.get("is_super_admin")):
+            counts["ownerUsers"] += 1
+
+        session_row = sessions_by_user_id.get(user_id, {})
+        device_row = device_by_user_id.get(user_id, {})
+        users_out.append(
+            {
+                **row,
+                "active_sessions": int(session_row.get("active_sessions") or 0),
+                "last_seen_at": session_row.get("last_seen_at"),
+                "session_created_at": session_row.get("session_created_at"),
+                "pending_device_requests": int(device_row.get("pending_device_requests") or 0),
+            }
+        )
+
+    return {
+        "summary": counts,
+        "users": users_out,
+    }
+
+
+def _security_audit_payload(limit: int = 120) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.id,
+                    s.user_id,
+                    u.email,
+                    u.full_name,
+                    s.label,
+                    s.created_at,
+                    s.last_seen_at,
+                    s.expires_at
+                FROM sessions s
+                LEFT JOIN users u ON u.id = s.user_id
+                ORDER BY s.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            session_events = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    d.id,
+                    d.user_id,
+                    u.email,
+                    u.full_name,
+                    d.status,
+                    d.created_at,
+                    d.completed_at,
+                    d.expires_at
+                FROM device_logins d
+                LEFT JOIN users u ON u.id = d.user_id
+                ORDER BY d.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            device_events = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    la.id,
+                    la.status,
+                    la.requested_from,
+                    la.requested_ip,
+                    la.requested_at,
+                    la.expires_at,
+                    la.approved_at,
+                    la.denied_at,
+                    u.email,
+                    u.full_name
+                FROM login_approval_attempts la
+                LEFT JOIN users u ON u.id = la.user_id
+                ORDER BY la.requested_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            app_approval_events = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    ae.id,
+                    ae.entity_id,
+                    ae.event_type,
+                    ae.payload,
+                    ae.created_at,
+                    actor.email AS actor_email,
+                    actor.full_name AS actor_full_name
+                FROM audit_events ae
+                LEFT JOIN users actor ON actor.id = ae.user_id
+                WHERE ae.entity_type = 'security_user'
+                ORDER BY ae.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            management_events = cursor.fetchall() or []
+        connection.commit()
+
+    audit_events: list[dict] = []
+    for row in session_events:
+        audit_events.append(
+            {
+                "id": f"session:{row['id']}",
+                "type": "xero_login_session",
+                "status": "success",
+                "email": row.get("email") or "",
+                "full_name": row.get("full_name") or "",
+                "label": row.get("label") or "",
+                "created_at": row.get("created_at"),
+                "completed_at": row.get("last_seen_at"),
+                "expires_at": row.get("expires_at"),
+            }
+        )
+    for row in device_events:
+        status_value = str(row.get("status") or "").strip().lower()
+        audit_events.append(
+            {
+                "id": f"device:{row['id']}",
+                "type": "device_login_approval",
+                "status": status_value or "pending",
+                "email": row.get("email") or "",
+                "full_name": row.get("full_name") or "",
+                "label": "Jenius Auth device approval",
+                "created_at": row.get("created_at"),
+                "completed_at": row.get("completed_at"),
+                "expires_at": row.get("expires_at"),
+            }
+        )
+    for row in app_approval_events:
+        status_value = str(row.get("status") or "").strip().lower()
+        completed_at = row.get("approved_at") or row.get("denied_at")
+        audit_events.append(
+            {
+                "id": f"login-approval:{row['id']}",
+                "type": "jenius_auth_login_approval",
+                "status": status_value or "pending",
+                "email": row.get("email") or "",
+                "full_name": row.get("full_name") or "",
+                "label": f"{row.get('requested_from') or 'Unknown device'} · {_mask_ip(row.get('requested_ip') or '')}",
+                "created_at": row.get("requested_at"),
+                "completed_at": completed_at,
+                "expires_at": row.get("expires_at"),
+            }
+        )
+    for row in management_events:
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        status_value = str(payload.get("to") or payload.get("status") or "success").strip().lower()
+        actor_label = str(row.get("actor_full_name") or row.get("actor_email") or "").strip()
+        target_label = str(payload.get("email") or payload.get("full_name") or row.get("entity_id") or "").strip()
+        audit_events.append(
+            {
+                "id": f"security-user:{row['id']}",
+                "type": "security_user_management",
+                "status": status_value or "success",
+                "email": actor_label,
+                "full_name": actor_label,
+                "label": f"{row.get('event_type') or 'security.user.event'} · {target_label}".strip(" ·"),
+                "created_at": row.get("created_at"),
+                "completed_at": row.get("created_at"),
+                "expires_at": None,
+            }
+        )
+
+    audit_events.sort(key=lambda event: str(event.get("created_at") or ""), reverse=True)
+    return {"events": audit_events[:limit]}
 
 
 def xero_login_error_response(
@@ -628,6 +1369,14 @@ def login_page(request: Request):
         if response:
             return response
     return templates.TemplateResponse(request, "login.html", template_context(request))
+
+
+@app.get("/login/approval", response_class=HTMLResponse)
+def login_approval_page(request: Request, token: str = Query("")):
+    _ = token
+    if current_user_from_request(request):
+        return RedirectResponse("/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse("/login", status_code=status.HTTP_302_FOUND)
 
 
 @app.get("/auth/xero/start")
@@ -814,6 +1563,148 @@ async def auth_ignition_callback(request: Request, code: str, state: str):
         return xero_login_error_response("An unexpected server error occurred while completing the Ignition connection.", provider="Ignition")
 
 
+def _request_ip_address(request: Request) -> str:
+    forwarded = str(request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return str(request.client.host).strip()
+    return ""
+
+
+def _request_device_label(request: Request) -> str:
+    user_agent = str(request.headers.get("user-agent") or "").strip()
+    if user_agent:
+        return user_agent[:220]
+    return "Unknown device"
+
+
+def _mask_ip(ip_value: str) -> str:
+    value = str(ip_value or "").strip()
+    if not value:
+        return "Unknown location"
+    if ":" in value:
+        return f"Approx IPv6 ({value[:6]}...)"
+    parts = value.split(".")
+    if len(parts) == 4:
+        return f"Approx IP {parts[0]}.{parts[1]}.x.x"
+    return f"Approx IP {value}"
+
+
+def _format_approval_row(row: dict) -> dict:
+    status_value = str(row.get("status") or "pending").strip().lower()
+    return {
+        "id": row.get("id"),
+        "status": status_value,
+        "requestedFrom": row.get("requested_from") or "Unknown device",
+        "requestedIp": row.get("requested_ip") or "",
+        "locationHint": _mask_ip(row.get("requested_ip") or ""),
+        "requestedAt": row.get("requested_at"),
+        "expiresAt": row.get("expires_at"),
+        "approvedAt": row.get("approved_at"),
+        "deniedAt": row.get("denied_at"),
+    }
+
+
+def _require_xero_identity_user(user: dict) -> dict:
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    auth_method = str(user.get("auth_method") or "").strip().lower()
+    if auth_method not in {"xero_only", "xero"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is not configured for Xero authentication.")
+    if not str(user.get("xero_user_id") or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Xero identity is required before approving login requests in Jenius Auth.",
+        )
+    return user
+
+
+def _mark_auth_app_presence(user: dict) -> None:
+    user_id = str((user or {}).get("id") or "").strip()
+    if not user_id:
+        return
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET
+                    auth_app_enrolled_at = COALESCE(auth_app_enrolled_at, NOW()),
+                    auth_app_last_seen_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (user_id,),
+            )
+        connection.commit()
+
+
+def _create_login_approval_attempt(user: dict, request: Request) -> dict:
+    approval_token = f"{uuid4().hex}{uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=LOGIN_APPROVAL_TTL_SECONDS)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO login_approval_attempts (
+                    approval_token,
+                    user_id,
+                    status,
+                    requested_from,
+                    requested_ip,
+                    requested_at,
+                    expires_at
+                )
+                VALUES (%s, %s, 'pending', %s, %s, NOW(), %s)
+                RETURNING *
+                """,
+                (
+                    approval_token,
+                    user["id"],
+                    _request_device_label(request),
+                    _request_ip_address(request),
+                    expires_at,
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create login approval attempt.")
+    return row
+
+
+def _expire_approval_attempt_if_due(approval_token: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = CASE
+                    WHEN status = 'pending' AND expires_at <= NOW() THEN 'expired'
+                    ELSE status
+                END
+                WHERE approval_token = %s
+                RETURNING *
+                """,
+                (approval_token,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def _queue_initial_sync_for_user_id(user_id: str) -> tuple[dict | None, bool]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+        connection.commit()
+    if not user:
+        return None, False
+    return queue_initial_xero_sync(user)
+
+
 def queue_initial_xero_sync(user: dict) -> tuple[dict | None, bool]:
     try:
         sync_run, started = request_sync_run(user)
@@ -863,21 +1754,31 @@ async def auth_xero_callback(
             set_session_cookie(response, session_token)
             return response
 
-        session_token = create_session(login["user"]["id"], "Web panel")
-        sync_run, sync_started = queue_initial_xero_sync(login["user"])
-        redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
-        redirect_params = {"xero": "connected"}
-        tenant_sync_summary = login.get("tenant_sync_summary") or {}
-        redirect_params["xero_new_tenants"] = str(int(tenant_sync_summary.get("new_tenants_count") or 0))
-        redirect_params["xero_refreshed_tenants"] = str(int(tenant_sync_summary.get("refreshed_existing_tenants_count") or 0))
-        redirect_params["xero_total_tenants"] = str(int(tenant_sync_summary.get("total_tenants") or 0))
-        new_tenant_names = tenant_sync_summary.get("new_tenant_names") or []
-        if new_tenant_names:
-            redirect_params["xero_new_tenant_names"] = "|".join(str(name or "").strip() for name in new_tenant_names if str(name or "").strip())
+        user_id = str(login["user"]["id"])
+        session_token = create_session(user_id, "Web panel")
+        sync_run, sync_started = _queue_initial_sync_for_user_id(user_id)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET last_approved_login_at = NOW(), updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (user_id,),
+                )
+            connection.commit()
+
+        redirect_to = normalise_oauth_redirect(state_row.get("redirect_to") or "/")
+        redirect_to = add_query_params(redirect_to, {"xero": "connected"})
         if sync_run:
-            redirect_params["sync_run"] = str(sync_run["id"])
-            redirect_params["sync_started"] = "1" if sync_started else "0"
-        redirect_to = add_query_params(redirect_to, redirect_params)
+            redirect_to = add_query_params(
+                redirect_to,
+                {
+                    "sync_run": str(sync_run["id"]),
+                    "sync_started": "1" if sync_started else "0",
+                },
+            )
         redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
         response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
         set_session_cookie(response, session_token)
@@ -895,6 +1796,410 @@ async def auth_xero_callback(
         return xero_login_error_response(
             "An unexpected server error occurred while completing the Xero connection. Check the Railway deploy logs for the full traceback.",
         )
+
+
+@app.get("/api/auth/login-approval/status")
+def api_login_approval_status(token: str = Query(..., min_length=16)):
+    attempt = _expire_approval_attempt_if_due(token)
+    if attempt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login approval attempt not found.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET last_polled_at = NOW()
+                WHERE id = %s
+                """,
+                (attempt["id"],),
+            )
+        connection.commit()
+    formatted = _format_approval_row(attempt)
+    return {
+        "status": str(attempt.get("status") or "pending").lower(),
+        "expiresAt": attempt.get("expires_at"),
+        "requestedAt": attempt.get("requested_at"),
+        "requestedFrom": formatted.get("requestedFrom"),
+        "locationHint": formatted.get("locationHint"),
+        "completeUrl": "/api/auth/login-approval/complete",
+        "completeMethod": "POST",
+    }
+
+
+@app.post("/api/auth/login-approval/complete")
+async def api_login_approval_complete(request: Request):
+    require_cookie_csrf(request)
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    token = str(payload.get("token") or "").strip()
+    if len(token) < 16:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Approval token is required.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = 'consumed'
+                WHERE approval_token = %s
+                  AND status = 'approved'
+                RETURNING user_id
+                """,
+                (token,),
+            )
+            consumed_row = cursor.fetchone()
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = 'expired'
+                WHERE approval_token = %s
+                  AND status = 'pending'
+                  AND expires_at <= NOW()
+                RETURNING status
+                """,
+                (token,),
+            )
+            cursor.execute(
+                """
+                SELECT status
+                FROM login_approval_attempts
+                WHERE approval_token = %s
+                """,
+                (token,),
+            )
+            status_row = cursor.fetchone()
+        connection.commit()
+
+    if status_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login approval attempt not found.")
+
+    current_status = str(status_row.get("status") or "pending").strip().lower()
+    if consumed_row:
+        user_id = str(consumed_row["user_id"])
+        session_token = create_session(user_id, "Web panel")
+        sync_run, sync_started = _queue_initial_sync_for_user_id(user_id)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET last_approved_login_at = NOW(), updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (user_id,),
+                )
+            connection.commit()
+        redirect_to = "/"
+        redirect_to = add_query_params(redirect_to, {"xero": "connected", "approval": "approved"})
+        if sync_run:
+            redirect_to = add_query_params(
+                redirect_to,
+                {
+                    "sync_run": str(sync_run["id"]),
+                    "sync_started": "1" if sync_started else "0",
+                },
+            )
+        redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
+        response = JSONResponse({"status": "approved", "redirectUrl": redirect_to})
+        set_session_cookie(response, session_token)
+        return response
+
+    if current_status == "consumed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This login approval has already been completed.")
+    if current_status == "denied":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login request was denied in Jenius Auth.")
+    if current_status == "expired":
+        raise HTTPException(status_code=status.HTTP_408_REQUEST_TIMEOUT, detail="Login approval timed out after 60 seconds.")
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Login approval is still pending.")
+
+
+@app.post("/api/auth/login-approval/resend")
+async def api_login_approval_resend(request: Request):
+    require_cookie_csrf(request)
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    token = str(payload.get("token") or "").strip()
+    if len(token) < 16:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Approval token is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET
+                    requested_at = NOW(),
+                    expires_at = NOW() + (%s || ' seconds')::interval
+                WHERE approval_token = %s
+                  AND status = 'pending'
+                RETURNING *
+                """,
+                (str(LOGIN_APPROVAL_TTL_SECONDS), token),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        attempt = _expire_approval_attempt_if_due(token)
+        if attempt is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login approval attempt not found.")
+        return {"status": str(attempt.get("status") or "pending").lower(), "expiresAt": attempt.get("expires_at")}
+    return {"status": "pending", "expiresAt": row.get("expires_at")}
+
+
+@app.get("/auth/login-approval/complete")
+def auth_login_approval_complete(token: str = Query(..., min_length=16)):
+    # Legacy compatibility route. Completion is now POST-only to prevent repeated
+    # session minting via bookmarked or replayed URLs.
+    return RedirectResponse(add_query_params("/login/approval", {"token": token}), status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/api/auth/login-approval/pending")
+def api_login_approval_pending(request: Request, user: dict = Depends(require_panel_user)):
+    user = _require_xero_identity_user(user)
+    require_auth_app_client(request, user)
+    _mark_auth_app_presence(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = 'expired'
+                WHERE user_id = %s
+                  AND status = 'pending'
+                  AND expires_at <= NOW()
+                """,
+                (user["id"],),
+            )
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    requested_from,
+                    requested_ip,
+                    requested_at,
+                    expires_at,
+                    approved_at,
+                    denied_at
+                FROM login_approval_attempts
+                WHERE user_id = %s
+                  AND status = 'pending'
+                ORDER BY requested_at DESC
+                LIMIT 20
+                """,
+                (user["id"],),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {"items": [_format_approval_row(row) for row in rows]}
+
+
+@app.get("/api/auth/login-approval/history")
+def api_login_approval_history(
+    request: Request,
+    limit: int = Query(30, ge=1, le=200),
+    user: dict = Depends(require_panel_user),
+):
+    user = _require_xero_identity_user(user)
+    require_auth_app_client(request, user)
+    _mark_auth_app_presence(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = 'expired'
+                WHERE user_id = %s
+                  AND status = 'pending'
+                  AND expires_at <= NOW()
+                """,
+                (user["id"],),
+            )
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    requested_from,
+                    requested_ip,
+                    requested_at,
+                    expires_at,
+                    approved_at,
+                    denied_at
+                FROM login_approval_attempts
+                WHERE user_id = %s
+                ORDER BY requested_at DESC
+                LIMIT %s
+                """,
+                (user["id"], limit),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {"items": [_format_approval_row(row) for row in rows]}
+
+
+@app.get("/api/auth/login-approval/inbox")
+def api_login_approval_inbox(
+    request: Request,
+    pending_limit: int = Query(20, ge=1, le=100),
+    history_limit: int = Query(40, ge=1, le=200),
+    user: dict = Depends(require_panel_user),
+):
+    user = _require_xero_identity_user(user)
+    require_auth_app_client(request, user)
+    _mark_auth_app_presence(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET status = 'expired'
+                WHERE user_id = %s
+                  AND status = 'pending'
+                  AND expires_at <= NOW()
+                """,
+                (user["id"],),
+            )
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    requested_from,
+                    requested_ip,
+                    requested_at,
+                    expires_at,
+                    approved_at,
+                    denied_at
+                FROM login_approval_attempts
+                WHERE user_id = %s
+                  AND status = 'pending'
+                ORDER BY requested_at DESC
+                LIMIT %s
+                """,
+                (user["id"], pending_limit),
+            )
+            pending_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    requested_from,
+                    requested_ip,
+                    requested_at,
+                    expires_at,
+                    approved_at,
+                    denied_at
+                FROM login_approval_attempts
+                WHERE user_id = %s
+                ORDER BY requested_at DESC
+                LIMIT %s
+                """,
+                (user["id"], history_limit),
+            )
+            history_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
+                    COUNT(*) FILTER (WHERE status = 'approved') AS approved_count,
+                    COUNT(*) FILTER (WHERE status = 'denied') AS denied_count,
+                    COUNT(*) FILTER (WHERE status = 'expired') AS expired_count,
+                    COUNT(*) FILTER (WHERE status = 'consumed') AS consumed_count
+                FROM login_approval_attempts
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            counts_row = cursor.fetchone() or {}
+        connection.commit()
+
+    pending_items = [_format_approval_row(row) for row in pending_rows]
+    history_items = [_format_approval_row(row) for row in history_rows]
+    return {
+        "pending": pending_items,
+        "history": history_items,
+        "summary": {
+            "pending": int(counts_row.get("pending_count") or 0),
+            "approved": int(counts_row.get("approved_count") or 0),
+            "denied": int(counts_row.get("denied_count") or 0),
+            "expired": int(counts_row.get("expired_count") or 0),
+            "consumed": int(counts_row.get("consumed_count") or 0),
+        },
+        "meta": {
+            "userId": user["id"],
+            "xeroUserId": user.get("xero_user_id") or "",
+            "serverTime": datetime.now(timezone.utc),
+        },
+    }
+
+
+@app.post("/api/auth/login-approval/{attempt_id}/decision")
+async def api_login_approval_decision(attempt_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_cookie_csrf(request)
+    user = _require_xero_identity_user(user)
+    require_auth_app_client(request, user)
+    _mark_auth_app_presence(user)
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    decision = str(payload.get("decision") or "").strip().lower()
+    if decision not in {"approve", "deny"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be 'approve' or 'deny'.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE login_approval_attempts
+                SET
+                    status = CASE
+                        WHEN status = 'pending' AND expires_at > NOW() THEN %s
+                        WHEN status = 'pending' AND expires_at <= NOW() THEN 'expired'
+                        ELSE status
+                    END,
+                    approved_by_user_id = CASE WHEN %s = 'approved' THEN %s ELSE approved_by_user_id END,
+                    approved_at = CASE WHEN %s = 'approved' THEN NOW() ELSE approved_at END,
+                    denied_at = CASE WHEN %s = 'denied' THEN NOW() ELSE denied_at END
+                WHERE id = %s
+                  AND user_id = %s
+                  AND status = 'pending'
+                RETURNING *
+                """,
+                (
+                    "approved" if decision == "approve" else "denied",
+                    "approved" if decision == "approve" else "denied",
+                    user["id"],
+                    "approved" if decision == "approve" else "denied",
+                    "approved" if decision == "approve" else "denied",
+                    attempt_id,
+                    user["id"],
+                ),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                cursor.execute(
+                    """
+                    SELECT status
+                    FROM login_approval_attempts
+                    WHERE id = %s
+                      AND user_id = %s
+                    """,
+                    (attempt_id, user["id"]),
+                )
+                row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval attempt not found.")
+    return {"status": str(row.get("status") or "pending").lower()}
 
 
 def approve_device_code_by_state(device_code: str, user_id: str) -> str:
@@ -919,14 +2224,21 @@ def approve_device_code_by_state(device_code: str, user_id: str) -> str:
 
 
 @app.post("/auth/logout")
-def logout():
+def logout(request: Request):
+    require_cookie_csrf(request)
+    session_token = request.cookies.get(COOKIE_NAME)
+    if session_token:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM sessions WHERE token_hash = %s", (hash_token(session_token),))
+            connection.commit()
     response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
     clear_session_cookie(response)
     return response
 
 
 @app.get("/", response_class=HTMLResponse)
-def console_page():
+def console_page(user: dict = Depends(require_user)):
     webpanel_index = WEB_PANEL_DIR / "index.html"
     if webpanel_index.exists():
         return FileResponse(webpanel_index, headers={"Cache-Control": "no-store, max-age=0"})
@@ -935,7 +2247,7 @@ def console_page():
 
 
 @app.get("/styles.css")
-def webpanel_styles():
+def webpanel_styles(user: dict = Depends(require_user)):
     styles_path = WEB_PANEL_DIR / "styles.css"
     if styles_path.exists():
         return FileResponse(styles_path)
@@ -943,7 +2255,7 @@ def webpanel_styles():
 
 
 @app.get("/app.js")
-def webpanel_script():
+def webpanel_script(user: dict = Depends(require_user)):
     script_path = WEB_PANEL_DIR / "app.js"
     if script_path.exists():
         return FileResponse(script_path)
@@ -951,7 +2263,7 @@ def webpanel_script():
 
 
 @app.get("/standalone.html", response_class=HTMLResponse)
-def webpanel_standalone():
+def webpanel_standalone(user: dict = Depends(require_user)):
     standalone_path = WEB_PANEL_DIR / "standalone.html"
     if standalone_path.exists():
         return FileResponse(standalone_path)
@@ -959,7 +2271,7 @@ def webpanel_standalone():
 
 
 @app.get("/console", response_class=HTMLResponse)
-def legacy_console_page():
+def legacy_console_page(user: dict = Depends(require_user)):
     return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-store, max-age=0"})
 
 
@@ -1429,6 +2741,7 @@ def api_panel(user: dict = Depends(require_panel_user)):
             rate_limit = None
         return {
             **panel,
+            "currentUser": serialise_current_user(user),
             "panelError": panel_error,
             "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
             "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
@@ -1448,13 +2761,14 @@ def api_panel(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/panel/session")
-def api_panel_session(request: Request):
+def api_panel_session(request: Request, user: dict = Depends(require_panel_user)):
     origin = request.headers.get("origin")
     if origin and origin.rstrip("/") not in allowed_panel_origins():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This panel origin is not allowed.")
 
-    user = reusable_xero_user(request)
-    if not user:
+    try:
+        get_xero_connection_for_user(user["id"])
+    except HTTPException:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xero has not been connected yet.")
     return panel_session_response(user)
 
@@ -1660,6 +2974,83 @@ def api_settings_releases(
     user: dict = Depends(require_panel_user),
 ):
     return deployment_updates_payload(user, limit=limit)
+
+
+@app.get("/api/security/users")
+def api_security_users(user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    return {"status": "ok", **_security_users_payload()}
+
+
+@app.get("/api/security/audit")
+def api_security_audit(
+    limit: int = Query(120, ge=20, le=500),
+    user: dict = Depends(require_panel_user),
+):
+    require_security_admin(user)
+    return {"status": "ok", **_security_audit_payload(limit=limit)}
+
+
+@app.get("/api/security/overview")
+def api_security_overview(user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    users_payload = _security_users_payload()
+    audit_payload = _security_audit_payload(limit=40)
+    summary = users_payload.get("summary") or {}
+    return {
+        "status": "ok",
+        "overview": {
+            "activeUsers": int(summary.get("activeUsers") or 0),
+            "pendingInvites": int(summary.get("pendingInvites") or 0),
+            "suspendedUsers": int(summary.get("suspendedUsers") or 0),
+            "ownerUsers": int(summary.get("ownerUsers") or 0),
+            "recentEvents": len(audit_payload.get("events") or []),
+            "xeroOnlyAuthEnforced": True,
+            "appApprovalRequired": False,
+        },
+        "recentEvents": audit_payload.get("events") or [],
+    }
+
+
+@app.post("/api/security/users")
+async def api_security_create_user(request: Request, user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    created = _security_create_user(payload if isinstance(payload, dict) else {}, user)
+    return {"status": "ok", "created": created, **_security_users_payload()}
+
+
+@app.post("/api/security/users/{target_user_id}/status")
+async def api_security_update_user_status(target_user_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    status_value = str((payload or {}).get("status") or "").strip()
+    if not status_value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required.")
+    updated = _security_change_user_status(target_user_id, status_value, user)
+    return {"status": "ok", "updated": updated, **_security_users_payload()}
+
+
+@app.post("/api/security/users/{target_user_id}/force-logout")
+def api_security_force_logout(target_user_id: str, user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    _security_force_logout(target_user_id, user)
+    return {"status": "ok", **_security_users_payload()}
+
+
+@app.delete("/api/security/users/{target_user_id}")
+def api_security_delete_user(target_user_id: str, user: dict = Depends(require_panel_user)):
+    require_security_admin(user)
+    _security_delete_user(target_user_id, user)
+    return {"status": "ok", **_security_users_payload()}
 
 
 @app.post("/api/xero/disconnect")

@@ -19,13 +19,13 @@ Recommended Railway settings:
 
 Required variables:
 
-- `BASE_URL=https://creditcontrolconsole-production.up.railway.app`
+- `BASE_URL=https://jenius.jaccountancy.co.uk`
 - `DATABASE_URL`
 - `APP_SECRET`
 - `WIDGET_TOKEN`
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
-- `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
+- `XERO_REDIRECT_URI=https://jenius.jaccountancy.co.uk/auth/xero/callback`
 - `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.banktransactions accounting.manualjournals accounting.contacts accounting.settings accounting.attachments accounting.reports.banksummary.read accounting.reports.balancesheet.read accounting.reports.profitandloss.read accounting.reports.trialbalance.read payroll.employees payroll.payruns`
 - `XERO_ENABLE_PAYROLL_SCOPES=true` when payroll access is required in your app
 - Use granular scopes for Web/PKCE flows. Avoid deprecated broad scopes (`accounting.transactions`, `accounting.reports.read`) unless your Xero app specifically requires legacy compatibility.
@@ -35,7 +35,7 @@ Required variables:
 - `IGNITION_REDIRECT_URL=https://<your-api-domain>/api/ignition/callback` is also accepted as a legacy alias if Railway already has that name.
 - `IGNITION_SCOPES=reporting`
 - `IGNITION_RENEWALS_RECIPIENT_EMAIL=amie@jaccountancy.co.uk`
-- `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk`
+- `PANEL_ALLOWED_ORIGINS=https://jenius.jaccountancy.co.uk`
 - `IGNITION_STATE_TTL_SECONDS=3600`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
 - `LATE_PAYMENT_CHARGE_TAX_TYPE=OUTPUT2`
@@ -51,7 +51,7 @@ The late-charge, allocation, write-off, and Jashflow interest workflows create a
 
 Bank statement extraction uses the OpenAI Responses API for PDF transaction extraction. Set `OPENAI_API_KEY` before uploading statements in the Bank Statements screen.
 
-Ignition integration uses Ignition's Reporting API OAuth application from Developer Hub. The Ignition account must have Reporting API access, and the callback sent by Jenius must exactly match one Redirect URI registered in Ignition Developer Hub. For example, if Railway has `IGNITION_REDIRECT_URI=https://my.jaccountancy.co.uk/api/ignition/callback`, Ignition must register that exact URL, including scheme, host, path, and no trailing slash unless Railway also has it. Jenius stores encrypted Ignition tokens, syncs Reporting API datasets into PostgreSQL tables/views, and serves the Ignition dashboard from stored data rather than live dashboard API calls.
+Ignition integration uses Ignition's Reporting API OAuth application from Developer Hub. The Ignition account must have Reporting API access, and the callback sent by Jenius must exactly match one Redirect URI registered in Ignition Developer Hub. For example, if Railway has `IGNITION_REDIRECT_URI=https://jenius.jaccountancy.co.uk/api/ignition/callback`, Ignition must register that exact URL, including scheme, host, path, and no trailing slash unless Railway also has it. Jenius stores encrypted Ignition tokens, syncs Reporting API datasets into PostgreSQL tables/views, and serves the Ignition dashboard from stored data rather than live dashboard API calls.
 
 ## Main routes
 

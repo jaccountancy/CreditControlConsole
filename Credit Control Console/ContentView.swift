@@ -7,6 +7,14 @@
 
 import SwiftUI
 
+private enum BrandPalette {
+    static let navy = Color(red: 0.06, green: 0.14, blue: 0.24)
+    static let blue = Color(red: 0.08, green: 0.36, blue: 0.66)
+    static let cyan = Color(red: 0.0, green: 0.68, blue: 0.83)
+    static let mist = Color(red: 0.93, green: 0.96, blue: 0.99)
+    static let card = Color.white.opacity(0.92)
+}
+
 private enum SidebarDestination: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case jentry = "Jentry"
@@ -31,23 +39,50 @@ struct ContentView: View {
     @State private var signedInUser: DeviceUser?
     @State private var pollingTask: Task<Void, Never>?
     @State private var selectedDestination: SidebarDestination? = .dashboard
+    @State private var loginAssistiveMessage: String?
+    @State private var loginAssistiveIsError = false
 
     var body: some View {
         Group {
             if sessionToken.isEmpty {
                 NavigationStack {
                     loginView
-                        .navigationTitle("Credit Control")
+                        .navigationTitle("Jenius Tools")
+                        .navigationBarTitleDisplayMode(.inline)
                 }
             } else {
                 NavigationSplitView {
-                    List(SidebarDestination.allCases, selection: $selectedDestination) { destination in
-                        Label(destination.rawValue, systemImage: destination.iconName)
-                            .tag(destination)
+                    ZStack {
+                        LinearGradient(
+                            colors: [BrandPalette.navy, BrandPalette.blue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .ignoresSafeArea()
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                brandHorizontalLogo(height: 30)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
+
+                            List(SidebarDestination.allCases, selection: $selectedDestination) { destination in
+                                Label(destination.rawValue, systemImage: destination.iconName)
+                                    .font(.headline)
+                                    .tag(destination)
+                                    .padding(.vertical, 6)
+                                    .foregroundStyle(.white)
+                                    .listRowBackground(Color.white.opacity(0.12))
+                            }
+                            .scrollContentBackground(.hidden)
+                        }
                     }
-                    .navigationTitle("Credit Control")
+                    .navigationTitle("Jenius Tools")
                 } detail: {
                     detailView(for: selectedDestination ?? .dashboard)
+                        .background(BrandPalette.mist)
                 }
             }
         }
@@ -89,52 +124,112 @@ struct ContentView: View {
 
     @ViewBuilder
     private var loginView: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Widget Dashboard Login")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+        ZStack {
+            LinearGradient(
+                colors: [BrandPalette.navy, BrandPalette.blue, BrandPalette.cyan],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-            Text("Authenticate against the credit control backend via Xero. The app only shows headline figures and risk widgets.")
-                .foregroundStyle(.secondary)
+            Circle()
+                .fill(Color.white.opacity(0.10))
+                .frame(width: 360, height: 360)
+                .offset(x: -220, y: -260)
 
-            switch authenticationState {
-            case .signedOut, .failed:
-                if case let .failed(message) = authenticationState {
-                    Text(message)
-                        .foregroundStyle(.red)
+            Circle()
+                .fill(Color.white.opacity(0.10))
+                .frame(width: 320, height: 320)
+                .offset(x: 220, y: 220)
+
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    brandHorizontalLogo(height: 32)
+
+                    Text("Jenius Tools")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(BrandPalette.navy)
+
+                    Text("Sign in with your linked Xero identity, then approve access in the Jenius Auth iPhone app.")
+                        .foregroundStyle(BrandPalette.navy.opacity(0.8))
                 }
 
-                Button("Login with Xero") {
-                    Task { await startDeviceLogin() }
-                }
-                .buttonStyle(.borderedProminent)
+                switch authenticationState {
+                case .signedOut, .failed:
+                    VStack(alignment: .leading, spacing: 12) {
+                        if case let .failed(message) = authenticationState {
+                            Text(message)
+                                .foregroundStyle(Color.red.opacity(0.92))
+                                .font(.subheadline.weight(.semibold))
+                        }
 
-            case let .authorising(device):
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Verification code: \(device.verificationCode)")
-                        .font(.title2.monospaced())
+                        HStack(spacing: 10) {
+                            Text("Step 1")
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(BrandPalette.blue)
+                                .background(BrandPalette.blue.opacity(0.12), in: Capsule())
+                            Text("Continue with Xero")
+                                .foregroundStyle(BrandPalette.navy.opacity(0.92))
+                        }
 
-                    Text("1. Open Xero in your browser.\n2. Sign in and approve access.\n3. Return to this app while it finishes login.")
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button("Open Xero Login") {
-                            openURL(device.loginURI)
+                        Button("Continue with Xero") {
+                            Task { await startDeviceLogin() }
                         }
                         .buttonStyle(.borderedProminent)
-
-                        Button("Open Approval Page") {
-                            openURL(device.verificationURI)
-                        }
-                        .buttonStyle(.bordered)
+                        .tint(BrandPalette.cyan)
                     }
-                }
 
-            case let .signedIn(user):
-                Text("Signed in as \(user?.fullName ?? "authorised user").")
+                case let .authorising(device):
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 10) {
+                            Text("Step 2")
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(BrandPalette.blue)
+                                .background(BrandPalette.blue.opacity(0.12), in: Capsule())
+                            Text("Approve in Browser + App")
+                                .foregroundStyle(BrandPalette.navy.opacity(0.92))
+                        }
+
+                        Text("Open Xero login in your browser, then approve sign-in from your Jenius Auth iPhone app to complete access.")
+                            .foregroundStyle(BrandPalette.navy.opacity(0.82))
+
+                        HStack {
+                            Button("Open Xero Login") {
+                                openExternalURL(device.loginURI, actionLabel: "Xero login")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(BrandPalette.cyan)
+
+                            Button("Open Approval Page") {
+                                openExternalURL(device.verificationURI, actionLabel: "approval page")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(BrandPalette.blue)
+                        }
+
+                        if let loginAssistiveMessage {
+                            Label(loginAssistiveMessage, systemImage: loginAssistiveIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(loginAssistiveIsError ? Color.red.opacity(0.9) : BrandPalette.blue.opacity(0.92))
+                        }
+                    }
+
+                case let .signedIn(user):
+                    Label("Signed in as \(user?.fullName ?? "authorised user").", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(BrandPalette.blue)
+                        .font(.headline)
+                }
             }
+            .frame(maxWidth: 620, alignment: .leading)
+            .padding(32)
+            .background(BrandPalette.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: .black.opacity(0.25), radius: 24, y: 16)
         }
-        .frame(maxWidth: 560, alignment: .leading)
-        .padding(32)
+        .padding(40)
     }
 
     @ViewBuilder
@@ -157,20 +252,46 @@ struct ContentView: View {
         case let .loaded(dashboard):
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Headline Numbers")
+                    VStack(alignment: .leading, spacing: 14) {
+                        brandHorizontalLogo(height: 28)
+
+                        Text("Jenius Tools Overview")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(BrandPalette.navy)
 
-                        if let signedInUser {
-                            Text("Signed in as \(signedInUser.fullName)")
-                                .foregroundStyle(.secondary)
-                        }
+                        HStack(spacing: 10) {
+                            if let signedInUser {
+                                Label(signedInUser.fullName, systemImage: "person.crop.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(BrandPalette.navy.opacity(0.85))
+                            }
 
-                        if let asOf = dashboard.asOf {
-                            Text("As of \(asOf.formatted(date: .abbreviated, time: .shortened))")
+                            if let asOf = dashboard.asOf {
+                                Label(
+                                    "Updated \(asOf.formatted(date: .abbreviated, time: .shortened))",
+                                    systemImage: "clock.arrow.circlepath"
+                                )
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                            }
                         }
                     }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white, BrandPalette.cyan.opacity(0.12)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(BrandPalette.blue.opacity(0.15), lineWidth: 1)
+                    )
 
                     LazyVGrid(
                         columns: [
@@ -192,6 +313,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Top Risk Accounts")
                             .font(.title2.weight(.semibold))
+                            .foregroundStyle(BrandPalette.navy)
 
                         ForEach(dashboard.topRiskAccounts) { account in
                             HStack {
@@ -209,6 +331,7 @@ struct ContentView: View {
 
                                 Text(account.amountDue, format: .currency(code: "GBP"))
                                     .font(.headline.monospacedDigit())
+                                    .foregroundStyle(BrandPalette.navy)
                             }
                             .padding(.vertical, 8)
 
@@ -234,25 +357,59 @@ struct ContentView: View {
                     : value.formatted(.number.precision(.fractionLength(0)))
             )
             .font(.system(size: 28, weight: .semibold, design: .rounded))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint.gradient)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(tint.opacity(0.08))
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, tint.opacity(0.16)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(tint.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func brandHorizontalLogo(height: CGFloat) -> some View {
+        Image("JaccountancyBlueHorizontal_1")
+            .resizable()
+            .scaledToFit()
+            .frame(height: height)
+            .accessibilityLabel("Jaccountancy")
     }
 
     @MainActor
     private func startDeviceLogin() async {
         do {
+            loginAssistiveMessage = nil
+            loginAssistiveIsError = false
             let service = try configuredService()
             let device = try await service.startDeviceLogin()
             authenticationState = .authorising(device)
+            openExternalURL(device.loginURI, actionLabel: "Xero login")
             beginPolling(deviceCode: device.deviceCode, service: service)
         } catch {
             authenticationState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func openExternalURL(_ url: URL, actionLabel: String) {
+        openURL(url) { accepted in
+            if accepted {
+                loginAssistiveIsError = false
+                loginAssistiveMessage = "Opened \(actionLabel). Complete that step, then return to Jenius."
+            } else {
+                loginAssistiveIsError = true
+                loginAssistiveMessage = "Could not open \(actionLabel). Check browser restrictions and try again."
+            }
         }
     }
 
@@ -302,6 +459,8 @@ struct ContentView: View {
         sessionToken = ""
         signedInUser = nil
         dashboardState = .idle
+        loginAssistiveMessage = nil
+        loginAssistiveIsError = false
         authenticationState = .signedOut
         selectedDestination = .dashboard
         UserDefaults.standard.removeObject(forKey: "BackendSessionToken")

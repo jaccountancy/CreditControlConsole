@@ -15,12 +15,34 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'admin',
+    status TEXT NOT NULL DEFAULT 'active',
+    auth_method TEXT NOT NULL DEFAULT 'xero_only',
+    two_factor_method TEXT NOT NULL DEFAULT 'none',
+    is_super_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    notes TEXT NOT NULL DEFAULT '',
+    xero_user_id TEXT,
+    auth_app_enrolled_at TIMESTAMPTZ,
+    auth_app_last_seen_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_login_at TIMESTAMPTZ
+    last_login_at TIMESTAMPTZ,
+    last_approved_login_at TIMESTAMPTZ
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_method TEXT NOT NULL DEFAULT 'xero_only';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_method TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE users ALTER COLUMN two_factor_method SET DEFAULT 'none';
+UPDATE users
+SET two_factor_method = 'none'
+WHERE lower(COALESCE(two_factor_method, '')) IN ('', 'jenius_auth_app', 'jenius_app', 'app');
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS xero_user_id TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_app_enrolled_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_app_last_seen_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_approved_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS xero_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -189,6 +211,53 @@ CREATE TABLE IF NOT EXISTS device_logins (
 
 ALTER TABLE device_logins
 ADD COLUMN IF NOT EXISTS session_token TEXT;
+
+CREATE TABLE IF NOT EXISTS login_approval_attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    approval_token TEXT NOT NULL UNIQUE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_from TEXT NOT NULL DEFAULT '',
+    requested_ip TEXT NOT NULL DEFAULT '',
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    denied_at TIMESTAMPTZ,
+    last_polled_at TIMESTAMPTZ
+);
+
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS approval_token TEXT;
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS requested_from TEXT NOT NULL DEFAULT '';
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS requested_ip TEXT NOT NULL DEFAULT '';
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS denied_at TIMESTAMPTZ;
+ALTER TABLE login_approval_attempts ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
+
+UPDATE login_approval_attempts
+SET approval_token = encode(gen_random_bytes(32), 'hex')
+WHERE approval_token IS NULL OR approval_token = '';
+
+UPDATE login_approval_attempts
+SET expires_at = COALESCE(expires_at, requested_at + interval '60 seconds');
+
+ALTER TABLE login_approval_attempts
+    ALTER COLUMN approval_token SET NOT NULL;
+
+ALTER TABLE login_approval_attempts
+    ALTER COLUMN expires_at SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS login_approval_attempts_approval_token_uidx
+ON login_approval_attempts (approval_token);
+
+CREATE INDEX IF NOT EXISTS login_approval_attempts_user_requested_idx
+ON login_approval_attempts (user_id, requested_at DESC);
+
+CREATE INDEX IF NOT EXISTS login_approval_attempts_status_expires_idx
+ON login_approval_attempts (status, expires_at);
 
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2994,6 +3063,44 @@ def ensure_schema() -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(SCHEMA_SQL)
+            cursor.execute(
+                """
+                WITH updated AS (
+                    UPDATE users
+                    SET
+                        email = 'JAY@JACCOUNTANCY.CO.UK',
+                        full_name = 'Jay Wilson',
+                        role = 'owner',
+                        status = 'active',
+                        auth_method = 'xero_only',
+                        two_factor_method = 'none',
+                        is_super_admin = TRUE,
+                        updated_at = NOW()
+                    WHERE lower(email) = lower('JAY@JACCOUNTANCY.CO.UK')
+                    RETURNING id
+                )
+                INSERT INTO users (
+                    email,
+                    full_name,
+                    role,
+                    status,
+                    auth_method,
+                    two_factor_method,
+                    is_super_admin,
+                    notes
+                )
+                SELECT
+                    'JAY@JACCOUNTANCY.CO.UK',
+                    'Jay Wilson',
+                    'owner',
+                    'active',
+                    'xero_only',
+                    'none',
+                    TRUE,
+                    'Seeded owner account'
+                WHERE NOT EXISTS (SELECT 1 FROM updated)
+                """
+            )
         connection.commit()
 
 

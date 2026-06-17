@@ -18,16 +18,19 @@
 <section class="three-column">
     <article class="panel">
         <h3>Status Updates</h3>
-        <form method="post" action="/invoices/{{ invoice.id }}/status" class="stack">
-            <select name="status_value">
+        <form method="post" action="/invoices/{{ invoice.id }}/status" class="stack feedback-form">
+            <label for="statusValue">Status</label>
+            <select name="status_value" id="statusValue" required>
                 <option value="new">New</option>
                 <option value="chased">Chased</option>
                 <option value="promise_received">Promise Received</option>
                 <option value="legal_review">Legal Review</option>
                 <option value="paid">Paid</option>
             </select>
-            <textarea name="note" rows="3" placeholder="Context for the status change"></textarea>
-            <button class="button" type="submit">Update Status</button>
+            <label for="statusNote">Context note</label>
+            <textarea name="note" id="statusNote" rows="3" placeholder="Add context for this status change" required></textarea>
+            <p class="form-hint">This note appears in status history for audit clarity.</p>
+            <button class="button" type="submit" data-loading-text="Saving status...">Update Status</button>
         </form>
         <ul class="timeline">
             {% for status_item in statuses %}
@@ -40,9 +43,11 @@
 
     <article class="panel">
         <h3>Notes</h3>
-        <form method="post" action="/invoices/{{ invoice.id }}/notes" class="stack">
-            <textarea name="body" rows="4" placeholder="Add a note"></textarea>
-            <button class="button" type="submit">Add Note</button>
+        <form method="post" action="/invoices/{{ invoice.id }}/notes" class="stack feedback-form">
+            <label for="noteBody">Add note</label>
+            <textarea name="body" id="noteBody" rows="4" placeholder="Add a note visible to your team" required></textarea>
+            <p class="form-hint">Use notes for context that should not change invoice status.</p>
+            <button class="button" type="submit" data-loading-text="Saving note...">Add Note</button>
         </form>
         <ul class="timeline">
             {% for note in notes %}
@@ -55,11 +60,14 @@
 
     <article class="panel">
         <h3>Promises to Pay</h3>
-        <form method="post" action="/invoices/{{ invoice.id }}/promises" class="stack">
-            <input name="promised_amount" placeholder="Promised amount" />
-            <input type="date" name="promised_date" />
-            <textarea name="note" rows="3" placeholder="Promise note"></textarea>
-            <button class="button" type="submit">Record Promise</button>
+        <form method="post" action="/invoices/{{ invoice.id }}/promises" class="stack feedback-form">
+            <label for="promiseAmount">Promised amount</label>
+            <input id="promiseAmount" name="promised_amount" placeholder="0.00" inputmode="decimal" required />
+            <label for="promiseDate">Promised date</label>
+            <input id="promiseDate" type="date" name="promised_date" required />
+            <label for="promiseNote">Promise note</label>
+            <textarea id="promiseNote" name="note" rows="3" placeholder="What the customer confirmed" required></textarea>
+            <button class="button" type="submit" data-loading-text="Recording promise...">Record Promise</button>
         </form>
         <ul class="timeline">
             {% for promise in promises %}
@@ -81,4 +89,19 @@
         {% endfor %}
     </ul>
 </section>
+<script>
+    (() => {
+        const forms = document.querySelectorAll(".feedback-form");
+        forms.forEach((formEl) => {
+            formEl.addEventListener("submit", () => {
+                const submitButton = formEl.querySelector("button[type='submit']");
+                if (!submitButton) return;
+                const loadingText = submitButton.getAttribute("data-loading-text");
+                if (loadingText) submitButton.textContent = loadingText;
+                submitButton.setAttribute("aria-disabled", "true");
+                submitButton.disabled = true;
+            });
+        });
+    })();
+</script>
 {% endblock %}
