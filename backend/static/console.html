@@ -32334,6 +32334,16 @@
                         </div>
 
                         <div class="settings-layout">
+                            <section class="detail-panel settings-panel" data-settings-section="settings-home">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Settings</p>
+                                        <h3>Welcome to the settings section</h3>
+                                    </div>
+                                </div>
+                                <p class="settings-help">Please select which settings you would like to access by the left-hand sidebar.</p>
+                            </section>
+
                             <section class="detail-panel settings-panel" data-settings-section="data-import">
                                 <div class="panel-heading">
                                     <div>
@@ -40506,7 +40516,7 @@
                 : "invoices";
             let activeSettingsSection = typeof persistedUIState.activeSettingsSection === "string" && persistedUIState.activeSettingsSection.trim()
                 ? persistedUIState.activeSettingsSection
-                : "data-import";
+                : "settings-home";
             let sa100PrepWorkspaces = [
                 { id: "sa100-ws-1", clientName: "Atlas Electrical Ltd", utr: "12345 67890", taxYear: "2025/26", yearEnd: "05 Apr 2026", turnoverEstimate: 86400, source: "xero" },
                 { id: "sa100-ws-2", clientName: "Marlow Fitness Coaching", utr: "76109 77342", taxYear: "2025/26", yearEnd: "05 Apr 2026", turnoverEstimate: 52650, source: "xero" },
@@ -54935,7 +54945,7 @@
                 if (section === "payroll-headcount") return openPayrollHeadcountScreen();
                 if (section === "client-call-stats") return openClientCallStatsScreen();
                 if (section === "pi-clearing-account") return openPiClearingAccountScreen();
-                if (section === "settings") return openSettingsScreen();
+                if (section === "settings") return openSettingsScreen("settings-home", "settings");
             }
 
             function returnToLedgerView() {
@@ -103316,6 +103326,11 @@
             }
 
             const settingsSectionCopy = {
+                "settings-home": {
+                    eyebrow: "Settings",
+                    title: "Settings",
+                    meta: "Please select which settings you would like to access by the left-hand sidebar."
+                },
                 "data-import": {
                     eyebrow: "Data import",
                     title: "Data Import Preferences",
@@ -103516,7 +103531,7 @@
                 const pinPanel = document.getElementById("menuSettingsPinPanel");
                 const pinInput = document.getElementById("menuSettingsPinInput");
                 if (!settingsGroup || !gateWrap || !pinPanel || !pinInput) {
-                    openSettingsScreen("data-import", "settings");
+                    openSettingsScreen("settings-home", "settings");
                     return;
                 }
                 closeTopbarMenu();
@@ -103539,7 +103554,7 @@
                 const enteredPin = String(pinInput?.value || "").trim();
                 if (enteredPin === SETTINGS_MENU_PIN_CODE) {
                     hideMenuSettingsPinGate();
-                    openSettingsScreen("data-import", "settings");
+                    openSettingsScreen("settings-home", "settings");
                     showToast("Settings unlocked", "success");
                     return;
                 }
@@ -103562,7 +103577,7 @@
             }
 
             function renderSettingsNavigation() {
-                const copy = settingsSectionCopy[activeSettingsSection] || settingsSectionCopy["data-import"];
+                const copy = settingsSectionCopy[activeSettingsSection] || settingsSectionCopy["settings-home"];
                 const screen = document.getElementById("settingsScreen");
                 if (screen) {
                     const eyebrow = screen.querySelector(".detail-hero .eyebrow");
@@ -103590,10 +103605,10 @@
                 if (activeSettingsSection === "security-hardening") renderSecurityOverview();
             }
 
-            function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
+            function openSettingsScreen(section = activeSettingsSection || "settings-home", sidebarMode = "settings") {
                 hideMenuSettingsPinGate();
                 activeView = "settings";
-                activeSettingsSection = settingsSectionCopy[section] ? section : "data-import";
+                activeSettingsSection = settingsSectionCopy[section] ? section : "settings-home";
                 if (activeSettingsSection === "developer-log") applyDeveloperLogDefaultFilters();
                 showSettingsSidebar(sidebarMode);
                 syncActiveViewShell();
@@ -104602,7 +104617,7 @@
                     sidebarUserOpenAppSettings.addEventListener("click", (event) => {
                         event.preventDefault();
                         closeSidebarUserMenu();
-                        openSettingsScreen("data-import", "settings");
+                        openSettingsScreen("settings-home", "settings");
                     });
                 }
                 document.querySelectorAll("[data-sidebar-user-settings-nav]").forEach((button) => {
@@ -104783,7 +104798,7 @@
                 document.getElementById("menuSettingsPinCancel")?.addEventListener("click", cancelMenuSettingsPin);
                 document.getElementById("settingsBackToMainSidebarButton")?.addEventListener("click", closeSettingsSidebar);
                 document.querySelectorAll("[data-settings-nav]").forEach((button) => {
-                    button.addEventListener("click", () => openSettingsScreen(button.dataset.settingsNav || "data-import", "settings"));
+                    button.addEventListener("click", () => openSettingsScreen(button.dataset.settingsNav || "settings-home", "settings"));
                 });
                 document.querySelectorAll("[data-settings-group-label]").forEach((button) => {
                     if (button.dataset.settingsGroupWired === "true") return;
