@@ -119851,6 +119851,7 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: false,
                     loading: false,
+                    loadingToastShown: false,
                     saving: false,
                     hasUnsavedChanges: false,
                     saveState: "idle",
@@ -123487,10 +123488,7 @@
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
                 try {
-                    const [payload] = await Promise.all([
-                        requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page`),
-                        loadBmTasksDirectory(true),
-                    ]);
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page`);
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
@@ -123498,6 +123496,7 @@
                         payload,
                     };
                     renderClientRegisterClientPage();
+                    void loadBmTasksDirectory(true);
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                 } catch (error) {
                     companiesHouseSettings.authRegisterClientPage = {
@@ -123521,10 +123520,7 @@
                 };
                 renderClientRegisterClientPage();
                 try {
-                    const [payload] = await Promise.all([
-                        requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`),
-                        loadBmTasksDirectory(true),
-                    ]);
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!latestState.open || String(latestState.rowId || "").trim() !== rowId) return;
                     companiesHouseSettings.authRegisterClientPage = {
@@ -123534,6 +123530,7 @@
                         payload,
                     };
                     renderClientRegisterClientPage();
+                    void loadBmTasksDirectory(true);
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                     showToast("Companies House panel refreshed.", "success");
                 } catch (error) {
