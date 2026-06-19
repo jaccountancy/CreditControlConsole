@@ -16505,6 +16505,20 @@
             #supplierReconciliationScreen .supplier-recon-submitted-shell {
                 margin-top: 0;
             }
+            #supplierPaymentsWizardBody {
+                transition: opacity 180ms ease, transform 180ms ease;
+            }
+            #supplierPaymentsWizardBody.is-transitioning {
+                opacity: 0.45;
+                transform: translateY(4px);
+            }
+            #supplierPaymentsWizardSteps button {
+                transition: transform 140ms ease, box-shadow 140ms ease;
+            }
+            #supplierPaymentsWizardSteps button.is-active {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 20px rgba(41, 89, 176, 0.18);
+            }
             .supplier-recon-email-modal {
                 position: fixed;
                 inset: 0;
@@ -39102,9 +39116,14 @@
                             <div class="detail-actions" style="margin-top: 10px;">
                                 <button class="ghost-button" id="supplierPaymentsSelectAllButton" type="button">Select visible</button>
                                 <button class="ghost-button" id="supplierPaymentsClearSelectionButton" type="button">Clear selection</button>
+                                <button class="ghost-button" id="supplierPaymentsConnectBarclaysButton" type="button">Connect Barclays</button>
                                 <button class="ghost-button" id="supplierPaymentsExportBarclaysButton" type="button">Export Barclays CSV</button>
+                                <button class="primary-button" id="supplierPaymentsBarclaysPayButton" type="button">Pay selected via Barclays</button>
                                 <button class="primary-button" id="supplierPaymentsPostButton" type="button">Mark selected paid / part paid in Xero</button>
+                                <button class="ghost-button" id="supplierPaymentsRemittanceButton" type="button">Send remittance advice</button>
+                                <button class="primary-button" id="supplierPaymentsWizardButton" type="button">Open payment wizard</button>
                             </div>
+                            <p class="detail-meta" id="supplierPaymentsBarclaysStatus">Barclays status: not connected.</p>
                             <div class="ch-companies-table-wrap" style="margin-top: 12px;">
                                 <table class="ch-table" aria-label="Outstanding supplier invoices">
                                     <thead>
@@ -39124,6 +39143,39 @@
                             </div>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="supplierPaymentsWizardModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="supplierPaymentsWizardTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Supplier Payments</p>
+                                    <h4 id="supplierPaymentsWizardTitle">Payment Wizard</h4>
+                                    <p class="detail-meta" id="supplierPaymentsWizardMeta">Validate selected invoices, choose payment rail, then execute with confirmation.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="supplierPaymentsWizardCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="detail-panel">
+                                <div class="task-status-tabs" id="supplierPaymentsWizardSteps" style="margin-bottom: 10px;">
+                                    <button type="button" data-supplier-wizard-step="1" class="is-active">1. Review</button>
+                                    <button type="button" data-supplier-wizard-step="2">2. Method</button>
+                                    <button type="button" data-supplier-wizard-step="3">3. Confirm</button>
+                                    <button type="button" data-supplier-wizard-step="4">4. Complete</button>
+                                </div>
+                                <p class="late-charge-summary" id="supplierPaymentsWizardSummary">Select invoices from the table, then open this wizard to continue.</p>
+                                <div class="empty-state" id="supplierPaymentsWizardBody">
+                                    <p class="eyebrow">Ready</p>
+                                    <h4>Payment checks run here</h4>
+                                    <p>The wizard shows live validation, selected totals and compliance prompts before payment submission.</p>
+                                </div>
+                                <div class="detail-actions" style="margin-top: 12px;">
+                                    <button class="ghost-button" id="supplierPaymentsWizardBackButton" type="button">Back</button>
+                                    <button class="primary-button" id="supplierPaymentsWizardNextButton" type="button">Next</button>
+                                    <button class="primary-button" id="supplierPaymentsWizardExecuteButton" type="button">Execute</button>
+                                </div>
+                            </section>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="jukEquityScreen" hidden>
                         <section class="detail-panel">
@@ -42122,10 +42174,13 @@
             let payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
-            let supplierPaymentsData = { tenantName: "", tenantId: "", accounts: [], invoices: [], fetchedAt: "" };
+            let supplierPaymentsData = { tenantName: "", tenantId: "", accounts: [], invoices: [], fetchedAt: "", barclays: { configured: false, connected: false, status: "disconnected", expiresAt: "" } };
             let supplierPaymentsLoading = false;
             let supplierPaymentsSubmitting = false;
             let supplierPaymentsSearchTerm = "";
+            let supplierPaymentsWizardOpen = false;
+            let supplierPaymentsWizardStep = 1;
+            let supplierPaymentsWizardMethod = "barclays";
             const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account";
             const PI_CLEARING_BATCH_HARD_START = "2026-01-01";
             let piClearingRuns = [];
@@ -43592,8 +43647,12 @@
                         supplierReconciliationClient: config.endpoints?.supplierReconciliationClient || "/api/supplier-reconciliation/clients/:clientId",
                         supplierReconciliationExtract: config.endpoints?.supplierReconciliationExtract || "/api/supplier-reconciliation/extract",
                         supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
+                        barclaysConnect: config.endpoints?.barclaysConnect || "/api/barclays/connect",
+                        barclaysStatus: config.endpoints?.barclaysStatus || "/api/barclays/status",
                         supplierPayments: config.endpoints?.supplierPayments || "/api/supplier-payments",
                         supplierPaymentsSettle: config.endpoints?.supplierPaymentsSettle || "/api/supplier-payments/settle",
+                        supplierPaymentsSettleViaBarclays: config.endpoints?.supplierPaymentsSettleViaBarclays || "/api/supplier-payments/settle-via-barclays",
+                        supplierPaymentsRemittanceAdvices: config.endpoints?.supplierPaymentsRemittanceAdvices || "/api/supplier-payments/remittance-advices",
                         contactArchiveReview: config.endpoints?.contactArchiveReview || "/api/contact-archive/review",
                         contactArchiveArchive: config.endpoints?.contactArchiveArchive || "/api/contact-archive/archive",
                         contactArchiveRegisterSync: config.endpoints?.contactArchiveRegisterSync || "/api/contact-archive/client-register-sync",
@@ -48101,6 +48160,9 @@
                         accounts: Array.isArray(payload?.accounts) ? payload.accounts : [],
                         invoices: Array.isArray(payload?.invoices) ? payload.invoices : [],
                         fetchedAt: String(payload?.fetchedAt || ""),
+                        barclays: payload?.barclays && typeof payload.barclays === "object"
+                            ? payload.barclays
+                            : { configured: false, connected: false, status: "disconnected", expiresAt: "" },
                     };
                 } catch (error) {
                     showToast(error?.message || "Unable to load supplier payments.", "error");
@@ -48121,6 +48183,21 @@
                     if (!invoiceId || !Number.isFinite(amount) || amount <= 0) return null;
                     return { invoiceId, amount };
                 }).filter(Boolean);
+            }
+
+            function supplierPaymentsSelectedRowDetails() {
+                const selected = supplierPaymentsSelectedRowsFromTable();
+                const lookup = new Map((supplierPaymentsData.invoices || []).map((item) => [String(item.invoiceId || "").trim(), item]));
+                return selected.map((row) => {
+                    const invoice = lookup.get(String(row.invoiceId || "").trim()) || {};
+                    return {
+                        ...row,
+                        supplierName: String(invoice.supplierName || "").trim(),
+                        invoiceNumber: String(invoice.invoiceNumber || "").trim(),
+                        currencyCode: String(invoice.currencyCode || "GBP").trim() || "GBP",
+                        to: String(invoice.contactEmail || "").trim(),
+                    };
+                });
             }
 
             function supplierPaymentsExportBarclaysCsv() {
@@ -48201,6 +48278,179 @@
                 }
             }
 
+            async function supplierPaymentsConnectBarclays() {
+                try {
+                    const redirectTo = `${window.location.pathname}${window.location.search}${window.location.hash || "#credit-control-supplier-payments"}`;
+                    const endpoint = `${api.endpoints.barclaysConnect}?redirect_to=${encodeURIComponent(redirectTo)}`;
+                    const payload = await requestJSON(endpoint);
+                    const authorizationUrl = String(payload?.authorizationUrl || "").trim();
+                    if (!authorizationUrl) {
+                        showToast("Barclays authorization URL was not returned.", "error");
+                        return;
+                    }
+                    window.location.assign(authorizationUrl);
+                } catch (error) {
+                    showToast(error?.message || "Unable to start Barclays connect flow.", "error");
+                }
+            }
+
+            async function supplierPaymentsSettleViaBarclays() {
+                if (supplierPaymentsSubmitting) return;
+                const accountSelect = document.getElementById("supplierPaymentsAccountSelect");
+                const paymentDateInput = document.getElementById("supplierPaymentsDateInput");
+                const referenceInput = document.getElementById("supplierPaymentsReferenceInput");
+                const noteInput = document.getElementById("supplierPaymentsNoteInput");
+                const accountId = String(accountSelect?.value || "").trim();
+                if (!accountId) {
+                    showToast("Choose the payment account first.", "warning");
+                    return;
+                }
+                const rows = supplierPaymentsSelectedRowsFromTable();
+                if (!rows.length) {
+                    showToast("Select at least one supplier invoice.", "warning");
+                    return;
+                }
+                supplierPaymentsSubmitting = true;
+                renderSupplierPaymentsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.supplierPaymentsSettleViaBarclays, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            accountId,
+                            paymentDate: String(paymentDateInput?.value || supplierPaymentsTodayIso()),
+                            reference: String(referenceInput?.value || "").trim(),
+                            note: String(noteInput?.value || "").trim(),
+                            rows,
+                        }),
+                    });
+                    showToast(payload?.summary || "Barclays payments submitted.", "success");
+                    await loadSupplierPayments(true);
+                } catch (error) {
+                    showToast(error?.message || "Unable to submit supplier payments via Barclays.", "error");
+                } finally {
+                    supplierPaymentsSubmitting = false;
+                    renderSupplierPaymentsScreen();
+                }
+            }
+
+            async function supplierPaymentsSendRemittanceAdvices() {
+                const paymentDateInput = document.getElementById("supplierPaymentsDateInput");
+                const referenceInput = document.getElementById("supplierPaymentsReferenceInput");
+                const items = supplierPaymentsSelectedRowDetails().filter((item) => item.to);
+                if (!items.length) {
+                    showToast("No selected rows have supplier email addresses for remittance advice.", "warning");
+                    return;
+                }
+                try {
+                    const payload = await requestJSON(api.endpoints.supplierPaymentsRemittanceAdvices, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            paymentDate: String(paymentDateInput?.value || supplierPaymentsTodayIso()),
+                            reference: String(referenceInput?.value || "").trim(),
+                            items,
+                        }),
+                    });
+                    showToast(payload?.summary || "Remittance advice sent.", "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to send remittance advice emails.", "error");
+                }
+            }
+
+            function closeSupplierPaymentsWizard() {
+                supplierPaymentsWizardOpen = false;
+                renderSupplierPaymentsScreen();
+            }
+
+            function openSupplierPaymentsWizard() {
+                supplierPaymentsWizardOpen = true;
+                supplierPaymentsWizardStep = 1;
+                renderSupplierPaymentsScreen();
+            }
+
+            function supplierPaymentsWizardSelectedSummary() {
+                const items = supplierPaymentsSelectedRowDetails();
+                const total = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+                const missingBank = items.filter((item) => {
+                    const source = (supplierPaymentsData.invoices || []).find((row) => String(row.invoiceId || "") === String(item.invoiceId || "")) || {};
+                    return !String(source.sortCode || "").trim() || !String(source.accountNumber || "").trim();
+                }).length;
+                const missingEmail = items.filter((item) => !String(item.to || "").trim()).length;
+                return { count: items.length, total, missingBank, missingEmail };
+            }
+
+            function renderSupplierPaymentsWizardBody() {
+                const modal = document.getElementById("supplierPaymentsWizardModal");
+                const summaryNode = document.getElementById("supplierPaymentsWizardSummary");
+                const body = document.getElementById("supplierPaymentsWizardBody");
+                const nextButton = document.getElementById("supplierPaymentsWizardNextButton");
+                const backButton = document.getElementById("supplierPaymentsWizardBackButton");
+                const executeButton = document.getElementById("supplierPaymentsWizardExecuteButton");
+                const methodToggle = (method) => {
+                    supplierPaymentsWizardMethod = method;
+                    renderSupplierPaymentsWizardBody();
+                };
+                if (!modal || !summaryNode || !body || !nextButton || !backButton || !executeButton) return;
+                modal.hidden = !supplierPaymentsWizardOpen;
+                if (!supplierPaymentsWizardOpen) return;
+                const stepButtons = [...document.querySelectorAll("#supplierPaymentsWizardSteps [data-supplier-wizard-step]")];
+                stepButtons.forEach((button) => {
+                    const step = Number(button.dataset.supplierWizardStep || 1);
+                    button.classList.toggle("is-active", step === supplierPaymentsWizardStep);
+                });
+                const selected = supplierPaymentsWizardSelectedSummary();
+                summaryNode.textContent = `${selected.count} selected · ${formatCurrency(selected.total)} total`;
+                backButton.hidden = supplierPaymentsWizardStep <= 1;
+                nextButton.hidden = supplierPaymentsWizardStep >= 3;
+                executeButton.hidden = supplierPaymentsWizardStep !== 3;
+                executeButton.textContent = supplierPaymentsWizardMethod === "barclays" ? "Execute via Barclays" : "Execute via Xero";
+                if (supplierPaymentsWizardStep === 1) {
+                    body.innerHTML = `
+                        <p class="eyebrow">Validation</p>
+                        <h4>Pre-flight checks</h4>
+                        <p>${selected.count ? "Ready to proceed." : "Select at least one invoice in the table before continuing."}</p>
+                        <p>Missing bank details: <strong>${selected.missingBank}</strong></p>
+                        <p>Missing supplier emails (for remittance): <strong>${selected.missingEmail}</strong></p>
+                    `;
+                } else if (supplierPaymentsWizardStep === 2) {
+                    body.innerHTML = `
+                        <p class="eyebrow">Method</p>
+                        <h4>Choose payment rail</h4>
+                        <p>Select Barclays Open Banking for direct initiation, or Xero-only settlement if needed.</p>
+                        <div class="detail-actions" style="margin-top: 10px;">
+                            <button class="ghost-button ${supplierPaymentsWizardMethod === "barclays" ? "is-active" : ""}" type="button" id="supplierPaymentsWizardMethodBarclays">Barclays Open Banking</button>
+                            <button class="ghost-button ${supplierPaymentsWizardMethod === "xero" ? "is-active" : ""}" type="button" id="supplierPaymentsWizardMethodXero">Xero Settlement</button>
+                        </div>
+                    `;
+                    document.getElementById("supplierPaymentsWizardMethodBarclays")?.addEventListener("click", () => methodToggle("barclays"));
+                    document.getElementById("supplierPaymentsWizardMethodXero")?.addEventListener("click", () => methodToggle("xero"));
+                } else if (supplierPaymentsWizardStep === 3) {
+                    body.innerHTML = `
+                        <p class="eyebrow">Confirm</p>
+                        <h4>Final confirmation</h4>
+                        <p>Method: <strong>${supplierPaymentsWizardMethod === "barclays" ? "Barclays Open Banking" : "Xero Settlement"}</strong></p>
+                        <p>Invoices selected: <strong>${selected.count}</strong></p>
+                        <p>Total amount: <strong>${formatCurrency(selected.total)}</strong></p>
+                        <p>Execution will create audit entries and preserve invoice history notes.</p>
+                    `;
+                } else {
+                    body.innerHTML = `
+                        <p class="eyebrow">Complete</p>
+                        <h4>Done</h4>
+                        <p>Payment run completed. Review logs and optionally send remittance advice now.</p>
+                    `;
+                }
+            }
+
+            async function executeSupplierPaymentsWizard() {
+                if (supplierPaymentsWizardMethod === "barclays") {
+                    await supplierPaymentsSettleViaBarclays();
+                } else {
+                    await supplierPaymentsPostSelected();
+                }
+                supplierPaymentsWizardStep = 4;
+                renderSupplierPaymentsWizardBody();
+            }
+
             function renderSupplierPaymentsScreen() {
                 const summary = document.getElementById("supplierPaymentsSummary");
                 const body = document.getElementById("supplierPaymentsTableBody");
@@ -48209,6 +48459,9 @@
                 const dateInput = document.getElementById("supplierPaymentsDateInput");
                 const searchInput = document.getElementById("supplierPaymentsSearchInput");
                 const postButton = document.getElementById("supplierPaymentsPostButton");
+                const barclaysPayButton = document.getElementById("supplierPaymentsBarclaysPayButton");
+                const connectBarclaysButton = document.getElementById("supplierPaymentsConnectBarclaysButton");
+                const barclaysStatusNode = document.getElementById("supplierPaymentsBarclaysStatus");
                 if (!summary || !body) return;
                 if (dateInput && !dateInput.value) dateInput.value = supplierPaymentsTodayIso();
                 if (searchInput && searchInput.dataset.wired !== "true") {
@@ -48245,9 +48498,38 @@
                     exportButton.dataset.wired = "true";
                     exportButton.addEventListener("click", supplierPaymentsExportBarclaysCsv);
                 }
+                if (connectBarclaysButton && connectBarclaysButton.dataset.wired !== "true") {
+                    connectBarclaysButton.dataset.wired = "true";
+                    connectBarclaysButton.addEventListener("click", supplierPaymentsConnectBarclays);
+                }
+                if (barclaysPayButton && barclaysPayButton.dataset.wired !== "true") {
+                    barclaysPayButton.dataset.wired = "true";
+                    barclaysPayButton.addEventListener("click", supplierPaymentsSettleViaBarclays);
+                }
                 if (postButton && postButton.dataset.wired !== "true") {
                     postButton.dataset.wired = "true";
                     postButton.addEventListener("click", supplierPaymentsPostSelected);
+                }
+                const barclays = supplierPaymentsData?.barclays && typeof supplierPaymentsData.barclays === "object"
+                    ? supplierPaymentsData.barclays
+                    : { configured: false, connected: false, status: "disconnected", expiresAt: "" };
+                if (barclaysStatusNode) {
+                    if (!barclays.configured) {
+                        barclaysStatusNode.textContent = "Barclays status: not configured.";
+                    } else if (barclays.connected) {
+                        const expiresCopy = barclays.expiresAt ? ` Token expires ${formatDateTime(barclays.expiresAt)}.` : "";
+                        barclaysStatusNode.textContent = `Barclays status: connected.${expiresCopy}`;
+                    } else {
+                        barclaysStatusNode.textContent = "Barclays status: disconnected.";
+                    }
+                }
+                if (connectBarclaysButton) {
+                    connectBarclaysButton.disabled = !barclays.configured || supplierPaymentsSubmitting || supplierPaymentsLoading;
+                    connectBarclaysButton.textContent = barclays.connected ? "Reconnect Barclays" : "Connect Barclays";
+                }
+                if (barclaysPayButton) {
+                    barclaysPayButton.disabled = !barclays.configured || !barclays.connected || supplierPaymentsSubmitting || supplierPaymentsLoading;
+                    barclaysPayButton.textContent = supplierPaymentsSubmitting ? "Submitting to Barclays..." : "Pay selected via Barclays";
                 }
                 if (accountSelect) {
                     const accounts = Array.isArray(supplierPaymentsData.accounts) ? supplierPaymentsData.accounts : [];

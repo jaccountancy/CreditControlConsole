@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
     ignition_api_base_url: str = "https://developers.ignitionapp.com/external/api/v1"
     ignition_renewals_recipient_email: str = "amie@jaccountancy.co.uk"
+    barclays_client_id: str | None = None
+    barclays_client_secret: str | None = None
+    barclays_redirect_uri: str | None = None
+    barclays_authorize_url: str = "https://api.barclays/open-banking/authorize"
+    barclays_token_url: str = "https://api.barclays/open-banking/token"
+    barclays_pisp_base_url: str = "https://telesto.api.barclays/open-banking/v4.0/pisp"
+    barclays_scope: str = "payments"
+    barclays_financial_id: str | None = None
+    barclays_debtor_name: str | None = None
+    barclays_debtor_account_scheme: str = "SortCodeAccountNumber"
+    barclays_debtor_account_identification: str | None = None
     foxit_base_url: str | None = None
     foxit_client_id: str | None = None
     foxit_client_secret: str | None = None
@@ -118,6 +129,7 @@ class Settings(BaseSettings):
         "ignition_redirect_uri",
         "ignition_redirect_url",
         "gmail_redirect_uri",
+        "barclays_redirect_uri",
     )
     @classmethod
     def reject_local_values(cls, value: str | None) -> str | None:

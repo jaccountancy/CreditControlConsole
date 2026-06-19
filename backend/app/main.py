@@ -211,8 +211,13 @@ from .services import (
     add_supplier_reconciliation_client,
     delete_supplier_reconciliation_client,
     send_supplier_reconciliation_email,
+    barclays_connect_status_payload,
+    build_barclays_authorize_url,
+    complete_barclays_oauth_callback,
     supplier_payments_payload,
     supplier_payments_settle,
+    supplier_payments_settle_via_barclays,
+    send_supplier_payment_remittance_advices,
     supplier_reconciliation_contact_options_payload,
     contact_archive_review_payload,
     contact_archive_bulk_archive_payload,
@@ -1663,6 +1668,48 @@ def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_pan
     except IgnitionConfigurationError as exc:
         return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
     return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/barclays/start")
+def auth_barclays_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+    redirect_to = normalise_oauth_redirect(redirect_to)
+    authorize_url = build_barclays_authorize_url(user, redirect_to)
+    return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/api/barclays/connect")
+def api_barclays_connect(request: Request, redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+    redirect_to = normalise_oauth_redirect(redirect_to)
+    authorize_url = build_barclays_authorize_url(user, redirect_to)
+    if wants_json(request):
+        return {"status": "ok", "authorizationUrl": authorize_url}
+    return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/barclays/callback")
+@app.get("/api/barclays/callback")
+async def auth_barclays_callback(request: Request, code: str, state: str):
+    try:
+        state_row = consume_oauth_state(state)
+        if state_row.get("provider") not in ("barclays",):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OAuth state was not created for Barclays.")
+        user = current_user_or_oauth_state_user(request, state_row)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in before connecting Barclays.")
+        await complete_barclays_oauth_callback(user, code)
+        redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
+        return RedirectResponse(add_query_params(redirect_to, {"barclays": "connected"}), status_code=status.HTTP_302_FOUND)
+    except HTTPException as exc:
+        logger.warning("Barclays callback failed: %s", exc.detail)
+        return xero_login_error_response(str(exc.detail), exc.status_code, provider="Barclays")
+    except Exception:
+        logger.exception("Unhandled Barclays callback failure")
+        return xero_login_error_response("An unexpected server error occurred while completing the Barclays connection.", provider="Barclays")
+
+
+@app.get("/api/barclays/status")
+def api_barclays_status(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "barclays": barclays_connect_status_payload(user)}
 
 
 @app.get("/api/ignition/connect")
@@ -5466,6 +5513,18 @@ async def api_supplier_payments(user: dict = Depends(require_panel_user)):
 async def api_supplier_payments_settle(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **(await supplier_payments_settle(user, payload))}
+
+
+@app.post("/api/supplier-payments/settle-via-barclays")
+async def api_supplier_payments_settle_via_barclays(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **(await supplier_payments_settle_via_barclays(user, payload))}
+
+
+@app.post("/api/supplier-payments/remittance-advices")
+async def api_supplier_payments_remittance_advices(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **send_supplier_payment_remittance_advices(user, payload)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

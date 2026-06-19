@@ -36,6 +36,7 @@ import httpx
 from fastapi import HTTPException, status
 from psycopg import errors as pg_errors
 
+from .auth import start_oauth_state
 from .config import get_settings
 from .database import ensure_schema, get_connection, utcnow
 from .security import decrypt_secret
@@ -982,6 +983,223 @@ def xero_connection_for_user_tenant(user: dict, tenant_id: str | None = None, in
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
     return row
+
+
+def barclays_configured() -> bool:
+    settings = get_settings()
+    return all(
+        [
+            str(settings.barclays_client_id or "").strip(),
+            str(settings.barclays_client_secret or "").strip(),
+            str(settings.barclays_redirect_uri or "").strip(),
+            str(settings.barclays_authorize_url or "").strip(),
+            str(settings.barclays_token_url or "").strip(),
+            str(settings.barclays_pisp_base_url or "").strip(),
+        ]
+    )
+
+
+def barclays_connect_status_payload(user: dict) -> dict:
+    settings = get_settings()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM barclays_connections WHERE user_id = %s", (user["id"],))
+            row = cursor.fetchone()
+        connection.commit()
+    now = utcnow()
+    expires_at = row.get("expires_at") if row else None
+    connected = bool(row and str(row.get("access_token") or "").strip() and (expires_at is None or expires_at > now))
+    return {
+        "configured": barclays_configured(),
+        "connected": connected,
+        "status": str((row or {}).get("status") or ("connected" if connected else "disconnected")),
+        "expiresAt": _iso(expires_at) if expires_at else "",
+        "consentId": str((row or {}).get("consent_id") or "").strip(),
+        "consentStatus": str((row or {}).get("consent_status") or "").strip(),
+        "pispBaseUrl": str(settings.barclays_pisp_base_url or "").strip(),
+    }
+
+
+def build_barclays_authorize_url(user: dict, redirect_to: str) -> str:
+    settings = get_settings()
+    if not barclays_configured():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Barclays Open Banking is not configured.")
+    state = start_oauth_state(
+        redirect_to=redirect_to,
+        user_id=user["id"],
+        provider="barclays",
+    )
+    query = urlencode(
+        {
+            "response_type": "code",
+            "client_id": str(settings.barclays_client_id or "").strip(),
+            "redirect_uri": str(settings.barclays_redirect_uri or "").strip(),
+            "scope": str(settings.barclays_scope or "payments").strip(),
+            "state": state,
+        }
+    )
+    return f"{str(settings.barclays_authorize_url).rstrip('?')}?{query}"
+
+
+async def _barclays_exchange_code_for_tokens(code: str) -> dict:
+    settings = get_settings()
+    payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": str(settings.barclays_redirect_uri or "").strip(),
+        "client_id": str(settings.barclays_client_id or "").strip(),
+        "client_secret": str(settings.barclays_client_secret or "").strip(),
+    }
+    async with httpx.AsyncClient(timeout=45) as client:
+        try:
+            response = await client.post(
+                str(settings.barclays_token_url or "").strip(),
+                data=payload,
+                headers={"Accept": "application/json"},
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Barclays token request failed: {exc}") from exc
+    if response.is_error:
+        try:
+            details = response.json()
+        except ValueError:
+            details = response.text[:400]
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Barclays token exchange failed: {details}")
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Invalid Barclays token response.") from exc
+
+
+def store_barclays_connection(user: dict, token_payload: dict, consent_id: str = "", consent_status: str = "") -> dict:
+    now = utcnow()
+    expires_in = int(token_payload.get("expires_in") or 3600)
+    expires_at = now + timedelta(seconds=max(60, expires_in))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO barclays_connections (
+                    user_id, status, access_token, refresh_token, token_type, scope,
+                    expires_at, consent_id, consent_status, connected_at, created_at, updated_at
+                )
+                VALUES (%s, 'connected', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE
+                SET status = 'connected',
+                    access_token = EXCLUDED.access_token,
+                    refresh_token = CASE
+                        WHEN COALESCE(EXCLUDED.refresh_token, '') <> '' THEN EXCLUDED.refresh_token
+                        ELSE barclays_connections.refresh_token
+                    END,
+                    token_type = EXCLUDED.token_type,
+                    scope = EXCLUDED.scope,
+                    expires_at = EXCLUDED.expires_at,
+                    consent_id = CASE
+                        WHEN COALESCE(EXCLUDED.consent_id, '') <> '' THEN EXCLUDED.consent_id
+                        ELSE barclays_connections.consent_id
+                    END,
+                    consent_status = CASE
+                        WHEN COALESCE(EXCLUDED.consent_status, '') <> '' THEN EXCLUDED.consent_status
+                        ELSE barclays_connections.consent_status
+                    END,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    user["id"],
+                    str(token_payload.get("access_token") or "").strip(),
+                    str(token_payload.get("refresh_token") or "").strip(),
+                    str(token_payload.get("token_type") or "Bearer").strip(),
+                    str(token_payload.get("scope") or "").strip(),
+                    expires_at,
+                    str(consent_id or "").strip(),
+                    str(consent_status or "").strip(),
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return row
+
+
+async def complete_barclays_oauth_callback(user: dict, code: str) -> dict:
+    token_payload = await _barclays_exchange_code_for_tokens(code)
+    return store_barclays_connection(user, token_payload)
+
+
+async def _barclays_refresh_connection_if_required(connection_row: dict) -> dict:
+    refresh_token = str(connection_row.get("refresh_token") or "").strip()
+    expires_at = connection_row.get("expires_at")
+    if expires_at and expires_at > (utcnow() + timedelta(minutes=2)):
+        return connection_row
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Barclays connection has expired. Reconnect Barclays.")
+    settings = get_settings()
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": str(settings.barclays_client_id or "").strip(),
+        "client_secret": str(settings.barclays_client_secret or "").strip(),
+    }
+    async with httpx.AsyncClient(timeout=45) as client:
+        try:
+            response = await client.post(
+                str(settings.barclays_token_url or "").strip(),
+                data=payload,
+                headers={"Accept": "application/json"},
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Unable to refresh Barclays token: {exc}") from exc
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unable to refresh Barclays token. Reconnect Barclays.")
+    token_payload = response.json() if response.content else {}
+    user = {"id": connection_row.get("user_id")}
+    return store_barclays_connection(user, token_payload, connection_row.get("consent_id") or "", connection_row.get("consent_status") or "")
+
+
+async def _barclays_connected_row_for_user(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM barclays_connections WHERE user_id = %s", (user["id"],))
+            row = cursor.fetchone()
+        connection.commit()
+    if not row or not str(row.get("access_token") or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Barclays is not connected.")
+    return await _barclays_refresh_connection_if_required(row)
+
+
+async def _barclays_api_request(user: dict, method: str, path: str, payload: dict | None = None, idempotency_key: str | None = None) -> dict:
+    settings = get_settings()
+    connection_row = await _barclays_connected_row_for_user(user)
+    headers = {
+        "Authorization": f"Bearer {str(connection_row.get('access_token') or '').strip()}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    financial_id = str(settings.barclays_financial_id or "").strip()
+    if financial_id:
+        headers["x-fapi-financial-id"] = financial_id
+    headers["x-idempotency-key"] = str(idempotency_key or uuid4())
+    url = f"{str(settings.barclays_pisp_base_url or '').rstrip('/')}/{str(path).lstrip('/')}"
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
+            response = await client.request(method.upper(), url, headers=headers, json=payload if payload is not None else None)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Barclays API request failed: {exc}") from exc
+    if response.is_error:
+        try:
+            detail_payload = response.json()
+        except ValueError:
+            detail_payload = response.text[:800]
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Barclays API {path} failed: {detail_payload}")
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Barclays API {path} returned invalid JSON.") from exc
 
 
 def _month_start(value: date | datetime | None = None) -> date:
@@ -5806,6 +6024,8 @@ def pi_clearing_payload(user: dict) -> dict:
             run_ids = [str(row.get("id") or "") for row in run_rows if row.get("id")]
             rows_by_run: dict[str, list[dict]] = {}
             notes_by_run: dict[str, list[dict]] = {}
+            active_note_totals_by_run_row: dict[str, dict[str, Decimal]] = {}
+            active_note_totals_by_run_contact: dict[str, dict[str, Decimal]] = {}
             if run_ids:
                 cursor.execute(
                     """
@@ -5872,28 +6092,51 @@ def pi_clearing_payload(user: dict) -> dict:
                 for note in cursor.fetchall() or []:
                     run_id = str(note.get("run_id") or "")
                     note_raw_payload = note.get("raw_payload") if isinstance(note.get("raw_payload"), dict) else {}
+                    note_status = str(note.get("status") or "created").strip().lower()
+                    note_amount = _money(note.get("amount"))
+                    run_row_id = str(note.get("run_row_id") or "").strip()
+                    contact_id = str(note.get("xero_contact_id") or "").strip()
                     notes_by_run.setdefault(run_id, []).append(
                         {
                             "id": str(note.get("id") or ""),
-                            "runRowId": str(note.get("run_row_id") or ""),
+                            "runRowId": run_row_id,
                             "documentType": str(note_raw_payload.get("documentType") or "credit_note"),
-                            "xeroContactId": str(note.get("xero_contact_id") or ""),
+                            "xeroContactId": contact_id,
                             "xeroCreditNoteId": str(note.get("xero_credit_note_id") or ""),
                             "xeroCreditNoteNumber": str(note.get("xero_credit_note_number") or ""),
                             "creditNoteDate": note.get("credit_note_date").isoformat() if note.get("credit_note_date") else "",
-                            "amount": float(_money(note.get("amount"))),
+                            "amount": float(note_amount),
                             "currencyCode": str(note.get("currency_code") or "GBP"),
                             "accountCode": str(note.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE),
                             "status": str(note.get("status") or "created"),
                             "createdAt": _iso(note.get("created_at")) or "",
                         }
                     )
+                    if note_status != "created":
+                        continue
+                    if run_row_id:
+                        row_totals = active_note_totals_by_run_row.setdefault(run_id, {})
+                        row_totals[run_row_id] = (row_totals.get(run_row_id) or Decimal("0.00")) + note_amount
+                    elif contact_id:
+                        contact_totals = active_note_totals_by_run_contact.setdefault(run_id, {})
+                        contact_totals[contact_id] = (contact_totals.get(contact_id) or Decimal("0.00")) + note_amount
         connection.commit()
     runs: list[dict] = []
     for row in run_rows:
         run_id = str(row.get("id") or "")
         run_rows_payload = rows_by_run.get(run_id, [])
         run_credit_notes = notes_by_run.get(run_id, [])
+        active_row_totals = active_note_totals_by_run_row.get(run_id, {})
+        active_contact_totals = active_note_totals_by_run_contact.get(run_id, {})
+        for item in run_rows_payload:
+            row_id = str(item.get("id") or "").strip()
+            contact_id = str(item.get("xeroContactId") or "").strip()
+            row_total = _money(active_row_totals.get(row_id))
+            contact_total = _money(active_contact_totals.get(contact_id)) if contact_id else Decimal("0.00")
+            existing_credit_total = row_total if row_total > Decimal("0.00") else contact_total
+            raw_difference = _money(item.get("rawDifference"))
+            item["existingCreditNoteTotal"] = float(_money(existing_credit_total))
+            item["differenceTotal"] = float(_money(raw_difference - existing_credit_total))
         payload = _pi_run_payload(row, run_rows_payload, run_credit_notes)
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
         recalculated_xero_total = sum((_money(item.get("xeroTotal")) for item in run_rows_payload), start=Decimal("0.00"))
@@ -35051,6 +35294,7 @@ def _supplier_payments_invoice_row(raw_invoice: dict) -> dict:
         "supplierName": str(contact.get("Name") or "").strip(),
         "contactId": str(contact.get("ContactID") or "").strip(),
         "contactName": str(" ".join(part for part in [contact.get("FirstName"), contact.get("LastName")] if part) or "").strip(),
+        "contactEmail": str(contact.get("EmailAddress") or "").strip(),
         "currencyCode": str(raw_invoice.get("CurrencyCode") or "").strip(),
         "dueDate": due_date.isoformat() if due_date else "",
         "amountDue": float(amount_due),
@@ -35105,6 +35349,256 @@ async def _supplier_payments_xero_post(connection_row: dict, url: str, payload: 
         ) from exc
 
 
+def _supplier_payment_next_run_reference(user_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT run_reference
+                FROM supplier_payment_runs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    ref = str(row.get("run_reference") or "").strip()
+    match = re.search(r"(\d+)$", ref)
+    next_number = (int(match.group(1)) + 1) if match else 1
+    return f"JUKSP-{next_number:03d}"
+
+
+def _supplier_payment_runs_payload(user: dict) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, run_reference, status, method, tenant_id, tenant_name,
+                       payment_date, total_items, total_amount, paid_count, failed_count,
+                       summary, created_at, updated_at, completed_at
+                FROM supplier_payment_runs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 120
+                """,
+                (user["id"],),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [
+        {
+            "id": str(row.get("id") or ""),
+            "runReference": str(row.get("run_reference") or ""),
+            "status": str(row.get("status") or ""),
+            "method": str(row.get("method") or ""),
+            "tenantId": str(row.get("tenant_id") or ""),
+            "tenantName": str(row.get("tenant_name") or ""),
+            "paymentDate": row.get("payment_date").isoformat() if row.get("payment_date") else "",
+            "totalItems": int(row.get("total_items") or 0),
+            "totalAmount": float(Decimal(str(row.get("total_amount") or 0))),
+            "paidCount": int(row.get("paid_count") or 0),
+            "failedCount": int(row.get("failed_count") or 0),
+            "summary": str(row.get("summary") or ""),
+            "createdAt": _iso(row.get("created_at")) or "",
+            "updatedAt": _iso(row.get("updated_at")) or "",
+            "completedAt": _iso(row.get("completed_at")) or "",
+        }
+        for row in rows
+    ]
+
+
+def _supplier_payment_create_run(
+    user: dict,
+    *,
+    method: str,
+    tenant_id: str,
+    tenant_name: str,
+    payment_date: date | None,
+    xero_account_id: str,
+    reference_text: str,
+    note: str,
+    rows: list[dict],
+) -> str:
+    clean_rows = [row for row in rows if isinstance(row, dict)]
+    total_amount = sum(Decimal(str(row.get("amount") or "0")) for row in clean_rows)
+    run_reference = _supplier_payment_next_run_reference(str(user["id"]))
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO supplier_payment_runs (
+                    user_id, run_reference, status, method, tenant_id, tenant_name,
+                    payment_date, xero_account_id, reference_text, note,
+                    total_items, total_amount, summary, created_at, updated_at
+                )
+                VALUES (%s, %s, 'draft', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    user["id"],
+                    run_reference,
+                    str(method or "xero").strip(),
+                    str(tenant_id or "").strip(),
+                    str(tenant_name or "").strip(),
+                    payment_date,
+                    str(xero_account_id or "").strip(),
+                    str(reference_text or "").strip(),
+                    str(note or "").strip(),
+                    len(clean_rows),
+                    total_amount,
+                    "Draft run created.",
+                    now,
+                    now,
+                ),
+            )
+            run_id = str((cursor.fetchone() or {}).get("id") or "")
+            for row in clean_rows:
+                cursor.execute(
+                    """
+                    INSERT INTO supplier_payment_run_rows (
+                        run_id, invoice_id, invoice_number, supplier_name, supplier_email, currency_code,
+                        amount, status, failure_reason, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'draft', '', %s, %s)
+                    """,
+                    (
+                        run_id,
+                        str(row.get("invoiceId") or "").strip(),
+                        str(row.get("invoiceNumber") or "").strip(),
+                        str(row.get("supplierName") or "").strip(),
+                        str(row.get("to") or "").strip(),
+                        str(row.get("currencyCode") or "GBP").strip() or "GBP",
+                        Decimal(str(row.get("amount") or "0")),
+                        now,
+                        now,
+                    ),
+                )
+        connection.commit()
+    return run_id
+
+
+def _supplier_payment_update_run_result(run_id: str, posted: list[dict], failed: list[dict], summary: str) -> None:
+    posted_lookup = {str(item.get("invoiceId") or "").strip(): item for item in posted if isinstance(item, dict)}
+    failed_lookup = {str(item.get("invoiceId") or "").strip(): item for item in failed if isinstance(item, dict)}
+    paid_count = len(posted_lookup)
+    failed_count = len(failed_lookup)
+    final_status = "paid" if paid_count > 0 and failed_count == 0 else "failed"
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE supplier_payment_runs
+                SET status = %s,
+                    paid_count = %s,
+                    failed_count = %s,
+                    summary = %s,
+                    updated_at = %s,
+                    completed_at = %s
+                WHERE id = %s
+                """,
+                (final_status, paid_count, failed_count, str(summary or "").strip(), now, now, run_id),
+            )
+            cursor.execute(
+                """
+                SELECT id, invoice_id
+                FROM supplier_payment_run_rows
+                WHERE run_id = %s
+                """,
+                (run_id,),
+            )
+            rows = cursor.fetchall() or []
+            for row in rows:
+                invoice_id = str(row.get("invoice_id") or "").strip()
+                posted_row = posted_lookup.get(invoice_id)
+                failed_row = failed_lookup.get(invoice_id)
+                if posted_row:
+                    cursor.execute(
+                        """
+                        UPDATE supplier_payment_run_rows
+                        SET status = 'paid',
+                            failure_reason = '',
+                            xero_payment_id = %s,
+                            barclays_payment_id = %s,
+                            barclays_status = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            str(posted_row.get("paymentId") or "").strip(),
+                            str(posted_row.get("domesticPaymentId") or "").strip(),
+                            str(posted_row.get("barclaysStatus") or "").strip(),
+                            now,
+                            row["id"],
+                        ),
+                    )
+                elif failed_row:
+                    cursor.execute(
+                        """
+                        UPDATE supplier_payment_run_rows
+                        SET status = 'failed',
+                            failure_reason = %s,
+                            barclays_payment_id = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            str(failed_row.get("message") or "").strip(),
+                            str(failed_row.get("domesticPaymentId") or "").strip(),
+                            now,
+                            row["id"],
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE supplier_payment_run_rows
+                        SET status = 'failed',
+                            failure_reason = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        ("No execution result was returned for this invoice.", now, row["id"]),
+                    )
+        connection.commit()
+
+
+def create_supplier_payment_run(user: dict, payload: dict | None = None) -> dict:
+    source = payload if isinstance(payload, dict) else {}
+    rows = source.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice to create a draft run.")
+    payment_date = _parse_any_date(source.get("paymentDate")) or utcnow().date()
+    run_id = _supplier_payment_create_run(
+        user,
+        method=str(source.get("method") or "xero").strip() or "xero",
+        tenant_id=str(source.get("tenantId") or "").strip(),
+        tenant_name=str(source.get("tenantName") or "").strip(),
+        payment_date=payment_date,
+        xero_account_id=str(source.get("accountId") or "").strip(),
+        reference_text=str(source.get("reference") or "").strip(),
+        note=str(source.get("note") or "").strip(),
+        rows=rows,
+    )
+    return {
+        "created": True,
+        "runId": run_id,
+        "runs": _supplier_payment_runs_payload(user),
+    }
+
+
+def _supplier_payment_run_reference(run_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT run_reference FROM supplier_payment_runs WHERE id = %s", (run_id,))
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return str(row.get("run_reference") or "").strip()
+
+
 async def supplier_payments_payload(user: dict) -> dict:
     connection_row = get_master_xero_connection_for_user(user["id"])
     accounts_payload, invoices = await asyncio.gather(
@@ -35147,12 +35641,15 @@ async def supplier_payments_payload(user: dict) -> dict:
         if isinstance(row, dict) and str(row.get("InvoiceID") or "").strip()
     ]
     invoice_rows.sort(key=lambda row: (row.get("dueDate") or "9999-99-99", (row.get("supplierName") or "").lower()))
+    barclays = barclays_connect_status_payload(user)
     return {
         "tenantId": str(connection_row.get("tenant_id") or "").strip(),
         "tenantName": str(connection_row.get("tenant_name") or "").strip(),
         "accounts": accounts,
         "invoices": invoice_rows,
         "fetchedAt": _iso(utcnow()) or "",
+        "barclays": barclays,
+        "runs": _supplier_payment_runs_payload(user),
     }
 
 
@@ -35174,6 +35671,31 @@ async def supplier_payments_settle(user: dict, payload: dict | None = None) -> d
         for row in (dashboard_payload.get("invoices") or [])
         if isinstance(row, dict)
     }
+    run_rows = []
+    for row in rows:
+        invoice = invoice_lookup.get(str(row.get("invoiceId") or "").strip()) or {}
+        run_rows.append(
+            {
+                "invoiceId": str(row.get("invoiceId") or "").strip(),
+                "invoiceNumber": str(invoice.get("invoiceNumber") or "").strip(),
+                "supplierName": str(invoice.get("supplierName") or "").strip(),
+                "to": str(invoice.get("contactEmail") or "").strip(),
+                "currencyCode": str(invoice.get("currencyCode") or "GBP").strip() or "GBP",
+                "amount": float(Decimal(str(row.get("amount") or "0"))),
+            }
+        )
+    run_id = _supplier_payment_create_run(
+        user,
+        method="xero",
+        tenant_id=str(dashboard_payload.get("tenantId") or "").strip(),
+        tenant_name=str(dashboard_payload.get("tenantName") or "").strip(),
+        payment_date=payment_date_value,
+        xero_account_id=account_id,
+        reference_text=reference,
+        note=note_prefix,
+        rows=run_rows,
+    )
+    run_reference = _supplier_payment_run_reference(run_id)
     successes: list[dict] = []
     failures: list[dict] = []
     for item in rows[:300]:
@@ -35234,11 +35756,282 @@ async def supplier_payments_settle(user: dict, payload: dict | None = None) -> d
         f"Posted {len(successes)} payment{'s' if len(successes) != 1 else ''} to Xero"
         f"{f' ({len(failures)} failed).' if failures else '.'}"
     )
+    _supplier_payment_update_run_result(run_id, successes, failures, summary)
     return {
         "summary": summary,
         "posted": successes,
         "failed": failures,
         "paymentDate": payment_date_value.isoformat(),
+        "runId": run_id,
+        "runReference": run_reference,
+        "runs": _supplier_payment_runs_payload(user),
+    }
+
+
+def _barclays_store_latest_consent(user_id: str, consent_id: str, consent_status: str) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE barclays_connections
+                SET consent_id = %s,
+                    consent_status = %s,
+                    updated_at = %s
+                WHERE user_id = %s
+                """,
+                (
+                    str(consent_id or "").strip(),
+                    str(consent_status or "").strip(),
+                    utcnow(),
+                    user_id,
+                ),
+            )
+        connection.commit()
+
+
+async def supplier_payments_settle_via_barclays(user: dict, payload: dict | None = None) -> dict:
+    settings = get_settings()
+    if not barclays_configured():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Barclays Open Banking is not configured.")
+    debtor_name = str(settings.barclays_debtor_name or "").strip()
+    debtor_identification = str(settings.barclays_debtor_account_identification or "").strip()
+    if not debtor_name or not debtor_identification:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Set BARCLAYS_DEBTOR_NAME and BARCLAYS_DEBTOR_ACCOUNT_IDENTIFICATION before Barclays payment initiation.",
+        )
+    source = payload if isinstance(payload, dict) else {}
+    account_id = str(source.get("accountId") or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select the Xero payment account first.")
+    payment_date_value = _parse_any_date(source.get("paymentDate")) or utcnow().date()
+    reference = str(source.get("reference") or "").strip()
+    note_prefix = str(source.get("note") or "").strip() or "Paid via Barclays Open Banking."
+    rows = source.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one supplier invoice to settle.")
+    dashboard_payload = await supplier_payments_payload(user)
+    invoice_lookup = {
+        str(row.get("invoiceId") or "").strip(): row
+        for row in (dashboard_payload.get("invoices") or [])
+        if isinstance(row, dict)
+    }
+    xero_connection_row = get_master_xero_connection_for_user(user["id"])
+    successes: list[dict] = []
+    failures: list[dict] = []
+    for item in rows[:300]:
+        if not isinstance(item, dict):
+            continue
+        invoice_id = str(item.get("invoiceId") or "").strip()
+        amount = Decimal(str(item.get("amount") or "0"))
+        if not invoice_id:
+            failures.append({"invoiceId": "", "message": "Missing invoice id."})
+            continue
+        if amount <= 0:
+            failures.append({"invoiceId": invoice_id, "message": "Payment amount must be greater than zero."})
+            continue
+        invoice = invoice_lookup.get(invoice_id)
+        if not invoice:
+            failures.append({"invoiceId": invoice_id, "message": "Invoice was not found in current outstanding list."})
+            continue
+        amount_due = Decimal(str(invoice.get("amountDue") or "0"))
+        if amount_due > 0 and amount > amount_due:
+            failures.append({"invoiceId": invoice_id, "message": "Payment amount cannot exceed outstanding amount."})
+            continue
+        sort_code = str(invoice.get("sortCode") or "").strip()
+        account_number = str(invoice.get("accountNumber") or "").strip()
+        supplier_name = str(invoice.get("supplierName") or "").strip()
+        if not sort_code or not account_number:
+            failures.append({"invoiceId": invoice_id, "message": "Supplier bank details are missing (sort code/account number)."})
+            continue
+        try:
+            amount_text = f"{amount:.2f}"
+            consent_payload = {
+                "Data": {
+                    "Initiation": {
+                        "InstructionIdentification": str(uuid4()),
+                        "EndToEndIdentification": str(uuid4()),
+                        "InstructedAmount": {
+                            "Amount": amount_text,
+                            "Currency": str(invoice.get("currencyCode") or "GBP") or "GBP",
+                        },
+                        "DebtorAccount": {
+                            "SchemeName": str(settings.barclays_debtor_account_scheme or "SortCodeAccountNumber"),
+                            "Identification": debtor_identification,
+                            "Name": debtor_name,
+                        },
+                        "CreditorAccount": {
+                            "SchemeName": "SortCodeAccountNumber",
+                            "Identification": f"{sort_code}{account_number}",
+                            "Name": supplier_name or "Supplier",
+                        },
+                        "RemittanceInformation": {
+                            "Unstructured": str(reference or invoice.get("invoiceNumber") or invoice_id),
+                        },
+                    }
+                },
+                "Risk": {
+                    "PaymentContextCode": "BillPayment",
+                },
+            }
+            consent_result = await _barclays_api_request(user, "POST", "/domestic-payment-consents", consent_payload, str(uuid4()))
+            consent_data = consent_result.get("Data") if isinstance(consent_result, dict) else {}
+            consent_id = str((consent_data or {}).get("ConsentId") or "").strip()
+            consent_status = str((consent_data or {}).get("Status") or "").strip()
+            if not consent_id:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Barclays did not return ConsentId.")
+            _barclays_store_latest_consent(str(user["id"]), consent_id, consent_status)
+            if consent_status and consent_status.upper() != "AUTH":
+                failures.append({
+                    "invoiceId": invoice_id,
+                    "message": f"Consent created but not authorised yet (status: {consent_status}). Authorise consent in Barclays then retry.",
+                    "consentId": consent_id,
+                })
+                continue
+            payment_payload = {
+                "Data": {
+                    "ConsentId": consent_id,
+                    "Initiation": consent_payload["Data"]["Initiation"],
+                },
+                "Risk": consent_payload["Risk"],
+            }
+            payment_result = await _barclays_api_request(user, "POST", "/domestic-payments", payment_payload, str(uuid4()))
+            payment_data = payment_result.get("Data") if isinstance(payment_result, dict) else {}
+            domestic_payment_id = str((payment_data or {}).get("DomesticPaymentId") or "").strip()
+            payment_status = str((payment_data or {}).get("Status") or "").strip()
+            if not domestic_payment_id:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Barclays did not return DomesticPaymentId.")
+            payment_status_result = await _barclays_api_request(user, "GET", f"/domestic-payments/{domestic_payment_id}")
+            payment_status_data = payment_status_result.get("Data") if isinstance(payment_status_result, dict) else {}
+            final_status = str((payment_status_data or {}).get("Status") or payment_status or "").strip().upper()
+            if final_status != "ACSC":
+                failures.append({
+                    "invoiceId": invoice_id,
+                    "message": f"Barclays payment submitted with status {final_status or 'UNKNOWN'}. Xero not updated until settlement completes (ACSC).",
+                    "domesticPaymentId": domestic_payment_id,
+                })
+                continue
+            xero_payment_payload = {
+                "Payments": [
+                    {
+                        "Invoice": {"InvoiceID": invoice_id},
+                        "Account": {"AccountID": account_id},
+                        "Date": payment_date_value.isoformat(),
+                        "Amount": float(amount),
+                        "Reference": reference or domestic_payment_id or "Barclays OB",
+                    }
+                ]
+            }
+            await _supplier_payments_xero_post(xero_connection_row, PAYMENTS_URL, xero_payment_payload)
+            status_copy = "part paid" if amount_due > 0 and amount < amount_due else "paid"
+            history_note = (
+                f"{note_prefix} Barclays DomesticPaymentId: {domestic_payment_id or 'pending'}. "
+                f"Status: {final_status or payment_status or 'submitted'}. Amount: {amount_text}. "
+                f"Invoice {invoice.get('invoiceNumber') or invoice_id} marked {status_copy} on {payment_date_value.isoformat()}."
+            )
+            try:
+                await create_history_record(xero_connection_row, "Invoices", invoice_id, history_note)
+            except Exception as history_error:
+                logger.warning("supplier_payments_barclays_history_note_failed invoice_id=%s error=%s", invoice_id, history_error)
+            successes.append(
+                {
+                    "invoiceId": invoice_id,
+                    "invoiceNumber": str(invoice.get("invoiceNumber") or ""),
+                    "amount": float(amount),
+                    "domesticPaymentId": domestic_payment_id,
+                    "barclaysStatus": final_status or payment_status,
+                    "status": status_copy,
+                }
+            )
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            failures.append({"invoiceId": invoice_id, "message": detail})
+        except Exception as exc:
+            failures.append({"invoiceId": invoice_id, "message": _sync_error_message(exc)})
+    summary = (
+        f"Submitted {len(successes)} Barclays payment{'s' if len(successes) != 1 else ''}"
+        f"{f' ({len(failures)} failed).' if failures else '.'}"
+    )
+    return {
+        "summary": summary,
+        "posted": successes,
+        "failed": failures,
+        "paymentDate": payment_date_value.isoformat(),
+    }
+
+
+def send_supplier_payment_remittance_advices(user: dict, payload: dict | None = None) -> dict:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending remittance advice emails.")
+    source = payload if isinstance(payload, dict) else {}
+    items = source.get("items")
+    payment_date = _parse_any_date(source.get("paymentDate")) or utcnow().date()
+    reference = str(source.get("reference") or "").strip()
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one remittance advice item.")
+    sent: list[dict] = []
+    failed: list[dict] = []
+    for raw_item in items[:300]:
+        if not isinstance(raw_item, dict):
+            continue
+        recipient = str(raw_item.get("to") or "").strip()
+        supplier_name = str(raw_item.get("supplierName") or "").strip() or "Supplier"
+        invoice_number = str(raw_item.get("invoiceNumber") or "").strip() or str(raw_item.get("invoiceId") or "").strip()
+        currency = str(raw_item.get("currencyCode") or "GBP").strip() or "GBP"
+        amount = Decimal(str(raw_item.get("amount") or "0"))
+        if not recipient:
+            failed.append({"invoiceNumber": invoice_number, "message": "Missing supplier email address."})
+            continue
+        if amount <= 0:
+            failed.append({"invoiceNumber": invoice_number, "message": "Amount must be greater than zero."})
+            continue
+        subject = f"Remittance Advice - {invoice_number}"
+        body_lines = [
+            f"Hi {supplier_name},",
+            "",
+            "Please find remittance advice for the payment below:",
+            f"- Invoice: {invoice_number}",
+            f"- Amount: {currency} {amount:.2f}",
+            f"- Payment date: {payment_date.isoformat()}",
+            f"- Reference: {reference or invoice_number}",
+            "",
+            "If anything looks incorrect, please reply to this email.",
+            "",
+            "Regards,",
+            settings.smtp_from_name or "Jaccountancy",
+        ]
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+        message["To"] = recipient
+        message.set_content("\n".join(body_lines))
+        try:
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+                if settings.smtp_use_tls:
+                    smtp.starttls()
+                if settings.smtp_username and settings.smtp_password:
+                    smtp.login(settings.smtp_username, settings.smtp_password)
+                smtp.send_message(message, to_addrs=[recipient])
+            sent.append({"invoiceNumber": invoice_number, "recipient": recipient})
+        except (OSError, smtplib.SMTPException) as exc:
+            failed.append({"invoiceNumber": invoice_number, "recipient": recipient, "message": str(exc)})
+    record_audit_event(
+        "supplier_payments_remittance",
+        str(user["id"]),
+        "supplier_payments.remittance_advices",
+        {
+            "sentCount": len(sent),
+            "failedCount": len(failed),
+            "paymentDate": payment_date.isoformat(),
+            "reference": reference,
+        },
+        user["id"],
+    )
+    return {
+        "summary": f"Sent {len(sent)} remittance advice email{'s' if len(sent) != 1 else ''}{f' ({len(failed)} failed).' if failed else '.'}",
+        "sent": sent,
+        "failed": failed,
     }
 
 

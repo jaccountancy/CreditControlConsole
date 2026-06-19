@@ -1101,6 +1101,123 @@ ON ignition_connections (user_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS ignition_connections_user_unique_idx
 ON ignition_connections (user_id);
 
+CREATE TABLE IF NOT EXISTS barclays_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'connected',
+    access_token TEXT NOT NULL DEFAULT '',
+    refresh_token TEXT NOT NULL DEFAULT '',
+    token_type TEXT NOT NULL DEFAULT 'Bearer',
+    scope TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ,
+    consent_id TEXT,
+    consent_status TEXT,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id)
+);
+
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'connected';
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS access_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS refresh_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS token_type TEXT NOT NULL DEFAULT 'Bearer';
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS consent_id TEXT;
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS consent_status TEXT;
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE barclays_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS barclays_connections_user_idx
+ON barclays_connections (user_id, status);
+
+CREATE UNIQUE INDEX IF NOT EXISTS barclays_connections_user_unique_idx
+ON barclays_connections (user_id);
+
+CREATE TABLE IF NOT EXISTS supplier_payment_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    run_reference TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    method TEXT NOT NULL DEFAULT 'xero',
+    tenant_id TEXT NOT NULL DEFAULT '',
+    tenant_name TEXT NOT NULL DEFAULT '',
+    payment_date DATE,
+    xero_account_id TEXT NOT NULL DEFAULT '',
+    reference_text TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    total_items INTEGER NOT NULL DEFAULT 0,
+    total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    paid_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    summary TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE (user_id, run_reference)
+);
+
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS run_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'xero';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS xero_account_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS reference_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS total_items INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS paid_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE supplier_payment_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS supplier_payment_runs_user_idx
+ON supplier_payment_runs (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS supplier_payment_run_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES supplier_payment_runs(id) ON DELETE CASCADE,
+    invoice_id TEXT NOT NULL DEFAULT '',
+    invoice_number TEXT NOT NULL DEFAULT '',
+    supplier_name TEXT NOT NULL DEFAULT '',
+    supplier_email TEXT NOT NULL DEFAULT '',
+    currency_code TEXT NOT NULL DEFAULT 'GBP',
+    amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft',
+    failure_reason TEXT NOT NULL DEFAULT '',
+    xero_payment_id TEXT NOT NULL DEFAULT '',
+    barclays_payment_id TEXT NOT NULL DEFAULT '',
+    barclays_status TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES supplier_payment_runs(id) ON DELETE CASCADE;
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS invoice_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS invoice_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS supplier_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS supplier_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS failure_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS xero_payment_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS barclays_payment_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS barclays_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE supplier_payment_run_rows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS supplier_payment_run_rows_run_idx
+ON supplier_payment_run_rows (run_id, created_at ASC);
+
 CREATE TABLE IF NOT EXISTS ignition_sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
