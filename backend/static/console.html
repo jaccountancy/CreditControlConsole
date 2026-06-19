@@ -32518,6 +32518,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewals</strong><span>Proposal workspace</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-supplier-payments" data-app-nav="supplier-payments">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3.5" y="5.5" width="17" height="13" rx="2"></rect><path d="M3.5 9h17"></path><path d="M7 14h4"></path><path d="m13.5 14.5 2 2 3-3"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Supplier Payments</strong><span>Payment workflow workspace</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-practice-packs" data-app-nav="practice-packs">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6.5 12 3l8 3.5"></path><path d="M4 6.5V17l8 4 8-4V6.5"></path><path d="M12 12 4 8"></path><path d="m12 12 8-4"></path><path d="M12 12v9"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Practice Packs</strong><span>BM CSVs</span></span>
@@ -39072,6 +39076,55 @@
                         </section>
                     </section>
 
+                    <section class="late-charges-screen detail-card" id="supplierPaymentsScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Manager</p>
+                                    <h3>Supplier Payments</h3>
+                                    <p class="detail-meta">Pull outstanding supplier bills from the master JACCOUNTANCY Xero tenant and prepare Barclays bulk-payment files.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="supplierPaymentsRefreshButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="supplierPaymentsSummary">Loading supplier bills from the master Xero tenant…</p>
+                            <div class="ch-register-toolbar" style="margin-top: 12px;">
+                                <input id="supplierPaymentsSearchInput" type="search" placeholder="Search supplier, invoice number or reference">
+                                <select id="supplierPaymentsAccountSelect" aria-label="Choose payment account"></select>
+                                <input id="supplierPaymentsDateInput" type="date" aria-label="Payment date">
+                                <input id="supplierPaymentsReferenceInput" type="text" placeholder="Bulk payment reference (optional)">
+                            </div>
+                            <label style="display: block; margin-top: 10px;">
+                                Notes to post to Xero history
+                                <textarea id="supplierPaymentsNoteInput" rows="2" placeholder="Paid via Barclays bulk payment."></textarea>
+                            </label>
+                            <div class="detail-actions" style="margin-top: 10px;">
+                                <button class="ghost-button" id="supplierPaymentsSelectAllButton" type="button">Select visible</button>
+                                <button class="ghost-button" id="supplierPaymentsClearSelectionButton" type="button">Clear selection</button>
+                                <button class="ghost-button" id="supplierPaymentsExportBarclaysButton" type="button">Export Barclays CSV</button>
+                                <button class="primary-button" id="supplierPaymentsPostButton" type="button">Mark selected paid / part paid in Xero</button>
+                            </div>
+                            <div class="ch-companies-table-wrap" style="margin-top: 12px;">
+                                <table class="ch-table" aria-label="Outstanding supplier invoices">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 46px;">Pick</th>
+                                            <th>Supplier</th>
+                                            <th>Invoice</th>
+                                            <th>Due date</th>
+                                            <th>Outstanding</th>
+                                            <th>Pay now</th>
+                                            <th>Sort code</th>
+                                            <th>Account no.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="supplierPaymentsTableBody"></tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </section>
+
                     <section class="late-charges-screen detail-card" id="jukEquityScreen" hidden>
                         <section class="detail-panel">
                             <div class="detail-hero">
@@ -42069,6 +42122,10 @@
             let payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
+            let supplierPaymentsData = { tenantName: "", tenantId: "", accounts: [], invoices: [], fetchedAt: "" };
+            let supplierPaymentsLoading = false;
+            let supplierPaymentsSubmitting = false;
+            let supplierPaymentsSearchTerm = "";
             const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account";
             const PI_CLEARING_BATCH_HARD_START = "2026-01-01";
             let piClearingRuns = [];
@@ -42480,6 +42537,7 @@
                 "juk-invoices": "JUK Invoices",
                 "practice-packs": "Practice Pack Generator",
                 "xero-subs-review": "Xero Subs Review",
+                "supplier-payments": "Supplier Payments",
                 "juk-equity": "JUK Equity",
                 "code-breaker": "Equity Montior",
                 "micro-analyzer": "VAT on Unregistered",
@@ -42528,6 +42586,7 @@
                 "juk-invoices": "Open the dedicated JUK invoice page and route into monthly-flow invoice checks and remediation.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
                 "xero-subs-review": "Review and track Xero subscriptions, ownership and renewal timing.",
+                "supplier-payments": "Prepare supplier payments from the master Xero tenant, export Barclays bulk files, and post payment outcomes back to Xero.",
                 "juk-equity": "Track Jaccountancy month-end net assets from Xero balance sheet reports.",
                 "code-breaker": "Detect post-submission deltas between filed data and live Xero changes, then generate adjustment guidance.",
                 "micro-analyzer": "Identify Ignition Micro/Starter clients and clear VAT coding from matched Xero transactions.",
@@ -43533,6 +43592,8 @@
                         supplierReconciliationClient: config.endpoints?.supplierReconciliationClient || "/api/supplier-reconciliation/clients/:clientId",
                         supplierReconciliationExtract: config.endpoints?.supplierReconciliationExtract || "/api/supplier-reconciliation/extract",
                         supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
+                        supplierPayments: config.endpoints?.supplierPayments || "/api/supplier-payments",
+                        supplierPaymentsSettle: config.endpoints?.supplierPaymentsSettle || "/api/supplier-payments/settle",
                         contactArchiveReview: config.endpoints?.contactArchiveReview || "/api/contact-archive/review",
                         contactArchiveArchive: config.endpoints?.contactArchiveArchive || "/api/contact-archive/archive",
                         contactArchiveRegisterSync: config.endpoints?.contactArchiveRegisterSync || "/api/contact-archive/client-register-sync",
@@ -47452,6 +47513,7 @@
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "supplier-reconciliation") return "supplier-reconciliation";
                 if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
+                if (activeView === "supplier-payments") return "supplier-payments";
                 if (activeView === "me-report") return "me-report";
                 if (activeView === "juk-invoices") return "juk-invoices";
                 if (activeView === "practice-packs") return "practice-packs";
@@ -47684,6 +47746,7 @@
                 if (activeView === "bank-statements") return "bank";
                 if (activeView === "supplier-reconciliation") return "bank";
                 if (isIgnitionView()) return "ignition";
+                if (activeView === "supplier-payments") return "practice";
                 if (activeView === "me-report") return "me";
                 if (activeView === "juk-invoices") return "practice";
                 if (activeView === "sa100-prep") return "practice";
@@ -47828,6 +47891,7 @@
                 setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
                 setElementVisible(document.getElementById("supplierReconciliationStatementPageScreen"), activeView === "supplier-reconciliation-statement-page");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
+                setElementVisible(document.getElementById("supplierPaymentsScreen"), activeView === "supplier-payments");
                 setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 setElementVisible(document.getElementById("jukInvoicesScreen"), activeView === "juk-invoices");
@@ -47851,7 +47915,7 @@
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -47958,6 +48022,16 @@
                 scrollConsoleToTop();
             }
 
+            function openSupplierPaymentsScreen() {
+                activeView = "supplier-payments";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadSupplierPayments();
+                scrollConsoleToTop();
+            }
+
             function openJukEquityScreen() {
                 activeView = "juk-equity";
                 syncActiveViewShell();
@@ -48003,6 +48077,221 @@
                 const summary = document.getElementById("xeroSubsReviewSummary");
                 if (!summary) return;
                 summary.textContent = "Xero subscription review workspace is ready.";
+            }
+
+            function supplierPaymentsTodayIso() {
+                return new Date().toISOString().slice(0, 10);
+            }
+
+            function supplierPaymentsCsvEscape(value) {
+                const text = String(value ?? "");
+                if (!/[",\n]/.test(text)) return text;
+                return `"${text.replace(/"/g, "\"\"")}"`;
+            }
+
+            async function loadSupplierPayments(force = false) {
+                if (supplierPaymentsLoading && !force) return;
+                supplierPaymentsLoading = true;
+                if (activeView === "supplier-payments") renderSupplierPaymentsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.supplierPayments);
+                    supplierPaymentsData = {
+                        tenantName: String(payload?.tenantName || ""),
+                        tenantId: String(payload?.tenantId || ""),
+                        accounts: Array.isArray(payload?.accounts) ? payload.accounts : [],
+                        invoices: Array.isArray(payload?.invoices) ? payload.invoices : [],
+                        fetchedAt: String(payload?.fetchedAt || ""),
+                    };
+                } catch (error) {
+                    showToast(error?.message || "Unable to load supplier payments.", "error");
+                } finally {
+                    supplierPaymentsLoading = false;
+                    if (activeView === "supplier-payments") renderSupplierPaymentsScreen();
+                }
+            }
+
+            function supplierPaymentsSelectedRowsFromTable() {
+                const rows = [...document.querySelectorAll("#supplierPaymentsTableBody tr[data-supplier-payment-invoice-id]")];
+                return rows.map((row) => {
+                    const selected = Boolean(row.querySelector('[data-supplier-payment-select]')?.checked);
+                    if (!selected) return null;
+                    const invoiceId = String(row.dataset.supplierPaymentInvoiceId || "").trim();
+                    const amountInput = row.querySelector('[data-supplier-payment-amount]');
+                    const amount = Number(amountInput?.value || 0);
+                    if (!invoiceId || !Number.isFinite(amount) || amount <= 0) return null;
+                    return { invoiceId, amount };
+                }).filter(Boolean);
+            }
+
+            function supplierPaymentsExportBarclaysCsv() {
+                const tableRows = [...document.querySelectorAll("#supplierPaymentsTableBody tr[data-supplier-payment-invoice-id]")];
+                const selectedRows = tableRows.filter((row) => row.querySelector('[data-supplier-payment-select]')?.checked);
+                if (!selectedRows.length) {
+                    showToast("Select at least one supplier invoice to export.", "warning");
+                    return;
+                }
+                const rowById = new Map((supplierPaymentsData.invoices || []).map((item) => [String(item.invoiceId || "").trim(), item]));
+                const lines = [["Payee", "SortCode", "AccountNumber", "Amount", "Reference"]];
+                selectedRows.forEach((row) => {
+                    const invoiceId = String(row.dataset.supplierPaymentInvoiceId || "").trim();
+                    const invoice = rowById.get(invoiceId) || {};
+                    const amount = Number(row.querySelector('[data-supplier-payment-amount]')?.value || 0);
+                    if (!Number.isFinite(amount) || amount <= 0) return;
+                    lines.push([
+                        String(invoice.supplierName || ""),
+                        String(invoice.sortCode || ""),
+                        String(invoice.accountNumber || ""),
+                        amount.toFixed(2),
+                        String(invoice.invoiceNumber || ""),
+                    ]);
+                });
+                if (lines.length <= 1) {
+                    showToast("No valid payment rows found for export.", "warning");
+                    return;
+                }
+                const csv = `${lines.map((line) => line.map(supplierPaymentsCsvEscape).join(",")).join("\n")}\n`;
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const href = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = href;
+                link.download = `supplier-payments-barclays-${supplierPaymentsTodayIso()}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(href);
+                showToast("Barclays CSV exported.", "success");
+            }
+
+            async function supplierPaymentsPostSelected() {
+                if (supplierPaymentsSubmitting) return;
+                const accountSelect = document.getElementById("supplierPaymentsAccountSelect");
+                const paymentDateInput = document.getElementById("supplierPaymentsDateInput");
+                const referenceInput = document.getElementById("supplierPaymentsReferenceInput");
+                const noteInput = document.getElementById("supplierPaymentsNoteInput");
+                const accountId = String(accountSelect?.value || "").trim();
+                if (!accountId) {
+                    showToast("Choose the payment account first.", "warning");
+                    return;
+                }
+                const rows = supplierPaymentsSelectedRowsFromTable();
+                if (!rows.length) {
+                    showToast("Select at least one supplier invoice.", "warning");
+                    return;
+                }
+                supplierPaymentsSubmitting = true;
+                renderSupplierPaymentsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.supplierPaymentsSettle, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            accountId,
+                            paymentDate: String(paymentDateInput?.value || supplierPaymentsTodayIso()),
+                            reference: String(referenceInput?.value || "").trim(),
+                            note: String(noteInput?.value || "").trim(),
+                            rows,
+                        }),
+                    });
+                    showToast(payload?.summary || "Supplier payments posted to Xero.", "success");
+                    await loadSupplierPayments(true);
+                } catch (error) {
+                    showToast(error?.message || "Unable to post supplier payments to Xero.", "error");
+                } finally {
+                    supplierPaymentsSubmitting = false;
+                    renderSupplierPaymentsScreen();
+                }
+            }
+
+            function renderSupplierPaymentsScreen() {
+                const summary = document.getElementById("supplierPaymentsSummary");
+                const body = document.getElementById("supplierPaymentsTableBody");
+                const refreshButton = document.getElementById("supplierPaymentsRefreshButton");
+                const accountSelect = document.getElementById("supplierPaymentsAccountSelect");
+                const dateInput = document.getElementById("supplierPaymentsDateInput");
+                const searchInput = document.getElementById("supplierPaymentsSearchInput");
+                const postButton = document.getElementById("supplierPaymentsPostButton");
+                if (!summary || !body) return;
+                if (dateInput && !dateInput.value) dateInput.value = supplierPaymentsTodayIso();
+                if (searchInput && searchInput.dataset.wired !== "true") {
+                    searchInput.dataset.wired = "true";
+                    searchInput.addEventListener("input", () => {
+                        supplierPaymentsSearchTerm = String(searchInput.value || "").trim().toLowerCase();
+                        renderSupplierPaymentsScreen();
+                    });
+                }
+                if (refreshButton && refreshButton.dataset.wired !== "true") {
+                    refreshButton.dataset.wired = "true";
+                    refreshButton.addEventListener("click", () => loadSupplierPayments(true));
+                }
+                const selectAllButton = document.getElementById("supplierPaymentsSelectAllButton");
+                if (selectAllButton && selectAllButton.dataset.wired !== "true") {
+                    selectAllButton.dataset.wired = "true";
+                    selectAllButton.addEventListener("click", () => {
+                        document.querySelectorAll("#supplierPaymentsTableBody [data-supplier-payment-select]").forEach((checkbox) => {
+                            checkbox.checked = true;
+                        });
+                    });
+                }
+                const clearSelectionButton = document.getElementById("supplierPaymentsClearSelectionButton");
+                if (clearSelectionButton && clearSelectionButton.dataset.wired !== "true") {
+                    clearSelectionButton.dataset.wired = "true";
+                    clearSelectionButton.addEventListener("click", () => {
+                        document.querySelectorAll("#supplierPaymentsTableBody [data-supplier-payment-select]").forEach((checkbox) => {
+                            checkbox.checked = false;
+                        });
+                    });
+                }
+                const exportButton = document.getElementById("supplierPaymentsExportBarclaysButton");
+                if (exportButton && exportButton.dataset.wired !== "true") {
+                    exportButton.dataset.wired = "true";
+                    exportButton.addEventListener("click", supplierPaymentsExportBarclaysCsv);
+                }
+                if (postButton && postButton.dataset.wired !== "true") {
+                    postButton.dataset.wired = "true";
+                    postButton.addEventListener("click", supplierPaymentsPostSelected);
+                }
+                if (accountSelect) {
+                    const accounts = Array.isArray(supplierPaymentsData.accounts) ? supplierPaymentsData.accounts : [];
+                    const current = String(accountSelect.value || "").trim();
+                    accountSelect.innerHTML = accounts.length
+                        ? accounts.map((item) => `<option value="${escapeHTML(String(item.accountId || ""))}">${escapeHTML(String(item.label || "Bank account"))}</option>`).join("")
+                        : '<option value="">No bank accounts found</option>';
+                    if (current && accounts.some((item) => String(item.accountId || "").trim() === current)) {
+                        accountSelect.value = current;
+                    }
+                }
+                const invoices = Array.isArray(supplierPaymentsData.invoices) ? supplierPaymentsData.invoices : [];
+                const filtered = invoices.filter((item) => {
+                    if (!supplierPaymentsSearchTerm) return true;
+                    const haystack = `${item.supplierName || ""} ${item.invoiceNumber || ""} ${item.reference || ""}`.toLowerCase();
+                    return haystack.includes(supplierPaymentsSearchTerm);
+                });
+                if (supplierPaymentsLoading) {
+                    summary.textContent = "Loading supplier bills from Xero…";
+                    body.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Fetching outstanding supplier invoices</h4><p>Please wait while we load ACCPAY invoices from the master tenant.</p></div></td></tr>';
+                } else if (!filtered.length) {
+                    const tenantCopy = supplierPaymentsData.tenantName ? ` in ${supplierPaymentsData.tenantName}` : "";
+                    summary.textContent = `No outstanding supplier invoices found${tenantCopy}.`;
+                    body.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No data</p><h4>No outstanding supplier invoices</h4><p>Try refreshing or clearing the search filter.</p></div></td></tr>';
+                } else {
+                    const totalDue = filtered.reduce((sum, item) => sum + Number(item.amountDue || 0), 0);
+                    summary.textContent = `${filtered.length.toLocaleString("en-GB")} outstanding supplier invoice${filtered.length === 1 ? "" : "s"} · ${formatCurrency(totalDue)} due · Master tenant: ${supplierPaymentsData.tenantName || "--"}`;
+                    body.innerHTML = filtered.map((item) => `
+                        <tr data-supplier-payment-invoice-id="${escapeHTML(String(item.invoiceId || ""))}">
+                            <td><input data-supplier-payment-select type="checkbox"></td>
+                            <td><strong>${escapeHTML(String(item.supplierName || "--"))}</strong><small>${escapeHTML(String(item.contactName || ""))}</small></td>
+                            <td><strong>${escapeHTML(String(item.invoiceNumber || "--"))}</strong><small>${escapeHTML(String(item.reference || ""))}</small></td>
+                            <td>${escapeHTML(formatDate(String(item.dueDate || "")))}</td>
+                            <td>${escapeHTML(formatCurrency(Number(item.amountDue || 0)))}</td>
+                            <td><input data-supplier-payment-amount type="number" min="0" step="0.01" value="${escapeHTML((Number(item.amountDue || 0)).toFixed(2))}"></td>
+                            <td>${escapeHTML(String(item.sortCode || ""))}</td>
+                            <td>${escapeHTML(String(item.accountNumber || ""))}</td>
+                        </tr>
+                    `).join("");
+                }
+                if (postButton) {
+                    postButton.disabled = supplierPaymentsSubmitting || supplierPaymentsLoading;
+                    postButton.textContent = supplierPaymentsSubmitting ? "Posting to Xero..." : "Mark selected paid / part paid in Xero";
+                }
             }
 
             function jukEquityValueSeries() {
@@ -57140,6 +57429,7 @@
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "supplier-reconciliation") return openSupplierReconciliationScreen();
                 if (section === "ignition") return openIgnitionScreen();
+                if (section === "supplier-payments") return openSupplierPaymentsScreen();
                 if (section === "me-report") return openMeReportScreen();
                 if (section === "juk-invoices") return openJukInvoicesScreen();
                 if (section === "sa100-prep") return openSa100PrepScreen();
@@ -57328,6 +57618,7 @@
             ]);
             const practiceManagerNavSections = new Set([
                 "ignition",
+                "supplier-payments",
                 "practice-packs",
                 "xero-subs-review",
                 "juk-equity",
@@ -57477,6 +57768,7 @@
                 "bank-statements": "credit-control-bank-statements",
                 "supplier-reconciliation": "credit-control-supplier-reconciliation",
                 ignition: "credit-control-ignition",
+                "supplier-payments": "credit-control-supplier-payments",
                 "me-report": "credit-control-me-report",
                 "juk-invoices": "credit-control-juk-invoices",
                 "sa100-prep": "credit-control-sa100-prep",
@@ -88836,6 +89128,7 @@
                 else if (activeView === "bank-statements") activeNavSection = "bank-statements";
                 else if (activeView === "supplier-reconciliation" || activeView === "supplier-reconciliation-statement-page") activeNavSection = "supplier-reconciliation";
                 else if (isIgnitionView()) activeNavSection = "ignition";
+                else if (activeView === "supplier-payments") activeNavSection = "supplier-payments";
                 else if (activeView === "me-report") activeNavSection = "me-report";
                 else if (activeView === "juk-invoices") activeNavSection = "juk-invoices";
                 else if (activeView === "sa100-prep") activeNavSection = "sa100-prep";
@@ -103356,6 +103649,7 @@
                     ["renderVatReturnPrepareScreen", () => renderVatReturnPrepareScreen()],
                     ["renderPracticePackScreen", () => renderPracticePackScreen()],
                     ["renderXeroSubsReviewScreen", () => renderXeroSubsReviewScreen()],
+                    ["renderSupplierPaymentsScreen", () => renderSupplierPaymentsScreen()],
                     ["renderJukEquityScreen", () => renderJukEquityScreen()],
                     ["renderTaskTrackerScreen", () => renderTaskTrackerScreen()],
                     ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],

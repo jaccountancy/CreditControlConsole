@@ -83,6 +83,7 @@ from .xero import (
     update_invoice_status,
     update_overpayment_status,
     update_organisation_period_lock_date,
+    refresh_connection,
     xero_api_get,
 )
 
@@ -35020,6 +35021,224 @@ async def contact_archive_client_register_sync_payload(user: dict, payload: dict
         "matchedRows": applied_matches[:400],
         "unmatchedRows": unresolved_rows[:400],
         "review": refreshed_review,
+    }
+
+
+def _supplier_payments_parse_bank_details(raw_value: str) -> tuple[str, str]:
+    text = str(raw_value or "").strip()
+    if not text:
+        return "", ""
+    compact = re.sub(r"[^0-9]", "", text)
+    if len(compact) >= 14:
+        return compact[:6], compact[6:14]
+    sort_match = re.search(r"(\d{2})[-\s]?(\d{2})[-\s]?(\d{2})", text)
+    account_match = re.search(r"\b(\d{8})\b", text)
+    sort_code = "".join(sort_match.groups()) if sort_match else ""
+    account_number = account_match.group(1) if account_match else ""
+    return sort_code, account_number
+
+
+def _supplier_payments_invoice_row(raw_invoice: dict) -> dict:
+    contact = raw_invoice.get("Contact") if isinstance(raw_invoice.get("Contact"), dict) else {}
+    raw_bank_details = str(contact.get("BankAccountDetails") or contact.get("bankAccountDetails") or "").strip()
+    sort_code, account_number = _supplier_payments_parse_bank_details(raw_bank_details)
+    due_date = _parse_any_date(raw_invoice.get("DueDateString") or raw_invoice.get("DueDate"))
+    amount_due = Decimal(str(raw_invoice.get("AmountDue") or "0"))
+    return {
+        "invoiceId": str(raw_invoice.get("InvoiceID") or "").strip(),
+        "invoiceNumber": str(raw_invoice.get("InvoiceNumber") or "").strip(),
+        "reference": str(raw_invoice.get("Reference") or "").strip(),
+        "supplierName": str(contact.get("Name") or "").strip(),
+        "contactId": str(contact.get("ContactID") or "").strip(),
+        "contactName": str(" ".join(part for part in [contact.get("FirstName"), contact.get("LastName")] if part) or "").strip(),
+        "currencyCode": str(raw_invoice.get("CurrencyCode") or "").strip(),
+        "dueDate": due_date.isoformat() if due_date else "",
+        "amountDue": float(amount_due),
+        "sortCode": sort_code,
+        "accountNumber": account_number,
+    }
+
+
+async def _supplier_payments_xero_post(connection_row: dict, url: str, payload: dict) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=45) as client:
+        try:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json=payload,
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Xero request failed while posting supplier payment: {exc}",
+            ) from exc
+    if response.is_error:
+        try:
+            detail_payload = response.json()
+            detail_message = (
+                detail_payload.get("Message")
+                or detail_payload.get("Detail")
+                or detail_payload.get("Error")
+                or response.text[:500]
+            )
+        except ValueError:
+            detail_message = response.text[:500]
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Xero rejected supplier payment post: {detail_message or f'HTTP {response.status_code}'}",
+        )
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Xero returned invalid JSON while posting supplier payment.",
+        ) from exc
+
+
+async def supplier_payments_payload(user: dict) -> dict:
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    accounts_payload, invoices = await asyncio.gather(
+        xero_api_get(
+            connection_row,
+            ACCOUNTS_URL,
+            params={
+                "where": 'Type=="BANK"&&Status=="ACTIVE"',
+                "order": "Name ASC",
+            },
+        ),
+        fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={
+                "where": 'Type=="ACCPAY"&&AmountDue>0&&Status!="VOIDED"&&Status!="DELETED"',
+                "order": "DueDate ASC",
+            },
+            max_pages=20,
+        ),
+    )
+    account_rows = accounts_payload.get("Accounts") if isinstance(accounts_payload, dict) else []
+    accounts = [
+        {
+            "accountId": str(row.get("AccountID") or "").strip(),
+            "code": str(row.get("Code") or "").strip(),
+            "name": str(row.get("Name") or "").strip(),
+            "label": " · ".join(
+                part for part in [str(row.get("Code") or "").strip(), str(row.get("Name") or "").strip()]
+                if part
+            ) or "Bank account",
+        }
+        for row in (account_rows if isinstance(account_rows, list) else [])
+        if isinstance(row, dict) and str(row.get("AccountID") or "").strip()
+    ]
+    invoice_rows = [
+        _supplier_payments_invoice_row(row)
+        for row in (invoices or [])
+        if isinstance(row, dict) and str(row.get("InvoiceID") or "").strip()
+    ]
+    invoice_rows.sort(key=lambda row: (row.get("dueDate") or "9999-99-99", (row.get("supplierName") or "").lower()))
+    return {
+        "tenantId": str(connection_row.get("tenant_id") or "").strip(),
+        "tenantName": str(connection_row.get("tenant_name") or "").strip(),
+        "accounts": accounts,
+        "invoices": invoice_rows,
+        "fetchedAt": _iso(utcnow()) or "",
+    }
+
+
+async def supplier_payments_settle(user: dict, payload: dict | None = None) -> dict:
+    source = payload if isinstance(payload, dict) else {}
+    account_id = str(source.get("accountId") or "").strip()
+    if not account_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select the bank account to pay from.")
+    payment_date_value = _parse_any_date(source.get("paymentDate")) or utcnow().date()
+    reference = str(source.get("reference") or "").strip()
+    note_prefix = str(source.get("note") or "").strip() or "Paid via Barclays bulk payment."
+    rows = source.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one supplier invoice to settle.")
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    dashboard_payload = await supplier_payments_payload(user)
+    invoice_lookup = {
+        str(row.get("invoiceId") or "").strip(): row
+        for row in (dashboard_payload.get("invoices") or [])
+        if isinstance(row, dict)
+    }
+    successes: list[dict] = []
+    failures: list[dict] = []
+    for item in rows[:300]:
+        if not isinstance(item, dict):
+            continue
+        invoice_id = str(item.get("invoiceId") or "").strip()
+        amount = Decimal(str(item.get("amount") or "0"))
+        if not invoice_id:
+            failures.append({"invoiceId": "", "message": "Missing invoice id."})
+            continue
+        if amount <= 0:
+            failures.append({"invoiceId": invoice_id, "message": "Payment amount must be greater than zero."})
+            continue
+        source_invoice = invoice_lookup.get(invoice_id)
+        amount_due = Decimal(str((source_invoice or {}).get("amountDue") or "0"))
+        if amount_due > 0 and amount > amount_due:
+            failures.append({"invoiceId": invoice_id, "message": "Payment amount cannot exceed outstanding amount."})
+            continue
+        try:
+            payment_payload = {
+                "Payments": [
+                    {
+                        "Invoice": {"InvoiceID": invoice_id},
+                        "Account": {"AccountID": account_id},
+                        "Date": payment_date_value.isoformat(),
+                        "Amount": float(amount),
+                        "Reference": reference,
+                    }
+                ]
+            }
+            xero_result = await _supplier_payments_xero_post(connection_row, PAYMENTS_URL, payment_payload)
+            status_copy = "part paid" if amount_due > 0 and amount < amount_due else "paid"
+            history_note = (
+                f"{note_prefix} Amount: {amount:.2f}. "
+                f"Invoice {source_invoice.get('invoiceNumber') if source_invoice else invoice_id} marked {status_copy} on {payment_date_value.isoformat()}."
+            )
+            try:
+                await create_history_record(connection_row, "Invoices", invoice_id, history_note)
+            except Exception as history_error:
+                logger.warning("supplier_payments_history_note_failed invoice_id=%s error=%s", invoice_id, history_error)
+            payment_rows = xero_result.get("Payments") if isinstance(xero_result, dict) else []
+            payment_row = payment_rows[0] if isinstance(payment_rows, list) and payment_rows else {}
+            successes.append(
+                {
+                    "invoiceId": invoice_id,
+                    "invoiceNumber": str((source_invoice or {}).get("invoiceNumber") or "").strip(),
+                    "amount": float(amount),
+                    "paymentId": str(payment_row.get("PaymentID") or "").strip(),
+                    "status": status_copy,
+                }
+            )
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            failures.append({"invoiceId": invoice_id, "message": detail})
+        except Exception as exc:
+            failures.append({"invoiceId": invoice_id, "message": _sync_error_message(exc)})
+    summary = (
+        f"Posted {len(successes)} payment{'s' if len(successes) != 1 else ''} to Xero"
+        f"{f' ({len(failures)} failed).' if failures else '.'}"
+    )
+    return {
+        "summary": summary,
+        "posted": successes,
+        "failed": failures,
+        "paymentDate": payment_date_value.isoformat(),
     }
 
 

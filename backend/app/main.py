@@ -211,6 +211,8 @@ from .services import (
     add_supplier_reconciliation_client,
     delete_supplier_reconciliation_client,
     send_supplier_reconciliation_email,
+    supplier_payments_payload,
+    supplier_payments_settle,
     supplier_reconciliation_contact_options_payload,
     contact_archive_review_payload,
     contact_archive_bulk_archive_payload,
@@ -5453,6 +5455,17 @@ async def api_supplier_reconciliation_extract(
 async def api_supplier_reconciliation_email(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "supplierReconciliationEmail": send_supplier_reconciliation_email(user, payload)}
+
+
+@app.get("/api/supplier-payments")
+async def api_supplier_payments(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **(await supplier_payments_payload(user))}
+
+
+@app.post("/api/supplier-payments/settle")
+async def api_supplier_payments_settle(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **(await supplier_payments_settle(user, payload))}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")
