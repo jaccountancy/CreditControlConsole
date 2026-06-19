@@ -29271,6 +29271,17 @@
                 overflow-x: hidden;
                 flex-wrap: nowrap;
                 scrollbar-width: thin;
+                scrollbar-gutter: stable;
+            }
+            .ch-register-client-page-tabs.is-sidebar-tabs::-webkit-scrollbar {
+                width: 7px;
+            }
+            .ch-register-client-page-tabs.is-sidebar-tabs::-webkit-scrollbar-thumb {
+                background: rgba(86, 111, 153, 0.34);
+                border-radius: 999px;
+            }
+            body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-sidebar.is-overflowing .ch-register-client-page-tabs {
+                mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 90%, rgba(0, 0, 0, 0.4) 96%, rgba(0, 0, 0, 0));
             }
             .ch-register-client-page-tabs.is-sidebar-tabs .page-pill.app-nav-button {
                 width: 100%;
@@ -51368,6 +51379,7 @@
                 if (!appSidebarNav || !sidebar || !tabsWrap) return;
 
                 sidebar.classList.remove("is-fit-tight", "is-fit-compact", "is-fit-micro", "is-fit-ultra");
+                sidebar.classList.remove("is-overflowing");
                 tabsWrap.style.maxHeight = "";
                 tabsWrap.style.zoom = "";
                 fitClientInfoEmailField();
@@ -51381,6 +51393,15 @@
                 const actionsHeight = actions ? actions.getBoundingClientRect().height : 0;
                 const availableHeight = Math.max(140, Math.floor((navRect.bottom - sidebarRect.top) - actionsHeight - 10));
                 tabsWrap.style.maxHeight = `${availableHeight}px`;
+                const fitClasses = ["is-fit-tight", "is-fit-compact", "is-fit-micro", "is-fit-ultra"];
+                for (const fitClass of fitClasses) {
+                    if (tabsWrap.scrollHeight <= availableHeight + 1) break;
+                    sidebar.classList.remove("is-fit-tight", "is-fit-compact", "is-fit-micro", "is-fit-ultra");
+                    sidebar.classList.add(fitClass);
+                }
+                if (tabsWrap.scrollHeight > availableHeight + 1) {
+                    sidebar.classList.add("is-overflowing");
+                }
                 fitClientInfoEmailField();
             }
 
