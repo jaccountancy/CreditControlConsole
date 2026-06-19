@@ -38139,9 +38139,55 @@ def _store_bm_tasks_vat_payload(user: dict, payload: dict) -> None:
                 ),
             )
         connection.commit()
+    user_id = str(user.get("id") or "").strip()
+    if user_id:
+        with _BM_TASKS_SAVED_CACHE_LOCK:
+            _BM_TASKS_SAVED_CACHE[user_id] = {
+                "cachedAt": datetime.now(timezone.utc),
+                "payload": _normalise_bm_tasks_saved_payload(payload),
+            }
+
+
+_BM_TASKS_SAVED_CACHE_TTL = timedelta(seconds=60)
+_BM_TASKS_SAVED_CACHE_LOCK = threading.Lock()
+_BM_TASKS_SAVED_CACHE: dict[str, dict] = {}
+
+
+def _normalise_bm_tasks_saved_payload(payload: dict | None = None) -> dict:
+    source = payload if isinstance(payload, dict) else {}
+    rows = source.get("rows") if isinstance(source.get("rows"), list) else []
+    summary_raw = source.get("summary") if isinstance(source.get("summary"), dict) else {}
+    task_rows = len(rows)
+    completed_rows = sum(1 for row in rows if str((row or {}).get("status") or "").strip().lower() == "completed")
+    open_rows = max(0, task_rows - completed_rows)
+    return {
+        "filename": str(source.get("filename") or ""),
+        "uploadedAt": str(source.get("uploadedAt") or ""),
+        "summary": {
+            "totalRows": int(summary_raw.get("totalRows") or task_rows),
+            "taskRows": int(summary_raw.get("taskRows") or task_rows),
+            "completedRows": int(summary_raw.get("completedRows") or completed_rows),
+            "openRows": int(summary_raw.get("openRows") or open_rows),
+            "vatOutstandingRows": int(summary_raw.get("vatOutstandingRows") or task_rows),
+            "matchedRegisterRows": int(summary_raw.get("matchedRegisterRows") or 0),
+            "matchedXeroWorkspaceRows": int(summary_raw.get("matchedXeroWorkspaceRows") or 0),
+            "matchedVatPeriodRows": int(summary_raw.get("matchedVatPeriodRows") or 0),
+        },
+        "rows": rows,
+    }
 
 
 def bm_tasks_vat_saved_payload(user: dict) -> dict:
+    user_id = str(user.get("id") or "").strip()
+    if user_id:
+        with _BM_TASKS_SAVED_CACHE_LOCK:
+            cached = _BM_TASKS_SAVED_CACHE.get(user_id) or {}
+            cached_at = cached.get("cachedAt")
+            if isinstance(cached_at, datetime) and datetime.now(timezone.utc) - cached_at <= _BM_TASKS_SAVED_CACHE_TTL:
+                payload = cached.get("payload")
+                if isinstance(payload, dict):
+                    return payload
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -38154,12 +38200,16 @@ def bm_tasks_vat_saved_payload(user: dict) -> dict:
             )
             row = cursor.fetchone()
         connection.commit()
+    needs_persist = False
     if not row:
-        return {
+        payload = {
             "filename": "",
             "uploadedAt": "",
             "summary": {
                 "totalRows": 0,
+                "taskRows": 0,
+                "completedRows": 0,
+                "openRows": 0,
                 "vatOutstandingRows": 0,
                 "matchedRegisterRows": 0,
                 "matchedXeroWorkspaceRows": 0,
@@ -38167,20 +38217,36 @@ def bm_tasks_vat_saved_payload(user: dict) -> dict:
             },
             "rows": [],
         }
-    summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
-    rows = row.get("rows") if isinstance(row.get("rows"), list) else []
-    return {
-        "filename": str(row.get("filename") or ""),
-        "uploadedAt": _iso(row.get("uploaded_at")) or "",
-        "summary": {
-            "totalRows": int(summary.get("totalRows") or 0),
-            "vatOutstandingRows": int(summary.get("vatOutstandingRows") or len(rows)),
-            "matchedRegisterRows": int(summary.get("matchedRegisterRows") or 0),
-            "matchedXeroWorkspaceRows": int(summary.get("matchedXeroWorkspaceRows") or 0),
-            "matchedVatPeriodRows": int(summary.get("matchedVatPeriodRows") or 0),
-        },
-        "rows": rows,
-    }
+    else:
+        summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+        rows = row.get("rows") if isinstance(row.get("rows"), list) else []
+        needs_persist = not all(key in summary for key in ("taskRows", "completedRows", "openRows"))
+        payload = {
+            "filename": str(row.get("filename") or ""),
+            "uploadedAt": _iso(row.get("uploaded_at")) or "",
+            "summary": {
+                "totalRows": int(summary.get("totalRows") or 0),
+                "taskRows": int(summary.get("taskRows") or len(rows)),
+                "completedRows": int(summary.get("completedRows") or 0),
+                "openRows": int(summary.get("openRows") or max(0, len(rows) - int(summary.get("completedRows") or 0))),
+                "vatOutstandingRows": int(summary.get("vatOutstandingRows") or len(rows)),
+                "matchedRegisterRows": int(summary.get("matchedRegisterRows") or 0),
+                "matchedXeroWorkspaceRows": int(summary.get("matchedXeroWorkspaceRows") or 0),
+                "matchedVatPeriodRows": int(summary.get("matchedVatPeriodRows") or 0),
+            },
+            "rows": rows,
+        }
+    payload = _normalise_bm_tasks_saved_payload(payload)
+
+    if user_id:
+        with _BM_TASKS_SAVED_CACHE_LOCK:
+            _BM_TASKS_SAVED_CACHE[user_id] = {
+                "cachedAt": datetime.now(timezone.utc),
+                "payload": payload,
+            }
+        if needs_persist:
+            _store_bm_tasks_vat_payload(user, payload)
+    return payload
 
 
 def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date | None, period_end: date | None) -> list[dict]:

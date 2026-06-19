@@ -119840,6 +119840,9 @@
                 if (next === "call-stats") {
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                 }
+                if (next === "tasks") {
+                    void loadBmTasksDirectory(false);
+                }
                 if (next === "vault") {
                     if (!vaultFiles.length && !vaultLoading) refreshVaultData({ silent: true });
                     renderClientRegisterClientPageVaultPanel();
@@ -123234,6 +123237,7 @@
                 const tasksMeta = document.getElementById("chRegisterClientPageTasksMeta");
                 const includeCompletedTasks = !!pageState.showCompletedTasks;
                 if (tasksToggle) tasksToggle.checked = includeCompletedTasks;
+                const bmTasksLoading = !!companiesHouseSettings.bmTasksLoading;
                 if (tasksBody) {
                     const clientTasks = clientRegisterTasksForRow(row, { includeCompleted: includeCompletedTasks });
                     tasksBody.innerHTML = clientTasks.length
@@ -123276,10 +123280,16 @@
                                 </tr>
                             `;
                         }).join("")
-                        : `<tr><td colspan="7" class="ch-empty-state">${includeCompletedTasks ? "No tasks linked to this client." : "No outstanding tasks linked to this client."}</td></tr>`;
+                        : `<tr><td colspan="7" class="ch-empty-state">${
+                            bmTasksLoading
+                                ? "Loading tasks…"
+                                : (includeCompletedTasks ? "No tasks linked to this client." : "No outstanding tasks linked to this client.")
+                        }</td></tr>`;
                     if (tasksMeta) {
                         const allClientTaskCount = clientRegisterTasksForRow(row, { includeCompleted: true }).length;
-                        tasksMeta.textContent = `${clientTasks.length.toLocaleString("en-GB")} shown${includeCompletedTasks ? "" : " (outstanding only)"} of ${allClientTaskCount.toLocaleString("en-GB")} linked task${allClientTaskCount === 1 ? "" : "s"}.`;
+                        tasksMeta.textContent = bmTasksLoading && allClientTaskCount === 0
+                            ? "Loading linked tasks…"
+                            : `${clientTasks.length.toLocaleString("en-GB")} shown${includeCompletedTasks ? "" : " (outstanding only)"} of ${allClientTaskCount.toLocaleString("en-GB")} linked task${allClientTaskCount === 1 ? "" : "s"}.`;
                     }
                 }
                 const riskAssessmentsWrap = document.getElementById("chRegisterClientPageRiskAssessmentsList");
@@ -123496,7 +123506,6 @@
                         payload,
                     };
                     renderClientRegisterClientPage();
-                    void loadBmTasksDirectory(true);
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                 } catch (error) {
                     companiesHouseSettings.authRegisterClientPage = {
@@ -123530,7 +123539,6 @@
                         payload,
                     };
                     renderClientRegisterClientPage();
-                    void loadBmTasksDirectory(true);
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                     showToast("Companies House panel refreshed.", "success");
                 } catch (error) {
