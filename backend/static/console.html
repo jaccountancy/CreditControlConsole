@@ -34766,6 +34766,7 @@
                                     <span class="sidebar-user-avatar" id="sidebarUserAvatar" aria-hidden="true">--</span>
                                     <span class="sidebar-user-copy">
                                         <strong id="sidebarUserName">Signed in user</strong>
+                                        <small id="sidebarUserDate">--</small>
                                     </span>
                                     <span class="sidebar-user-chevron" aria-hidden="true">▾</span>
                                 </button>
@@ -92598,6 +92599,23 @@
                     name.textContent = user.fullName || user.email || "Signed in user";
                     name.title = name.textContent;
                 }
+                const dateNode = document.getElementById("sidebarUserDate");
+                if (dateNode) {
+                    dateNode.textContent = formatSidebarUserDate(new Date());
+                }
+            }
+
+            function formatSidebarUserDate(value) {
+                const date = value instanceof Date ? value : new Date(value);
+                if (Number.isNaN(date.getTime())) return "--";
+                const day = date.getDate();
+                const suffix = (day % 10 === 1 && day % 100 !== 11) ? "st"
+                    : (day % 10 === 2 && day % 100 !== 12) ? "nd"
+                    : (day % 10 === 3 && day % 100 !== 13) ? "rd"
+                    : "th";
+                const month = date.toLocaleDateString("en-GB", { month: "long" });
+                const year = date.getFullYear();
+                return `${day}${suffix} ${month} ${year}`;
             }
 
             function renderChrome() {
