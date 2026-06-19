@@ -5648,6 +5648,109 @@ def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dic
     }
 
 
+def create_auth_code_register_row(user: dict, payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload.")
+    display_name = _coerce_text(payload.get("displayName"), 250)
+    if not display_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company name is required.")
+    company_number = normalise_company_number(payload.get("companyNumber"))
+    client_type = _normalise_client_type(payload.get("clientType"))
+    client_manager = _coerce_text(payload.get("clientManager"), 120)
+    client_id = _coerce_text(payload.get("clientId"), 80)
+    vat_number = _coerce_text(payload.get("vatNumber"), 120)
+    company_utr = _coerce_text(_normalise_utr(payload.get("companyUtr")), 20)
+    personal_utr = _coerce_text(_normalise_utr(payload.get("personalUtr")), 20)
+    contact_email = _coerce_text(payload.get("clientEmail"), 250)
+    contact_phone = _coerce_text(_normalise_phone_number(payload.get("clientPhone")), 120)
+    client_address = _coerce_text(payload.get("clientAddress"), 1000)
+    auth_code = _coerce_text(payload.get("authCode"), 80)
+    normalised_name = _coerce_text(display_name.lower(), 250)
+    source_filename = _coerce_text(payload.get("sourceFilename"), 250) or "client-links-wizard"
+    user_id = user.get("id") if isinstance(user, dict) else None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            created_row_id, action = _upsert_auth_code_register_row(
+                cursor,
+                company_number=company_number,
+                display_name=display_name,
+                client_type=client_type,
+                client_manager=client_manager,
+                client_id=client_id,
+                vat_number=vat_number,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                client_address=client_address,
+                company_utr=company_utr,
+                personal_utr=personal_utr,
+                normalised_name=normalised_name,
+                auth_code=auth_code,
+                filename=source_filename,
+                user_id=user_id,
+            )
+            _sync_auth_register_contacts_to_company(
+                cursor,
+                company_number=company_number,
+                display_name=display_name,
+                client_id=client_id,
+                client_manager=client_manager,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                client_address=client_address,
+                user_id=user_id,
+            )
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, 'auth_code_register_row_created', %s::jsonb, %s)
+                """,
+                (
+                    created_row_id,
+                    json.dumps(
+                        {
+                            "action": action,
+                            "companyNumber": company_number,
+                            "displayName": display_name,
+                            "clientType": client_type,
+                            "clientManager": client_manager,
+                            "clientId": client_id,
+                            "sourceFilename": source_filename,
+                            "authCodeUpdated": bool(auth_code),
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+            cursor.execute(
+                """
+                SELECT r.id,
+                       r.company_number,
+                       COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
+                       r.client_type,
+                       r.client_manager,
+                       r.client_id,
+                       r.vat_number,
+                       r.company_utr,
+                       r.personal_utr,
+                       COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
+                       COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
+                       COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
+                       r.code_hint,
+                       r.source_filename,
+                       r.uploaded_at
+                FROM ch_auth_code_register r
+                LEFT JOIN ch_companies c
+                  ON c.company_number = r.company_number
+                WHERE r.id = %s
+                """,
+                (created_row_id,),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return {"row": _serialise_auth_register_row(row)}
+
+
 def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
     cursor.execute(
         """

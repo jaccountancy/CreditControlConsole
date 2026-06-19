@@ -3903,6 +3903,93 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
     scoped_filters = dict(filters or {})
     scoped_filters["clientId"] = clean_client_id
     rows = _call_stats_fetch_rows(user, scoped_filters, row_limit=10000)
+    if not rows:
+        alias_ids = {clean_client_id.lower()}
+        alias_names: set[str] = set()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT client_id, client_name
+                    FROM ch_auth_code_register
+                    WHERE LOWER(COALESCE(client_id, '')) = LOWER(%s)
+                       OR id::text = %s
+                       OR LOWER(COALESCE(client_name, '')) = LOWER(%s)
+                    ORDER BY updated_at DESC
+                    LIMIT 5
+                    """,
+                    (clean_client_id, clean_client_id, clean_client_id),
+                )
+                register_rows = cursor.fetchall() or []
+                cursor.execute(
+                    """
+                    SELECT id::text AS customer_id, name
+                    FROM customers
+                    WHERE id::text = %s
+                       OR LOWER(COALESCE(name, '')) = LOWER(%s)
+                    LIMIT 5
+                    """,
+                    (clean_client_id, clean_client_id),
+                )
+                customer_rows = cursor.fetchall() or []
+            connection.commit()
+        for row in register_rows:
+            next_id = str(row.get("client_id") or "").strip().lower()
+            next_name = str(row.get("client_name") or "").strip().lower()
+            if next_id:
+                alias_ids.add(next_id)
+            if next_name:
+                alias_names.add(next_name)
+        for row in customer_rows:
+            next_id = str(row.get("customer_id") or "").strip().lower()
+            next_name = str(row.get("name") or "").strip().lower()
+            if next_id:
+                alias_ids.add(next_id)
+            if next_name:
+                alias_names.add(next_name)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id,
+                           import_file_id,
+                           call_datetime,
+                           call_date,
+                           call_time,
+                           direction,
+                           duration_seconds,
+                           outcome,
+                           from_number,
+                           to_number,
+                           external_number,
+                           internal_extension,
+                           staff_member,
+                           client_id,
+                           client_name,
+                           client_manager,
+                           match_source,
+                           matched_status,
+                           number_tag,
+                           cost_amount,
+                           created_at
+                    FROM call_records_processed
+                    WHERE (user_id = %s OR user_id IS NULL)
+                      AND matched_status = 'matched'
+                      AND (
+                        LOWER(COALESCE(client_id, '')) = ANY(%s)
+                        OR LOWER(COALESCE(client_name, '')) = ANY(%s)
+                      )
+                    ORDER BY call_datetime DESC, id DESC
+                    LIMIT 10000
+                    """,
+                    (
+                        user["id"],
+                        list(alias_ids) or [clean_client_id.lower()],
+                        list(alias_names) or [clean_client_id.lower()],
+                    ),
+                )
+                rows = cursor.fetchall() or []
+            connection.commit()
     summary = _call_stats_practice_summary(rows)
     month_start = _month_start()
     last_month_start = _add_months(month_start, 0) - timedelta(days=1)

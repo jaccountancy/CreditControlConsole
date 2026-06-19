@@ -333,7 +333,7 @@
             body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-tabs {
                 min-height: 0;
                 max-height: none;
-                overflow-y: hidden;
+                overflow-y: auto;
                 overflow-x: hidden;
                 display: grid;
                 align-content: start;
@@ -342,6 +342,7 @@
                 border: 0;
                 background: transparent;
                 box-shadow: none;
+                scrollbar-width: thin;
             }
             body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-tabs .page-pill.app-nav-button {
                 width: 100%;
@@ -50918,27 +50919,6 @@
                 const actionsHeight = actions ? actions.getBoundingClientRect().height : 0;
                 const availableHeight = Math.max(140, Math.floor((navRect.bottom - sidebarRect.top) - actionsHeight - 10));
                 tabsWrap.style.maxHeight = `${availableHeight}px`;
-
-                const fits = () => tabsWrap.scrollHeight <= (tabsWrap.clientHeight + 2);
-                if (fits()) return;
-
-                sidebar.classList.add("is-fit-tight");
-                if (fits()) return;
-
-                sidebar.classList.add("is-fit-compact");
-                if (fits()) return;
-
-                sidebar.classList.add("is-fit-micro");
-                if (fits()) return;
-
-                sidebar.classList.add("is-fit-ultra");
-                if (fits()) return;
-
-                const ratio = (tabsWrap.clientHeight - 2) / Math.max(tabsWrap.scrollHeight, 1);
-                const zoom = Math.max(0.52, Math.min(0.96, ratio));
-                if (zoom < 0.96) {
-                    tabsWrap.style.zoom = String(Number(zoom.toFixed(2)));
-                }
                 fitClientInfoEmailField();
             }
 
@@ -121633,6 +121613,8 @@
             function clientRegisterCallStatsClientIdForRow(row = {}) {
                 const preferred = String(row?.clientId || "").trim();
                 if (preferred) return preferred;
+                const displayName = clientRegisterClientDisplayName(row);
+                if (displayName) return displayName;
                 return String(row?.id || "").trim();
             }
 
