@@ -38192,10 +38192,7 @@
                                         <div class="ch-settings-head">
                                             <div>
                                                 <h4>Tasks</h4>
-                                                <p class="detail-meta">Outstanding client tasks are shown by default. Include completed tasks to restore any back to outstanding.</p>
-                                            </div>
-                                            <div class="detail-actions">
-                                                <label class="ch-checkbox-inline"><input type="checkbox" id="chRegisterClientPageTasksShowCompletedToggle"> Include completed tasks</label>
+                                                <p class="detail-meta">Outstanding client tasks.</p>
                                             </div>
                                         </div>
                                         <div class="ch-companies-table-wrap">
@@ -123250,11 +123247,9 @@
                         `).join("")
                         : `<article class="timeline-item"><div class="timeline-body">No notes added yet.</div></article>`;
                 }
-                const tasksToggle = document.getElementById("chRegisterClientPageTasksShowCompletedToggle");
                 const tasksBody = document.getElementById("chRegisterClientPageTasksBody");
                 const tasksMeta = document.getElementById("chRegisterClientPageTasksMeta");
-                const includeCompletedTasks = !!pageState.showCompletedTasks;
-                if (tasksToggle) tasksToggle.checked = includeCompletedTasks;
+                const includeCompletedTasks = false;
                 const bmTasksLoading = !!companiesHouseSettings.bmTasksLoading;
                 if (tasksBody) {
                     const clientTasks = clientRegisterTasksForRow(row, { includeCompleted: includeCompletedTasks });
@@ -125039,14 +125034,6 @@
                 });
                 document.getElementById("chRegisterClientPageAddNoteButton")?.addEventListener("click", addNoteToClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageRiskWorkflowButton")?.addEventListener("click", openRiskAssessmentWorkflowFromClientRegisterPage);
-                document.getElementById("chRegisterClientPageTasksShowCompletedToggle")?.addEventListener("change", (event) => {
-                    const checked = !!event?.target?.checked;
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        showCompletedTasks: checked,
-                    };
-                    renderClientRegisterClientPage();
-                });
                 document.getElementById("chRegisterClientPageTasksBody")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-task-action]");
                     if (!button) return;
