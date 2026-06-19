@@ -8896,6 +8896,7 @@
             }
             .insights-top-global-card.is-home-loading {
                 padding: 0;
+                min-height: 0;
             }
             .insights-top-global-card.is-home-loading .insights-hero-lead,
             .insights-top-global-card.is-home-loading > .detail-actions {
@@ -8908,10 +8909,12 @@
                 border: 0;
                 border-radius: inherit;
                 box-shadow: none;
-                min-height: 320px;
+                min-height: 260px;
             }
             .insights-top-global-card .insights-loading-stage-minimal.is-top-global {
-                min-height: min(78vh, 780px);
+                min-height: clamp(260px, 34vh, 340px);
+                border-radius: inherit;
+                padding: clamp(18px, 2.4vw, 28px);
             }
             .insights-hero-greeting-line.is-hidden-for-loading {
                 display: none;
@@ -10060,8 +10063,8 @@
                 min-height: 1.25em;
             }
             .insights-loading-minimal-spinner {
-                margin-top: clamp(10px, 2vw, 18px);
-                width: clamp(250px, 39vw, 380px);
+                margin-top: clamp(8px, 1.5vw, 14px);
+                width: clamp(120px, 18vw, 170px);
                 aspect-ratio: 1;
                 position: relative;
                 display: grid;
@@ -10071,49 +10074,59 @@
                 position: absolute;
                 inset: 0;
                 border-radius: 50%;
-                animation: insightsLoadingRingRotate 12s linear infinite;
-            }
-            .insights-loading-minimal-tick {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                width: clamp(8px, 1vw, 12px);
-                height: clamp(26px, 3vw, 36px);
-                border-radius: 999px;
-                background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(187, 222, 255, 0.42));
-                transform: translate(-50%, -50%) rotate(calc(var(--i) * 12deg)) translateY(calc(clamp(118px, 18vw, 162px) * -1));
-                opacity: 0.3;
-                animation: insightsLoadingTickPulse 1.8s ease-in-out infinite;
-                animation-delay: calc(var(--i) * 60ms);
+                border: 1px solid rgba(203, 231, 255, 0.28);
+                background: conic-gradient(from 0deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.12));
+                -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9px));
+                mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9px));
+                animation: insightsLoadingRingRotate 1.15s linear infinite;
             }
             .insights-loading-minimal-logo-shell {
-                width: clamp(112px, 17vw, 168px);
-                height: clamp(112px, 17vw, 168px);
+                width: clamp(70px, 10vw, 92px);
+                height: clamp(70px, 10vw, 92px);
                 border-radius: 50%;
-                border: 1px solid rgba(255, 255, 255, 0.36);
+                border: 1px solid rgba(255, 255, 255, 0.38);
                 background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
                 box-shadow:
-                    0 0 0 14px rgba(126, 207, 255, 0.16),
-                    0 22px 42px rgba(13, 52, 111, 0.3);
-                animation: insightsLoadingLogoPulse 2.9s ease-in-out infinite;
+                    0 0 0 8px rgba(126, 207, 255, 0.16),
+                    0 12px 24px rgba(13, 52, 111, 0.28);
+                animation: insightsLoadingLogoPulse 2.1s ease-in-out infinite;
             }
             .insights-loading-minimal-logo-shell .insights-loading-logo {
-                width: clamp(68px, 10vw, 102px);
-                height: clamp(68px, 10vw, 102px);
+                width: clamp(42px, 5.5vw, 56px);
+                height: clamp(42px, 5.5vw, 56px);
                 filter: none;
             }
             .insights-loading-tech {
-                position: absolute;
-                width: 0;
-                height: 0;
+                width: min(260px, 84%);
+                display: grid;
+                gap: 6px;
+                justify-items: center;
+                margin-top: 4px;
+            }
+            .insights-loading-mini-progress {
+                width: 100%;
+                height: 7px;
+                border-radius: 999px;
+                border: 1px solid rgba(196, 228, 255, 0.44);
+                background: rgba(255, 255, 255, 0.18);
                 overflow: hidden;
+            }
+            .insights-loading-mini-progress span {
+                display: block;
+                width: 12%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, rgba(226, 245, 255, 0.95), rgba(150, 226, 255, 0.95));
+                transition: width 0.26s ease;
+            }
+            .insights-loading-mini-meta {
+                color: rgba(232, 246, 255, 0.9);
+                font-size: 0.8rem;
+                font-weight: 700;
+                letter-spacing: 0.01em;
             }
             @keyframes insightsLoadingRingRotate {
                 to { transform: rotate(360deg); }
-            }
-            @keyframes insightsLoadingTickPulse {
-                0%, 100% { opacity: 0.24; }
-                40% { opacity: 1; }
             }
             @keyframes insightsLoadingLogoPulse {
                 0%, 100% { transform: scale(1); }
@@ -10995,7 +11008,7 @@
                     padding: 18px 12px;
                 }
                 .insights-loading-minimal-spinner {
-                    width: clamp(220px, 64vw, 320px);
+                    width: clamp(100px, 26vw, 140px);
                 }
                 .insights-loading-minimal-title {
                     font-size: clamp(1.9rem, 9vw, 3rem);
@@ -42736,6 +42749,7 @@
             let insightsLoaderStartedAt = 0;
             let insightsLoaderTickTimer = null;
             let insightsLoaderMessageIndex = 0;
+            let insightsLoaderLastMessageAt = -1;
             let companyCalendarData = null;
             let companyCalendarLoading = false;
             let activeInsightsSection = persistedUIState.activeInsightsSection || "copilot";
@@ -44563,6 +44577,34 @@
                 return ["high", "critical"].includes(String(record?.priority || "").toLowerCase());
             }
 
+            function notificationShouldHideFromScreen(record) {
+                if (!record || typeof record !== "object") return false;
+                const text = [
+                    record.subject,
+                    record.content,
+                    record.category,
+                    record.source,
+                    record.createdByName,
+                    record.createdById,
+                ].join(" ").toLowerCase();
+                if (text.includes("user activity") || text.includes("user-activity")) return true;
+                if (text.includes("opened from sidebar")) return true;
+                if (text.includes("archived from sidebar")) return true;
+                if (text.includes("notification archived")) return true;
+                if (text.includes("invoices need a review") || text.includes("invoice needs review")) return true;
+                const history = Array.isArray(record.history) ? record.history : [];
+                return history.some((entry) => {
+                    const entryText = [
+                        entry?.action,
+                        entry?.detail,
+                        entry?.by,
+                    ].join(" ").toLowerCase();
+                    return entryText.includes("opened from sidebar")
+                        || entryText.includes("archived from sidebar")
+                        || entryText.includes("notification archived");
+                });
+            }
+
             function notificationVisibleRecords() {
                 const current = notificationCurrentUser();
                 const filters = notificationFilters || defaultNotificationFilters();
@@ -44572,6 +44614,7 @@
                 return (notificationRecords || [])
                     .filter((record) => {
                         if (!record) return false;
+                        if (notificationShouldHideFromScreen(record)) return false;
                         const assignedToMe = record.assignedToId === current.id;
                         const isUnassigned = !record.assignedToId;
                         if (!current.isAdmin && !assignedToMe && !isUnassigned && record.createdById !== current.id) return false;
@@ -48480,6 +48523,12 @@
                 const barclaysPayButton = document.getElementById("supplierPaymentsBarclaysPayButton");
                 const connectBarclaysButton = document.getElementById("supplierPaymentsConnectBarclaysButton");
                 const barclaysStatusNode = document.getElementById("supplierPaymentsBarclaysStatus");
+                const wizardButton = document.getElementById("supplierPaymentsWizardButton");
+                const wizardCloseButton = document.getElementById("supplierPaymentsWizardCloseButton");
+                const wizardBackButton = document.getElementById("supplierPaymentsWizardBackButton");
+                const wizardNextButton = document.getElementById("supplierPaymentsWizardNextButton");
+                const wizardExecuteButton = document.getElementById("supplierPaymentsWizardExecuteButton");
+                const wizardModal = document.getElementById("supplierPaymentsWizardModal");
                 if (!summary || !body) return;
                 if (dateInput && !dateInput.value) dateInput.value = supplierPaymentsTodayIso();
                 if (searchInput && searchInput.dataset.wired !== "true") {
@@ -48527,6 +48576,44 @@
                 if (postButton && postButton.dataset.wired !== "true") {
                     postButton.dataset.wired = "true";
                     postButton.addEventListener("click", supplierPaymentsPostSelected);
+                }
+                if (wizardButton && wizardButton.dataset.wired !== "true") {
+                    wizardButton.dataset.wired = "true";
+                    wizardButton.addEventListener("click", openSupplierPaymentsWizard);
+                }
+                if (wizardCloseButton && wizardCloseButton.dataset.wired !== "true") {
+                    wizardCloseButton.dataset.wired = "true";
+                    wizardCloseButton.addEventListener("click", closeSupplierPaymentsWizard);
+                }
+                if (wizardBackButton && wizardBackButton.dataset.wired !== "true") {
+                    wizardBackButton.dataset.wired = "true";
+                    wizardBackButton.addEventListener("click", () => {
+                        supplierPaymentsWizardStep = Math.max(1, Number(supplierPaymentsWizardStep || 1) - 1);
+                        renderSupplierPaymentsWizardBody();
+                    });
+                }
+                if (wizardNextButton && wizardNextButton.dataset.wired !== "true") {
+                    wizardNextButton.dataset.wired = "true";
+                    wizardNextButton.addEventListener("click", () => {
+                        const selected = supplierPaymentsWizardSelectedSummary();
+                        if (Number(supplierPaymentsWizardStep || 1) === 1 && !selected.count) {
+                            showToast("Select at least one supplier invoice before continuing.", "warning");
+                            return;
+                        }
+                        supplierPaymentsWizardStep = Math.min(3, Number(supplierPaymentsWizardStep || 1) + 1);
+                        renderSupplierPaymentsWizardBody();
+                    });
+                }
+                if (wizardExecuteButton && wizardExecuteButton.dataset.wired !== "true") {
+                    wizardExecuteButton.dataset.wired = "true";
+                    wizardExecuteButton.addEventListener("click", executeSupplierPaymentsWizard);
+                }
+                if (wizardModal && wizardModal.dataset.wired !== "true") {
+                    wizardModal.dataset.wired = "true";
+                    wizardModal.addEventListener("click", (event) => {
+                        if (event.target?.id !== "supplierPaymentsWizardModal") return;
+                        closeSupplierPaymentsWizard();
+                    });
                 }
                 const barclays = supplierPaymentsData?.barclays && typeof supplierPaymentsData.barclays === "object"
                     ? supplierPaymentsData.barclays
@@ -48597,6 +48684,10 @@
                     postButton.disabled = supplierPaymentsSubmitting || supplierPaymentsLoading;
                     postButton.textContent = supplierPaymentsSubmitting ? "Posting to Xero..." : "Mark selected paid / part paid in Xero";
                 }
+                if (wizardButton) {
+                    wizardButton.disabled = supplierPaymentsSubmitting || supplierPaymentsLoading;
+                }
+                renderSupplierPaymentsWizardBody();
             }
 
             function jukEquityValueSeries() {
@@ -89151,8 +89242,14 @@
                     const contact = String(customer.contact || "").trim();
                     const manager = String(
                         registerRow?.clientManager
+                        || registerRow?.manager
+                        || registerRow?.accountManager
+                        || registerRow?.assignedManager
                         || customer?.clientManager
                         || customer?.manager
+                        || customer?.accountManager
+                        || customer?.assignedManager
+                        || customer?.owner
                         || customer?.internalClientOwner
                         || ""
                     ).trim() || "Unassigned";
@@ -89193,7 +89290,13 @@
                 }
                 if (customerNameKey) {
                     const byName = rows.find((row) => (
-                        normalisePracticePackClientMatchName(row?.displayName || row?.companyName || "") === customerNameKey
+                        normalisePracticePackClientMatchName(
+                            row?.displayName
+                            || row?.companyName
+                            || row?.clientName
+                            || row?.xeroContactName
+                            || ""
+                        ) === customerNameKey
                     ));
                     if (byName) return byName;
                 }
