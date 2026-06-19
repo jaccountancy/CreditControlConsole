@@ -8884,6 +8884,7 @@
                 position: relative;
                 flex: 1 1 100%;
                 width: 100%;
+                min-height: 256px;
                 margin-top: 4px;
                 overflow: visible;
                 display: grid;
@@ -9162,10 +9163,10 @@
             }
             .insights-top-global-card .insights-hero-loading-host {
                 display: none;
+                align-self: stretch;
             }
             .insights-top-global-card.is-home-loading {
-                padding: 0;
-                min-height: 0;
+                min-height: 256px;
             }
             .insights-top-global-card.is-home-loading .insights-hero-lead,
             .insights-top-global-card.is-home-loading > .detail-actions,
@@ -9174,15 +9175,17 @@
             }
             .insights-top-global-card.is-home-loading .insights-hero-loading-host {
                 display: block;
+                height: 100%;
             }
             .insights-top-global-card .insights-loading-stage.is-top-global {
                 border: 0;
                 border-radius: inherit;
                 box-shadow: none;
-                min-height: 260px;
+                min-height: 100%;
+                height: 100%;
             }
             .insights-top-global-card .insights-loading-stage-minimal.is-top-global {
-                min-height: clamp(260px, 34vh, 340px);
+                min-height: 100%;
                 border-radius: inherit;
                 padding: clamp(18px, 2.4vw, 28px);
             }
@@ -9666,6 +9669,9 @@
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 10px;
+            }
+            .insights-home-xero-status .insights-xero-hero-widget {
+                margin: 0;
             }
             .insights-priority-item {
                 border: 1px solid rgba(134, 168, 231, 0.3);
@@ -92509,13 +92515,12 @@
                     heroLoadingHost.innerHTML = "";
                 }
                 if (heroXeroStatus) {
-                    heroXeroStatus.hidden = false;
-                    heroXeroStatus.innerHTML = insightsXeroSyncWidgetCard({ includeLabel: false });
+                    heroXeroStatus.hidden = true;
+                    heroXeroStatus.innerHTML = "";
                 }
                 target.innerHTML = aiCopilotHomeInsights(analytics, ai);
                 renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
-                if (heroXeroStatus) bindInsightsHomeInteractions(heroXeroStatus);
             }
 
             function bindInsightsHomeInteractions(scope) {
@@ -92814,6 +92819,7 @@
                     actionMeta["analyze-vat-return"],
                     actionMeta["confirmation-statements"],
                 ];
+                const xeroOverviewMarkup = insightsXeroSyncWidgetCard({ includeLabel: false });
 
                 return `<section class="insight-chart insights-home-section insights-home-quick-actions" id="insightsQuickActionsCard">
                     <div class="insights-home-action-strip" role="group" aria-label="Quick actions command centre">
@@ -92824,6 +92830,9 @@
                             </div>
                             <span class="insights-home-action-intro-badge" aria-hidden="true">Command Centre</span>
                         </header>
+                        <div class="insights-home-xero-status" id="insightsHomeXeroStatus">
+                            ${xeroOverviewMarkup}
+                        </div>
 
                         <div class="insights-home-priority-list">
                             ${topPriority.map((item) => `
