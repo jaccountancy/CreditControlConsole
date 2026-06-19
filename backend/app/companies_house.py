@@ -6078,7 +6078,7 @@ def _ignition_proposal_accepted(payload: dict) -> bool:
     if not isinstance(payload, dict):
         return False
     status = str(payload.get("state") or payload.get("status") or "").strip().lower()
-    if status == "accepted":
+    if status in {"accepted", "won", "active", "live", "approved", "completed", "signed"}:
         return True
     return any(
         str(payload.get(key) or "").strip()
