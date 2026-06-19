@@ -87,6 +87,7 @@ from .database import ensure_schema, get_connection
 from .security import create_session, hash_token
 from .services import (
     add_customer_note,
+    update_customer_profile,
     add_note,
     add_promise,
     active_ignition_sync_run_for_user,
@@ -5737,6 +5738,12 @@ async def api_customer_add_note(customer_id: str, request: Request, user: dict =
         "xeroNoteError": xero_note.get("error", ""),
         "panel": panel_payload(user),
     }
+
+
+@app.patch("/api/customers/{customer_id}/profile")
+async def api_customer_update_profile(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "panel": update_customer_profile(customer_id, user, payload)}
 
 
 @app.post("/api/invoices/{invoice_id}/promises")

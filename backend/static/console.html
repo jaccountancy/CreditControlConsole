@@ -11760,26 +11760,72 @@
                 box-shadow: none;
             }
             .client-overview-card {
-                gap: 16px;
+                gap: 12px;
+                padding: 16px;
+                border-radius: 14px;
+                background: linear-gradient(160deg, rgba(255, 255, 255, 0.98), rgba(242, 248, 255, 0.94));
+                border: 1px solid rgba(148, 172, 210, 0.34);
+                box-shadow: 0 12px 34px rgba(20, 46, 86, 0.10);
             }
             .client-overview-card .client-avatar,
             .client-overview-card h3,
             .client-sidebar-status,
             .client-sidebar-disclosure-list {
-                display: none;
+                display: block;
             }
             .client-overview-card::before {
-                content: "Invoices owed to you  ›";
-                color: #2d7bd8;
-                font-weight: 900;
+                content: none;
+            }
+            .client-manager-card {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 10px;
+                align-items: center;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 12px;
+                padding: 10px 11px;
+                background: rgba(255, 255, 255, 0.84);
+            }
+            .client-manager-photo {
+                width: 42px;
+                height: 42px;
+                border-radius: 50%;
+                object-fit: cover;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: #f1f6ff;
+            }
+            .client-manager-photo[hidden] {
+                display: none;
+            }
+            .client-manager-copy {
+                display: grid;
+                gap: 2px;
+                min-width: 0;
+            }
+            .client-manager-copy span {
+                margin: 0;
+                font-size: 0.62rem;
+                letter-spacing: 0.08em;
+            }
+            .client-manager-copy strong {
+                font-size: 0.95rem;
+                line-height: 1.2;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .client-manager-copy small {
+                color: #5d6f8f;
+                font-size: 0.78rem;
+                font-weight: 700;
             }
             .client-sidebar-facts {
                 display: grid;
-                gap: 4px;
+                gap: 6px;
             }
             .client-sidebar-facts strong:first-child {
-                color: #2d7bd8;
-                font-size: 1.85rem;
+                color: #214f9b;
+                font-size: 1.62rem;
                 line-height: 1;
             }
             .client-sidebar-facts strong:last-child {
@@ -28397,6 +28443,23 @@
                 font-weight: 900;
                 line-height: 1.04;
             }
+            .ch-register-client-page-tabs.is-sidebar-tabs .ch-register-sidebar-tab-group-label {
+                margin: 8px 6px 4px;
+                padding-top: 7px;
+                border-top: 1px solid rgba(103, 127, 168, 0.2);
+                font-size: 0.68rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: rgba(77, 98, 138, 0.86);
+            }
+            .ch-register-client-page-tabs.is-sidebar-tabs .page-pill.app-nav-button.is-service-link {
+                margin-left: 6px;
+                width: calc(100% - 6px);
+                border-top-left-radius: 9px;
+                border-bottom-left-radius: 9px;
+                opacity: 0.96;
+            }
             .ch-register-client-page-tabs .page-pill.is-active .tab-icon {
                 background: rgba(255, 255, 255, 0.2);
                 border-color: rgba(255, 255, 255, 0.45);
@@ -33936,6 +33999,14 @@
                 </aside>
                 <aside class="client-mode-sidebar" aria-label="Client summary navigation">
                     <section class="client-summary-card client-overview-card">
+                        <div class="client-manager-card">
+                            <img class="client-manager-photo" id="clientManagerPhoto" alt="Client manager photo" hidden>
+                            <div class="client-manager-copy">
+                                <span>Client manager</span>
+                                <strong id="clientManagerName">Unassigned</strong>
+                                <small id="clientManagerCaption">Account owner</small>
+                            </div>
+                        </div>
                         <div class="client-avatar" id="clientAvatar">--</div>
                         <h3 id="clientSidebarName">No client selected</h3>
                         <p class="client-sidebar-status" id="clientSidebarAssigned">Unassigned</p>
@@ -33945,6 +34016,7 @@
                         </div>
                         <div class="client-profile-actions client-quick-links">
                             <a class="client-profile-action" id="selectedContactXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
+                            <a class="client-profile-action" id="clientCompaniesHouseButton" target="_blank" rel="noopener" hidden>Open Companies House page</a>
                         </div>
                         <button class="ghost-button client-account-status-button" id="clientUpdateAccountStatusButton" type="button">Update account status</button>
                         <div class="client-sidebar-disclosure-list">
@@ -37675,7 +37747,7 @@
                                 <div>
                                     <p class="eyebrow">Tasks</p>
                                     <h3>Task List</h3>
-                                    <p class="detail-meta">All task rows loaded from BM Tasks CSV.</p>
+                                    <p class="detail-meta"></p>
                                 </div>
                                 <div class="detail-actions" style="margin-left: auto;">
                                     <button class="ghost-button" type="button" id="taskListOpenCompletedButton">View completed tasks</button>
@@ -48339,6 +48411,13 @@
                 return contactId
                     ? `https://go.xero.com/Contacts/View/${encodeURIComponent(contactId)}`
                     : "#";
+            }
+
+            function companiesHouseCompanyURL(companyNumber) {
+                const normalised = String(companyNumber || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+                return normalised
+                    ? `https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(normalised)}`
+                    : "";
             }
 
             function renderXeroContactDetails(client) {
@@ -61034,7 +61113,7 @@
             }
 
             function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noticeInvoices, hasLegal) {
-                const manager = client?.manager || "Unassigned";
+                const manager = client?.clientProfile?.clientManager || client?.manager || "Unassigned";
                 renderXeroClientHeader(client, openInvoices, totals);
                 renderTopbarClientAccountSummary(client, openInvoices, totals, noticeInvoices, hasLegal);
                 document.getElementById("clientAvatar").textContent = clientInitials(client);
@@ -61048,6 +61127,37 @@
                 document.getElementById("clientSidebarAssigned").textContent = manager;
                 document.getElementById("clientSidebarOverdue").textContent = `${formatCurrency(totals.overduePrincipal || 0)} Due`;
                 document.getElementById("clientSidebarInvoices").textContent = `${openInvoices.length} Open Invoice${openInvoices.length === 1 ? "" : "s"}`;
+                const managerName = document.getElementById("clientManagerName");
+                if (managerName) managerName.textContent = manager;
+                const managerCaption = document.getElementById("clientManagerCaption");
+                if (managerCaption) {
+                    managerCaption.textContent = client?.clientProfile?.clientId
+                        ? `Client ID ${client.clientProfile.clientId}`
+                        : "Account owner";
+                }
+                const managerPhoto = document.getElementById("clientManagerPhoto");
+                if (managerPhoto) {
+                    const explicitPhoto = String(client?.managerPhoto || client?.profilePhoto || "").trim();
+                    const fallbackSlug = String(manager || "")
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/^-+|-+$/g, "");
+                    const src = explicitPhoto || (fallbackSlug ? `/static/assets/managers/${fallbackSlug}.png` : "");
+                    managerPhoto.hidden = !src;
+                    if (src) {
+                        managerPhoto.src = src;
+                        managerPhoto.onerror = () => {
+                            managerPhoto.hidden = true;
+                        };
+                    }
+                }
+                const companiesHouseButton = document.getElementById("clientCompaniesHouseButton");
+                if (companiesHouseButton) {
+                    const companyNumber = client?.clientProfile?.companyNumber || "";
+                    const url = companiesHouseCompanyURL(companyNumber);
+                    companiesHouseButton.hidden = !url;
+                    companiesHouseButton.href = url || "#";
+                }
                 const sidebarDays = document.getElementById("clientSidebarDays");
                 if (sidebarDays) sidebarDays.textContent = `${totals.maxOverdueDays || 0}`;
 
@@ -118593,12 +118703,22 @@
                 if (!tabsWrap) return;
                 const tabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState });
                 const activeTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "client-info");
-                tabsWrap.innerHTML = tabs.map((tab) => `
-                    <button class="page-pill app-nav-button ${tab.id === activeTab ? "is-active" : ""}" type="button" data-client-page-tab="${escapeHTML(tab.id)}">
+                const firstServiceTabIndex = tabs.findIndex((tab) => String(tab?.id || "").startsWith("service-"));
+                tabsWrap.innerHTML = tabs.map((tab, index) => {
+                    const isServiceTab = String(tab?.id || "").startsWith("service-");
+                    const classes = ["page-pill", "app-nav-button"];
+                    if (tab.id === activeTab) classes.push("is-active");
+                    if (isServiceTab) classes.push("is-service-link");
+                    const groupLabel = isServiceTab && index === firstServiceTabIndex
+                        ? `<div class="ch-register-sidebar-tab-group-label">Linked Service Pages</div>`
+                        : "";
+                    return `${groupLabel}
+                    <button class="${classes.join(" ")}" type="button" data-client-page-tab="${escapeHTML(tab.id)}">
                         <span class="tab-icon app-nav-icon" aria-hidden="true">${tab.icon || ""}</span>
                         <span class="app-nav-copy"><strong>${escapeHTML(tab.label || "Tab")}</strong></span>
                     </button>
-                `).join("");
+                `;
+                }).join("");
             }
 
             function renderClientRegisterDynamicServicePanel(activeTab, tabs) {
@@ -119627,17 +119747,12 @@
                     showToast("No company number available for this client.", "info");
                     return;
                 }
-                activeView = "company-secretarial";
-                syncActiveViewShell();
-                closeTopbarMenu();
-                closeToolbarMenus();
-                renderAll();
-                const search = document.getElementById("companySecretarialSearch");
-                if (search) {
-                    search.value = companyNumber;
-                    search.dispatchEvent(new Event("input", { bubbles: true }));
+                const url = companiesHouseCompanyURL(companyNumber);
+                if (!url) {
+                    showToast("No valid Companies House company number is available.", "info");
+                    return;
                 }
-                scrollConsoleToTop();
+                window.open(url, "_blank", "noopener");
             }
 
             function taskTrackerClientKeyForRow(row = {}) {

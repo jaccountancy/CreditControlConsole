@@ -20,6 +20,10 @@ let clientFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+let clientProfileBaseline = null;
+let clientProfileDraft = null;
+let clientProfileClientId = null;
+let clientProfileSaving = false;
 
 function installNonBlockingBrowserDialogOverrides() {
     if (window.__nonBlockingDialogsInstalled) return;
@@ -52,6 +56,7 @@ function normaliseAPI(config) {
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
             bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
+            customerProfile: config.endpoints?.customerProfile || "/api/customers/:customerId/profile",
             login: config.endpoints?.login || "/auth/xero/start?include_all_scopes=1"
         }
     };
@@ -294,6 +299,137 @@ function statusSelectValue(invoice) {
     return `${value}`.toLowerCase().includes("court") ? "Legal" : value;
 }
 
+function profileFallbackAddress(client) {
+    if (client?.clientProfile?.address) return client.clientProfile.address;
+    const addresses = Array.isArray(client?.addresses) ? client.addresses : [];
+    const first = addresses.find((item) => item && typeof item === "object");
+    if (!first) return "";
+    return [
+        first.address_line_1,
+        first.address_line_2,
+        first.city,
+        first.region,
+        first.postal_code,
+        first.country,
+    ].filter(Boolean).join(", ");
+}
+
+function defaultClientProfile(client) {
+    const source = client?.clientProfile || {};
+    return {
+        clientName: source.clientName || client?.name || "",
+        clientManager: source.clientManager || client?.manager || "",
+        clientId: source.clientId || "",
+        clientType: source.clientType || "",
+        companyNumber: source.companyNumber || "",
+        companyStatus: source.companyStatus || client?.status || "",
+        companyUtr: source.companyUtr || "",
+        vatNumber: source.vatNumber || "",
+        email: source.email || client?.email || "",
+        phone: source.phone || client?.phone || "",
+        authCode: source.authCode || "",
+        address: source.address || profileFallbackAddress(client),
+    };
+}
+
+function profileDirty() {
+    return JSON.stringify(clientProfileDraft || {}) !== JSON.stringify(clientProfileBaseline || {});
+}
+
+function setSaveButtonState() {
+    const button = document.getElementById("saveClientChangesButton");
+    if (!button) return;
+    const dirty = profileDirty();
+    button.hidden = !dirty;
+    button.disabled = clientProfileSaving || !dirty;
+    button.textContent = clientProfileSaving ? "Saving changes…" : "Save Changes";
+}
+
+function initials(value) {
+    const chars = String(value || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || "")
+        .join("");
+    return chars || "•";
+}
+
+function renderPeopleStack(targetId, rows, roleKey) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    const list = Array.isArray(rows) ? rows.filter((row) => row?.name) : [];
+    target.innerHTML = "";
+    if (!list.length) {
+        target.innerHTML = `<p class="group-empty">No records</p>`;
+        return;
+    }
+    list.slice(0, 6).forEach((row) => {
+        const item = document.createElement("article");
+        item.className = "people-row";
+        item.innerHTML = `
+            <span class="person-avatar">${initials(row.name)}</span>
+            <div>
+                <strong>${row.name}</strong>
+                <small>${row[roleKey] || "On record"}</small>
+            </div>
+        `;
+        target.appendChild(item);
+    });
+}
+
+function companiesHouseURL(companyNumber) {
+    const normalised = String(companyNumber || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!normalised) return "";
+    return `https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(normalised)}`;
+}
+
+function renderClientProfilePanel(client) {
+    if (!client) return;
+    if (clientProfileClientId !== client.id) {
+        clientProfileClientId = client.id;
+        clientProfileBaseline = defaultClientProfile(client);
+        clientProfileDraft = { ...clientProfileBaseline };
+        clientProfileSaving = false;
+    }
+    const mapping = {
+        clientProfileName: "clientName",
+        clientProfileManager: "clientManager",
+        clientProfileId: "clientId",
+        clientProfileType: "clientType",
+        clientProfileCompanyNumber: "companyNumber",
+        clientProfileCompanyStatus: "companyStatus",
+        clientProfileCompanyUtr: "companyUtr",
+        clientProfileVatNumber: "vatNumber",
+        clientProfileEmail: "email",
+        clientProfilePhone: "phone",
+        clientProfileAuthCode: "authCode",
+        clientProfileAddress: "address",
+    };
+    Object.entries(mapping).forEach(([id, key]) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.value = clientProfileDraft?.[key] || "";
+    });
+    const structure = client.companyStructure || {};
+    const meta = document.getElementById("groupStructureMeta");
+    if (meta) {
+        const source = structure.source === "companies_house" ? "Synced from Companies House" : "Not synced with Companies House";
+        const stamp = structure.syncedAt ? ` · ${formatDate(structure.syncedAt)}` : "";
+        meta.textContent = `${source}${stamp}`;
+    }
+    const companiesHouseButton = document.getElementById("openCompaniesHouseButton");
+    if (companiesHouseButton) {
+        const url = companiesHouseURL(clientProfileDraft?.companyNumber || "");
+        companiesHouseButton.hidden = !url;
+        companiesHouseButton.href = url || "#";
+    }
+    renderPeopleStack("groupDirectors", structure.directors || [], "role");
+    renderPeopleStack("groupShareholders", structure.shareholders || [], "holding");
+    renderPeopleStack("groupPscs", structure.pscs || [], "kind");
+    setSaveButtonState();
+}
+
 function managerValues() {
     return [...new Set(state.customers.map((customer) => customer.manager || "Unassigned"))];
 }
@@ -497,6 +633,7 @@ function renderClientScreen() {
         ? `For ${selectedInvoice.invoiceNumber || "this invoice"}, court costs would be £${Number(selectedInvoice.latePayment?.court_cost || selectedInvoice.latePayment?.courtCost || 35).toFixed(0)} and statutory interest so far is £${Number(selectedInvoice.latePayment?.interest || 0).toFixed(2)}.`
         : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
 
+    renderClientProfilePanel(client);
     renderClientInvoicePicker(invoices);
     renderClientInvoiceList(invoices);
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
@@ -727,6 +864,37 @@ function wireForms() {
     document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
         selectedInvoiceId = event.target.value;
         renderClientScreen();
+    });
+
+    document.querySelectorAll(".client-profile-panel [data-field]").forEach((input) => {
+        input.addEventListener("input", () => {
+            if (!clientProfileDraft) return;
+            clientProfileDraft[input.dataset.field] = input.value;
+            setSaveButtonState();
+        });
+    });
+    document.getElementById("saveClientChangesButton").addEventListener("click", async () => {
+        if (!selectedClientId || !clientProfileDraft || !profileDirty() || clientProfileSaving) return;
+        clientProfileSaving = true;
+        setSaveButtonState();
+        const payload = { ...clientProfileDraft, syncCompaniesHouse: true };
+        try {
+            const response = await requestJSON(
+                api.endpoints.customerProfile,
+                { method: "PATCH", body: JSON.stringify(payload) },
+                { customerId: selectedClientId }
+            );
+            if (response?.panel) replaceState(normaliseState(response.panel));
+            const refreshedClient = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+            clientProfileBaseline = defaultClientProfile(refreshedClient);
+            clientProfileDraft = { ...clientProfileBaseline };
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save client profile", error);
+        } finally {
+            clientProfileSaving = false;
+            setSaveButtonState();
+        }
     });
 
     document.getElementById("clientNoteForm").addEventListener("submit", (event) => {

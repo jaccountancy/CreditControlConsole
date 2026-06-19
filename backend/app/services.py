@@ -12643,6 +12643,147 @@ def _database_metrics_unavailable(error: Exception | None = None) -> dict:
     }
 
 
+def _customer_primary_address(row: dict) -> str:
+    addresses = row.get("addresses") if isinstance(row.get("addresses"), list) else []
+    for item in addresses:
+        if not isinstance(item, dict):
+            continue
+        parts = [
+            item.get("address_line_1"),
+            item.get("address_line_2"),
+            item.get("city"),
+            item.get("region"),
+            item.get("postal_code"),
+            item.get("country"),
+        ]
+        text = ", ".join(str(part or "").strip() for part in parts if str(part or "").strip())
+        if text:
+            return text
+    return ""
+
+
+def _clean_text(value: object, *, max_length: int) -> str:
+    return str(value or "").strip()[:max_length]
+
+
+def _normalise_customer_profile(row: dict) -> dict:
+    profile = row.get("client_profile") if isinstance(row.get("client_profile"), dict) else {}
+    return {
+        "clientName": _clean_text(profile.get("clientName") or row.get("name"), max_length=250),
+        "clientManager": _clean_text(profile.get("clientManager"), max_length=120),
+        "clientId": _clean_text(profile.get("clientId"), max_length=80),
+        "clientType": _clean_text(profile.get("clientType"), max_length=120),
+        "companyNumber": _clean_text(profile.get("companyNumber"), max_length=32),
+        "companyStatus": _clean_text(profile.get("companyStatus") or row.get("status"), max_length=120),
+        "companyUtr": _clean_text(profile.get("companyUtr"), max_length=32),
+        "vatNumber": _clean_text(profile.get("vatNumber"), max_length=32),
+        "email": _clean_text(profile.get("email") or row.get("email"), max_length=250),
+        "phone": _clean_text(profile.get("phone") or row.get("phone"), max_length=80),
+        "authCode": _clean_text(profile.get("authCode"), max_length=24),
+        "address": _clean_text(profile.get("address") or _customer_primary_address(row), max_length=1000),
+    }
+
+
+def _normalise_customer_structure(value: object) -> dict:
+    source = value if isinstance(value, dict) else {}
+
+    def _people(items: object, *, role_key: str) -> list[dict]:
+        rows = items if isinstance(items, list) else []
+        output: list[dict] = []
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            name = _clean_text(item.get("name"), max_length=250)
+            if not name:
+                continue
+            output.append(
+                {
+                    "name": name,
+                    role_key: _clean_text(item.get(role_key), max_length=120),
+                }
+            )
+        return output[:20]
+
+    return {
+        "source": _clean_text(source.get("source"), max_length=60),
+        "companyNumber": _clean_text(source.get("companyNumber"), max_length=32),
+        "directors": _people(source.get("directors"), role_key="role"),
+        "shareholders": _people(source.get("shareholders"), role_key="holding"),
+        "pscs": _people(source.get("pscs"), role_key="kind"),
+        "syncedAt": _clean_text(source.get("syncedAt"), max_length=80),
+    }
+
+
+def _structure_from_ch_company(row: dict, company_number: str) -> dict:
+    officers = row.get("officers") if isinstance(row.get("officers"), list) else []
+    pscs = row.get("pscs") if isinstance(row.get("pscs"), list) else []
+    share_capital = row.get("share_capital") if isinstance(row.get("share_capital"), dict) else {}
+
+    directors: list[dict] = []
+    for officer in officers:
+        if not isinstance(officer, dict):
+            continue
+        name = _clean_text(officer.get("name"), max_length=250)
+        if not name:
+            continue
+        directors.append({"name": name, "role": _clean_text(officer.get("role"), max_length=120)})
+
+    psc_group: list[dict] = []
+    for psc in pscs:
+        if not isinstance(psc, dict):
+            continue
+        name = _clean_text(psc.get("name"), max_length=250)
+        if not name:
+            continue
+        psc_group.append({"name": name, "kind": _clean_text(psc.get("kind"), max_length=120)})
+
+    shareholders: list[dict] = []
+    shareholdings = share_capital.get("shareholdings") if isinstance(share_capital.get("shareholdings"), list) else []
+    for holding in shareholdings:
+        if not isinstance(holding, dict):
+            continue
+        share_class = _clean_text(holding.get("shareClass"), max_length=80)
+        row_holders = holding.get("shareholders") if isinstance(holding.get("shareholders"), list) else []
+        for holder in row_holders:
+            if not isinstance(holder, dict):
+                continue
+            name = _clean_text(holder.get("name") or holder.get("fullName"), max_length=250)
+            if not name:
+                continue
+            shareholders.append(
+                {
+                    "name": name,
+                    "holding": _clean_text(share_class or holder.get("shares"), max_length=120),
+                }
+            )
+
+    if not shareholders:
+        confirmation = (
+            share_capital.get("confirmationStatement")
+            if isinstance(share_capital.get("confirmationStatement"), dict)
+            else {}
+        )
+        count_raw = confirmation.get("numberOfShareholders")
+        try:
+            holder_count = max(0, int(str(count_raw or "").strip()))
+        except (TypeError, ValueError):
+            holder_count = 0
+        for index in range(min(holder_count, 6)):
+            shareholders.append({"name": f"Shareholder {index + 1}", "holding": "On register"})
+
+    synced_at = row.get("last_synced_at")
+    return _normalise_customer_structure(
+        {
+            "source": "companies_house",
+            "companyNumber": company_number,
+            "directors": directors,
+            "shareholders": shareholders,
+            "pscs": psc_group,
+            "syncedAt": _iso(synced_at),
+        }
+    )
+
+
 def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
@@ -12905,6 +13046,9 @@ def panel_payload(user: dict | None = None) -> dict:
                 "addresses": customer_row.get("addresses") or [],
                 "contact": customer_row.get("email") or customer_row.get("phone") or "",
                 "status": customer_row.get("status") or ("Action needed" if _float(customer_row.get("overdue_amount")) > 0 else "Current"),
+                "clientProfile": _normalise_customer_profile(customer_row),
+                "companyStructure": _normalise_customer_structure(customer_row.get("company_structure")),
+                "companyStructureSyncedAt": _iso(customer_row.get("company_structure_synced_at")),
                 "openInvoices": open_invoices,
                 "totalDue": _float(customer_row.get("total_due")),
                 "overdue": _float(customer_row.get("overdue_amount")),
@@ -39871,6 +40015,121 @@ def customer_detail(customer_id: str) -> dict:
         invoice["overdue_days"] = overdue_days
 
     return {"customer": customer, "invoices": invoices}
+
+
+def update_customer_profile(customer_id: str, user: dict, payload: dict | None) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid profile payload.")
+
+    company_sync_requested = bool(payload.get("syncCompaniesHouse", True))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM customers WHERE id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+
+            profile = _normalise_customer_profile(row)
+            for field, max_length in (
+                ("clientName", 250),
+                ("clientManager", 120),
+                ("clientId", 80),
+                ("clientType", 120),
+                ("companyNumber", 32),
+                ("companyStatus", 120),
+                ("companyUtr", 32),
+                ("vatNumber", 32),
+                ("email", 250),
+                ("phone", 80),
+                ("authCode", 24),
+                ("address", 1000),
+            ):
+                if field in payload:
+                    profile[field] = _clean_text(payload.get(field), max_length=max_length)
+
+            company_number = re.sub(r"[^A-Z0-9]", "", profile.get("companyNumber", "").upper())
+            if company_number.isdigit() and len(company_number) < 8:
+                company_number = company_number.zfill(8)
+            profile["companyNumber"] = company_number
+
+            structure = _normalise_customer_structure(row.get("company_structure"))
+            structure_synced_at = None
+            structure_source = "manual"
+            if company_sync_requested and company_number:
+                cursor.execute(
+                    """
+                    SELECT company_number, company_status, company_type, registered_office, share_capital, officers, pscs, last_synced_at
+                    FROM ch_companies
+                    WHERE company_number = %s
+                    LIMIT 1
+                    """,
+                    (company_number,),
+                )
+                ch_company = cursor.fetchone()
+                if ch_company:
+                    structure = _structure_from_ch_company(ch_company, company_number)
+                    structure_synced_at = utcnow()
+                    structure_source = "companies_house"
+                    profile["companyStatus"] = _clean_text(
+                        profile.get("companyStatus") or ch_company.get("company_status"), max_length=120
+                    )
+                    profile["clientType"] = _clean_text(
+                        profile.get("clientType") or ch_company.get("company_type"), max_length=120
+                    )
+                    profile["address"] = _clean_text(
+                        profile.get("address") or ch_company.get("registered_office"), max_length=1000
+                    )
+
+            cursor.execute(
+                """
+                UPDATE customers
+                SET client_profile = %s::jsonb,
+                    company_structure = %s::jsonb,
+                    company_structure_synced_at = COALESCE(%s, company_structure_synced_at),
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (
+                    json.dumps(profile, default=_json_default),
+                    json.dumps(structure, default=_json_default),
+                    structure_synced_at,
+                    utcnow(),
+                    customer_id,
+                ),
+            )
+        connection.commit()
+
+    changed_fields = sorted(
+        field
+        for field in (
+            "clientName",
+            "clientManager",
+            "clientId",
+            "clientType",
+            "companyNumber",
+            "companyStatus",
+            "companyUtr",
+            "vatNumber",
+            "email",
+            "phone",
+            "authCode",
+            "address",
+        )
+        if field in payload
+    )
+    record_audit_event(
+        "customer",
+        customer_id,
+        "client.profile.updated",
+        {
+            "fields": changed_fields,
+            "companiesHouseSyncRequested": company_sync_requested,
+            "companiesHouseSyncSource": structure_source,
+            "companyNumber": profile.get("companyNumber") or "",
+        },
+        user.get("id") if isinstance(user, dict) else None,
+    )
+    return panel_payload(user)
 
 
 def invoice_detail(invoice_id: str) -> dict:

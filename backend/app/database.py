@@ -332,6 +332,9 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS primary_person TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_people JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS addresses JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS late_payment_charge_base_amount NUMERIC(14, 2);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS client_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_structure JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_structure_synced_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS customers_name_idx ON customers (name);
 
