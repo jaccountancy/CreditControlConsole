@@ -27943,6 +27943,136 @@
                 color: color-mix(in srgb, var(--muted) 88%, #1e2f4d 12%);
                 font-weight: 700;
             }
+            .ch-register-client-sync-strip {
+                margin: 0 4px;
+                font-size: 0.77rem;
+                font-weight: 700;
+                color: #5f7090;
+            }
+            .ch-register-client-save-strip {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin: 0 4px;
+                padding: 9px 11px;
+                border-radius: 11px;
+                border: 1px solid rgba(91, 116, 160, 0.18);
+                background: #f9fbff;
+            }
+            .ch-register-client-save-strip[data-state="saving"] {
+                border-color: rgba(29, 103, 242, 0.28);
+                background: rgba(233, 241, 255, 0.85);
+            }
+            .ch-register-client-save-strip[data-state="error"] {
+                border-color: rgba(220, 38, 38, 0.32);
+                background: rgba(254, 242, 242, 0.92);
+            }
+            .ch-register-client-save-strip-copy {
+                font-size: 0.79rem;
+                font-weight: 800;
+                color: #435778;
+                line-height: 1.35;
+            }
+            .ch-register-client-save-strip[data-state="error"] .ch-register-client-save-strip-copy {
+                color: #9f1239;
+            }
+            .ch-register-client-save-strip .ghost-button {
+                min-height: 32px;
+                padding: 6px 10px;
+                border-radius: 10px;
+                font-size: 0.79rem;
+                font-weight: 800;
+            }
+            .ch-register-client-write-banner {
+                margin: 0 4px;
+                padding: 10px 12px;
+                border-radius: 11px;
+                border: 1px solid rgba(220, 38, 38, 0.28);
+                background: rgba(254, 242, 242, 0.95);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .ch-register-client-write-banner-copy {
+                font-size: 0.8rem;
+                font-weight: 800;
+                color: #9f1239;
+            }
+            .ch-register-client-write-banner-actions {
+                display: inline-flex;
+                gap: 8px;
+            }
+            .ch-register-client-write-banner-actions .ghost-button {
+                min-height: 30px;
+                padding: 6px 10px;
+                border-radius: 9px;
+                font-size: 0.78rem;
+            }
+            .ch-register-client-panel-sync-meta {
+                margin-top: -2px;
+                margin-bottom: 8px;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #5b6f92;
+            }
+            .ch-register-health-card > header,
+            .ch-register-snapshot-card > header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .ch-register-health-explain-toggle {
+                min-height: 30px;
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-size: 0.74rem;
+                font-weight: 800;
+            }
+            .ch-register-health-explain {
+                margin: 2px 0 10px;
+                padding: 9px 10px;
+                border-radius: 10px;
+                border: 1px solid rgba(91, 116, 160, 0.16);
+                background: #fbfdff;
+                display: grid;
+                gap: 6px;
+            }
+            .ch-register-health-explain-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                font-size: 0.78rem;
+                font-weight: 750;
+                color: #3f5377;
+            }
+            .ch-register-health-explain-row strong {
+                font-size: 0.76rem;
+                font-weight: 850;
+                color: #1f63d7;
+            }
+            .ch-register-health-explain-row.is-penalty strong {
+                color: #b45309;
+            }
+            .ch-register-snapshot-quick-action {
+                width: 100%;
+                text-align: left;
+                cursor: pointer;
+                transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+            }
+            .ch-register-snapshot-quick-action:hover,
+            .ch-register-snapshot-quick-action:focus-visible {
+                border-color: rgba(29, 103, 242, 0.28);
+                box-shadow: 0 8px 14px rgba(30, 96, 214, 0.12);
+                transform: translateY(-1px);
+            }
+            .ch-register-snapshot-quick-action:focus-visible {
+                outline: 2px solid rgba(29, 103, 242, 0.34);
+                outline-offset: 2px;
+            }
             .ch-register-client-page-panel {
                 border-top-left-radius: 0;
                 border-top-right-radius: 0;
@@ -36007,7 +36137,11 @@
                                         <div class="ch-register-client-page-main">
                                     <section class="ch-register-client-overview" id="chRegisterClientOverviewCards">
                                         <article class="ch-register-overview-card ch-register-health-card">
-                                            <header><h4>CLIENT HEALTH</h4></header>
+                                            <header>
+                                                <h4>CLIENT HEALTH</h4>
+                                                <button class="ghost-button ch-register-health-explain-toggle" type="button" id="chRegisterClientHealthExplainButton" aria-expanded="false" aria-controls="chRegisterClientHealthExplainPanel">Why this grade?</button>
+                                            </header>
+                                            <div class="ch-register-health-explain" id="chRegisterClientHealthExplainPanel" hidden></div>
                                             <div class="ch-register-health-layout">
                                                 <div class="ch-register-health-dial">
                                                     <strong id="chRegisterClientHealthGrade">A+</strong>
@@ -36031,7 +36165,7 @@
                                             <header><h4>CLIENT SNAPSHOT</h4></header>
                                             <div class="ch-register-snapshot-grid">
                                                 <div class="ch-register-snapshot-metric"><span>TURNOVER</span><strong id="chRegisterClientSnapshotTurnover">--</strong><small>Last 12 months</small></div>
-                                                <div class="ch-register-snapshot-metric"><span>VAT STATUS</span><strong id="chRegisterClientSnapshotVatStatus">--</strong><small id="chRegisterClientSnapshotVatMeta">--</small></div>
+                                                <button class="ch-register-snapshot-metric ch-register-snapshot-quick-action" type="button" id="chRegisterClientSnapshotVatQuickAction"><span>VAT STATUS</span><strong id="chRegisterClientSnapshotVatStatus">--</strong><small id="chRegisterClientSnapshotVatMeta">--</small></button>
                                                 <div class="ch-register-snapshot-metric"><span>PAYROLL</span><strong id="chRegisterClientSnapshotPayrollFrequency">--</strong><small id="chRegisterClientSnapshotPayrollMeta">--</small></div>
                                                 <div class="ch-register-snapshot-metric"><span>STAFF</span><strong id="chRegisterClientSnapshotStaffCount">--</strong><small>On payroll</small></div>
                                             </div>
@@ -36057,6 +36191,18 @@
                                             <p class="ch-register-relationship-since" id="chRegisterClientRelationshipSince">Client since --</p>
                                         </article>
                                     </section>
+                                    <div class="ch-register-client-save-strip" id="chRegisterClientPageSaveStrip" data-state="idle">
+                                        <span class="ch-register-client-save-strip-copy" id="chRegisterClientPageSaveStripCopy">Changes save automatically as you type.</span>
+                                        <button class="ghost-button" type="button" id="chRegisterClientPageRetrySaveButton" hidden>Retry save</button>
+                                    </div>
+                                    <div class="ch-register-client-write-banner" id="chRegisterClientPageWriteBanner" hidden>
+                                        <span class="ch-register-client-write-banner-copy" id="chRegisterClientPageWriteBannerCopy">A write action failed.</span>
+                                        <div class="ch-register-client-write-banner-actions">
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageWriteBannerRetryButton">Retry</button>
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageWriteBannerDismissButton">Dismiss</button>
+                                        </div>
+                                    </div>
+                                    <p class="detail-meta ch-register-client-sync-strip" id="chRegisterClientPageSyncStamp">Xero sync: -- · Companies House sync: --</p>
                                     <p class="detail-meta ch-register-client-page-inline-note" id="chRegisterClientPageInlineNote">Core details for the selected client profile.</p>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="client-info">
                                         <div class="ch-settings-head">
@@ -36193,6 +36339,7 @@
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="service-vat" hidden>
                                         <h4>VAT</h4>
                                         <p class="detail-meta">VAT service profile and filing details.</p>
+                                        <p class="detail-meta ch-register-client-panel-sync-meta" id="chRegisterClientPageVatSyncMeta">Xero sync: --</p>
                                         <div class="ch-register-risk-grid">
                                             <label>VAT frequency
                                                 <input id="chRegisterClientPageVatFrequency" type="text" placeholder="Monthly / Quarterly">
@@ -36377,6 +36524,7 @@
                                                 <div>
                                                     <h4>Companies House</h4>
                                                     <p class="detail-meta">Operational Companies House tracking for this client.</p>
+                                                    <p class="detail-meta ch-register-client-panel-sync-meta" id="chRegisterClientPageCompaniesHouseSyncMeta">Companies House sync: --</p>
                                                 </div>
                                                 <img class="ch-client-page-ch-logo" src="/static/companies-house-logo.png" alt="Companies House logo" loading="lazy">
                                             </div>
@@ -111401,10 +111549,14 @@
                     open: false,
                     loading: false,
                     saving: false,
+                    saveState: "idle",
+                    saveError: "",
                     xeroMatching: false,
                     rowId: "",
                     activeTab: "client-info",
                     lastSavedAt: "",
+                    showHealthExplain: false,
+                    writeFailure: { message: "", retryAction: "" },
                     showCompletedTasks: false,
                     payload: null,
                 },
@@ -116579,12 +116731,16 @@
                     open: false,
                     loading: false,
                     saving: false,
+                    saveState: "idle",
+                    saveError: "",
                     xeroMatching: false,
                     editMode: false,
                     rowId: "",
                     payload: null,
                     activeTab: "client-info",
                     lastSavedAt: "",
+                    showHealthExplain: false,
+                    writeFailure: { message: "", retryAction: "" },
                     showCompletedTasks: false,
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
@@ -116838,6 +116994,7 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     xeroMatching: true,
                 };
+                setClientRegisterWriteFailure("", "");
                 renderClientRegisterClientPage();
                 const updateLocalRow = () => {
                     const nextPayload = {
@@ -116887,13 +117044,15 @@
                     });
                     updateLocalRow();
                     closeClientRegisterXeroMatchModal();
+                    setClientRegisterWriteFailure("", "");
                     renderClientRegisterClientPage();
                     showToast(`Matched to ${tenantName}.`, "success");
                 } catch (error) {
-                    updateLocalRow();
-                    closeClientRegisterXeroMatchModal();
+                    const message = String(error?.message || "Unable to update Xero match.").trim();
+                    status.textContent = `${message} Please try again.`;
+                    setClientRegisterWriteFailure(`${message} Your previous Xero match is unchanged.`, "retry-xero-match");
                     renderClientRegisterClientPage();
-                    showToast(error?.message || `Matched locally to ${tenantName}.`, "info");
+                    showToast(message, "error");
                 } finally {
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
@@ -117738,6 +117897,32 @@
                 return areas;
             }
 
+            function setClientRegisterWriteFailure(message = "", retryAction = "") {
+                const nextMessage = String(message || "").trim();
+                const nextAction = String(retryAction || "").trim();
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...(companiesHouseSettings.authRegisterClientPage || {}),
+                    writeFailure: {
+                        message: nextMessage,
+                        retryAction: nextMessage ? nextAction : "",
+                    },
+                };
+            }
+
+            function clientRegisterFirstNonEmpty(values = []) {
+                for (const value of values) {
+                    const raw = String(value || "").trim();
+                    if (raw) return raw;
+                }
+                return "";
+            }
+
+            function clientRegisterSyncStampLabel(rawValue = "", emptyLabel = "Not synced yet") {
+                const raw = String(rawValue || "").trim();
+                if (!raw) return emptyLabel;
+                return chFormatDateTime(raw);
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -117794,12 +117979,99 @@
                     statusBadge.style.borderColor = isActive ? "rgba(43, 156, 96, 0.26)" : "rgba(224, 124, 38, 0.36)";
                     statusBadge.style.color = isActive ? "#228050" : "#ab5d12";
                 }
+                const saveStrip = document.getElementById("chRegisterClientPageSaveStrip");
+                const saveStripCopy = document.getElementById("chRegisterClientPageSaveStripCopy");
+                const retrySaveButton = document.getElementById("chRegisterClientPageRetrySaveButton");
+                const saveState = String(pageState.saveState || (pageState.saving ? "saving" : "idle")).trim() || "idle";
+                if (saveStrip) {
+                    saveStrip.dataset.state = saveState;
+                }
+                if (saveStripCopy) {
+                    const saveStamp = String(pageState.lastSavedAt || "").trim();
+                    const saveError = String(pageState.saveError || "").trim();
+                    if (saveState === "saving" || pageState.saving) {
+                        saveStripCopy.textContent = "Saving changes...";
+                    } else if (saveState === "error" && saveError) {
+                        saveStripCopy.textContent = `Save failed: ${saveError}`;
+                    } else if (saveStamp) {
+                        saveStripCopy.textContent = `Changes save automatically as you type. Last saved ${chFormatDateTime(saveStamp)}.`;
+                    } else {
+                        saveStripCopy.textContent = "Changes save automatically as you type.";
+                    }
+                }
+                if (retrySaveButton) {
+                    retrySaveButton.hidden = !(saveState === "error");
+                    retrySaveButton.disabled = !!pageState.saving;
+                }
+                const writeFailureBanner = document.getElementById("chRegisterClientPageWriteBanner");
+                const writeFailureBannerCopy = document.getElementById("chRegisterClientPageWriteBannerCopy");
+                const writeFailureRetry = document.getElementById("chRegisterClientPageWriteBannerRetryButton");
+                const writeFailureMessage = String(pageState?.writeFailure?.message || "").trim();
+                const writeFailureAction = String(pageState?.writeFailure?.retryAction || "").trim();
+                if (writeFailureBanner) writeFailureBanner.hidden = !writeFailureMessage;
+                if (writeFailureBannerCopy) writeFailureBannerCopy.textContent = writeFailureMessage || "A write action failed.";
+                if (writeFailureRetry) {
+                    writeFailureRetry.hidden = !writeFailureAction;
+                    writeFailureRetry.dataset.retryAction = writeFailureAction;
+                    writeFailureRetry.disabled = !!pageState.saving || !!pageState.xeroMatching;
+                }
                 const inlineNote = document.getElementById("chRegisterClientPageInlineNote");
                 if (inlineNote) {
                     const stamp = String(pageState.lastSavedAt || "").trim();
                     inlineNote.textContent = stamp
                         ? `Changes save automatically as you type. Last saved ${chFormatDateTime(stamp)}.`
                         : "Changes save automatically as you type.";
+                }
+                const xeroSyncStampNode = document.getElementById("chRegisterClientPageSyncStamp");
+                const vatSyncMetaNode = document.getElementById("chRegisterClientPageVatSyncMeta");
+                const chSyncMetaNode = document.getElementById("chRegisterClientPageCompaniesHouseSyncMeta");
+                const xeroSyncRaw = clientRegisterFirstNonEmpty([
+                    profile?.xero?.lastSyncAt,
+                    profile?.xeroLastSyncAt,
+                    row?.xeroLastSyncAt,
+                    state?.organisation?.lastSync,
+                ]);
+                const chSyncRaw = clientRegisterFirstNonEmpty([
+                    profile?.companiesHouse?.lastSyncAt,
+                    profile?.companiesHouse?.checkedAt,
+                    row?.companiesHouseLastSyncAt,
+                    row?.chLastSyncAt,
+                    row?.updatedAt,
+                ]);
+                const xeroSyncLabel = clientRegisterSyncStampLabel(xeroSyncRaw);
+                const chSyncLabel = clientRegisterSyncStampLabel(chSyncRaw);
+                if (xeroSyncStampNode) xeroSyncStampNode.textContent = `Xero sync: ${xeroSyncLabel} · Companies House sync: ${chSyncLabel}`;
+                if (vatSyncMetaNode) vatSyncMetaNode.textContent = `Xero sync: ${xeroSyncLabel}`;
+                if (chSyncMetaNode) chSyncMetaNode.textContent = `Companies House sync: ${chSyncLabel}`;
+                if (pageState.loading && !payload) {
+                    if (meta) meta.textContent = "Loading client data from Companies House and Xero...";
+                    if (inlineNote) inlineNote.textContent = "Preparing client workspace...";
+                    const callSummary = document.getElementById("chRegisterClientPageCallStatsSummary");
+                    const callCards = document.getElementById("chRegisterClientPageCallStatsCards");
+                    const callBody = document.getElementById("chRegisterClientPageCallStatsBody");
+                    if (callSummary) callSummary.textContent = "Loading matched call stats for this client…";
+                    if (callCards) {
+                        callCards.innerHTML = `
+                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:56%;"></div><div class="call-stats-skeleton" style="height:22px;width:44%;margin-top:10px;"></div></article>
+                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:60%;"></div><div class="call-stats-skeleton" style="height:22px;width:52%;margin-top:10px;"></div></article>
+                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:48%;"></div><div class="call-stats-skeleton" style="height:22px;width:65%;margin-top:10px;"></div></article>
+                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:54%;"></div><div class="call-stats-skeleton" style="height:22px;width:42%;margin-top:10px;"></div></article>
+                        `;
+                    }
+                    if (callBody) callBody.innerHTML = `<tr><td colspan="6"><div class="call-stats-skeleton" style="height:30px;"></div></td></tr>`;
+                    const vaultMeta = document.getElementById("chRegisterClientPageVaultMeta");
+                    const vaultBody = document.getElementById("chRegisterClientPageVaultBody");
+                    if (vaultMeta) vaultMeta.textContent = "Loading vault links for this client...";
+                    if (vaultBody) vaultBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:30px;"></div></td></tr>`;
+                    const officersBody = document.getElementById("chRegisterClientPageChOfficersBody");
+                    const pscBody = document.getElementById("chRegisterClientPageChPscBody");
+                    const filingsBody = document.getElementById("chRegisterClientPageChFilingHistoryBody");
+                    if (officersBody) officersBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
+                    if (pscBody) pscBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
+                    if (filingsBody) filingsBody.innerHTML = `<tr><td colspan="3"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
+                    setClientRegisterClientPageTab(pageState.activeTab || "client-info");
+                    renderTopbarIdentity();
+                    return;
                 }
                 const assignReadOnly = (id, value) => {
                     const node = document.getElementById(id);
@@ -117918,6 +118190,26 @@
                 setText("chRegisterClientHealthCtStatus", ctStatus);
                 setText("chRegisterClientHealthChStatus", companiesHouseStatus);
                 setText("chRegisterClientHealthAmlStatus", amlStatus);
+                const healthExplainButton = document.getElementById("chRegisterClientHealthExplainButton");
+                const healthExplainPanel = document.getElementById("chRegisterClientHealthExplainPanel");
+                const healthChecks = [
+                    { label: "VAT", status: vatStatus },
+                    { label: "Payroll", status: payrollStatus },
+                    { label: "Accounts", status: accountsStatus },
+                    { label: "Corporation Tax", status: ctStatus },
+                    { label: "Companies House", status: companiesHouseStatus },
+                    { label: "AML", status: amlStatus },
+                ];
+                if (healthExplainPanel) {
+                    healthExplainPanel.innerHTML = healthChecks.map((item) => {
+                        const hasPenalty = /overdue|review|required|dissolved|liquidation/i.test(String(item?.status || ""));
+                        return `<div class="ch-register-health-explain-row ${hasPenalty ? "is-penalty" : ""}"><span>${escapeHTML(item.label)}</span><strong>${hasPenalty ? "Penalty applied" : "No penalty"}</strong></div>`;
+                    }).join("");
+                    healthExplainPanel.hidden = !pageState.showHealthExplain;
+                }
+                if (healthExplainButton) {
+                    healthExplainButton.setAttribute("aria-expanded", pageState.showHealthExplain ? "true" : "false");
+                }
 
                 const nextDeadlineCandidates = [
                     vatDetails?.nextReturnDueDate,
@@ -117945,12 +118237,25 @@
                 setText("chRegisterClientSnapshotVatMeta", vatDetails?.nextReturnDueDate ? `Next: ${formatDate(vatDetails.nextReturnDueDate)}` : "No due date");
                 setText("chRegisterClientSnapshotPayrollFrequency", payrollDetails?.frequency || (services?.payroll ? "Monthly" : "Inactive"));
                 setText("chRegisterClientSnapshotPayrollMeta", payrollDetails?.rtiDeadline ? `Next: ${formatDate(payrollDetails.rtiDeadline)}` : "No deadline");
-                setText("chRegisterClientSnapshotStaffCount", String(
-                    row?.staffCount
-                    || row?.employeeCount
-                    || profile?.staffCount
-                    || "--"
-                ));
+                const payrollWorkspace = payrollHeadcountWorkspaceByTenant(xeroTenant?.tenantId || "");
+                const payrollSnapshot = payrollWorkspace?.latestSnapshot || null;
+                const payrollSnapshotHeadcount = Number(payrollSnapshot?.headcount);
+                const payrollSnapshotHasHeadcount = Number.isFinite(payrollSnapshotHeadcount) && payrollSnapshotHeadcount >= 0;
+                const fallbackStaffCount = Number(row?.staffCount || row?.employeeCount || profile?.staffCount);
+                const resolvedStaffCount = payrollSnapshotHasHeadcount
+                    ? payrollSnapshotHeadcount
+                    : (Number.isFinite(fallbackStaffCount) && fallbackStaffCount >= 0 ? fallbackStaffCount : null);
+                setText(
+                    "chRegisterClientSnapshotStaffCount",
+                    resolvedStaffCount == null
+                        ? "--"
+                        : Math.round(resolvedStaffCount).toLocaleString("en-GB")
+                );
+                const vatQuickActionButton = document.getElementById("chRegisterClientSnapshotVatQuickAction");
+                if (vatQuickActionButton) {
+                    vatQuickActionButton.disabled = false;
+                    vatQuickActionButton.title = "Open VAT service panel";
+                }
 
                 const managerName = String(row?.clientManager || "").trim() || "Unassigned";
                 const managerInitials = managerName
@@ -118310,10 +118615,14 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: true,
                     loading: true,
+                    saveState: "idle",
+                    saveError: "",
                     xeroMatching: false,
                     editMode: false,
                     rowId: safeRowId,
                     activeTab: "client-info",
+                    showHealthExplain: false,
+                    writeFailure: { message: "", retryAction: "" },
                     showCompletedTasks: false,
                     payload: null,
                     jukInvoiceLookupBusy: false,
@@ -118444,7 +118753,10 @@
                 companiesHouseSettings.authRegisterClientPage = {
                     ...pageState,
                     saving: true,
+                    saveState: "saving",
+                    saveError: "",
                 };
+                setClientRegisterWriteFailure("", "");
                 renderClientRegisterClientPage();
                 try {
                     const next = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`, {
@@ -118462,6 +118774,8 @@
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         saving: false,
+                        saveState: "saved",
+                        saveError: "",
                         lastSavedAt: new Date().toISOString(),
                         payload: nextPayload,
                     };
@@ -118477,12 +118791,16 @@
                     renderClientRegisterClientPage();
                     if (!silent) showToast("Client page saved.", "success");
                 } catch (error) {
+                    const message = String(error?.message || "Unable to save client page.").trim();
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         saving: false,
+                        saveState: "error",
+                        saveError: message,
                     };
+                    setClientRegisterWriteFailure(`${message} No local changes were committed.`, "retry-save");
                     renderClientRegisterClientPage();
-                    if (!silent) showToast(error?.message || "Unable to save client page.", "error");
+                    if (!silent) showToast(message, "error");
                 }
             }
 
@@ -119450,8 +119768,22 @@
                 document.getElementById("chRegisterClientPagePopulateCodesButton")?.addEventListener("click", () => {
                     document.getElementById("chAuthCodeRegisterPopulateButton")?.click();
                 });
+                document.getElementById("chRegisterClientPageRetrySaveButton")?.addEventListener("click", () => {
+                    saveClientRegisterClientPage({ silent: false, source: "retry-save-strip" });
+                });
                 document.getElementById("chRegisterClientPageReloadDirectoryButton")?.addEventListener("click", () => {
                     document.getElementById("chAuthCodeRegisterReloadButton")?.click();
+                });
+                document.getElementById("chRegisterClientHealthExplainButton")?.addEventListener("click", () => {
+                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...pageState,
+                        showHealthExplain: !pageState.showHealthExplain,
+                    };
+                    renderClientRegisterClientPage();
+                });
+                document.getElementById("chRegisterClientSnapshotVatQuickAction")?.addEventListener("click", () => {
+                    setClientRegisterClientPageTab("service-vat");
                 });
                 document.getElementById("chRegisterClientPageOpenCompaniesHouseButton")?.addEventListener("click", openCompaniesHouseFromClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageMarkNlacButton")?.addEventListener("click", markClientRegisterClientPageAsNlac);
@@ -119462,6 +119794,20 @@
                 });
                 document.getElementById("chRegisterClientPageXeroMatchForm")?.addEventListener("submit", submitClientRegisterXeroMatch);
                 document.getElementById("chRegisterClientPageXeroMatchConnectButton")?.addEventListener("click", connectNewXeroOrganisationFromClientPage);
+                document.getElementById("chRegisterClientPageWriteBannerRetryButton")?.addEventListener("click", (event) => {
+                    const action = String(event?.currentTarget?.dataset?.retryAction || "").trim();
+                    if (action === "retry-save") {
+                        saveClientRegisterClientPage({ silent: false, source: "write-banner" });
+                        return;
+                    }
+                    if (action === "retry-xero-match") {
+                        openClientRegisterXeroMatchModal();
+                    }
+                });
+                document.getElementById("chRegisterClientPageWriteBannerDismissButton")?.addEventListener("click", () => {
+                    setClientRegisterWriteFailure("", "");
+                    renderClientRegisterClientPage();
+                });
                 document.getElementById("chRegisterClientPageVaultOpenPageButton")?.addEventListener("click", (event) => {
                     const button = event?.currentTarget;
                     const clientSearch = String(button?.dataset?.clientVaultSearch || "").trim();
