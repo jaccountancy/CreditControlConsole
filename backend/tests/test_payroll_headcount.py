@@ -81,6 +81,11 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(len(employees), 2)
         self.assertEqual(len(payruns), 1)
 
+    def test_effective_headcount_prefers_latest_payrun_when_available(self):
+        self.assertEqual(services._payroll_headcount_effective_count(40, 10), 10)
+        self.assertEqual(services._payroll_headcount_effective_count(10, None), 10)
+        self.assertEqual(services._payroll_headcount_effective_count(10, 0), 10)
+
     def test_workspace_upsert_repairs_missing_schema_and_retries_once(self):
         now = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
         row = {

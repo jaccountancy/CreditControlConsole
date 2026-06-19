@@ -1304,6 +1304,14 @@ def _payroll_headcount_from_payrun_details(payrun_details_payload: dict) -> int:
     )
 
 
+def _payroll_headcount_effective_count(active_employee_count: int, latest_payrun_headcount: int | None) -> int:
+    base_count = max(0, int(active_employee_count or 0))
+    payrun_count = int(latest_payrun_headcount) if latest_payrun_headcount is not None else 0
+    if payrun_count > 0:
+        return payrun_count
+    return base_count
+
+
 def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -> list[dict]:
     if not isinstance(payload, dict):
         return []
@@ -1799,7 +1807,8 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
             if str(employee.get("EmployeeStatus") or employee.get("Status") or employee.get("status") or "").strip().lower()
             not in {"terminated", "inactive", "deleted", "archived"}
         )
-    if active_headcount == 0 and monthly_payruns:
+    latest_payrun_headcount: int | None = None
+    if monthly_payruns:
         latest_payrun = max(
             monthly_payruns,
             key=lambda row: _payroll_headcount_payrun_date(row) or date.min,
@@ -1809,9 +1818,10 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
             try:
                 details_url = XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(latest_payrun_id, safe=""))
                 payrun_details_payload = await xero_api_get(connection_row, details_url)
-                active_headcount = _payroll_headcount_from_payrun_details(payrun_details_payload)
+                latest_payrun_headcount = _payroll_headcount_from_payrun_details(payrun_details_payload)
             except Exception as exc:
                 errors.append(f"Pay run details sync failed: {_sync_error_message(exc)}")
+    active_headcount = _payroll_headcount_effective_count(active_headcount, latest_payrun_headcount)
 
     while True:
         try:
@@ -1821,6 +1831,8 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
                     raw_payload = json.dumps(
                         {
                             "employeeCount": len(employees),
+                            "activeEmployeeCount": active_headcount,
+                            "latestPayrunHeadcount": latest_payrun_headcount,
                             "payRunCount": len(payruns),
                             "errors": errors,
                         },
