@@ -110842,6 +110842,15 @@
                 return settingsSectionGroupMap[String(section || "").trim()] || "";
             }
 
+            function dedupeSettingsGroupIcons() {
+                document.querySelectorAll("[data-settings-group-label]").forEach((label) => {
+                    const icons = label.querySelectorAll(".settings-nav-group-icon");
+                    icons.forEach((icon, index) => {
+                        if (index > 0) icon.remove();
+                    });
+                });
+            }
+
             function syncSettingsNavGroups(activeSection = activeSettingsSection, toggledGroup = "") {
                 const groupToToggle = String(toggledGroup || "").trim();
                 if (groupToToggle) {
@@ -110940,6 +110949,7 @@
             }
 
             function renderSettingsNavigation() {
+                dedupeSettingsGroupIcons();
                 const copy = settingsSectionCopy[activeSettingsSection] || settingsSectionCopy["settings-home"];
                 const screen = document.getElementById("settingsScreen");
                 if (screen) {
@@ -112174,6 +112184,7 @@
             }
 
             function wireSyncButtons() {
+                dedupeSettingsGroupIcons();
                 const syncScopeSelect = document.getElementById("syncScopeSelect");
                 if (syncScopeSelect) {
                     syncScopeSelect.value = syncSettings.invoiceScope;
@@ -116065,50 +116076,42 @@
                 const head = document.getElementById("taskBookkeepingProfitLossHead");
                 const body = document.getElementById("taskBookkeepingProfitLossBody");
                 if (!head || !body) return;
-                const summary = reviewState?.summary || {};
-                const rows = meReportProfitLossRows(summary);
-                if (!rows.length) {
+                const monthColumns = taskBookkeepingProfitLossMonthColumns(reviewState);
+                const monthActivity = taskBookkeepingProfitLossMonthActivity(reviewState, monthColumns);
+                if (!monthColumns.length) {
                     head.innerHTML = "<tr><th>Metric</th><th>Value</th></tr>";
                     body.innerHTML = '<tr><td colspan="2">No profit and loss rows extracted for this period.</td></tr>';
                     return;
                 }
-                const columns = rows.slice(0, 18);
-                head.innerHTML = `<tr><th>Metric</th>${columns.map((item) => `<th>${escapeHTML(item.month || "Month")}</th>`).join("")}<th>YTD total</th></tr>`;
+                head.innerHTML = `<tr><th>Metric</th>${monthColumns.map((month) => `<th>${escapeHTML(month)}</th>`).join("")}<th>YTD total</th></tr>`;
                 const metricRows = [
                     { key: "income", label: "Revenue" },
                     { key: "expenses", label: "Expenditure" },
                     { key: "profit", label: "Profit" },
                 ];
-                const monthSums = metricRows.reduce((acc, metric) => {
-                    acc[metric.key] = columns.reduce((sum, item) => sum + Number(item?.[metric.key] || 0), 0);
-                    return acc;
-                }, {});
-                const summaryYtdIncome = taskBookkeepingNumberOrNull(summary.yearToDateSales)
-                    ?? taskBookkeepingNumberOrNull(summary.yearToDateRevenue)
-                    ?? taskBookkeepingNumberOrNull(summary.ytdSales)
-                    ?? taskBookkeepingNumberOrNull(summary.ytdRevenue);
-                const summaryYtdProfit = taskBookkeepingNumberOrNull(summary.yearToDateProfit)
-                    ?? taskBookkeepingNumberOrNull(summary.accountingProfit)
-                    ?? taskBookkeepingNumberOrNull(summary.ytdProfit)
-                    ?? taskBookkeepingNumberOrNull(summary.profitBeforeTax);
-                const summaryYtdExpenses = taskBookkeepingNumberOrNull(summary.yearToDateExpenses)
-                    ?? taskBookkeepingNumberOrNull(summary.yearToDateExpenditure)
-                    ?? taskBookkeepingNumberOrNull(summary.ytdExpenses)
-                    ?? (summaryYtdIncome !== null && summaryYtdProfit !== null ? summaryYtdIncome - summaryYtdProfit : null);
-                const ytdByMetric = {
-                    income: summaryYtdIncome ?? monthSums.income ?? 0,
-                    expenses: summaryYtdExpenses ?? monthSums.expenses ?? 0,
-                    profit: summaryYtdProfit ?? ((summaryYtdIncome !== null && summaryYtdExpenses !== null) ? (summaryYtdIncome - summaryYtdExpenses) : null) ?? monthSums.profit ?? 0,
-                };
                 body.innerHTML = metricRows.map((metric) => {
-                    const ytd = Number(ytdByMetric[metric.key] || 0);
+                    const ytd = monthColumns.reduce((sum, month) => {
+                        const monthIncome = Number(monthActivity?.[month]?.income || 0);
+                        const monthExpenses = Number(monthActivity?.[month]?.expenses || 0);
+                        const value = metric.key === "income"
+                            ? monthIncome
+                            : metric.key === "expenses"
+                                ? monthExpenses
+                                : (monthIncome - monthExpenses);
+                        return sum + value;
+                    }, 0);
                     return `
                         <tr>
                             <td><strong>${escapeHTML(metric.label)}</strong></td>
-                            ${columns.map((item, index) => {
-                                const amount = Number(item?.[metric.key] || 0);
-                                const month = String(item?.month || "");
-                                return `<td><button class="text-button" type="button" data-task-bookkeeping-pl-drill="${escapeHTML(metric.key)}" data-task-bookkeeping-pl-month="${escapeHTML(month)}" data-task-bookkeeping-pl-index="${index}">${escapeHTML(formatCurrency(amount))}</button></td>`;
+                            ${monthColumns.map((month) => {
+                                const monthIncome = Number(monthActivity?.[month]?.income || 0);
+                                const monthExpenses = Number(monthActivity?.[month]?.expenses || 0);
+                                const amount = metric.key === "income"
+                                    ? monthIncome
+                                    : metric.key === "expenses"
+                                        ? monthExpenses
+                                        : (monthIncome - monthExpenses);
+                                return `<td><button class="text-button" type="button" data-task-bookkeeping-pl-drill="${escapeHTML(metric.key)}" data-task-bookkeeping-pl-month="${escapeHTML(month)}">${escapeHTML(formatCurrency(amount))}</button></td>`;
                             }).join("")}
                             <td><strong>${escapeHTML(formatCurrency(ytd))}</strong></td>
                         </tr>
@@ -116177,27 +116180,61 @@
                     || ""
                 );
                 const periodStartCandidate = parseDateValue(
-                    summary.accountingPeriodStart
+                    reviewState?.periodConfig?.periodStartISO
+                    || summary.periodStart
+                    || summary.period?.start
+                    || summary.reportingPeriodStart
+                    || summary.flowPeriodStart
+                    || summary.accountingPeriodStart
                     || summary.currentYearStart
                     || summary.fiscalYearStart
                     || summary.financialYearStart
                     || summary.accountsPeriodStart
+                    || reviewState?.meClient?.flowPeriodStart
+                    || reviewState?.registerRow?.accountsPeriodStart
+                    || reviewState?.registerRow?.periodStartDate
                     || summary.yearStart
                     || ""
                 );
                 if (periodEnd) {
                     let startDate = periodStartCandidate;
                     if (!startDate || startDate.getTime() > periodEnd.getTime()) {
+                        const yearEndDate = parseDateValue(
+                            reviewState?.registerRow?.yearEndDate
+                            || reviewState?.registerRow?.accountsPeriodEnd
+                            || reviewState?.registerRow?.accountsMadeUpTo
+                            || summary.yearEndDate
+                            || summary.accountsPeriodEnd
+                            || reviewState?.meClient?.yearEndDate
+                            || ""
+                        );
+                        if (yearEndDate) {
+                            const yearEndMonth = yearEndDate.getMonth();
+                            const yearEndDay = yearEndDate.getDate();
+                            const currentYearEnd = new Date(periodEnd.getFullYear(), yearEndMonth, yearEndDay);
+                            startDate = periodEnd.getTime() <= currentYearEnd.getTime()
+                                ? new Date(periodEnd.getFullYear() - 1, yearEndMonth, yearEndDay + 1)
+                                : new Date(periodEnd.getFullYear(), yearEndMonth, yearEndDay + 1);
+                        }
+                    }
+                    if (!startDate || startDate.getTime() > periodEnd.getTime()) {
                         startDate = new Date(periodEnd.getFullYear(), 0, 1);
                     }
                     const monthColumns = [];
                     const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
                     const endMonth = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 1);
-                    while (cursor.getTime() <= endMonth.getTime() && monthColumns.length < 24) {
+                    while (cursor.getTime() <= endMonth.getTime() && monthColumns.length < 12) {
                         monthColumns.push(cursor.toLocaleDateString("en-GB", { month: "long", year: "numeric" }));
                         cursor.setMonth(cursor.getMonth() + 1);
                     }
-                    if (monthColumns.length) return monthColumns;
+                    if (monthColumns.length) {
+                        const activityByMonth = taskBookkeepingProfitLossMonthActivity(reviewState, monthColumns);
+                        const activeColumns = monthColumns.filter((label) => {
+                            const totals = activityByMonth[label] || {};
+                            return Math.abs(Number(totals.income || 0)) > 0.005 || Math.abs(Number(totals.expenses || 0)) > 0.005;
+                        });
+                        return activeColumns.length ? activeColumns : monthColumns;
+                    }
                 }
                 const plRows = meReportProfitLossRows(summary);
                 const labels = plRows
@@ -116215,6 +116252,41 @@
                 return Array.from(monthSet).sort((left, right) => (
                     (Date.parse(`1 ${left}`) || 0) - (Date.parse(`1 ${right}`) || 0)
                 ));
+            }
+
+            function taskBookkeepingProfitLossMonthActivity(reviewState = {}, monthColumns = []) {
+                const summary = reviewState?.summary || {};
+                const activity = {};
+                monthColumns.forEach((month) => {
+                    activity[month] = { income: 0, expenses: 0 };
+                });
+                if (!monthColumns.length) return activity;
+                const accounts = meReportObjectRows(summary.trialBalanceAccounts);
+                let hasTransactions = false;
+                accounts.forEach((account) => {
+                    const text = `${String(account?.accountCode || account?.code || "")} ${String(account?.accountName || account?.name || "")} ${String(account?.accountType || account?.type || "")}`.toLowerCase();
+                    const isIncome = /(income|revenue|sales|turnover|other income|interest income)/.test(text);
+                    const isExpenditure = /(expense|cost|wages|salary|payroll|rent|utilities|motor|travel|marketing|insurance|professional|fees|depreciation|amortisation|interest paid|tax)/.test(text);
+                    const bucket = isIncome && !isExpenditure ? "income" : "expenses";
+                    const txRows = meReportObjectRows(account.transactions);
+                    if (txRows.length) hasTransactions = true;
+                    txRows.forEach((tx) => {
+                        const txDate = parseDateValue(taskBookkeepingTransactionDateISO(tx));
+                        if (!txDate) return;
+                        const monthLabel = txDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+                        if (!Object.prototype.hasOwnProperty.call(activity, monthLabel)) return;
+                        activity[monthLabel][bucket] += Math.abs(meReportMoneyValue(tx.amount || 0));
+                    });
+                });
+                if (!hasTransactions) {
+                    meReportProfitLossRows(summary).forEach((row) => {
+                        const monthLabel = String(row?.month || "").trim();
+                        if (!monthLabel || !Object.prototype.hasOwnProperty.call(activity, monthLabel)) return;
+                        activity[monthLabel].income += Math.abs(Number(row?.income || 0));
+                        activity[monthLabel].expenses += Math.abs(Number(row?.expenses || 0));
+                    });
+                }
+                return activity;
             }
 
             function taskBookkeepingRenderProfitLossBreakdownTable(reviewState = {}) {
