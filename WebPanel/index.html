@@ -173,6 +173,41 @@
                 <div class="client-invoice-list" id="clientInvoiceList"></div>
             </section>
 
+            <section class="detail-panel confirmation-panel">
+                <div class="panel-heading confirmation-panel-head">
+                    <div>
+                        <p class="eyebrow">Confirmation statement</p>
+                        <h3>Companies House filing</h3>
+                    </div>
+                    <div class="confirmation-actions">
+                        <button class="ghost-button" id="refreshConfirmationButton" type="button">Refresh CH data</button>
+                        <button class="primary-button" id="openConfirmationModalButton" type="button">File statement</button>
+                    </div>
+                </div>
+                <div class="confirmation-deadline-grid" id="confirmationDeadlineGrid">
+                    <article class="confirmation-stat"><span>Next due date</span><strong id="confirmationNextDue">--</strong><small id="confirmationDueMeta">No Companies House sync yet.</small></article>
+                    <article class="confirmation-stat"><span>Made up to</span><strong id="confirmationMadeUpTo">--</strong><small>Review period end date</small></article>
+                    <article class="confirmation-stat"><span>Last filed</span><strong id="confirmationLastFiled">--</strong><small id="confirmationLastFiledMeta">No filing history loaded.</small></article>
+                    <article class="confirmation-stat"><span>Company number</span><strong id="confirmationCompanyNumber">--</strong><small id="confirmationSyncedAt">No CH link on this client.</small></article>
+                </div>
+                <p class="confirmation-status-text" id="confirmationStatusText">Link a Companies House company number on this client profile to unlock filing controls.</p>
+                <div class="confirmation-table-wrap">
+                    <table class="confirmation-table">
+                        <thead>
+                            <tr>
+                                <th>Submitted</th>
+                                <th>Reference</th>
+                                <th>Status</th>
+                                <th>Fee</th>
+                                <th>Invoice</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="confirmationHistoryBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <div class="detail-grid client-action-grid">
                 <section class="detail-panel">
                     <div class="panel-heading">
@@ -233,6 +268,35 @@
             <p></p>
         </div>
     </template>
+
+    <div class="modal-overlay" id="confirmationModal" hidden>
+        <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmationModalTitle">
+            <header class="modal-header">
+                <div>
+                    <p class="eyebrow">Companies House CS01</p>
+                    <h3 id="confirmationModalTitle">File confirmation statement</h3>
+                </div>
+                <button class="ghost-button" id="closeConfirmationModalButton" type="button">Close</button>
+            </header>
+            <form class="stack-form" id="confirmationFilingForm">
+                <label class="profile-field">Workflow route
+                    <select id="confirmationWorkflowAction">
+                        <option value="no-changes">No changes in period</option>
+                        <option value="changes-required">Changes required</option>
+                    </select>
+                </label>
+                <label class="profile-field">Auth code override (optional)
+                    <input id="confirmationAuthCodeOverride" type="text" maxlength="12" placeholder="Leave blank to use saved auth code">
+                </label>
+                <label class="confirmation-checkbox">
+                    <input id="confirmationReadyCheck" type="checkbox">
+                    <span>I confirm this client is ready to submit CS01 now.</span>
+                </label>
+                <p class="confirmation-status-text" id="confirmationModalStatus">Submitting will queue this filing in the existing Companies House workflow.</p>
+                <button class="primary-button" id="submitConfirmationFilingButton" type="submit">Submit to Companies House</button>
+            </form>
+        </section>
+    </div>
 
     <script src="app.js"></script>
 </body>

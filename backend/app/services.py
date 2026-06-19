@@ -1339,6 +1339,216 @@ def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -
     return []
 
 
+def _payroll_overview_decimal(value) -> Decimal:
+    if value in (None, ""):
+        return Decimal("0")
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
+def _payroll_overview_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _payroll_overview_employee_name(employee: dict) -> str:
+    first = _payroll_overview_text(employee.get("FirstName"))
+    last = _payroll_overview_text(employee.get("LastName"))
+    full = " ".join(part for part in (first, last) if part).strip()
+    if full:
+        return full
+    return (
+        _payroll_overview_text(employee.get("FullName"))
+        or _payroll_overview_text(employee.get("Name"))
+        or _payroll_overview_text(employee.get("EmployeeID"))
+        or "Employee"
+    )
+
+
+def _payroll_overview_status(payrun: dict) -> str:
+    return _payroll_overview_text(
+        payrun.get("PayRunStatus")
+        or payrun.get("Status")
+        or payrun.get("status")
+    ).upper() or "UNKNOWN"
+
+
+def _payroll_overview_payrun_count(payrun: dict) -> int:
+    for key in ("PayslipCount", "PayslipsCount", "PaySlipsCount", "EmployeeCount"):
+        raw = payrun.get(key)
+        if raw in (None, ""):
+            continue
+        try:
+            return max(0, int(float(raw)))
+        except Exception:
+            continue
+    return 0
+
+
+def _payroll_overview_account_is_tax_liability(account: dict) -> bool:
+    code = _payroll_overview_text(account.get("Code")).lower()
+    name = _payroll_overview_text(account.get("Name")).lower()
+    combined = f"{code} {name}"
+    keywords = (
+        "paye payable",
+        "paye",
+        "paye/nic",
+        "payroll payable",
+        "hmrc payroll",
+        "nic payable",
+        "national insurance payable",
+    )
+    if any(keyword in combined for keyword in keywords):
+        return True
+    account_type = _payroll_overview_text(account.get("Type")).upper()
+    account_class = _payroll_overview_text(account.get("Class")).upper()
+    if account_type in {"CURRLIAB", "LIABILITY"} and account_class in {"LIABILITY", "EQUITY", ""}:
+        return "payroll" in combined or "hmrc" in combined or "tax" in combined
+    return False
+
+
+def _payroll_overview_account_balance(account: dict) -> Decimal:
+    for key in ("CurrentBalance", "Balance", "YTDBalance", "CurrentNetBalance"):
+        raw = account.get(key)
+        if raw in (None, ""):
+            continue
+        return _payroll_overview_decimal(raw)
+    return Decimal("0")
+
+
+async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant id is required.")
+
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+
+    errors: list[str] = []
+
+    async def _fetch(url: str, label: str, params: dict | None = None) -> dict:
+        try:
+            payload = await xero_api_get(connection_row, url, params=params)
+            return payload if isinstance(payload, dict) else {}
+        except Exception as exc:
+            errors.append(f"{label}: {_sync_error_message(exc)}")
+            return {}
+
+    employees_payload, payruns_payload, accounts_payload = await asyncio.gather(
+        _fetch(XERO_PAYROLL_EMPLOYEES_URL, "Employees"),
+        _fetch(XERO_PAYROLL_PAYRUNS_URL, "Pay runs"),
+        _fetch(ACCOUNTS_URL, "Chart of accounts"),
+    )
+
+    employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
+    payruns = _payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
+    accounts = [
+        account
+        for account in (accounts_payload.get("Accounts") if isinstance(accounts_payload.get("Accounts"), list) else [])
+        if isinstance(account, dict)
+    ]
+
+    active_employees = [row for row in employees if _payroll_headcount_employee_is_active(row)]
+    employee_rows = sorted(
+        [
+            {
+                "employeeId": _payroll_overview_text(row.get("EmployeeID")),
+                "name": _payroll_overview_employee_name(row),
+                "status": _payroll_overview_text(row.get("EmployeeStatus") or row.get("Status")) or "Unknown",
+                "email": _payroll_overview_text(row.get("Email")),
+                "startDate": (
+                    _parse_any_date(row.get("StartDate"))
+                    or _parse_any_date(row.get("DateOfJoining"))
+                    or _parse_any_date(row.get("CreatedDateUTC"))
+                    or _parse_any_date(row.get("CreatedDate"))
+                ),
+            }
+            for row in active_employees
+        ],
+        key=lambda row: str(row.get("name") or "").lower(),
+    )
+    for row in employee_rows:
+        row["startDate"] = row["startDate"].isoformat() if isinstance(row.get("startDate"), date) else ""
+
+    payrun_rows = []
+    for row in payruns:
+        run_date = _payroll_headcount_payrun_date(row)
+        run_status = _payroll_overview_status(row)
+        payrun_rows.append(
+            {
+                "payRunId": _payroll_headcount_payrun_id(row),
+                "status": run_status,
+                "payRunPeriodStartDate": (_parse_any_date(row.get("PayRunPeriodStartDate")) or _parse_any_date(row.get("PeriodStartDate"))),
+                "payRunPeriodEndDate": (_parse_any_date(row.get("PayRunPeriodEndDate")) or _parse_any_date(row.get("PeriodEndDate"))),
+                "paymentDate": run_date,
+                "updatedDateUtc": _parse_any_date(row.get("UpdatedDateUTC")) or _parse_any_date(row.get("UpdatedDate")),
+                "payslipCount": _payroll_overview_payrun_count(row),
+                "wages": float(_payroll_overview_decimal(row.get("Wages"))),
+            }
+        )
+    payrun_rows.sort(
+        key=lambda item: (
+            item.get("paymentDate") or date.min,
+            item.get("payRunPeriodEndDate") or date.min,
+            item.get("updatedDateUtc") or date.min,
+        ),
+        reverse=True,
+    )
+    for item in payrun_rows:
+        for key in ("payRunPeriodStartDate", "payRunPeriodEndDate", "paymentDate", "updatedDateUtc"):
+            item[key] = item[key].isoformat() if isinstance(item.get(key), date) else ""
+
+    draft_statuses = {"DRAFT", "POSTED"}
+    draft_payruns = [row for row in payrun_rows if str(row.get("status") or "").upper() in draft_statuses]
+    today = utcnow().date()
+    next_due = None
+    for run in sorted(payrun_rows, key=lambda row: _parse_any_date(row.get("paymentDate")) or date.max):
+        payment_date = _parse_any_date(run.get("paymentDate"))
+        if payment_date and payment_date >= today:
+            next_due = payment_date
+            break
+
+    tax_rows = []
+    for account in accounts:
+        if not _payroll_overview_account_is_tax_liability(account):
+            continue
+        balance = _payroll_overview_account_balance(account)
+        if abs(balance) < Decimal("0.005"):
+            continue
+        tax_rows.append(
+            {
+                "accountId": _payroll_overview_text(account.get("AccountID") or account.get("ID")),
+                "code": _payroll_overview_text(account.get("Code")),
+                "name": _payroll_overview_text(account.get("Name")) or "Payroll tax account",
+                "type": _payroll_overview_text(account.get("Type")),
+                "status": _payroll_overview_text(account.get("Status")),
+                "balance": float(balance),
+                "isPayable": balance > 0,
+            }
+        )
+    tax_rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
+
+    return {
+        "tenantId": clean_tenant_id,
+        "tenantName": str(connection_row.get("tenant_name") or clean_tenant_id),
+        "generatedAt": _iso(utcnow()) or "",
+        "summary": {
+            "employeeCount": len(employees),
+            "activeEmployeeCount": len(active_employees),
+            "payRunCount": len(payrun_rows),
+            "draftPayRunCount": len(draft_payruns),
+            "latestPayRunDate": payrun_rows[0].get("paymentDate") if payrun_rows else "",
+            "nextPayRunDate": next_due.isoformat() if isinstance(next_due, date) else "",
+            "outstandingTaxBalance": float(sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in tax_rows)),
+        },
+        "payRuns": payrun_rows[:12],
+        "draftPayRuns": draft_payruns[:6],
+        "employees": employee_rows[:60],
+        "outstandingTaxes": tax_rows[:20],
+        "errors": errors,
+    }
+
+
 def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | None = None) -> dict:
     latest = None
     if snapshots:

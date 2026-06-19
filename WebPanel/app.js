@@ -24,6 +24,17 @@ let clientProfileBaseline = null;
 let clientProfileDraft = null;
 let clientProfileClientId = null;
 let clientProfileSaving = false;
+const confirmationState = {
+    clientId: "",
+    companyNumber: "",
+    company: null,
+    detail: null,
+    loading: false,
+    error: "",
+    filingInProgress: false,
+    bulkJobId: "",
+    bulkJobPollTimer: null,
+};
 
 function installNonBlockingBrowserDialogOverrides() {
     if (window.__nonBlockingDialogsInstalled) return;
@@ -57,6 +68,10 @@ function normaliseAPI(config) {
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
             bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
             customerProfile: config.endpoints?.customerProfile || "/api/customers/:customerId/profile",
+            companiesHouseCompanies: config.endpoints?.companiesHouseCompanies || "/api/companies-house/companies",
+            companiesHouseCompanyDetail: config.endpoints?.companiesHouseCompanyDetail || "/api/companies-house/companies/:companyId",
+            companiesHouseBulkSubmit: config.endpoints?.companiesHouseBulkSubmit || "/api/companies-house/submissions/bulk",
+            companiesHouseBulkJob: config.endpoints?.companiesHouseBulkJob || "/api/companies-house/submissions/bulk-jobs/:jobId",
             login: config.endpoints?.login || "/auth/xero/start?include_all_scopes=1"
         }
     };

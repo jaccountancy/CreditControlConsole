@@ -171,6 +171,7 @@ from .services import (
     run_pi_clearing_workflow,
     override_bank_statement_transaction,
     payroll_headcount_payload,
+    payroll_tenant_overview_payload,
     call_stats_dashboard_payload,
     call_stats_import_preview,
     call_stats_import_commit,
@@ -4679,6 +4680,11 @@ def api_payroll_headcount(user: dict = Depends(require_panel_user)):
                 "errorId": error_id,
             },
         ) from exc
+
+
+@app.get("/api/payroll/tenants/{tenant_id}/overview")
+async def api_payroll_tenant_overview(tenant_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "payroll": await payroll_tenant_overview_payload(user, tenant_id)}
 
 
 @app.get("/api/juk-equity")
