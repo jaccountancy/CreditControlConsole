@@ -121541,12 +121541,29 @@
                             const rowId = bmTaskIdentitySafe(task);
                             const status = String(task?.status || "").trim().toLowerCase() || "open";
                             const isCompletedTask = status === "completed";
+                            const workflowType = bmTaskWorkflowType(task);
+                            const workflowState = bmTaskWorkflowState(task);
                             const periodEndISO = bmTaskEffectivePeriodEndISO(task);
                             const deadlineISO = bmTaskEffectiveDeadlineISO(task);
                             const updatedStamp = String(task?.completedAt || task?.updatedAt || "").trim();
-                            const actionMarkup = isCompletedTask
-                                ? `<button class="ghost-button" type="button" data-client-page-task-restore="${escapeHTML(rowId)}">Restore</button>`
-                                : "—";
+                            let actionMarkup = "—";
+                            if (isCompletedTask) {
+                                actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="restore">Restore</button>`;
+                            } else if (workflowType === "vat") {
+                                if (workflowState === "ready_to_complete") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
+                                } else {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_vat">${escapeHTML(workflowState === "in_progress" ? "Finish prep" : "Start")}</button>`;
+                                }
+                            } else if (workflowType === "bookkeeping") {
+                                if (["awaiting_approval", "awaiting_dean_approval"].includes(status) || workflowState === "submitted_for_review" || workflowState === "ready_to_complete") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
+                                } else {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">${escapeHTML((workflowState === "draft_saved" || workflowState === "in_progress") ? "Resume" : "Start")}</button>`;
+                                }
+                            } else {
+                                actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
+                            }
                             return `
                                 <tr>
                                     <td><strong>${escapeHTML(bmTaskDisplayName(task))}</strong></td>
@@ -123185,10 +123202,11 @@
                     renderClientRegisterClientPage();
                 });
                 document.getElementById("chRegisterClientPageTasksBody")?.addEventListener("click", (event) => {
-                    const button = event.target?.closest?.("[data-client-page-task-restore]");
+                    const button = event.target?.closest?.("[data-client-page-task-action]");
                     if (!button) return;
                     event.preventDefault();
-                    const rowId = String(button.getAttribute("data-client-page-task-restore") || "").trim();
+                    const rowId = String(button.getAttribute("data-client-page-task-action") || "").trim();
+                    const actionKind = String(button.getAttribute("data-client-page-task-action-kind") || "").trim().toLowerCase();
                     if (!rowId) return;
                     const task = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
                         .map((row) => bmTaskRowWithOverrides(row))
@@ -123197,13 +123215,37 @@
                         showToast("Unable to find selected task.", "error");
                         return;
                     }
-                    updateBmTaskStatus(task, "open", "", {
-                        autoNote: "Task restored to outstanding from client page.",
-                    });
-                    resetBmTaskStateForRestore(task);
-                    renderTaskSubpages();
-                    renderClientRegisterClientPage();
-                    showToast("Task restored to outstanding.", "success");
+                    if (actionKind === "start_vat") {
+                        handleVatTaskStartFlow(task);
+                        return;
+                    }
+                    if (actionKind === "start_bookkeeping") {
+                        const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
+                            .map((row) => bmTaskRowWithOverrides(row));
+                        handleBookkeepingTaskStartFlow(task, allRows);
+                        return;
+                    }
+                    if (actionKind === "complete") {
+                        updateBmTaskStatus(task, "completed", "", {
+                            autoNote: "Task marked completed from client page.",
+                        });
+                        if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
+                            resetTaskBookkeepingWorkflowPanel();
+                        }
+                        renderTaskSubpages();
+                        renderClientRegisterClientPage();
+                        showToast("Task completed.", "success");
+                        return;
+                    }
+                    if (actionKind === "restore") {
+                        updateBmTaskStatus(task, "open", "", {
+                            autoNote: "Task restored to outstanding from client page.",
+                        });
+                        resetBmTaskStateForRestore(task);
+                        renderTaskSubpages();
+                        renderClientRegisterClientPage();
+                        showToast("Task restored to outstanding.", "success");
+                    }
                 });
                 document.getElementById("chRegisterClientPageTabs")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-tab]");
