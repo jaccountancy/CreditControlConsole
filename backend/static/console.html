@@ -2958,6 +2958,7 @@
             .credit-control-topbar-summary,
             .insights-topbar-summary,
             .insights-top-global-card,
+            .task-bookkeeping-topbar-flow,
             .practice-pack-topbar-summary,
             .xero-lock-date-topbar-summary,
             .confirmation-statements-topbar-summary { order: 20; }
@@ -2995,6 +2996,7 @@
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
             .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .insights-top-global-card,
+            .ledger-topbar.has-inline-status .task-bookkeeping-topbar-flow,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary,
             .ledger-topbar.has-inline-status .xero-lock-date-topbar-summary,
             .ledger-topbar.has-inline-status .confirmation-statements-topbar-summary,
@@ -3012,6 +3014,7 @@
             .ledger-topbar .connection-meta,
             .bank-continuity-topbar-pill,
             .topbar-client-context,
+            .task-bookkeeping-topbar-flow,
             .jashflow-topbar-summary,
             .lpc-topbar-summary,
             .bank-account-topbar-summary,
@@ -3079,6 +3082,65 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
+            .task-bookkeeping-topbar-flow {
+                flex: 1 1 100%;
+                min-width: 0;
+                display: grid;
+                gap: 8px;
+                padding: 9px 12px;
+                border-radius: 16px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: linear-gradient(145deg, rgba(250, 252, 255, 0.98), rgba(236, 244, 255, 0.92));
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+            }
+            .task-bookkeeping-topbar-flow[hidden] { display: none; }
+            .task-bookkeeping-topbar-flow-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .task-bookkeeping-topbar-flow-head strong {
+                font-size: 0.86rem;
+                font-weight: 880;
+                color: #1f3559;
+                letter-spacing: 0.01em;
+            }
+            .task-bookkeeping-topbar-flow-head small {
+                font-size: 0.73rem;
+                font-weight: 780;
+                color: #5e7395;
+            }
+            .task-bookkeeping-topbar-flow-track {
+                display: grid;
+                grid-template-columns: repeat(14, minmax(76px, 1fr));
+                gap: 6px;
+                overflow-x: auto;
+                padding-bottom: 2px;
+            }
+            .task-bookkeeping-topbar-step {
+                border: 1px solid rgba(107, 132, 176, 0.3);
+                border-radius: 999px;
+                background: rgba(236, 244, 255, 0.86);
+                color: #3e5b86;
+                font-size: 0.66rem;
+                font-weight: 830;
+                line-height: 1.15;
+                text-align: center;
+                white-space: nowrap;
+                padding: 6px 9px;
+                cursor: pointer;
+            }
+            .task-bookkeeping-topbar-step.is-active {
+                border-color: rgba(29, 103, 242, 0.48);
+                background: rgba(220, 234, 255, 0.94);
+                color: #0f4694;
+            }
+            .task-bookkeeping-topbar-step.is-complete {
+                border-color: rgba(36, 148, 92, 0.38);
+                background: rgba(224, 247, 234, 0.92);
+                color: #0f6a37;
+            }
             .topbar-client-pill {
                 flex: 1 1 auto;
                 min-width: 0;
@@ -8899,6 +8961,53 @@
             #refreshInsightsButton.is-busy::before {
                 animation: insightsRefreshSpin 0.92s linear infinite;
             }
+            #insightsHeroCard .insights-hero-xero-host {
+                grid-column: 1 / -1;
+                min-width: 0;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-widget {
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+                background: transparent;
+                padding: 0;
+                margin: 0;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-widget > span {
+                display: none;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-strip {
+                grid-auto-flow: row;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-auto-columns: initial;
+                overflow: visible;
+                gap: 8px;
+                padding-bottom: 0;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-card {
+                min-height: 116px;
+                gap: 6px;
+                padding: 10px;
+                box-shadow: 0 8px 16px rgba(25, 43, 78, 0.08);
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-title {
+                font-size: 0.66rem;
+                letter-spacing: 0.07em;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-value {
+                font-size: 1.12rem;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-detail {
+                font-size: 0.76rem;
+                line-height: 1.2;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-actions {
+                gap: 5px;
+            }
+            #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-button {
+                padding: 5px 9px;
+                font-size: 0.7rem;
+            }
             .insights-top-global-card .insights-hero-loading-host {
                 display: none;
             }
@@ -8907,7 +9016,8 @@
                 min-height: 0;
             }
             .insights-top-global-card.is-home-loading .insights-hero-lead,
-            .insights-top-global-card.is-home-loading > .detail-actions {
+            .insights-top-global-card.is-home-loading > .detail-actions,
+            .insights-top-global-card.is-home-loading > .insights-hero-xero-host {
                 display: none;
             }
             .insights-top-global-card.is-home-loading .insights-hero-loading-host {
@@ -10960,6 +11070,9 @@
                 .insights-home .insight-two-column {
                     grid-template-columns: 1fr;
                 }
+                #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-strip {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
             }
             @media (max-width: 680px) {
                 .insights-top-global-card {
@@ -11059,6 +11172,12 @@
                 #refreshInsightsButton {
                     width: 100%;
                     justify-content: center;
+                }
+                #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-strip {
+                    grid-template-columns: 1fr;
+                }
+                #insightsHeroCard .insights-hero-xero-host .insights-xero-hero-card {
+                    min-height: 0;
                 }
                 .insights-home .insight-chart {
                     border-radius: 16px;
@@ -26871,6 +26990,12 @@
                 gap: 10px;
                 margin-bottom: 12px;
             }
+            .task-bookkeeping-workflow-head-actions {
+                display: inline-flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
             .task-bookkeeping-workflow-steps {
                 display: inline-flex;
                 gap: 8px;
@@ -27096,6 +27221,14 @@
                 flex-wrap: wrap;
             }
             @media (max-width: 980px) {
+                .task-bookkeeping-workflow-head {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+                .task-bookkeeping-workflow-head-actions {
+                    width: 100%;
+                    justify-content: flex-start;
+                }
                 .task-bookkeeping-workflow-grid {
                     grid-template-columns: 1fr;
                 }
@@ -27107,6 +27240,9 @@
                 }
                 .task-bookkeeping-reviewer-grid {
                     grid-template-columns: 1fr;
+                }
+                .task-bookkeeping-topbar-flow-track {
+                    grid-template-columns: repeat(14, minmax(94px, 1fr));
                 }
             }
             .task-list-client-cell {
@@ -33136,6 +33272,7 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="insights-hero-xero-host" id="insightsHeroXeroStatus" hidden></div>
                             <div class="insights-hero-loading-host" id="insightsHeroLoadingHost" hidden></div>
                         </div>
                         <div class="lpc-topbar-summary" id="lpcTopbarSummary" aria-label="Late payment charges summary" hidden></div>
@@ -33286,6 +33423,13 @@
                                     <button type="button" id="clientRunImportButton">Run import</button>
                                 </div>
                             </div>
+                        </div>
+                        <div class="task-bookkeeping-topbar-flow" id="taskBookkeepingTopbarFlow" hidden>
+                            <div class="task-bookkeeping-topbar-flow-head">
+                                <strong id="taskBookkeepingTopbarFlowTitle">Bookkeeping workflow</strong>
+                                <small id="taskBookkeepingTopbarFlowMeta">Stage 1/14</small>
+                            </div>
+                            <div class="task-bookkeeping-topbar-flow-track" id="taskBookkeepingTopbarFlowTrack"></div>
                         </div>
                         <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="sync-inline-spinner sync-logo-loader" aria-hidden="true">
@@ -36786,9 +36930,12 @@
                                                     <h4 id="taskBookkeepingWorkflowTitle">No task selected</h4>
                                                     <p class="detail-meta" id="taskBookkeepingWorkflowMeta">Choose a bookkeeping task and click Start.</p>
                                                 </div>
-                                                <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCloseButton">Close</button>
+                                                <div class="task-bookkeeping-workflow-head-actions">
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowBackButton">Back</button>
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowNextButton">Next</button>
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCancelButton">Cancel</button>
+                                                </div>
                                             </div>
-                                            <div class="task-bookkeeping-workflow-steps" id="taskBookkeepingWizardSteps"></div>
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="data_pull">
                                                 <article class="task-bookkeeping-workflow-card">
                                                     <h5>Stage 1 · Data Pull & Scope</h5>
@@ -37021,11 +37168,7 @@
                                             <div class="task-bookkeeping-workflow-footer">
                                                 <p class="detail-meta" id="taskBookkeepingWorkflowProgressMeta">Complete checks, select reviewer, then submit.</p>
                                                 <div class="detail-actions">
-                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowBackButton">Back</button>
-                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowNextButton">Next</button>
                                                     <button class="ghost-button" type="button" id="taskBookkeepingWorkflowSaveDraftButton">Save draft</button>
-                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowEvidenceButton">Export evidence</button>
-                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowCancelButton">Cancel</button>
                                                     <button class="primary-button" type="button" id="taskBookkeepingWorkflowSubmitButton">Submit task for review</button>
                                                 </div>
                                             </div>
@@ -47993,6 +48136,7 @@
                     ".me-report-topbar-actions",
                     ".supplier-reconciliation-topbar-actions",
                     ".code-breaker-topbar-actions",
+                    ".task-bookkeeping-topbar-flow",
                     ".topbar-client-context"
                 ];
                 topbar.querySelectorAll(selectors.join(", ")).forEach((element) => {
@@ -48008,6 +48152,7 @@
                     ".lpc-topbar-summary:not([hidden]), " +
                     ".credit-control-topbar-summary:not([hidden]), " +
                     ".insights-topbar-summary:not([hidden]), " +
+                    ".task-bookkeeping-topbar-flow:not([hidden]), " +
                     ".bank-account-topbar-summary:not([hidden]), " +
                     ".xero-lock-date-topbar-summary:not([hidden]), " +
                     ".confirmation-statements-topbar-summary:not([hidden]), " +
@@ -89924,7 +90069,7 @@
                 }
                 const topbar = document.querySelector(".ledger-topbar");
                 const topbarRefreshDataButton = document.getElementById("topbarRefreshDataButton");
-                const showTopbarRefreshAction = hideConnectAction && activeView !== "late-charges";
+                const showTopbarRefreshAction = hideConnectAction && activeView !== "late-charges" && activeView !== "insights";
                 if (topbar) topbar.classList.toggle("has-topbar-refresh-action", showTopbarRefreshAction);
                 if (topbarRefreshDataButton) {
                     topbarRefreshDataButton.hidden = !showTopbarRefreshAction;
@@ -89959,6 +90104,8 @@
                 if (insightsTopbarSummary) insightsTopbarSummary.hidden = activeView !== "insights";
                 const insightsHeroCard = document.getElementById("insightsHeroCard");
                 if (insightsHeroCard) insightsHeroCard.hidden = activeView !== "insights";
+                const taskBookkeepingTopbarFlow = document.getElementById("taskBookkeepingTopbarFlow");
+                if (taskBookkeepingTopbarFlow && activeView !== "task-bookkeeping-workflow") taskBookkeepingTopbarFlow.hidden = true;
                 const xeroLockDateTopbarSummary = document.getElementById("xeroLockDateTopbarSummary");
                 if (xeroLockDateTopbarSummary) xeroLockDateTopbarSummary.hidden = activeView !== "xero-lock-date";
                 renderInsightsTopbarSummary();
@@ -90810,9 +90957,14 @@
                 const ai = payload.ai || {};
                 const hero = document.getElementById("insightsHeroCard");
                 const heroLoadingHost = document.getElementById("insightsHeroLoadingHost");
+                const heroXeroStatus = document.getElementById("insightsHeroXeroStatus");
                 if (hero) hero.hidden = false;
                 if (insightsLoading && !insightsData) {
                     if (hero) hero.classList.add("is-home-loading");
+                    if (heroXeroStatus) {
+                        heroXeroStatus.hidden = true;
+                        heroXeroStatus.innerHTML = "";
+                    }
                     if (heroLoadingHost) {
                         heroLoadingHost.hidden = false;
                         heroLoadingHost.innerHTML = insightsLoadingStageMarkup({ inTopGlobalCard: true });
@@ -90827,9 +90979,14 @@
                     heroLoadingHost.hidden = true;
                     heroLoadingHost.innerHTML = "";
                 }
+                if (heroXeroStatus) {
+                    heroXeroStatus.hidden = false;
+                    heroXeroStatus.innerHTML = insightsXeroSyncWidgetCard({ includeLabel: false });
+                }
                 target.innerHTML = aiCopilotHomeInsights(analytics, ai);
                 renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
+                if (heroXeroStatus) bindInsightsHomeInteractions(heroXeroStatus);
             }
 
             function bindInsightsHomeInteractions(scope) {
@@ -91239,7 +91396,8 @@
                 return `Last full sync was ${insightsFullSyncRelativeDetail(lastSync)}. Run a fresh sync to keep dashboard data current.`;
             }
 
-            function insightsXeroSyncWidgetCard() {
+            function insightsXeroSyncWidgetCard(options = {}) {
+                const includeLabel = options.includeLabel !== false;
                 const connectedCount = insightsConnectedXeroSystemsCount();
                 const lastFullSync = insightsLatestFullSyncDate();
                 const lastFullSyncAgeHours = lastFullSync ? (Date.now() - lastFullSync.getTime()) / (60 * 60 * 1000) : Number.POSITIVE_INFINITY;
@@ -91300,7 +91458,7 @@
                 ];
 
                 return `<section class="insight-chart insights-home-section insights-xero-hero-widget" id="insightsXeroSyncWidgetCard">
-                    <span>Xero system overview</span>
+                    ${includeLabel ? "<span>Xero system overview</span>" : ""}
                     <div class="insights-xero-hero-strip">
                         ${cards.map((card) => `
                             <article class="insights-xero-hero-card is-${escapeHTML(card.tone || "good")}">
@@ -91334,7 +91492,6 @@
                 }));
                 return `<div class="insights-home">
                     ${insightsQuickActionsCard(analytics)}
-                    ${insightsXeroSyncWidgetCard()}
                     <div class="insight-two-column insights-home-section" id="insightsExposureSection">
                         ${barChart("Top customer exposure", topCustomerRows, "value", "name")}
                         ${barChart("Last 6 months collection ratio", monthlyRecent, "collectionRatio", "label")}
@@ -112561,8 +112718,29 @@
                     { key: "expenses", label: "Expenditure" },
                     { key: "profit", label: "Profit" },
                 ];
+                const monthSums = metricRows.reduce((acc, metric) => {
+                    acc[metric.key] = columns.reduce((sum, item) => sum + Number(item?.[metric.key] || 0), 0);
+                    return acc;
+                }, {});
+                const summaryYtdIncome = taskBookkeepingNumberOrNull(summary.yearToDateSales)
+                    ?? taskBookkeepingNumberOrNull(summary.yearToDateRevenue)
+                    ?? taskBookkeepingNumberOrNull(summary.ytdSales)
+                    ?? taskBookkeepingNumberOrNull(summary.ytdRevenue);
+                const summaryYtdProfit = taskBookkeepingNumberOrNull(summary.yearToDateProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.accountingProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.ytdProfit)
+                    ?? taskBookkeepingNumberOrNull(summary.profitBeforeTax);
+                const summaryYtdExpenses = taskBookkeepingNumberOrNull(summary.yearToDateExpenses)
+                    ?? taskBookkeepingNumberOrNull(summary.yearToDateExpenditure)
+                    ?? taskBookkeepingNumberOrNull(summary.ytdExpenses)
+                    ?? (summaryYtdIncome !== null && summaryYtdProfit !== null ? summaryYtdIncome - summaryYtdProfit : null);
+                const ytdByMetric = {
+                    income: summaryYtdIncome ?? monthSums.income ?? 0,
+                    expenses: summaryYtdExpenses ?? monthSums.expenses ?? 0,
+                    profit: summaryYtdProfit ?? ((summaryYtdIncome !== null && summaryYtdExpenses !== null) ? (summaryYtdIncome - summaryYtdExpenses) : null) ?? monthSums.profit ?? 0,
+                };
                 body.innerHTML = metricRows.map((metric) => {
-                    const ytd = columns.reduce((sum, item) => sum + Number(item?.[metric.key] || 0), 0);
+                    const ytd = Number(ytdByMetric[metric.key] || 0);
                     return `
                         <tr>
                             <td><strong>${escapeHTML(metric.label)}</strong></td>
@@ -112728,30 +112906,105 @@
                 return Number.isFinite(ytd) ? ytd : null;
             }
 
+            function taskBookkeepingUkCorporationTaxEstimate(taxableProfit = 0) {
+                const profit = Math.max(0, meReportMoneyValue(taxableProfit || 0));
+                if (profit <= 50000) return meReportMoneyValue(profit * 0.19);
+                if (profit >= 250000) return meReportMoneyValue(profit * 0.25);
+                const tax = (profit * 0.25) - ((250000 - profit) * 0.015);
+                return meReportMoneyValue(Math.max(0, tax));
+            }
+
+            function taskBookkeepingInferredTaxAndDividendSignals(summary = {}) {
+                const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                const balanceSheetRows = meReportBalanceSheetRows(summary);
+                const bucket = {
+                    tb: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false },
+                    bs: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false },
+                };
+                const ingest = (store, code = "", name = "", amount = 0) => {
+                    if (!Number.isFinite(amount)) return;
+                    const text = `${String(code || "").toLowerCase()} ${String(name || "").toLowerCase()}`;
+                    if (/(corporation tax|ct liability|tax payable|provision for taxation|current tax)/.test(text) && !/(deferred|vat|paye|nic)/.test(text)) {
+                        store.ctProvision += Math.abs(amount);
+                        store.ctFound = true;
+                    }
+                    if (/(retained earnings|profit and loss account|p&l reserve|general reserve|distributable reserve|capital and reserves|share premium)/.test(text) && !/total/.test(text)) {
+                        store.reserves += amount;
+                        store.reservesFound = true;
+                    }
+                    if (/(dividend|dividends|drawings|director dividend|dividend paid)/.test(text) && !/(income|received)/.test(text)) {
+                        store.dividends += Math.abs(amount);
+                        store.dividendsFound = true;
+                    }
+                };
+                trialBalanceAccounts.forEach((account) => {
+                    const amount = meReportMoneyValue(account.amount ?? (Number(account.debitYTD || 0) - Number(account.creditYTD || 0)));
+                    ingest(
+                        bucket.tb,
+                        String(account.accountCode || account.code || ""),
+                        String(account.accountName || account.name || ""),
+                        amount
+                    );
+                });
+                balanceSheetRows.forEach((row) => {
+                    ingest(bucket.bs, String(row.code || ""), String(row.name || ""), meReportMoneyValue(row.amount || 0));
+                });
+                const selected = {
+                    ctProvision: bucket.tb.ctFound ? bucket.tb.ctProvision : (bucket.bs.ctFound ? bucket.bs.ctProvision : null),
+                    closingRetainedReserves: bucket.tb.reservesFound ? bucket.tb.reserves : (bucket.bs.reservesFound ? bucket.bs.reserves : null),
+                    dividendsTaken: bucket.tb.dividendsFound ? bucket.tb.dividends : (bucket.bs.dividendsFound ? bucket.bs.dividends : null),
+                };
+                return selected;
+            }
+
             function taskBookkeepingComputedTaxAndDividend(summary = {}, adjustments = {}) {
                 const chartOfAccountsYtdProfit = taskBookkeepingChartOfAccountsYtdProfit(summary);
+                const inferredSignals = taskBookkeepingInferredTaxAndDividendSignals(summary);
                 const ytdProfit = taskBookkeepingNumberOrNull(summary.estimatedTaxableProfit)
                     ?? taskBookkeepingNumberOrNull(summary.yearToDateProfit)
                     ?? taskBookkeepingNumberOrNull(summary.accountingProfit)
                     ?? taskBookkeepingNumberOrNull(summary.profitBeforeTax)
+                    ?? (
+                        taskBookkeepingNumberOrNull(summary.yearToDateSales) !== null
+                            && taskBookkeepingNumberOrNull(summary.yearToDateExpenses) !== null
+                    )
+                        ? (
+                            Number(summary.yearToDateSales || 0) - Number(summary.yearToDateExpenses || 0)
+                        )
                     ?? chartOfAccountsYtdProfit
                     ?? 0;
                 const capitalAllowances = Math.max(0, taskBookkeepingNumberOrNull(adjustments.capitalAllowances) ?? 0);
                 const broughtForwardLosses = Math.max(0, taskBookkeepingNumberOrNull(adjustments.broughtForwardLosses) ?? 0);
                 const adjustedTaxableProfit = Math.max(0, ytdProfit - capitalAllowances - broughtForwardLosses);
-                const openingReserves = taskBookkeepingNumberOrNull(summary.openingRetainedReserves)
-                    ?? taskBookkeepingNumberOrNull(summary.retainedEarningsOpening)
-                    ?? 0;
                 const dividendsTaken = taskBookkeepingNumberOrNull(summary.dividendsTaken)
                     ?? taskBookkeepingNumberOrNull(summary.dividendsDeclaredYTD)
                     ?? taskBookkeepingNumberOrNull(summary.dividendsPaid)
+                    ?? taskBookkeepingNumberOrNull(inferredSignals.dividendsTaken)
                     ?? 0;
                 const hasProvidedCt = taskBookkeepingNumberOrNull(summary.estimatedCorporationTax) !== null;
+                const inferredCtProvision = taskBookkeepingNumberOrNull(inferredSignals.ctProvision);
+                const estimatedCtFromBands = taskBookkeepingUkCorporationTaxEstimate(adjustedTaxableProfit);
                 const estimatedCt = hasProvidedCt
                     ? Number(summary.estimatedCorporationTax || 0)
-                    : Math.max(0, adjustedTaxableProfit * 0.25);
+                    : inferredCtProvision !== null
+                        ? inferredCtProvision
+                        : estimatedCtFromBands;
+                const postTaxEarnings = taskBookkeepingNumberOrNull(summary.currentYearEarnings)
+                    ?? (ytdProfit - estimatedCt);
+                const openingReservesFromSummary = taskBookkeepingNumberOrNull(summary.openingRetainedReserves)
+                    ?? taskBookkeepingNumberOrNull(summary.retainedEarningsOpening)
+                    ?? taskBookkeepingNumberOrNull(summary.openingReserves);
+                const closingReserves = taskBookkeepingNumberOrNull(summary.periodEndDistributableReserves)
+                    ?? taskBookkeepingNumberOrNull(summary.retainedEarningsClosing)
+                    ?? taskBookkeepingNumberOrNull(inferredSignals.closingRetainedReserves);
+                const openingReserves = openingReservesFromSummary !== null
+                    ? openingReservesFromSummary
+                    : closingReserves !== null
+                        ? (closingReserves - postTaxEarnings + Math.abs(dividendsTaken))
+                        : 0;
                 const hasProvidedDividend = taskBookkeepingNumberOrNull(summary.dividendCapacity) !== null;
                 const periodEndReserves = taskBookkeepingNumberOrNull(summary.periodEndDistributableReserves)
+                    ?? closingReserves
                     ?? (openingReserves + (ytdProfit - estimatedCt) - Math.abs(dividendsTaken));
                 const dividendCapacity = hasProvidedDividend
                     ? Number(summary.dividendCapacity || 0)
@@ -112768,11 +113021,15 @@
                     dividendCapacity,
                     ctSource: hasProvidedCt
                         ? "From extracted bookkeeping data."
+                        : inferredCtProvision !== null
+                            ? "Jenius AI estimate from Xero corporation tax liability/provision nominals."
                         : chartOfAccountsYtdProfit !== null
-                            ? "Jenius AI estimate from YTD chart-of-accounts nominals, less capital allowances and brought-forward losses."
-                            : "Calculated at 25% of adjusted taxable profit (YTD less capital allowances and brought-forward losses).",
+                            ? "Jenius AI estimate from Xero YTD chart-of-accounts nominals using UK CT rate bands, less capital allowances and brought-forward losses."
+                            : "Calculated from adjusted taxable profit using UK CT rate bands (small profits/marginal/main rates).",
                     dividendSource: hasProvidedDividend
                         ? "From extracted bookkeeping data."
+                        : closingReserves !== null
+                            ? "Jenius AI estimate from Xero retained earnings/reserve nominals, adjusted for post-tax earnings and dividends taken."
                         : chartOfAccountsYtdProfit !== null
                             ? "Jenius AI estimate from YTD chart of accounts: opening reserves + post-tax earnings - dividends taken."
                             : "Calculated from opening reserves + post-tax earnings - dividends taken.",
@@ -112991,13 +113248,20 @@
             function renderTaskBookkeepingWorkflowPanel(allRows = []) {
                 const modal = document.getElementById("taskBookkeepingWorkflowModal");
                 const panel = document.getElementById("taskBookkeepingWorkflowPanel");
+                const topbarFlow = document.getElementById("taskBookkeepingTopbarFlow");
+                const topbarFlowTrack = document.getElementById("taskBookkeepingTopbarFlowTrack");
+                const topbarFlowMeta = document.getElementById("taskBookkeepingTopbarFlowMeta");
+                const topbarFlowTitle = document.getElementById("taskBookkeepingTopbarFlowTitle");
                 if (!modal || !panel) return;
                 const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
                 const row = taskBookkeepingWorkflowCurrentRow(allRows);
                 const isTaskListView = activeView === "task-list" || activeView === "task-bookkeeping-workflow";
                 const isOpen = Boolean(isTaskListView && workflow.open && row);
                 modal.hidden = !isOpen;
-                if (!isOpen) return;
+                if (!isOpen) {
+                    if (topbarFlow) topbarFlow.hidden = true;
+                    return;
+                }
 
                 const managerPool = Array.from(new Set(
                     (Array.isArray(allRows) ? allRows : [])
@@ -113039,9 +113303,7 @@
 
                 const title = document.getElementById("taskBookkeepingWorkflowTitle");
                 const meta = document.getElementById("taskBookkeepingWorkflowMeta");
-                const closeButton = document.getElementById("taskBookkeepingWorkflowCloseButton");
                 const progressMeta = document.getElementById("taskBookkeepingWorkflowProgressMeta");
-                const stepsWrap = document.getElementById("taskBookkeepingWizardSteps");
                 const submitButton = document.getElementById("taskBookkeepingWorkflowSubmitButton");
                 const backButton = document.getElementById("taskBookkeepingWorkflowBackButton");
                 const nextButton = document.getElementById("taskBookkeepingWorkflowNextButton");
@@ -113078,20 +113340,22 @@
                 const blockerOverrideReason = document.getElementById("taskBookkeepingBlockerOverrideReason");
 
                 if (title) title.textContent = `${bmTaskClientDisplayName(row?.clientName)} · ${bmTaskDisplayName(row)}`;
-                if (closeButton) closeButton.textContent = "Back to task list";
                 if (meta) meta.textContent = `Ref ${String(hydratedWorkflow.reference || "—")} · Period end ${bmTaskEffectivePeriodEndISO(row) || "—"} · Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`;
                 if (progressMeta) {
                     progressMeta.textContent = canSubmit
                         ? "All workflow stages complete. Ready to submit for review."
                         : `Stage ${stageIndex + 1}/${stages.length} · ${checksCompleted}/4 quality checks ticked${blockingCount ? ` · ${blockingCount} blocker${blockingCount === 1 ? "" : "s"}` : ""}${hasValidOverride ? " (override active)" : ""}.`;
                 }
-                if (stepsWrap) {
-                    stepsWrap.innerHTML = stages.map((stage, index) => {
+                if (topbarFlowTrack) {
+                    if (topbarFlow) topbarFlow.hidden = false;
+                    if (topbarFlowTitle) topbarFlowTitle.textContent = `${bmTaskClientDisplayName(row?.clientName)} · Bookkeeping workflow`;
+                    if (topbarFlowMeta) topbarFlowMeta.textContent = `Stage ${stageIndex + 1}/${stages.length}`;
+                    topbarFlowTrack.innerHTML = stages.map((stage, index) => {
                         const isActive = index === stageIndex;
                         const isComplete = index < stageIndex && taskBookkeepingStageCanAdvance(stage.id, hydratedWorkflow, reviewState);
-                        return `<span class="task-bookkeeping-workflow-step ${isActive ? "is-active" : ""} ${isComplete ? "is-complete" : ""}" data-task-bookkeeping-stage-jump="${escapeHTML(stage.id)}">${escapeHTML(stage.label)}</span>`;
+                        return `<button type="button" class="task-bookkeeping-topbar-step ${isActive ? "is-active" : ""} ${isComplete ? "is-complete" : ""}" data-task-bookkeeping-stage-jump="${escapeHTML(stage.id)}">${escapeHTML(stage.label)}</button>`;
                     }).join("");
-                    stepsWrap.querySelectorAll("[data-task-bookkeeping-stage-jump]").forEach((button) => {
+                    topbarFlowTrack.querySelectorAll("[data-task-bookkeeping-stage-jump]").forEach((button) => {
                         button.addEventListener("click", () => {
                             const targetStage = String(button.getAttribute("data-task-bookkeeping-stage-jump") || "");
                             const targetIndex = Number(stageIndexById.get(targetStage) ?? -1);
@@ -118461,13 +118725,6 @@
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
-                document.getElementById("taskBookkeepingWorkflowCloseButton")?.addEventListener("click", () => {
-                    resetTaskBookkeepingWorkflowPanel();
-                    activeView = "task-list";
-                    syncActiveViewShell();
-                    syncAppNavBrowserHistory("task-list", { replace: true });
-                    renderTaskSubpages();
-                });
                 document.getElementById("taskBookkeepingWorkflowCancelButton")?.addEventListener("click", () => {
                     resetTaskBookkeepingWorkflowPanel();
                     activeView = "task-list";
@@ -118525,33 +118782,6 @@
                     }
                     showToast(`Draft saved${workflow?.reference ? ` (${workflow.reference})` : ""}.`, "success");
                     renderTaskSubpages();
-                });
-                document.getElementById("taskBookkeepingWorkflowEvidenceButton")?.addEventListener("click", () => {
-                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
-                    const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
-                    if (!row) return;
-                    const reviewState = taskBookkeepingReviewState(row, workflow);
-                    const validation = taskBookkeepingValidationChecks(reviewState, workflow);
-                    const html = taskBookkeepingBuildEvidenceHtml(workflow, row, reviewState, validation);
-                    const reference = String(workflow?.reference || "JUKBK").trim();
-                    const htmlBlob = new Blob([html], { type: "text/html;charset=utf-8" });
-                    const htmlUrl = URL.createObjectURL(htmlBlob);
-                    const htmlAnchor = document.createElement("a");
-                    htmlAnchor.href = htmlUrl;
-                    htmlAnchor.download = `${reference.toLowerCase()}-evidence-pack.html`;
-                    htmlAnchor.click();
-                    window.setTimeout(() => URL.revokeObjectURL(htmlUrl), 1200);
-                    const popup = window.open("", "_blank", "noopener,noreferrer");
-                    if (popup && popup.document) {
-                        popup.document.open();
-                        popup.document.write(html);
-                        popup.document.close();
-                    }
-                    const rowId = bmTaskIdentitySafe(row);
-                    setBmTaskOverrideState(rowId, {
-                        workflowEvidencePackAt: new Date().toISOString(),
-                    });
-                    showToast("Evidence pack exported (HTML + print-ready view).", "success");
                 });
                 document.getElementById("taskBookkeepingNotesInput")?.addEventListener("input", (event) => {
                     companiesHouseSettings.bmTaskBookkeepingWorkflow = {
