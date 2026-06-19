@@ -27601,6 +27601,125 @@
                 color: #4c5f7f;
                 line-height: 1.3;
             }
+            .task-bookkeeping-vat-turnover-widget {
+                border: 1px solid rgba(66, 97, 147, 0.2);
+                border-radius: 12px;
+                background: rgba(245, 250, 255, 0.92);
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            .task-bookkeeping-vat-turnover-widget.is-warning {
+                border-color: rgba(188, 72, 72, 0.45);
+                background: rgba(255, 239, 239, 0.95);
+            }
+            .task-bookkeeping-vat-turnover-widget h6 {
+                margin: 0 0 6px;
+                font-size: 12px;
+                color: #20385e;
+            }
+            .task-bookkeeping-vat-turnover-widget p {
+                margin: 0;
+                font-size: 11px;
+                color: #4a5f80;
+                line-height: 1.4;
+            }
+            .task-bookkeeping-vat-turnover-widget.is-warning p {
+                color: #8b3636;
+            }
+            .task-bookkeeping-vat-turnover-grid {
+                margin-top: 8px;
+                display: grid;
+                gap: 6px;
+            }
+            .task-bookkeeping-vat-turnover-row {
+                display: grid;
+                grid-template-columns: 95px 1fr auto;
+                gap: 8px;
+                align-items: center;
+                font-size: 11px;
+                color: #375074;
+            }
+            .task-bookkeeping-vat-turnover-row em {
+                display: block;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(74, 105, 157, 0.12);
+                overflow: hidden;
+            }
+            .task-bookkeeping-vat-turnover-row em span {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #4f8de0, #2f6fcb);
+            }
+            .task-bookkeeping-vat-turnover-widget.is-warning .task-bookkeeping-vat-turnover-row em span {
+                background: linear-gradient(90deg, #d45b5b, #bf3939);
+            }
+            .task-bookkeeping-balance-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+            .task-bookkeeping-balance-widget {
+                border: 1px solid rgba(66, 97, 147, 0.2);
+                border-radius: 12px;
+                background: rgba(245, 250, 255, 0.92);
+                padding: 10px;
+            }
+            .task-bookkeeping-balance-widget h6 {
+                margin: 0 0 8px;
+                font-size: 12px;
+                color: #20385e;
+            }
+            .task-bookkeeping-balance-widget-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .task-bookkeeping-balance-kpi {
+                border: 1px solid rgba(66, 97, 147, 0.16);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.96);
+                padding: 8px;
+                display: grid;
+                gap: 2px;
+            }
+            .task-bookkeeping-balance-kpi strong {
+                font-size: 12px;
+                color: #21304d;
+            }
+            .task-bookkeeping-balance-kpi small {
+                font-size: 10px;
+                color: #5a6f90;
+            }
+            .task-bookkeeping-equity-trend-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 7px 8px;
+                border: 1px solid rgba(66, 97, 147, 0.14);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.96);
+                font-size: 11px;
+                color: #355074;
+            }
+            .task-bookkeeping-equity-trend-row + .task-bookkeeping-equity-trend-row {
+                margin-top: 7px;
+            }
+            .task-bookkeeping-equity-trend-change.is-up {
+                color: #167f4d;
+                font-weight: 700;
+            }
+            .task-bookkeeping-equity-trend-change.is-down {
+                color: #a03d3d;
+                font-weight: 700;
+            }
+            .task-bookkeeping-equity-trend-change.is-flat {
+                color: #4d6385;
+                font-weight: 700;
+            }
             .task-bookkeeping-blockers {
                 margin: 0 0 10px;
                 padding-left: 18px;
@@ -39015,6 +39134,7 @@
                                                     <h5>Stage 3 · VAT Compliance (OpenAI-led)</h5>
                                                     <p class="task-bookkeeping-review-summary" id="taskBookkeepingVatSummary">Checking VAT registration, Client Register VAT number, and VAT-coded Xero transactions for this period.</p>
                                                     <div class="task-bookkeeping-data-snapshot" id="taskBookkeepingVatSnapshot"></div>
+                                                    <div class="task-bookkeeping-vat-turnover-widget" id="taskBookkeepingVatTurnoverWidget" hidden></div>
                                                     <div class="detail-actions" style="margin-top: 8px;">
                                                         <button class="ghost-button" type="button" id="taskBookkeepingVatSetNoVatButton">Update all VAT-coded transactions to NO VAT</button>
                                                     </div>
@@ -39099,17 +39219,22 @@
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="balance_sheet" hidden>
                                                 <article class="task-bookkeeping-workflow-card">
                                                     <h5>Stage 8 · Balance Sheet</h5>
+                                                    <div class="task-bookkeeping-balance-grid">
+                                                        <div class="task-bookkeeping-balance-widget" id="taskBookkeepingBalanceSheetSnapshot"></div>
+                                                        <div class="task-bookkeeping-balance-widget" id="taskBookkeepingBalanceSheetEquityWidget"></div>
+                                                    </div>
                                                     <div class="task-bookkeeping-unreconciled-table-wrap">
                                                         <table class="task-bookkeeping-unreconciled-table" aria-label="Balance sheet review">
                                                             <thead>
                                                                 <tr>
+                                                                    <th>Group</th>
                                                                     <th>Code</th>
                                                                     <th>Account</th>
                                                                     <th>Amount</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="taskBookkeepingBalanceSheetBody">
-                                                                <tr><td colspan="3">No balance sheet rows extracted for this period.</td></tr>
+                                                                <tr><td colspan="4">No balance sheet rows extracted for this period.</td></tr>
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -84797,6 +84922,19 @@
                     String(row?.duplicateContactName || "").trim().toLowerCase(),
                 ].filter(Boolean);
                 if (nameParts.length === 2) return nameParts.sort((left, right) => left.localeCompare(right)).join("::");
+                const reasonText = String(row?.reason || row?.detail || "").trim().toLowerCase();
+                if (reasonText) {
+                    const cleaned = reasonText.replace(/[.,;:!?]+/g, " ").replace(/\s+/g, " ").trim();
+                    const pairMatch = cleaned.match(/^(.+?)\s+and\s+(.+?)\s+look(?:s)?\s+like/);
+                    if (pairMatch && pairMatch[1] && pairMatch[2]) {
+                        const parsed = [pairMatch[1], pairMatch[2]]
+                            .map((part) => String(part || "").replace(/^[-\s]+|[-\s]+$/g, "").trim())
+                            .filter(Boolean);
+                        if (parsed.length === 2) return parsed.sort((left, right) => left.localeCompare(right)).join("::");
+                    }
+                }
+                const exceptionId = String(row?.exceptionId || "").trim().toLowerCase();
+                if (exceptionId) return `exception:${exceptionId}`;
                 return "";
             }
 
@@ -99058,7 +99196,7 @@
 
             function renderYePrepBalanceSheetTab(customer = {}) {
                 const summary = customer?.summary || {};
-                const rows = meReportBalanceSheetRows(summary);
+                const rows = taskBookkeepingDerivedBalanceSheetRows(summary);
                 return `
                     <article class="me-report-insight-card me-report-table-card">
                         <div class="me-report-card-heading-row">
@@ -99295,7 +99433,7 @@
                 ), 0);
                 const hasRegex = (regex) => transactions.some((row) => regex.test(txDescription(row)));
                 const trialAccounts = meReportObjectRows(summary.trialBalanceAccounts);
-                const balanceRows = meReportBalanceSheetRows(summary);
+                const balanceRows = taskBookkeepingDerivedBalanceSheetRows(summary);
                 const fixedAssets = meReportObjectRows(summary.fixedAssetChecks);
                 const accountMatch = (regex) => trialAccounts.some((row) => regex.test(`${row.accountName || ""} ${row.accountType || ""}`.toLowerCase()));
 
@@ -115108,12 +115246,140 @@
                 `;
             }
 
-            function taskBookkeepingTurnoverSeries(summary = {}) {
-                const rows = meReportProfitLossRows(summary).slice(-12);
-                return rows.map((row) => ({
-                    label: String(row.month || "Month"),
-                    value: meReportMoneyValue(row.income || 0),
+            function taskBookkeepingMonthLabel(dateValue = null) {
+                if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime())) return "";
+                return dateValue.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+            }
+
+            function taskBookkeepingMonthLabelToDate(label = "") {
+                const parsed = Date.parse(`1 ${String(label || "").trim()}`);
+                if (!Number.isFinite(parsed)) return null;
+                const value = new Date(parsed);
+                return Number.isNaN(value.getTime()) ? null : value;
+            }
+
+            function taskBookkeepingLastTwelveMonthLabels(periodConfig = {}, summary = {}) {
+                const explicitPeriodEnd = parseDateValue(periodConfig?.periodEndISO || "");
+                const plRows = meReportProfitLossRows(summary);
+                const plLastDate = taskBookkeepingMonthLabelToDate(plRows[plRows.length - 1]?.month || "");
+                const txDates = meReportObjectRows(summary.trialBalanceAccounts)
+                    .flatMap((account) => meReportObjectRows(account.transactions))
+                    .map((tx) => parseDateValue(taskBookkeepingTransactionDateISO(tx)))
+                    .filter((value) => value instanceof Date && !Number.isNaN(value.getTime()));
+                const txLastDate = txDates.length
+                    ? txDates.sort((left, right) => left.getTime() - right.getTime())[txDates.length - 1]
+                    : null;
+                const anchor = explicitPeriodEnd || plLastDate || txLastDate || new Date();
+                const endMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+                const labels = [];
+                for (let index = 11; index >= 0; index -= 1) {
+                    const monthDate = new Date(endMonth.getFullYear(), endMonth.getMonth() - index, 1);
+                    labels.push(taskBookkeepingMonthLabel(monthDate));
+                }
+                return labels;
+            }
+
+            function taskBookkeepingTurnoverSeries(summary = {}, periodConfig = {}) {
+                const monthLabels = taskBookkeepingLastTwelveMonthLabels(periodConfig, summary);
+                const byMonth = new Map(monthLabels.map((label) => [label, 0]));
+                const plRows = meReportProfitLossRows(summary);
+                plRows.forEach((row) => {
+                    const label = String(row?.month || "").trim();
+                    if (!byMonth.has(label)) return;
+                    const amount = meReportMoneyValue(row?.income ?? row?.turnover ?? row?.sales ?? 0);
+                    byMonth.set(label, amount);
+                });
+                if (![...byMonth.values()].some((value) => Math.abs(Number(value || 0)) > 0.0001)) {
+                    const incomeAccounts = meReportObjectRows(summary.trialBalanceAccounts).filter((account) => {
+                        const accountType = String(account?.accountType || account?.type || "").toLowerCase();
+                        if (accountType) return /(income|revenue|sales|turnover|other income)/.test(accountType);
+                        const text = `${String(account?.accountCode || account?.code || "")} ${String(account?.accountName || account?.name || "")}`.toLowerCase();
+                        return /(income|revenue|sales|turnover|other income|interest income)/.test(text);
+                    });
+                    incomeAccounts.forEach((account) => {
+                        meReportObjectRows(account.transactions).forEach((tx) => {
+                            const txDate = parseDateValue(taskBookkeepingTransactionDateISO(tx));
+                            const label = taskBookkeepingMonthLabel(txDate);
+                            if (!label || !byMonth.has(label)) return;
+                            const current = Number(byMonth.get(label) || 0);
+                            byMonth.set(label, current + meReportMoneyValue(tx?.amount || 0));
+                        });
+                    });
+                }
+                return monthLabels.map((label) => ({
+                    label,
+                    value: meReportMoneyValue(byMonth.get(label) || 0),
                 }));
+            }
+
+            function taskBookkeepingLooksLikeBalanceSheetAccount(account = {}) {
+                const accountType = String(account?.accountType || account?.type || "").toLowerCase();
+                if (meReportIsBalanceSheetAccountType(accountType)) return true;
+                if (/(income|revenue|sales|turnover|expense|cost|profit|loss)/.test(accountType)) return false;
+                const code = String(account?.accountCode || account?.code || "").trim();
+                const firstDigit = Number.parseInt(code.slice(0, 1), 10);
+                if (Number.isFinite(firstDigit)) return !(firstDigit >= 4 && firstDigit <= 9);
+                const text = `${String(account?.accountName || account?.name || "")}`.toLowerCase();
+                if (/(income|revenue|sales|turnover|expense|cost|wages|salary|rent|utilities|marketing|insurance|depreciation|amortisation|dividend income)/.test(text)) {
+                    return false;
+                }
+                return /(asset|liabilit|equity|capital|reserve|retained|bank|cash|debtor|creditor|receivable|payable|loan|stock|inventory|prepayment|accrual|vat|tax|paye|nic|director loan|fixed)/.test(text);
+            }
+
+            function taskBookkeepingDerivedBalanceSheetRows(summary = {}) {
+                const trialBalanceRows = meReportObjectRows(summary?.trialBalanceAccounts)
+                    .filter((account) => taskBookkeepingLooksLikeBalanceSheetAccount(account))
+                    .map((account) => {
+                        const code = String(account?.accountCode || account?.code || "").trim();
+                        const name = String(account?.accountName || account?.name || "Balance Sheet row").trim();
+                        const accountType = String(account?.accountType || account?.type || "").trim();
+                        const amount = meReportMoneyValue(
+                            account?.amount
+                            ?? (Number(account?.debitYTD || 0) - Number(account?.creditYTD || 0))
+                        );
+                        return {
+                            section: "Trial Balance",
+                            code,
+                            name,
+                            accountType,
+                            amount,
+                            tbAmount: amount,
+                            matchedToTrialBalance: true,
+                            source: "Trial Balance derived",
+                            group: meReportBalanceSheetGroupLabel({
+                                section: "Trial Balance",
+                                code,
+                                name,
+                                accountType,
+                                amount,
+                            }),
+                        };
+                    })
+                    .filter((row) => (row.name || row.code) && !meReportBalanceSheetIsSummaryRow(row.name));
+                if (!trialBalanceRows.length) return meReportBalanceSheetRows(summary);
+                const deduped = new Map();
+                trialBalanceRows.forEach((row) => {
+                    const key = `${String(row.code || "").toUpperCase()}|${meReportNormaliseAccountLookupText(row.name || "")}`;
+                    if (!deduped.has(key)) {
+                        deduped.set(key, { ...row });
+                        return;
+                    }
+                    const existing = deduped.get(key);
+                    deduped.set(key, {
+                        ...existing,
+                        amount: Number(existing.amount || 0) + Number(row.amount || 0),
+                        tbAmount: Number(existing.tbAmount || 0) + Number(row.tbAmount || 0),
+                    });
+                });
+                return Array.from(deduped.values())
+                    .sort((left, right) => {
+                        const groupDelta = meReportBalanceSheetGroupSortValue(left.group) - meReportBalanceSheetGroupSortValue(right.group);
+                        if (groupDelta !== 0) return groupDelta;
+                        const codeLeft = String(left.code || "");
+                        const codeRight = String(right.code || "");
+                        if (codeLeft && codeRight && codeLeft !== codeRight) return codeLeft.localeCompare(codeRight, undefined, { numeric: true });
+                        return Math.abs(Number(right.amount || 0)) - Math.abs(Number(left.amount || 0));
+                    });
             }
 
             function taskBookkeepingEquitySeries(summary = {}, taxDividend = {}) {
@@ -115327,6 +115593,13 @@
                 const vatNoVatAppliedAt = String(workflowFeedback.vatNoVatAppliedAt || "").trim();
                 const vatNeedsNoVatUpdate = !vatNumber && vatRowsWithTax.length > 0;
                 const vatStagePass = !vatNeedsNoVatUpdate;
+                const vatRollingRows = taskBookkeepingVatRollingTurnoverRows(summary);
+                const vatThresholdRaw = Number(summary.vatThreshold ?? 90000);
+                const vatThreshold = Number.isFinite(vatThresholdRaw) && vatThresholdRaw > 0 ? vatThresholdRaw : 90000;
+                const vatRollingTurnover = vatRollingRows.length
+                    ? vatRollingRows.reduce((sum, item) => sum + Number(item.turnover || 0), 0)
+                    : Number(meReportRolling12MonthTurnover(summary) || 0);
+                const vatThresholdExceeded = vatRollingTurnover > vatThreshold;
                 const latestSyncISO = String(
                     meClient?.lastCalculatedAt
                     || meClient?.lastSyncAt
@@ -115370,7 +115643,7 @@
                 const equityNetAssets = Number(balanceTotals.assets || 0) - Number(balanceTotals.liabilities || 0);
                 const equityTotal = Number(balanceTotals.equity || 0);
                 const equityDelta = meReportMoneyValue(equityNetAssets - equityTotal);
-                const turnoverSeries = taskBookkeepingTurnoverSeries(summary);
+                const turnoverSeries = taskBookkeepingTurnoverSeries(summary, periodConfig);
                 const equitySeries = taskBookkeepingEquitySeries(summary, taxDividend);
                 const fixedAssetRows = meReportObjectRows(summary.fixedAssetDifferences)
                     .slice(0, 40)
@@ -115492,7 +115765,9 @@
                         detail: vatStagePass
                             ? vatNumber
                                 ? `VAT number ${vatNumber} is present; VAT-coded transaction flow proceeds as normal.`
-                                : "No VAT number and no VAT-coded transactions detected for this period."
+                                : vatThresholdExceeded
+                                    ? `No VAT number is recorded. Rolling 12-month turnover is ${formatCurrency(vatRollingTurnover)} (threshold ${formatCurrency(vatThreshold)}), so VAT registration review is required.`
+                                    : "No VAT number and no VAT-coded transactions detected for this period."
                             : `${vatRowsWithTax.length.toLocaleString("en-GB")} VAT-coded transaction${vatRowsWithTax.length === 1 ? "" : "s"} found but no VAT number is recorded on the client register. Update these to NO VAT to proceed.`,
                         blocking: true,
                     },
@@ -115617,6 +115892,10 @@
                     vatRowsWithTax,
                     vatNeedsNoVatUpdate,
                     vatNoVatAppliedAt,
+                    vatRollingRows,
+                    vatRollingTurnover,
+                    vatThreshold,
+                    vatThresholdExceeded,
                     turnoverSeries,
                     equitySeries,
                     duplicateTransactionRisks,
@@ -115839,7 +116118,7 @@
 
             function taskBookkeepingProfitLossBreakdownRows(reviewState = {}) {
                 const summary = reviewState?.summary || {};
-                const monthColumns = taskBookkeepingProfitLossMonthColumns(summary);
+                const monthColumns = taskBookkeepingProfitLossMonthColumns(reviewState);
                 return meReportObjectRows(summary.trialBalanceAccounts)
                     .filter((account) => {
                         const accountType = String(account.accountType || account.type || "").toLowerCase();
@@ -115888,7 +116167,38 @@
                     });
             }
 
-            function taskBookkeepingProfitLossMonthColumns(summary = {}) {
+            function taskBookkeepingProfitLossMonthColumns(reviewState = {}) {
+                const summary = reviewState?.summary || {};
+                const periodEnd = parseDateValue(
+                    reviewState?.periodConfig?.periodEndISO
+                    || summary.flowPeriodEnd
+                    || summary.periodEndDate
+                    || summary.monthEnd
+                    || ""
+                );
+                const periodStartCandidate = parseDateValue(
+                    summary.accountingPeriodStart
+                    || summary.currentYearStart
+                    || summary.fiscalYearStart
+                    || summary.financialYearStart
+                    || summary.accountsPeriodStart
+                    || summary.yearStart
+                    || ""
+                );
+                if (periodEnd) {
+                    let startDate = periodStartCandidate;
+                    if (!startDate || startDate.getTime() > periodEnd.getTime()) {
+                        startDate = new Date(periodEnd.getFullYear(), 0, 1);
+                    }
+                    const monthColumns = [];
+                    const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+                    const endMonth = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 1);
+                    while (cursor.getTime() <= endMonth.getTime() && monthColumns.length < 24) {
+                        monthColumns.push(cursor.toLocaleDateString("en-GB", { month: "long", year: "numeric" }));
+                        cursor.setMonth(cursor.getMonth() + 1);
+                    }
+                    if (monthColumns.length) return monthColumns;
+                }
                 const plRows = meReportProfitLossRows(summary);
                 const labels = plRows
                     .map((row) => String(row?.month || "").trim())
@@ -115911,7 +116221,7 @@
                 const head = document.getElementById("taskBookkeepingProfitLossBreakdownHead");
                 const body = document.getElementById("taskBookkeepingProfitLossBreakdownBody");
                 if (!head || !body) return;
-                const monthColumns = taskBookkeepingProfitLossMonthColumns(reviewState?.summary || {});
+                const monthColumns = taskBookkeepingProfitLossMonthColumns(reviewState);
                 const rows = taskBookkeepingProfitLossBreakdownRows(reviewState);
                 head.innerHTML = `
                     <tr>
@@ -115939,21 +116249,78 @@
 
             function taskBookkeepingRenderBalanceSheetTable(reviewState = {}) {
                 const body = document.getElementById("taskBookkeepingBalanceSheetBody");
+                const snapshot = document.getElementById("taskBookkeepingBalanceSheetSnapshot");
+                const equityWidget = document.getElementById("taskBookkeepingBalanceSheetEquityWidget");
                 if (!body) return;
                 const summary = reviewState?.summary || {};
-                const rows = meReportBalanceSheetRows(summary).slice(0, 120);
+                const rows = meReportBalanceSheetRows(summary);
+                const totals = rows.reduce((acc, item) => {
+                    const group = String(item?.group || "");
+                    const amount = Number(item?.matchedToTrialBalance && Number.isFinite(Number(item?.tbAmount)) ? item.tbAmount : item?.amount || 0);
+                    if (group === "Assets") acc.assets += amount;
+                    else if (group === "Liabilities") acc.liabilities += amount;
+                    else if (group === "Equity") acc.equity += amount;
+                    return acc;
+                }, { assets: 0, liabilities: 0, equity: 0 });
+                const netAssets = Number(totals.assets || 0) - Number(totals.liabilities || 0);
+                const delta = meReportMoneyValue(netAssets - Number(totals.equity || 0));
+                if (snapshot) {
+                    snapshot.innerHTML = `
+                        <h6>Balance Sheet Summary</h6>
+                        <div class="task-bookkeeping-balance-widget-grid">
+                            <article class="task-bookkeeping-balance-kpi"><strong>${escapeHTML(formatCurrency(totals.assets || 0))}</strong><small>Assets</small></article>
+                            <article class="task-bookkeeping-balance-kpi"><strong>${escapeHTML(formatCurrency(totals.liabilities || 0))}</strong><small>Liabilities</small></article>
+                            <article class="task-bookkeeping-balance-kpi"><strong>${escapeHTML(formatCurrency(netAssets || 0))}</strong><small>Net assets</small></article>
+                            <article class="task-bookkeeping-balance-kpi"><strong>${escapeHTML(formatCurrency(totals.equity || 0))}</strong><small>Total equity</small></article>
+                        </div>
+                    `;
+                }
+                if (equityWidget) {
+                    const equitySeries = Array.isArray(reviewState?.equitySeries) ? reviewState.equitySeries : [];
+                    const current = Number(equitySeries[equitySeries.length - 1]?.value ?? totals.equity ?? 0);
+                    const monthAgo = equitySeries.length >= 2 ? Number(equitySeries[equitySeries.length - 2]?.value || 0) : null;
+                    const yearAgo = equitySeries.length >= 13 ? Number(equitySeries[equitySeries.length - 13]?.value || 0) : null;
+                    const rowMarkup = (label, previous) => {
+                        if (!Number.isFinite(previous)) {
+                            return `<div class="task-bookkeeping-equity-trend-row"><span>${escapeHTML(label)}</span><strong>Not enough history</strong></div>`;
+                        }
+                        const change = current - Number(previous || 0);
+                        const tone = Math.abs(change) < 0.005 ? "is-flat" : (change > 0 ? "is-up" : "is-down");
+                        const direction = Math.abs(change) < 0.005 ? "No change" : (change > 0 ? "Improved (up)" : "Worse (down)");
+                        return `
+                            <div class="task-bookkeeping-equity-trend-row">
+                                <span>${escapeHTML(label)}: ${escapeHTML(formatCurrency(previous || 0))}</span>
+                                <span class="task-bookkeeping-equity-trend-change ${tone}">
+                                    ${escapeHTML(direction)} ${escapeHTML(formatCurrency(change))}
+                                </span>
+                            </div>
+                        `;
+                    };
+                    equityWidget.innerHTML = `
+                        <h6>Equity Change Widget</h6>
+                        <div class="task-bookkeeping-equity-trend-row">
+                            <span>Current equity</span>
+                            <strong>${escapeHTML(formatCurrency(current || 0))}</strong>
+                        </div>
+                        ${rowMarkup("1 month ago", monthAgo)}
+                        ${rowMarkup("1 year ago", yearAgo)}
+                        <p class="detail-meta" style="margin-top:8px;">Cross-check delta (net assets vs equity): ${escapeHTML(formatCurrency(delta || 0))}</p>
+                    `;
+                }
                 if (!rows.length) {
-                    body.innerHTML = '<tr><td colspan="3">No balance sheet rows extracted for this period.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="4">No balance sheet rows extracted for this period.</td></tr>';
                     return;
                 }
                 body.innerHTML = rows.map((item) => {
                     const code = String(item.code || "").trim();
                     const name = String(item.name || "Balance Sheet row").trim();
                     const amount = Number(item.amount || 0);
+                    const group = String(item.group || item.section || "Balance Sheet").trim();
                     return `
                         <tr>
+                            <td>${escapeHTML(group)}</td>
                             <td>${escapeHTML(code || "--")}</td>
-                            <td>${escapeHTML(name)}<small>${escapeHTML(item.group || item.section || "Balance Sheet")}</small></td>
+                            <td>${escapeHTML(name)}<small>${escapeHTML(group)}</small></td>
                             <td><button class="text-button" type="button" data-task-bookkeeping-bs-drill="${escapeHTML(code || name)}" data-task-bookkeeping-bs-code="${escapeHTML(code)}" data-task-bookkeeping-bs-name="${escapeHTML(name)}">${escapeHTML(formatCurrency(amount))}</button></td>
                         </tr>
                     `;
@@ -116065,6 +116432,17 @@
                     .sort((left, right) => (Date.parse(right.date || "") || 0) - (Date.parse(left.date || "") || 0));
             }
 
+            function taskBookkeepingVatRollingTurnoverRows(summary = {}) {
+                const rows = meReportRowsFromAny(summary?.rollingVatTurnoverMonths);
+                return rows
+                    .map((row) => ({
+                        month: String(row?.month || row?.label || row?.period || "").trim(),
+                        turnover: Number(row?.turnover ?? row?.amount ?? row?.value ?? 0),
+                    }))
+                    .filter((row) => row.month && Number.isFinite(row.turnover))
+                    .slice(-12);
+            }
+
             function taskBookkeepingRenderTaxComputationTable(reviewState = {}, calc = {}) {
                 const body = document.getElementById("taskBookkeepingTaxComputationBody");
                 if (!body) return;
@@ -116087,11 +116465,11 @@
             function taskBookkeepingRenderDividendComputationTable(reviewState = {}, calc = {}) {
                 const body = document.getElementById("taskBookkeepingDividendComputationBody");
                 if (!body) return;
-                const postTax = Number(calc.ytdProfit || 0) - Number(calc.estimatedCt || 0);
+                const postTax = Number(calc.profitAfterTax ?? (Number(calc.ytdProfit || 0) - Number(calc.estimatedCt || 0)));
                 const lines = [
-                    { label: "Opening retained reserves", amount: Number(calc.openingReserves || 0) },
-                    { label: "Post-tax YTD earnings", amount: postTax },
+                    { label: "Post-tax profit (from CT estimate)", amount: postTax },
                     { label: "Less dividends declared/taken", amount: -Math.abs(Number(calc.dividendsTaken || 0)) },
+                    { label: "Director loan in credit (if any)", amount: Number(calc.dlaCreditBalance || 0) },
                     { label: "Dividend availability", amount: Number(calc.dividendCapacity || 0) },
                 ];
                 if (Number(calc.tradingLossRollingForward || 0) > 0) {
@@ -116153,25 +116531,37 @@
             }
 
             function taskBookkeepingWizardStages() {
-                return [
-                    { id: "data_pull", label: "1. Data pull" },
-                    { id: "month_checks", label: "2. Quality checks" },
-                    { id: "vat", label: "3. VAT" },
-                    { id: "reconciliations", label: "4. Reconciliations" },
-                    { id: "profit_loss", label: "5. Profit and loss" },
-                    { id: "turnover", label: "6. Turnover" },
-                    { id: "equity", label: "7. Equity trend" },
-                    { id: "balance_sheet", label: "8. Balance sheet" },
-                    { id: "corporation_tax", label: "9. Corporation tax" },
-                    { id: "dividends", label: "10. Dividends" },
-                    { id: "duplicate_transactions", label: "11. Duplicate txns" },
-                    { id: "duplicate_contacts", label: "12. Duplicate contacts" },
-                    { id: "lock_date_check", label: "13. Lock date" },
-                    { id: "equity_monitor", label: "14. Equity monitor" },
-                    { id: "fixed_assets", label: "15. Fixed assets" },
-                    { id: "reviewer", label: "16. Reviewer" },
-                    { id: "submit", label: "17. Submit" },
+                return taskBookkeepingWizardStagesForState();
+            }
+
+            function taskBookkeepingWizardStagesForState(reviewState = {}) {
+                const hasVatNumber = Boolean(String(reviewState?.vatNumber || "").trim());
+                const stages = [
+                    { id: "data_pull", title: "Data pull" },
+                    { id: "month_checks", title: "Quality checks" },
+                    { id: "vat", title: "VAT" },
+                    { id: "reconciliations", title: "Reconciliations" },
+                    { id: "profit_loss", title: "Profit and loss" },
+                    { id: "turnover", title: "Turnover" },
+                    { id: "equity", title: "Equity trend" },
+                    { id: "balance_sheet", title: "Balance sheet" },
+                    { id: "corporation_tax", title: "Corporation tax" },
+                    { id: "dividends", title: "Dividends" },
+                    { id: "duplicate_transactions", title: "Duplicate txns" },
+                    { id: "duplicate_contacts", title: "Contacts" },
+                    { id: "lock_date_check", title: "Lock date" },
+                    { id: "equity_monitor", title: "Equity monitor" },
+                    { id: "fixed_assets", title: "Fixed assets" },
+                    { id: "reviewer", title: "Reviewer" },
+                    { id: "submit", title: "Submit" },
                 ];
+                const visible = hasVatNumber
+                    ? stages.filter((stage) => stage.id !== "vat")
+                    : stages;
+                return visible.map((stage, index) => ({
+                    ...stage,
+                    label: `${index + 1}. ${stage.title}`,
+                }));
             }
 
             function taskBookkeepingNumberOrNull(value) {
@@ -116225,8 +116615,8 @@
                 const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
                 const balanceSheetRows = meReportBalanceSheetRows(summary);
                 const bucket = {
-                    tb: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false },
-                    bs: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false },
+                    tb: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false, dlaCredit: 0, dlaFound: false },
+                    bs: { ctProvision: 0, ctFound: false, reserves: 0, reservesFound: false, dividends: 0, dividendsFound: false, dlaCredit: 0, dlaFound: false },
                 };
                 const ingest = (store, code = "", name = "", amount = 0) => {
                     if (!Number.isFinite(amount)) return;
@@ -116242,6 +116632,10 @@
                     if (/(dividend|dividends|drawings|director dividend|dividend paid)/.test(text) && !/(income|received)/.test(text)) {
                         store.dividends += Math.abs(amount);
                         store.dividendsFound = true;
+                    }
+                    if (/(director.?loan|dla)/.test(text)) {
+                        if (amount > 0) store.dlaCredit += amount;
+                        store.dlaFound = true;
                     }
                 };
                 trialBalanceAccounts.forEach((account) => {
@@ -116260,6 +116654,7 @@
                     ctProvision: bucket.tb.ctFound ? bucket.tb.ctProvision : (bucket.bs.ctFound ? bucket.bs.ctProvision : null),
                     closingRetainedReserves: bucket.tb.reservesFound ? bucket.tb.reserves : (bucket.bs.reservesFound ? bucket.bs.reserves : null),
                     dividendsTaken: bucket.tb.dividendsFound ? bucket.tb.dividends : (bucket.bs.dividendsFound ? bucket.bs.dividends : null),
+                    dlaCredit: bucket.tb.dlaFound ? bucket.tb.dlaCredit : (bucket.bs.dlaFound ? bucket.bs.dlaCredit : null),
                 };
                 return selected;
             }
@@ -116289,16 +116684,36 @@
                     ?? taskBookkeepingNumberOrNull(summary.dividendsPaid)
                     ?? taskBookkeepingNumberOrNull(inferredSignals.dividendsTaken)
                     ?? 0;
-                const hasProvidedCt = taskBookkeepingNumberOrNull(summary.estimatedCorporationTax) !== null;
+                const rawEstimatedCt = taskBookkeepingNumberOrNull(summary.estimatedCorporationTax);
+                const hasExplicitCtEvidence = (
+                    meReportRowsFromAny(summary.taxCalculationSteps).some((step) => {
+                        const text = `${String(step?.label || "")} ${String(step?.name || "")} ${String(step?.title || "")}`.toLowerCase();
+                        return /(corporation tax|ct provision|tax provision|estimated ct|current tax)/.test(text);
+                    })
+                    || taskBookkeepingNumberOrNull(summary.taxProvisionRequired) !== null
+                    || taskBookkeepingNumberOrNull(summary.currentTax) !== null
+                );
+                const hasProvidedCt = rawEstimatedCt !== null
+                    && (Math.abs(rawEstimatedCt) > 0.0001 || hasExplicitCtEvidence);
                 const inferredCtProvision = taskBookkeepingNumberOrNull(inferredSignals.ctProvision);
                 const estimatedCtFromBands = taskBookkeepingUkCorporationTaxEstimate(adjustedTaxableProfit);
                 const estimatedCt = hasProvidedCt
-                    ? Number(summary.estimatedCorporationTax || 0)
-                    : inferredCtProvision !== null
+                    ? Number(rawEstimatedCt || 0)
+                    : (inferredCtProvision !== null && Math.abs(inferredCtProvision) > 0.0001)
                         ? inferredCtProvision
                         : estimatedCtFromBands;
                 const postTaxEarnings = taskBookkeepingNumberOrNull(summary.currentYearEarnings)
                     ?? (ytdProfit - estimatedCt);
+                const explicitDlaBalance = taskBookkeepingNumberOrNull(summary.dlaBalance)
+                    ?? taskBookkeepingNumberOrNull(summary.directorLoanBalance)
+                    ?? taskBookkeepingNumberOrNull(summary.directorsLoanBalance);
+                const inferredDlaCredit = taskBookkeepingNumberOrNull(inferredSignals.dlaCredit);
+                const dlaCreditBalance = Math.max(
+                    0,
+                    explicitDlaBalance !== null
+                        ? explicitDlaBalance
+                        : (inferredDlaCredit !== null ? inferredDlaCredit : 0)
+                );
                 const openingReservesFromSummary = taskBookkeepingNumberOrNull(summary.openingRetainedReserves)
                     ?? taskBookkeepingNumberOrNull(summary.retainedEarningsOpening)
                     ?? taskBookkeepingNumberOrNull(summary.openingReserves);
@@ -116322,9 +116737,11 @@
                 const periodEndReserves = taskBookkeepingNumberOrNull(summary.periodEndDistributableReserves)
                     ?? closingReserves
                     ?? (openingReserves + (ytdProfit - estimatedCt) - Math.abs(dividendsTaken));
+                const profitAfterTax = meReportMoneyValue(ytdProfit - estimatedCt);
+                const computedDividendAvailability = meReportMoneyValue(profitAfterTax - Math.abs(dividendsTaken) + dlaCreditBalance);
                 const dividendCapacity = hasProvidedDividend
                     ? Number(rawDividendCapacity || 0)
-                    : Math.max(0, periodEndReserves);
+                    : Math.max(0, computedDividendAvailability);
                 const tradingLossThisPeriod = Math.max(0, -Number(ytdProfit || 0));
                 const utilisedBroughtForwardLosses = Math.min(
                     broughtForwardLosses,
@@ -116344,12 +116761,14 @@
                     openingReserves,
                     dividendsTaken,
                     estimatedCt,
+                    dlaCreditBalance,
+                    profitAfterTax,
                     dividendCapacity,
                     tradingLossThisPeriod,
                     tradingLossRollingForward,
                     ctSource: hasProvidedCt
                         ? "From extracted bookkeeping data."
-                        : inferredCtProvision !== null
+                        : (inferredCtProvision !== null && Math.abs(inferredCtProvision) > 0.0001)
                             ? "Jenius AI estimate from Xero corporation tax liability/provision nominals."
                             : ytdProfit < 0
                                 ? `Loss-making period detected (${formatCurrency(ytdProfit)} YTD). Estimated CT is nil. ${lossNarrative}`.trim()
@@ -116361,10 +116780,10 @@
                         : ytdProfit < 0 && tradingLossRollingForward > 0
                             ? `Loss-making period: dividend availability is nil. Trading loss rolling forward ${formatCurrency(tradingLossRollingForward)}.`
                         : closingReserves !== null
-                            ? "Jenius AI estimate from Xero retained earnings/reserve nominals, adjusted for post-tax earnings and dividends taken."
-                        : chartOfAccountsYtdProfit !== null
-                            ? "Jenius AI estimate from YTD chart of accounts: opening reserves + post-tax earnings - dividends taken."
-                            : "Calculated from opening reserves + post-tax earnings - dividends taken.",
+                            ? "Jenius AI estimate from post-tax profit, dividends taken, and any DLA credit balance, cross-checked to retained reserves."
+                            : chartOfAccountsYtdProfit !== null
+                                ? "Jenius AI estimate from YTD chart of accounts: post-tax profit - dividends taken + DLA credit balance."
+                                : "Calculated from post-tax profit - dividends taken + DLA credit balance.",
                 };
             }
 
@@ -116678,10 +117097,10 @@
                 const defaultReviewer = allowedReviewerLookup.has(normaliseStatus(candidateReviewer)) ? candidateReviewer : managerPool[0];
                 if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
                 if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
-                const stages = taskBookkeepingWizardStages();
-                const stageIndexById = new Map(stages.map((item, index) => [item.id, index]));
-                const resolvedStage = stageIndexById.has(String(workflow.stage || "")) ? String(workflow.stage) : stages[0].id;
                 const reviewState = taskBookkeepingReviewState(row, workflow);
+                const stages = taskBookkeepingWizardStagesForState(reviewState);
+                const stageIndexById = new Map(stages.map((item, index) => [item.id, index]));
+                const resolvedStage = stageIndexById.has(String(workflow.stage || "")) ? String(workflow.stage) : (stages[0]?.id || "data_pull");
                 const summary = reviewState.summary || {};
                 const feedback = taskBookkeepingEnsureWorkflowFeedback(workflow, reviewState);
                 const hydratedWorkflow = {
@@ -116743,6 +117162,7 @@
                 const vatSnapshot = document.getElementById("taskBookkeepingVatSnapshot");
                 const vatTransactionsBody = document.getElementById("taskBookkeepingVatTransactionsBody");
                 const vatSetNoVatButton = document.getElementById("taskBookkeepingVatSetNoVatButton");
+                const vatTurnoverWidget = document.getElementById("taskBookkeepingVatTurnoverWidget");
                 const turnoverSummary = document.getElementById("taskBookkeepingTurnoverSummary");
                 const turnoverSnapshot = document.getElementById("taskBookkeepingTurnoverSnapshot");
                 const turnoverGraph = document.getElementById("taskBookkeepingTurnoverGraph");
@@ -116988,11 +117408,13 @@
                     blockingList.innerHTML = reviewState.blockingChecks.map((item) => `<li>${escapeHTML(item.label)}</li>`).join("");
                 }
                 if (vatSummary) {
-                    vatSummary.textContent = reviewState.vatNeedsNoVatUpdate
-                        ? "VAT number is missing on the Client Register, but VAT-coded transactions were found. Update these to NO VAT to pass this stage."
-                        : reviewState.vatNumber
-                            ? `VAT number ${reviewState.vatNumber} is recorded. VAT flow proceeds normally.`
-                            : "No VAT number and no VAT-coded transactions found for this period.";
+                    vatSummary.textContent = reviewState.vatNumber
+                        ? `VAT number ${reviewState.vatNumber} is recorded. VAT stage is skipped in this workflow.`
+                        : reviewState.vatNeedsNoVatUpdate
+                            ? "VAT number is missing on the Client Register, but VAT-coded transactions were found. Update these to NO VAT to pass this stage."
+                            : reviewState.vatThresholdExceeded
+                                ? `VAT number is missing. Rolling 12-month turnover is ${formatCurrency(reviewState.vatRollingTurnover || 0)} and exceeds the £90,000 threshold.`
+                                : "No VAT number and no VAT-coded transactions found for this period.";
                 }
                 if (vatSnapshot) {
                     vatSnapshot.innerHTML = [
@@ -117006,6 +117428,42 @@
                             <small>${escapeHTML(item.detail)}</small>
                         </article>
                     `).join("");
+                }
+                if (vatTurnoverWidget) {
+                    const rows = Array.isArray(reviewState.vatRollingRows) ? reviewState.vatRollingRows : [];
+                    const total = Number(reviewState.vatRollingTurnover || 0);
+                    const threshold = Number(reviewState.vatThreshold || 90000);
+                    const exceeded = !!reviewState.vatThresholdExceeded;
+                    vatTurnoverWidget.hidden = !!reviewState.vatNumber;
+                    vatTurnoverWidget.classList.toggle("is-warning", exceeded);
+                    if (!vatTurnoverWidget.hidden) {
+                        if (!rows.length && Math.abs(total) < 0.01) {
+                            vatTurnoverWidget.innerHTML = `
+                                <h6>12-month turnover check (Xero)</h6>
+                                <p>Rolling turnover data is not available for this client yet. Refresh Xero extraction and verify VAT registration manually.</p>
+                            `;
+                        } else {
+                            const max = Math.max(1, ...rows.map((item) => Math.abs(Number(item.turnover || 0))));
+                            vatTurnoverWidget.innerHTML = `
+                                <h6>12-month turnover check (Xero)</h6>
+                                <p>Rolling turnover ${escapeHTML(formatCurrency(total))} vs VAT threshold ${escapeHTML(formatCurrency(threshold))}${exceeded ? " - threshold exceeded, review VAT registration now." : " - below threshold."}</p>
+                                ${rows.length ? `
+                                    <div class="task-bookkeeping-vat-turnover-grid">
+                                        ${rows.map((item) => {
+                                            const width = Math.max(2, Math.min(100, Math.round((Math.abs(Number(item.turnover || 0)) / max) * 100)));
+                                            return `
+                                                <div class="task-bookkeeping-vat-turnover-row">
+                                                    <span>${escapeHTML(String(item.month || "Month"))}</span>
+                                                    <em><span style="width:${width}%"></span></em>
+                                                    <strong>${escapeHTML(formatCurrency(item.turnover || 0))}</strong>
+                                                </div>
+                                            `;
+                                        }).join("")}
+                                    </div>
+                                ` : ""}
+                            `;
+                        }
+                    }
                 }
                 if (vatTransactionsBody) {
                     const vatRows = Array.isArray(reviewState.vatRows) ? reviewState.vatRows.slice(0, 200) : [];
@@ -117233,12 +117691,6 @@
                                         ${canConfirmSeparate
                                             ? `<button class="ignition-mini-button" type="button" data-task-bookkeeping-confirm-separate-contact="${index}">Confirm separate contacts</button>`
                                             : '<button class="ignition-mini-button" type="button" disabled>Confirm separate contacts</button>'}
-                                        ${canConfirmSeparate
-                                            ? `<button class="ignition-mini-button" type="button" data-task-bookkeeping-confirm-separate-supplier="${index}">Confirm separate suppliers</button>`
-                                            : '<button class="ignition-mini-button" type="button" disabled>Confirm separate suppliers</button>'}
-                                        ${canConfirmSeparate
-                                            ? `<button class="ghost-button" type="button" data-task-bookkeeping-dismiss-duplicate-contact-warning="${index}">Dismiss warning</button>`
-                                            : '<button class="ghost-button" type="button" disabled>Dismiss warning</button>'}
                                     </div>
                                 </td>
                             </tr>
@@ -117321,52 +117773,6 @@
                                 client.id,
                                 { confirmedSeparateContactPairs: Array.from(existingKeys).sort((left, right) => left.localeCompare(right)) },
                                 "Marked as separate contacts and saved."
-                            );
-                            await loadMeReport(true);
-                            renderTaskSubpages();
-                        });
-                    });
-                    duplicateContactsBody.querySelectorAll("[data-task-bookkeeping-confirm-separate-supplier]").forEach((button) => {
-                        button.addEventListener("click", async () => {
-                            const index = Number(button.getAttribute("data-task-bookkeeping-confirm-separate-supplier") || -1);
-                            const rowItem = reviewState.duplicateContactRows[index];
-                            const client = reviewState.meClient || null;
-                            if (!rowItem || !client?.id) return;
-                            const pairKey = meReportDuplicateContactPairKey(rowItem);
-                            if (!pairKey) return;
-                            const existingKeys = new Set(
-                                meReportRowsFromAny(client.confirmedSeparateSupplierPairs)
-                                    .map((value) => String(value || "").trim().toLowerCase())
-                                    .filter(Boolean)
-                            );
-                            existingKeys.add(pairKey);
-                            await updateMeReportClientPreferences(
-                                client.id,
-                                { confirmedSeparateSupplierPairs: Array.from(existingKeys).sort((left, right) => left.localeCompare(right)) },
-                                "Marked as separate suppliers and saved."
-                            );
-                            await loadMeReport(true);
-                            renderTaskSubpages();
-                        });
-                    });
-                    duplicateContactsBody.querySelectorAll("[data-task-bookkeeping-dismiss-duplicate-contact-warning]").forEach((button) => {
-                        button.addEventListener("click", async () => {
-                            const index = Number(button.getAttribute("data-task-bookkeeping-dismiss-duplicate-contact-warning") || -1);
-                            const rowItem = reviewState.duplicateContactRows[index];
-                            const client = reviewState.meClient || null;
-                            if (!rowItem || !client?.id) return;
-                            const pairKey = meReportDuplicateContactPairKey(rowItem);
-                            if (!pairKey) return;
-                            const existingKeys = new Set(
-                                meReportRowsFromAny(client.dismissedDuplicateContactWarnings)
-                                    .map((value) => String(value || "").trim().toLowerCase())
-                                    .filter(Boolean)
-                            );
-                            existingKeys.add(pairKey);
-                            await updateMeReportClientPreferences(
-                                client.id,
-                                { dismissedDuplicateContactWarnings: Array.from(existingKeys).sort((left, right) => left.localeCompare(right)) },
-                                "Duplicate warning dismissed."
                             );
                             await loadMeReport(true);
                             renderTaskSubpages();
@@ -117673,7 +118079,7 @@
                     showToast("Complete all workflow checks before submitting.", "info");
                     return;
                 }
-                const stages = taskBookkeepingWizardStages().slice(0, -1);
+                const stages = taskBookkeepingWizardStagesForState(reviewState).slice(0, -1);
                 const blockedStage = stages.find((stage) => !taskBookkeepingStageCanAdvance(stage.id, workflow, reviewState));
                 if (blockedStage) {
                     showToast(`Complete ${blockedStage.label.toLowerCase()} before submitting.`, "info");
@@ -124835,7 +125241,9 @@
                 });
                 document.getElementById("taskBookkeepingWorkflowBackButton")?.addEventListener("click", () => {
                     const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
-                    const stages = taskBookkeepingWizardStages();
+                    const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
+                    const reviewState = row ? taskBookkeepingReviewState(row, workflow) : {};
+                    const stages = taskBookkeepingWizardStagesForState(reviewState);
                     const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
                     if (index <= 0) return;
                     companiesHouseSettings.bmTaskBookkeepingWorkflow = {
@@ -124849,7 +125257,7 @@
                     const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
                     if (!row) return;
                     const reviewState = taskBookkeepingReviewState(row, workflow);
-                    const stages = taskBookkeepingWizardStages();
+                    const stages = taskBookkeepingWizardStagesForState(reviewState);
                     const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
                     if (!taskBookkeepingCanAdvanceToStageIndex(stages, index + 1, workflow, reviewState)) {
                         taskBookkeepingOpenBlockedAdvanceModal(stages, workflow, reviewState, index + 1);
