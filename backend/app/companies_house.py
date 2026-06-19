@@ -22,9 +22,10 @@ from xml.etree import ElementTree as ET
 
 import httpx
 from fastapi import HTTPException, status
+from psycopg import errors as pg_errors
 
 from .config import get_settings
-from .database import get_connection, utcnow
+from .database import ensure_schema, get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
 from .services import get_xero_connection_for_user, gmail_connection_for_user, refresh_gmail_connection
 from .usage_metrics import estimate_openai_cost_usd, infer_openai_feature_page, parse_openai_usage_tokens, record_usage_event
@@ -8586,19 +8587,28 @@ def create_bulk_submission_job(user: dict, payload: dict) -> str:
         "failedCount": 0,
         "stage": "queued",
     }
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO ch_bulk_jobs (user_id, job_type, status, payload, progress)
-                VALUES (%s, 'confirmation_statement_bulk', 'queued', %s::jsonb, %s::jsonb)
-                RETURNING id
-                """,
-                (user_id, json.dumps(payload or {}), json.dumps(initial_progress)),
-            )
-            row = cursor.fetchone()
-        connection.commit()
-    return str(row["id"])
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO ch_bulk_jobs (user_id, job_type, status, payload, progress)
+                        VALUES (%s, 'confirmation_statement_bulk', 'queued', %s::jsonb, %s::jsonb)
+                        RETURNING id
+                        """,
+                        (user_id, json.dumps(payload or {}), json.dumps(initial_progress)),
+                    )
+                    row = cursor.fetchone()
+                connection.commit()
+            return str(row["id"])
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+            logger.warning("ch_bulk_jobs_schema_repaired while queueing bulk submission job")
 
 
 def _update_bulk_job_progress(job_id: str, progress: dict) -> None:

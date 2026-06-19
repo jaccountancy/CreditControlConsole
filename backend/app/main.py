@@ -3719,6 +3719,8 @@ async def api_companies_house_submit_bulk(
     request: Request, user: dict = Depends(require_panel_user)
 ):
     payload = await request.json()
+    # Defensive self-heal in case the running instance is on an older schema.
+    ensure_schema()
     try:
         # Run the preflight synchronously so the user gets immediate, actionable
         # validation errors instead of having to poll a queued job that will fail.
