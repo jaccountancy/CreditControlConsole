@@ -2245,11 +2245,23 @@ def _call_stats_client_phone_index() -> dict[str, dict]:
             )
             register_rows = cursor.fetchall() or []
         connection.commit()
+    register_by_name: dict[str, dict] = {}
+    for row in register_rows:
+        name_key = str(row.get("client_name") or "").strip().lower()
+        if not name_key or name_key in register_by_name:
+            continue
+        register_by_name[name_key] = {
+            "clientId": str(row.get("client_id") or "").strip(),
+            "clientName": str(row.get("client_name") or "").strip(),
+            "clientManager": str(row.get("client_manager") or "").strip(),
+        }
     for row in customer_rows:
+        customer_name = str(row.get("name") or "").strip()
+        linked_register = register_by_name.get(customer_name.lower()) if customer_name else None
         payload = {
-            "clientId": str(row.get("id") or "").strip(),
-            "clientName": str(row.get("name") or "").strip(),
-            "clientManager": "",
+            "clientId": str((linked_register or {}).get("clientId") or row.get("id") or "").strip(),
+            "clientName": str((linked_register or {}).get("clientName") or customer_name).strip(),
+            "clientManager": str((linked_register or {}).get("clientManager") or "").strip(),
         }
         for number in _call_stats_extract_customer_phones(row):
             for key in _call_stats_phone_keys(number):
@@ -2277,6 +2289,24 @@ def _call_stats_lookup_client_by_id(client_id: str) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
+                SELECT client_id, client_name, client_manager
+                FROM ch_auth_code_register
+                WHERE client_id = %s OR LOWER(client_name) = LOWER(%s)
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (clean_client_id, clean_client_id),
+            )
+            register = cursor.fetchone() or {}
+            if register:
+                connection.commit()
+                return {
+                    "clientId": str(register.get("client_id") or "").strip(),
+                    "clientName": str(register.get("client_name") or "").strip(),
+                    "clientManager": str(register.get("client_manager") or "").strip(),
+                }
+            cursor.execute(
+                """
                 SELECT id, name
                 FROM customers
                 WHERE id::text = %s
@@ -2286,30 +2316,32 @@ def _call_stats_lookup_client_by_id(client_id: str) -> dict:
             )
             customer = cursor.fetchone() or {}
             if customer:
+                customer_name = str(customer.get("name") or "").strip()
+                cursor.execute(
+                    """
+                    SELECT client_id, client_name, client_manager
+                    FROM ch_auth_code_register
+                    WHERE LOWER(client_name) = LOWER(%s)
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (customer_name,),
+                )
+                register = cursor.fetchone() or {}
+                if register:
+                    connection.commit()
+                    return {
+                        "clientId": str(register.get("client_id") or "").strip(),
+                        "clientName": str(register.get("client_name") or "").strip() or customer_name,
+                        "clientManager": str(register.get("client_manager") or "").strip(),
+                    }
                 connection.commit()
                 return {
                     "clientId": str(customer.get("id") or ""),
                     "clientName": str(customer.get("name") or ""),
                     "clientManager": "",
                 }
-            cursor.execute(
-                """
-                SELECT client_id, client_name, client_manager
-                FROM ch_auth_code_register
-                WHERE client_id = %s
-                ORDER BY updated_at DESC
-                LIMIT 1
-                """,
-                (clean_client_id,),
-            )
-            register = cursor.fetchone() or {}
         connection.commit()
-    if register:
-        return {
-            "clientId": str(register.get("client_id") or "").strip(),
-            "clientName": str(register.get("client_name") or "").strip(),
-            "clientManager": str(register.get("client_manager") or "").strip(),
-        }
     return {}
 
 
@@ -3081,11 +3113,14 @@ def _call_stats_filter_clause(filters: dict | None = None) -> tuple[str, list]:
             "LOWER(COALESCE(from_number, '')) LIKE %s OR "
             "LOWER(COALESCE(to_number, '')) LIKE %s OR "
             "LOWER(COALESCE(staff_member, '')) LIKE %s OR "
+            "LOWER(COALESCE(client_id, '')) LIKE %s OR "
+            "LOWER(COALESCE(client_name, '')) LIKE %s OR "
+            "LOWER(COALESCE(client_manager, '')) LIKE %s OR "
             "LOWER(COALESCE(outcome, '')) LIKE %s OR "
             "CAST(call_date AS TEXT) LIKE %s"
             ")"
         )
-        params.extend([like, like, like, like, like, like])
+        params.extend([like, like, like, like, like, like, like, like, like])
     return " AND ".join(clauses), params
 
 

@@ -63,30 +63,6 @@
                 <li><strong>3</strong><span>Enter console</span></li>
             </ol>
 
-            <section class="login-health-strip" aria-label="Service connection health">
-                <article data-service="xero">
-                    <i aria-hidden="true"></i>
-                    <strong>Xero</strong>
-                    <small>Checking…</small>
-                </article>
-                <article data-service="gmail">
-                    <i aria-hidden="true"></i>
-                    <strong>Gmail</strong>
-                    <small>Checking…</small>
-                </article>
-                <article data-service="hmrc">
-                    <i aria-hidden="true"></i>
-                    <strong>HMRC</strong>
-                    <small>Checking…</small>
-                </article>
-            </section>
-
-            <section class="login-proof-strip" aria-label="Live proof points">
-                <article><strong id="loginProofUsers">—</strong><span>Active users</span></article>
-                <article><strong id="loginProofWorkspaces">—</strong><span>Connected workspaces</span></article>
-                <article><strong id="loginProofAutomations">12</strong><span>Automations</span></article>
-            </section>
-
             <form class="login-xero-auth-form" id="loginAssistForm" action="/auth/xero/start" method="get" novalidate>
                 <input type="hidden" name="include_all_scopes" value="1">
                 <p class="login-demo-help">Xero handles your credentials securely.</p>
@@ -121,8 +97,6 @@
         const inlineAlertText = document.getElementById("loginInlineAlertText");
         const inlineAlertAction = document.getElementById("loginInlineAlertAction");
         const toast = document.getElementById("loginToast");
-        const healthCards = Array.from(document.querySelectorAll(".login-health-strip [data-service]"));
-        const updatesList = document.getElementById("loginUpdatesList");
         if (!xeroSignInButton) return;
 
         const issueCopy = {
@@ -162,14 +136,6 @@
             }
         };
 
-        const setHealthCard = (serviceKey, state, detail) => {
-            const card = healthCards.find((node) => node.getAttribute("data-service") === serviceKey);
-            if (!card) return;
-            const detailNode = card.querySelector("small");
-            card.dataset.state = String(state || "unknown");
-            if (detailNode) detailNode.textContent = detail || "Status unavailable.";
-        };
-
         const setToast = (message) => {
             if (!toast || !message) return;
             toast.hidden = false;
@@ -180,54 +146,9 @@
             }, 4500);
         };
 
-        const formatNumber = (value) => {
-            const numeric = Number(value);
-            return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : "—";
-        };
-        const escapeHtml = (value) =>
-            String(value || "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll("\"", "&quot;")
-                .replaceAll("'", "&#39;");
-
         const populateLanding = (payload) => {
             if (!payload || typeof payload !== "object") return;
-            const proof = payload.proof || {};
-            const metrics = payload.metrics || {};
-            const services = payload.services || {};
-            const updates = Array.isArray(payload.updates) ? payload.updates : [];
-
-            const usersNode = document.getElementById("loginProofUsers");
-            const workspacesNode = document.getElementById("loginProofWorkspaces");
-            const automationsNode = document.getElementById("loginProofAutomations");
-            if (usersNode) usersNode.textContent = formatNumber(proof.activeUsers);
-            if (workspacesNode) workspacesNode.textContent = formatNumber(proof.connectedWorkspaces);
-            if (automationsNode) automationsNode.textContent = formatNumber(proof.automations);
-
-            const integrationsNode = document.getElementById("loginMetricIntegrations");
-            const availabilityNode = document.getElementById("loginMetricAvailability");
-            const consoleNode = document.getElementById("loginMetricConsole");
-            if (integrationsNode) integrationsNode.textContent = metrics.integrations || "4";
-            if (availabilityNode) availabilityNode.textContent = metrics.availability || "24/7";
-            if (consoleNode) consoleNode.textContent = metrics.consoleCount || "1";
-
-            ["xero", "gmail", "hmrc"].forEach((serviceKey) => {
-                const service = services[serviceKey] || {};
-                setHealthCard(serviceKey, service.state, service.detail);
-            });
-
-            if (updatesList && updates.length) {
-                updatesList.innerHTML = updates
-                    .slice(0, 3)
-                    .map((item) => {
-                        const date = String(item?.date || "").trim();
-                        const summary = String(item?.summary || "").trim();
-                        return `<li><strong>${escapeHtml(date || "Update")}</strong><span>${escapeHtml(summary || "Platform improvements released.")}</span></li>`;
-                    })
-                    .join("");
-            }
+            void payload;
         };
 
         const params = new URLSearchParams(window.location.search);
@@ -250,11 +171,7 @@
         fetch("/api/login/landing", { credentials: "same-origin" })
             .then((response) => (response.ok ? response.json() : null))
             .then((payload) => populateLanding(payload))
-            .catch(() => {
-                setHealthCard("xero", "unknown", "Unable to fetch current status.");
-                setHealthCard("gmail", "unknown", "Unable to fetch current status.");
-                setHealthCard("hmrc", "unknown", "Unable to fetch current status.");
-            });
+            .catch(() => {});
 
         xeroSignInButton?.addEventListener("click", () => {
             xeroSignInButton.textContent = "Opening Xero…";
