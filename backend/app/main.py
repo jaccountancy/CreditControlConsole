@@ -4657,7 +4657,27 @@ async def api_void_pi_clearing_account_credit_note(
 
 @app.get("/api/payroll-headcount")
 def api_payroll_headcount(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **payroll_headcount_payload(user)}
+    try:
+        return {"status": "ok", **payroll_headcount_payload(user)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        error_id = str(uuid4())
+        logger.exception(
+            "payroll_headcount_payload_failed user_id=%s phase=route_handler error_id=%s",
+            user.get("id"),
+            error_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Payroll headcount payload failed due to an unexpected backend error.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+                "phase": "route_handler",
+                "errorId": error_id,
+            },
+        ) from exc
 
 
 @app.get("/api/juk-equity")

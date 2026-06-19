@@ -1361,81 +1361,93 @@ def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | 
 
 
 def payroll_headcount_payload(user: dict) -> dict:
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id,
-                       tenant_id,
-                       tenant_name,
-                       workspace_name,
-                       wizard_completed,
-                       ignition_plan_name,
-                       ignition_client_name,
-                       ignition_proposal_name,
-                       ignition_matched_at,
-                       created_at,
-                       updated_at
-                FROM payroll_headcount_workspaces
-                WHERE user_id = %s
-                ORDER BY LOWER(COALESCE(tenant_name, tenant_id)), created_at ASC
-                """,
-                (user["id"],),
-            )
-            workspace_rows = cursor.fetchall() or []
-            workspace_ids = [str(row.get("id") or "") for row in workspace_rows if row.get("id")]
-            snapshots_by_workspace_id: dict[str, list[dict]] = {}
-            if workspace_ids:
-                cursor.execute(
-                    """
-                    SELECT DISTINCT ON (workspace_id, month_start)
-                           workspace_id,
-                           month_start,
-                           headcount,
-                           payroll_count,
-                           source,
-                           fetched_at,
-                           created_at,
-                           updated_at
-                    FROM payroll_headcount_monthly_snapshots
-                    WHERE workspace_id = ANY(%s)
-                    ORDER BY workspace_id, month_start DESC, fetched_at DESC, updated_at DESC
-                    """,
-                    (workspace_ids,),
-                )
-                snapshot_rows = cursor.fetchall() or []
-                for snapshot_row in snapshot_rows:
-                    workspace_id = str(snapshot_row.get("workspace_id") or "")
-                    if not workspace_id:
-                        continue
-                    snapshots_by_workspace_id.setdefault(workspace_id, []).append(
-                        {
-                            "monthStart": _payroll_headcount_month_start_iso(snapshot_row.get("month_start")),
-                            "headcount": int(snapshot_row.get("headcount") or 0),
-                            "payrollCount": int(snapshot_row.get("payroll_count") or 0),
-                            "source": str(snapshot_row.get("source") or ""),
-                            "fetchedAt": _iso(snapshot_row.get("fetched_at")) or "",
-                            "createdAt": _iso(snapshot_row.get("created_at")) or "",
-                            "updatedAt": _iso(snapshot_row.get("updated_at")) or "",
-                        }
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id,
+                               tenant_id,
+                               tenant_name,
+                               workspace_name,
+                               wizard_completed,
+                               ignition_plan_name,
+                               ignition_client_name,
+                               ignition_proposal_name,
+                               ignition_matched_at,
+                               created_at,
+                               updated_at
+                        FROM payroll_headcount_workspaces
+                        WHERE user_id = %s
+                        ORDER BY LOWER(COALESCE(tenant_name, tenant_id)), created_at ASC
+                        """,
+                        (user["id"],),
                     )
-        connection.commit()
+                    workspace_rows = cursor.fetchall() or []
+                    workspace_ids = [str(row.get("id") or "") for row in workspace_rows if row.get("id")]
+                    snapshots_by_workspace_id: dict[str, list[dict]] = {}
+                    if workspace_ids:
+                        cursor.execute(
+                            """
+                            SELECT DISTINCT ON (workspace_id, month_start)
+                                   workspace_id,
+                                   month_start,
+                                   headcount,
+                                   payroll_count,
+                                   source,
+                                   fetched_at,
+                                   created_at,
+                                   updated_at
+                            FROM payroll_headcount_monthly_snapshots
+                            WHERE workspace_id = ANY(%s)
+                            ORDER BY workspace_id, month_start DESC, fetched_at DESC, updated_at DESC
+                            """,
+                            (workspace_ids,),
+                        )
+                        snapshot_rows = cursor.fetchall() or []
+                        for snapshot_row in snapshot_rows:
+                            workspace_id = str(snapshot_row.get("workspace_id") or "")
+                            if not workspace_id:
+                                continue
+                            snapshots_by_workspace_id.setdefault(workspace_id, []).append(
+                                {
+                                    "monthStart": _payroll_headcount_month_start_iso(snapshot_row.get("month_start")),
+                                    "headcount": int(snapshot_row.get("headcount") or 0),
+                                    "payrollCount": int(snapshot_row.get("payroll_count") or 0),
+                                    "source": str(snapshot_row.get("source") or ""),
+                                    "fetchedAt": _iso(snapshot_row.get("fetched_at")) or "",
+                                    "createdAt": _iso(snapshot_row.get("created_at")) or "",
+                                    "updatedAt": _iso(snapshot_row.get("updated_at")) or "",
+                                }
+                            )
+                connection.commit()
 
-    workspaces = [
-        _payroll_headcount_workspace_row_payload(
-            row,
-            snapshots=snapshots_by_workspace_id.get(str(row.get("id") or ""), []),
-        )
-        for row in workspace_rows
-    ]
-    return {
-        "workspaces": workspaces,
-        "summary": {
-            "workspaceCount": len(workspaces),
-            "configuredCount": sum(1 for row in workspaces if row.get("wizardCompleted")),
-            "snapshotCount": sum(len(row.get("monthlySnapshots") or []) for row in workspaces),
-        },
-    }
+            workspaces = [
+                _payroll_headcount_workspace_row_payload(
+                    row,
+                    snapshots=snapshots_by_workspace_id.get(str(row.get("id") or ""), []),
+                )
+                for row in workspace_rows
+            ]
+            return {
+                "workspaces": workspaces,
+                "summary": {
+                    "workspaceCount": len(workspaces),
+                    "configuredCount": sum(1 for row in workspaces if row.get("wizardCompleted")),
+                    "snapshotCount": sum(len(row.get("monthlySnapshots") or []) for row in workspaces),
+                },
+            }
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+            logger.warning(
+                "payroll_headcount_payload_schema_repaired user_id=%s",
+                user.get("id"),
+            )
 
 
 def _juk_equity_previous_month_ends(month_count: int = 12, today: date | None = None) -> list[date]:

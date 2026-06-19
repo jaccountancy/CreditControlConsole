@@ -175,6 +175,110 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(payload["tenantId"], "tenant-1")
         self.assertEqual(payload["workspaceName"], "Acme Ltd Headcount Workspace")
 
+    def test_payload_repairs_missing_schema_and_retries_once(self):
+        workspace_rows = [
+            {
+                "id": "workspace-1",
+                "tenant_id": "tenant-1",
+                "tenant_name": "Acme Ltd",
+                "workspace_name": "Acme Headcount Workspace",
+                "wizard_completed": True,
+                "ignition_plan_name": "",
+                "ignition_client_name": "",
+                "ignition_proposal_name": "",
+                "ignition_matched_at": None,
+                "created_at": datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
+                "updated_at": datetime(2026, 6, 15, 12, 1, tzinfo=timezone.utc),
+            }
+        ]
+        snapshot_rows = [
+            {
+                "workspace_id": "workspace-1",
+                "month_start": "2026-06-01",
+                "headcount": 12,
+                "payroll_count": 2,
+                "source": "xero-payroll",
+                "fetched_at": datetime(2026, 6, 15, 12, 2, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 6, 15, 12, 2, tzinfo=timezone.utc),
+                "updated_at": datetime(2026, 6, 15, 12, 2, tzinfo=timezone.utc),
+            }
+        ]
+
+        class _Cursor:
+            def __init__(self, workspaces: list[dict], snapshots: list[dict]):
+                self.workspaces = workspaces
+                self.snapshots = snapshots
+                self.current_result = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, _params):
+                text = str(query or "")
+                if "FROM payroll_headcount_workspaces" in text:
+                    self.current_result = self.workspaces
+                elif "FROM payroll_headcount_monthly_snapshots" in text:
+                    self.current_result = self.snapshots
+                else:
+                    self.current_result = []
+                return None
+
+            def fetchall(self):
+                return self.current_result
+
+        class _Connection:
+            def __init__(self, workspaces: list[dict], snapshots: list[dict]):
+                self.cursor_obj = _Cursor(workspaces, snapshots)
+                self.commit_calls = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self.cursor_obj
+
+            def commit(self):
+                self.commit_calls += 1
+
+        class _RaiseOnEnter:
+            def __init__(self, error):
+                self.error = error
+
+            def __enter__(self):
+                raise self.error
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _FlakyConnectionFactory:
+            def __init__(self, workspaces: list[dict], snapshots: list[dict]):
+                self.calls = 0
+                self.connection = _Connection(workspaces, snapshots)
+
+            def __call__(self):
+                self.calls += 1
+                if self.calls == 1:
+                    return _RaiseOnEnter(services.pg_errors.UndefinedTable("missing payroll table"))
+                return self.connection
+
+        flaky_factory = _FlakyConnectionFactory(workspace_rows, snapshot_rows)
+        with patch.object(services, "ensure_schema") as ensure_schema_mock, \
+             patch.object(services, "get_connection", side_effect=flaky_factory):
+            payload = services.payroll_headcount_payload({"id": "user-1"})
+
+        self.assertEqual(flaky_factory.calls, 2)
+        ensure_schema_mock.assert_called_once_with()
+        self.assertEqual(len(payload.get("workspaces") or []), 1)
+        first_workspace = (payload.get("workspaces") or [])[0]
+        self.assertEqual(first_workspace.get("tenantId"), "tenant-1")
+        self.assertEqual(first_workspace.get("latestSnapshot", {}).get("headcount"), 12)
+
 
 if __name__ == "__main__":
     unittest.main()

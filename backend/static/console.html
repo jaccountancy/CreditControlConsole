@@ -45699,7 +45699,25 @@
                 if (payrollHeadcountLoading && !force) return;
                 payrollHeadcountLoading = true;
                 try {
-                    const payload = await requestJSON(api.endpoints.payrollHeadcount);
+                    const transientPayrollFailure = (error) => {
+                        const statusCode = Number(error?.statusCode || 0);
+                        if (statusCode === 502 || statusCode === 503 || statusCode === 504) return true;
+                        const detail = error?.details && typeof error.details === "object" ? error.details : {};
+                        const detailMessage = String(detail?.message || detail?.error || "").trim().toLowerCase();
+                        return detailMessage.includes("application failed to respond");
+                    };
+                    const fetchPayrollHeadcount = () => requestJSON(
+                        api.endpoints.payrollHeadcount,
+                        { suppressFailurePanel: true, timeoutMs: 15000 }
+                    );
+                    let payload;
+                    try {
+                        payload = await fetchPayrollHeadcount();
+                    } catch (error) {
+                        if (!transientPayrollFailure(error)) throw error;
+                        await new Promise((resolve) => window.setTimeout(resolve, 900));
+                        payload = await fetchPayrollHeadcount();
+                    }
                     payrollHeadcountData = {
                         workspaces: Array.isArray(payload?.workspaces) ? payload.workspaces : [],
                         summary: payload?.summary || { workspaceCount: 0, configuredCount: 0, snapshotCount: 0 },
@@ -45715,7 +45733,32 @@
                     persistPayrollHeadcountWorkspaces();
                 } catch (error) {
                     console.error("Unable to load Payroll Headcount data", error);
-                    showToast(error?.message || "Unable to load Payroll Headcount data.", "error");
+                    const hasCachedWorkspaces = Array.isArray(payrollHeadcountWorkspaces) && payrollHeadcountWorkspaces.length > 0;
+                    if (hasCachedWorkspaces && (!Array.isArray(payrollHeadcountData.workspaces) || !payrollHeadcountData.workspaces.length)) {
+                        payrollHeadcountData = {
+                            workspaces: payrollHeadcountWorkspaces.map((workspace) => ({
+                                ...workspace,
+                                wizardCompleted: true,
+                                latestSnapshot: null,
+                                monthlySnapshots: [],
+                                ignitionPlanName: "",
+                                ignitionClientName: "",
+                                ignitionProposalName: "",
+                                ignitionMatchedAt: "",
+                            })),
+                            summary: {
+                                workspaceCount: payrollHeadcountWorkspaces.length,
+                                configuredCount: payrollHeadcountWorkspaces.length,
+                                snapshotCount: 0,
+                            },
+                        };
+                    }
+                    showToast(
+                        hasCachedWorkspaces
+                            ? "Payroll Headcount API unavailable. Showing cached workspace list."
+                            : (error?.message || "Unable to load Payroll Headcount data."),
+                        "error"
+                    );
                 } finally {
                     payrollHeadcountLoading = false;
                 }
@@ -53136,7 +53179,7 @@
                     const isSelected = selectedPayrollHeadcountWorkspaceTenantId && selectedPayrollHeadcountWorkspaceTenantId === tenantId;
                     return `
                         <tr data-payroll-headcount-open="${escapeHTML(tenantId)}"${isSelected ? ' class="is-selected"' : ""}>
-                            <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong>${planBadge}${fitBadge}</td>
+                            <td><strong>${escapeHTML(xeroWorkspaceLabel(connection?.tenantName || "", tenantId, "Xero organisation"))}</strong>${planBadge}${fitBadge}<small>${escapeHTML(tenantId)}</small></td>
                             <td><small>${escapeHTML(connectionCopy)}</small></td>
                             <td>${workspace ? `<div class="payroll-headcount-workspace-copy"><strong>${escapeHTML(workspace.workspaceName || "Headcount workspace")}</strong><small>${escapeHTML(`${headcountCopy} · ${payrollCopy} ${monthCopy}`.trim())}</small><small>${escapeHTML(planFit.detail)}</small></div>` : '<small>No workspace set up</small>'}</td>
                             <td>${escapeHTML(formatDateTime(workspace?.updatedAt || workspace?.createdAt || ""))}</td>
@@ -97746,11 +97789,23 @@
                 const byTenantId = new Map();
                 const explicitTenantIds = new Set();
                 const include = (row = {}, source = "derived") => {
-                    const tenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
+                    const tenantId = String(
+                        row?.tenantId
+                        || row?.tenant_id
+                        || row?.xeroTenantId
+                        || row?.xero_tenant_id
+                        || ""
+                    ).trim();
                     if (!tenantId) return;
                     if (source !== "explicit" && explicitTenantIds.size && !explicitTenantIds.has(tenantId)) return;
-                    const tenantName = String(row?.tenantName || row?.xeroTenantName || "").trim();
-                    const tenantType = String(row?.tenantType || "").trim();
+                    const tenantName = String(
+                        row?.tenantName
+                        || row?.tenant_name
+                        || row?.xeroTenantName
+                        || row?.xero_tenant_name
+                        || ""
+                    ).trim();
+                    const tenantType = String(row?.tenantType || row?.tenant_type || "").trim();
                     const existing = byTenantId.get(tenantId) || {};
                     byTenantId.set(tenantId, {
                         tenantId,
@@ -97765,7 +97820,13 @@
                 const fromSupplierRec = typeof supplierReconciliationXeroConnections === "function" ? supplierReconciliationXeroConnections() : [];
                 if (Array.isArray(fromSupplierRec)) explicit.push(...fromSupplierRec);
                 explicit.forEach((row) => {
-                    const tenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
+                    const tenantId = String(
+                        row?.tenantId
+                        || row?.tenant_id
+                        || row?.xeroTenantId
+                        || row?.xero_tenant_id
+                        || ""
+                    ).trim();
                     if (!tenantId) return;
                     explicitTenantIds.add(tenantId);
                     include(row, "explicit");
@@ -97773,13 +97834,13 @@
 
                 const customerRows = Array.isArray(state?.customers) ? state.customers : [];
                 customerRows.forEach((row) => include({
-                    tenantId: row?.tenantId || row?.xeroTenantId || row?.tenant,
-                    tenantName: row?.tenantName || row?.xeroTenantName,
+                    tenantId: row?.tenantId || row?.tenant_id || row?.xeroTenantId || row?.xero_tenant_id || row?.tenant,
+                    tenantName: row?.tenantName || row?.tenant_name || row?.xeroTenantName || row?.xero_tenant_name,
                 }));
 
                 include({
-                    tenantId: state?.organisation?.xeroTenantId,
-                    tenantName: state?.organisation?.xeroTenantName || state?.organisation?.tenantName,
+                    tenantId: state?.organisation?.xeroTenantId || state?.organisation?.xero_tenant_id || state?.organisation?.tenantId || state?.organisation?.tenant_id,
+                    tenantName: state?.organisation?.xeroTenantName || state?.organisation?.xero_tenant_name || state?.organisation?.tenantName || state?.organisation?.tenant_name,
                 });
 
                 return [...byTenantId.values()];
