@@ -6185,6 +6185,152 @@ def _ignition_first_number(payload: dict, keys: tuple[str, ...]) -> float:
     return 0.0
 
 
+def _ignition_key_token(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return re.sub(r"[^a-z0-9]", "", text)
+
+
+def _ignition_parse_number(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+        return parsed if parsed == parsed else None
+    if isinstance(value, Decimal):
+        parsed = float(value)
+        return parsed if parsed == parsed else None
+    if isinstance(value, dict):
+        for key in ("amount", "value", "total", "minimum_contract_value", "contract_value", "total_value"):
+            parsed = _ignition_parse_number(value.get(key))
+            if parsed is not None:
+                return parsed
+        return None
+    text = str(value or "").strip()
+    if not text:
+        return None
+    text = text.replace(",", "")
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except Exception:
+        return None
+
+
+def _ignition_parse_date_text(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    # Fast path for ISO-style values.
+    iso_match = re.match(r"^(\d{4}-\d{2}-\d{2})", text)
+    if iso_match:
+        return iso_match.group(1)
+    for pattern in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%d"):
+        try:
+            parsed = datetime.strptime(text[:10], pattern)
+            return parsed.date().isoformat()
+        except Exception:
+            continue
+    return ""
+
+
+def _ignition_collect_values_by_keys(payload: object, key_tokens: set[str], collector: list[object], depth: int = 0) -> None:
+    if payload is None or depth > 8:
+        return
+    if isinstance(payload, list):
+        for item in payload:
+            _ignition_collect_values_by_keys(item, key_tokens, collector, depth + 1)
+        return
+    if not isinstance(payload, dict):
+        return
+    for key, value in payload.items():
+        if _ignition_key_token(str(key or "")) in key_tokens:
+            collector.append(value)
+        if isinstance(value, (dict, list)):
+            _ignition_collect_values_by_keys(value, key_tokens, collector, depth + 1)
+
+
+def _ignition_first_date_value(payload: dict, keys: tuple[str, ...]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    key_tokens = {_ignition_key_token(key) for key in keys if key}
+    collected: list[object] = []
+    _ignition_collect_values_by_keys(payload, key_tokens, collected)
+    for value in collected:
+        parsed = _ignition_parse_date_text(value)
+        if parsed:
+            return parsed
+    return ""
+
+
+def _ignition_proposal_amount(payload: dict) -> float:
+    if not isinstance(payload, dict):
+        return 0.0
+    direct_keys = (
+        "minimum_contract_value",
+        "minimumContractValue",
+        "contract_value",
+        "contractValue",
+        "total_value",
+        "totalValue",
+        "total",
+        "amount",
+        "value",
+        "monthly_fee",
+        "monthlyFee",
+        "mrr",
+    )
+    for key in direct_keys:
+        parsed = _ignition_parse_number(payload.get(key))
+        if parsed is not None and parsed > 0:
+            return parsed
+    services = payload.get("services") if isinstance(payload.get("services"), list) else []
+    summed = 0.0
+    for service in services:
+        if not isinstance(service, dict):
+            continue
+        pricing = service.get("pricing") if isinstance(service.get("pricing"), dict) else {}
+        for source in (pricing, service):
+            for key in ("minimum_contract_value", "minimumContractValue", "contract_value", "contractValue", "total_value", "totalValue", "amount", "value"):
+                parsed = _ignition_parse_number(source.get(key))
+                if parsed is not None and parsed > 0:
+                    summed += parsed
+                    break
+    if summed > 0:
+        return summed
+    fallback_keys = (
+        "minimum_contract_value",
+        "minimumContractValue",
+        "contract_value",
+        "contractValue",
+        "total_value",
+        "totalValue",
+        "total",
+        "amount",
+        "value",
+        "monthly_fee",
+        "monthlyFee",
+        "mrr",
+    )
+    fallback_tokens = {_ignition_key_token(key) for key in fallback_keys if key}
+    collected: list[object] = []
+    _ignition_collect_values_by_keys(payload, fallback_tokens, collected)
+    for value in collected:
+        parsed = _ignition_parse_number(value)
+        if parsed is not None and parsed > 0:
+            return parsed
+    return 0.0
+
+
 def _ignition_year_from_values(*values: object) -> int | None:
     for raw in values:
         if raw in (None, ""):
@@ -6402,20 +6548,40 @@ def _auth_register_ignition_engagement_letters(
                     "clientId": proposal_client_id,
                     "clientName": proposal_client_name,
                     "acceptedAt": accepted_at,
-                    "startDate": _ignition_first_text(proposal, ("start_date", "startDate"), 80),
-                    "endDate": _ignition_first_text(proposal, ("end_date", "endDate"), 80),
-                    "state": _coerce_text(proposal.get("state") or proposal.get("status"), 80),
-                    "amount": _ignition_first_number(
+                    "startDate": _ignition_first_date_value(
                         proposal,
                         (
-                            "total",
-                            "value",
-                            "amount",
-                            "monthly_fee",
-                            "monthlyFee",
-                            "mrr",
+                            "proposal_start_date",
+                            "proposalStartDate",
+                            "start_date",
+                            "startDate",
+                            "commencement_date",
+                            "commencementDate",
+                            "contract_start_date",
+                            "contractStartDate",
+                            "service_start_date",
+                            "serviceStartDate",
                         ),
                     ),
+                    "endDate": _ignition_first_date_value(
+                        proposal,
+                        (
+                            "proposal_end_date",
+                            "proposalEndDate",
+                            "end_date",
+                            "endDate",
+                            "expiry_date",
+                            "expiryDate",
+                            "renewal_date",
+                            "renewalDate",
+                            "contract_end_date",
+                            "contractEndDate",
+                            "service_end_date",
+                            "serviceEndDate",
+                        ),
+                    ),
+                    "state": _coerce_text(proposal.get("state") or proposal.get("status"), 80),
+                    "amount": _ignition_proposal_amount(proposal),
                     "currency": _ignition_first_text(proposal, ("currency", "currency_code", "currencyCode"), 20),
                     "pdfUrl": pdf_url,
                     "proposalUrl": _ignition_first_text(
