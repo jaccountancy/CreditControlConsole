@@ -284,6 +284,18 @@ def configured_api_key(settings_row: dict | None = None) -> str:
 
 
 def _ch_guidance_payload() -> dict:
+    try:
+        sync_start_year = int(engagement_sync.get("syncStartYear") or 0)
+    except Exception:
+        sync_start_year = 0
+    try:
+        sync_end_year = int(engagement_sync.get("syncEndYear") or 0)
+    except Exception:
+        sync_end_year = 0
+    try:
+        sync_total_letters = int(engagement_sync.get("totalLetters") or len(engagement_letters) or 0)
+    except Exception:
+        sync_total_letters = len(engagement_letters)
     return {
         "version": CH_GUIDANCE_VERSION,
         "sourceUrl": CH_GUIDANCE_URL,
@@ -5212,6 +5224,41 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
     xero_match = source.get("xeroMatch") if isinstance(source.get("xeroMatch"), dict) else {}
     ignition_match = source.get("ignitionMatch") if isinstance(source.get("ignitionMatch"), dict) else {}
+    engagement_letters_raw = source.get("ignitionEngagementLetters")
+    engagement_letters: list[dict] = []
+    if isinstance(engagement_letters_raw, list):
+        for item in engagement_letters_raw:
+            if not isinstance(item, dict):
+                continue
+            engagement_letters.append(
+                {
+                    "proposalExternalId": _coerce_text(item.get("proposalExternalId"), 180),
+                    "proposalName": _coerce_text(item.get("proposalName"), 300),
+                    "proposalNumber": _coerce_text(item.get("proposalNumber"), 120),
+                    "clientId": _coerce_text(item.get("clientId"), 120),
+                    "clientName": _coerce_text(item.get("clientName"), 250),
+                    "acceptedAt": _coerce_text(item.get("acceptedAt"), 80),
+                    "startDate": _coerce_text(item.get("startDate"), 80),
+                    "endDate": _coerce_text(item.get("endDate"), 80),
+                    "state": _coerce_text(item.get("state"), 80),
+                    "amount": float(item.get("amount") or 0),
+                    "currency": _coerce_text(item.get("currency"), 20),
+                    "pdfUrl": _coerce_text(item.get("pdfUrl"), 1200),
+                    "proposalUrl": _coerce_text(item.get("proposalUrl"), 1200),
+                }
+            )
+    engagement_sync = source.get("ignitionEngagementLetterSync") if isinstance(source.get("ignitionEngagementLetterSync"), dict) else {}
+    sync_years_raw = engagement_sync.get("syncedYears")
+    sync_years: list[int] = []
+    if isinstance(sync_years_raw, list):
+        for value in sync_years_raw:
+            try:
+                year = int(value)
+            except Exception:
+                continue
+            if 1900 <= year <= 3000:
+                sync_years.append(year)
+    sync_years = sorted(set(sync_years), reverse=True)
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
@@ -5227,6 +5274,14 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
             "clientId": _coerce_text(ignition_match.get("clientId"), 120),
             "clientName": _coerce_text(ignition_match.get("clientName"), 250),
             "matchedAt": _coerce_text(ignition_match.get("matchedAt"), 80),
+        },
+        "ignitionEngagementLetters": engagement_letters[:1000],
+        "ignitionEngagementLetterSync": {
+            "syncStartYear": max(0, sync_start_year),
+            "syncEndYear": max(0, sync_end_year),
+            "syncedYears": sync_years,
+            "lastSyncedAt": _coerce_text(engagement_sync.get("lastSyncedAt"), 80),
+            "totalLetters": max(0, sync_total_letters),
         },
         "serviceDetails": {
             "accountsReturns": {
@@ -5892,6 +5947,28 @@ def _ignition_first_number(payload: dict, keys: tuple[str, ...]) -> float:
     return 0.0
 
 
+def _ignition_year_from_values(*values: object) -> int | None:
+    for raw in values:
+        if raw in (None, ""):
+            continue
+        if isinstance(raw, datetime):
+            return raw.year
+        if isinstance(raw, date):
+            return raw.year
+        text = str(raw).strip()
+        if not text:
+            continue
+        match = re.match(r"^(\d{4})", text)
+        if match:
+            try:
+                year = int(match.group(1))
+            except Exception:
+                continue
+            if 1900 <= year <= 3000:
+                return year
+    return None
+
+
 def _ignition_find_best_pdf_url(payload: object, depth: int = 0) -> str:
     if depth > 5 or payload is None:
         return ""
@@ -5938,122 +6015,187 @@ def _ignition_find_best_pdf_url(payload: object, depth: int = 0) -> str:
     return ""
 
 
-def _auth_register_ignition_engagement_letters(cursor, row: dict, user_id: str) -> list[dict]:
+def _auth_register_ignition_engagement_letters(
+    cursor,
+    row: dict,
+    user_id: str,
+    matched_ignition_client_id_override: str = "",
+) -> tuple[list[dict], dict]:
     client_name = _coerce_text(
         row.get("display_name")
         or row.get("client_name")
         or row.get("company_name"),
         250,
     )
-    matched_ignition_client_id = _coerce_text(row.get("ignition_client_id"), 120)
+    matched_ignition_client_id = _coerce_text(
+        matched_ignition_client_id_override
+        or row.get("ignition_client_id"),
+        120,
+    )
     if not user_id:
-        return []
+        return [], {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
     cursor.execute(
         """
-        SELECT external_id,
-               payload,
-               source_created_at,
-               source_updated_at,
-               created_at
+        SELECT MIN(EXTRACT(YEAR FROM COALESCE(source_updated_at, source_created_at, created_at)))::int AS min_year
         FROM ignition_reporting_records
         WHERE user_id = %s
           AND dataset = 'proposals'
-        ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
-        LIMIT 25000
         """,
         (user_id,),
     )
-    records = cursor.fetchall() or []
+    bounds = cursor.fetchone() or {}
+    min_year_raw = bounds.get("min_year")
+    try:
+        min_year = int(min_year_raw) if min_year_raw not in (None, "") else None
+    except Exception:
+        min_year = None
+    if not min_year:
+        return [], {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
+    sync_start_year = datetime.now(timezone.utc).year
+    sync_end_year = max(min_year, 1900)
     row_name_keys = set(_ignition_client_match_keys(client_name))
     letters: list[dict] = []
+    synced_years: list[int] = []
     seen: set[str] = set()
-    for record in records:
-        proposal = record.get("payload") if isinstance(record.get("payload"), dict) else {}
-        if not proposal or not _ignition_proposal_accepted(proposal):
-            continue
-        proposal_client_id = _ignition_proposal_client_id(proposal)
-        proposal_client_name = _ignition_proposal_client_name(proposal)
-        by_client_id = bool(matched_ignition_client_id and proposal_client_id and proposal_client_id == matched_ignition_client_id)
-        by_name = bool(row_name_keys and set(_ignition_client_match_keys(proposal_client_name)).intersection(row_name_keys))
-        if not by_client_id and not by_name:
-            continue
-        proposal_external_id = _coerce_text(
-            proposal.get("id")
-            or proposal.get("proposal_id")
-            or proposal.get("proposalId")
-            or proposal.get("reference_number")
-            or proposal.get("proposal_number")
-            or proposal.get("referenceNumber")
-            or proposal.get("proposalNumber")
-            or record.get("external_id"),
-            180,
+    for year in range(sync_start_year, sync_end_year - 1, -1):
+        cursor.execute(
+            """
+            SELECT external_id,
+                   payload,
+                   source_created_at,
+                   source_updated_at,
+                   created_at
+            FROM ignition_reporting_records
+            WHERE user_id = %s
+              AND dataset = 'proposals'
+              AND EXTRACT(YEAR FROM COALESCE(source_updated_at, source_created_at, created_at))::int = %s
+            ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+            LIMIT 5000
+            """,
+            (user_id, year),
         )
-        dedupe_key = proposal_external_id or _coerce_text(proposal.get("name"), 300)
-        if not dedupe_key or dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        accepted_at = _ignition_first_text(
-            proposal,
-            ("accepted_at", "acceptedAt", "signed_at", "signedAt", "updated_at", "updatedAt", "created_at", "createdAt"),
-            80,
-        ) or (
-            record.get("source_updated_at").isoformat()
-            if record.get("source_updated_at")
-            else (
-                record.get("source_created_at").isoformat()
-                if record.get("source_created_at")
-                else (record.get("created_at").isoformat() if record.get("created_at") else "")
+        records = cursor.fetchall() or []
+        year_count = 0
+        for record in records:
+            proposal = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+            if not proposal or not _ignition_proposal_accepted(proposal):
+                continue
+            proposal_client_id = _ignition_proposal_client_id(proposal)
+            proposal_client_name = _ignition_proposal_client_name(proposal)
+            by_client_id = bool(matched_ignition_client_id and proposal_client_id and proposal_client_id == matched_ignition_client_id)
+            by_name = bool(row_name_keys and set(_ignition_client_match_keys(proposal_client_name)).intersection(row_name_keys))
+            if not by_client_id and not by_name:
+                continue
+            proposal_external_id = _coerce_text(
+                proposal.get("id")
+                or proposal.get("proposal_id")
+                or proposal.get("proposalId")
+                or proposal.get("reference_number")
+                or proposal.get("proposal_number")
+                or proposal.get("referenceNumber")
+                or proposal.get("proposalNumber")
+                or record.get("external_id"),
+                180,
             )
-        )
-        proposal_name = _coerce_text(
-            proposal.get("name")
-            or proposal.get("proposal_name")
-            or proposal.get("proposalName")
-            or proposal.get("reference_number")
-            or proposal.get("proposal_number")
-            or "Ignition proposal",
-            300,
-        )
-        proposal_number = _ignition_first_text(
-            proposal,
-            ("reference_number", "proposal_number", "referenceNumber", "proposalNumber"),
-            120,
-        )
-        pdf_url = _ignition_find_best_pdf_url(proposal)
-        letters.append(
-            {
-                "proposalExternalId": proposal_external_id,
-                "proposalName": proposal_name,
-                "proposalNumber": proposal_number,
-                "clientId": proposal_client_id,
-                "clientName": proposal_client_name,
-                "acceptedAt": accepted_at,
-                "startDate": _ignition_first_text(proposal, ("start_date", "startDate"), 80),
-                "endDate": _ignition_first_text(proposal, ("end_date", "endDate"), 80),
-                "state": _coerce_text(proposal.get("state") or proposal.get("status"), 80),
-                "amount": _ignition_first_number(
-                    proposal,
-                    (
-                        "total",
-                        "value",
-                        "amount",
-                        "monthly_fee",
-                        "monthlyFee",
-                        "mrr",
+            dedupe_key = proposal_external_id or _coerce_text(proposal.get("name"), 300)
+            if not dedupe_key or dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            accepted_at = _ignition_first_text(
+                proposal,
+                ("accepted_at", "acceptedAt", "signed_at", "signedAt", "updated_at", "updatedAt", "created_at", "createdAt"),
+                80,
+            ) or (
+                record.get("source_updated_at").isoformat()
+                if record.get("source_updated_at")
+                else (
+                    record.get("source_created_at").isoformat()
+                    if record.get("source_created_at")
+                    else (record.get("created_at").isoformat() if record.get("created_at") else "")
+                )
+            )
+            proposal_year = _ignition_year_from_values(
+                accepted_at,
+                proposal.get("accepted_at"),
+                proposal.get("acceptedAt"),
+                proposal.get("signed_at"),
+                proposal.get("signedAt"),
+                proposal.get("updated_at"),
+                proposal.get("updatedAt"),
+                proposal.get("created_at"),
+                proposal.get("createdAt"),
+                record.get("source_updated_at"),
+                record.get("source_created_at"),
+                record.get("created_at"),
+            )
+            proposal_name = _coerce_text(
+                proposal.get("name")
+                or proposal.get("proposal_name")
+                or proposal.get("proposalName")
+                or proposal.get("reference_number")
+                or proposal.get("proposal_number")
+                or "Ignition proposal",
+                300,
+            )
+            proposal_number = _ignition_first_text(
+                proposal,
+                ("reference_number", "proposal_number", "referenceNumber", "proposalNumber"),
+                120,
+            )
+            pdf_url = _ignition_find_best_pdf_url(proposal)
+            letters.append(
+                {
+                    "proposalExternalId": proposal_external_id,
+                    "proposalName": proposal_name,
+                    "proposalNumber": proposal_number,
+                    "clientId": proposal_client_id,
+                    "clientName": proposal_client_name,
+                    "acceptedAt": accepted_at,
+                    "startDate": _ignition_first_text(proposal, ("start_date", "startDate"), 80),
+                    "endDate": _ignition_first_text(proposal, ("end_date", "endDate"), 80),
+                    "state": _coerce_text(proposal.get("state") or proposal.get("status"), 80),
+                    "amount": _ignition_first_number(
+                        proposal,
+                        (
+                            "total",
+                            "value",
+                            "amount",
+                            "monthly_fee",
+                            "monthlyFee",
+                            "mrr",
+                        ),
                     ),
-                ),
-                "currency": _ignition_first_text(proposal, ("currency", "currency_code", "currencyCode"), 20),
-                "pdfUrl": pdf_url,
-                "proposalUrl": _ignition_first_text(
-                    proposal,
-                    ("proposalUrl", "proposal_url", "publicUrl", "public_url"),
-                    1200,
-                ),
-            }
-        )
-        if len(letters) >= 300:
+                    "currency": _ignition_first_text(proposal, ("currency", "currency_code", "currencyCode"), 20),
+                    "pdfUrl": pdf_url,
+                    "proposalUrl": _ignition_first_text(
+                        proposal,
+                        ("proposalUrl", "proposal_url", "publicUrl", "public_url"),
+                        1200,
+                    ),
+                }
+            )
+            year_count += 1
+            if len(letters) >= 1000:
+                break
+        if year_count:
+            synced_years.append(year)
+        if len(letters) >= 1000:
             break
-    return letters
+    letters.sort(
+        key=lambda item: (
+            _ignition_year_from_values(item.get("acceptedAt"), item.get("endDate"), item.get("startDate")) or 0,
+            str(item.get("acceptedAt") or ""),
+            str(item.get("proposalName") or ""),
+        ),
+        reverse=True,
+    )
+    return letters[:1000], {
+        "syncStartYear": sync_start_year,
+        "syncEndYear": sync_end_year,
+        "syncedYears": synced_years,
+        "lastSyncedAt": utcnow().isoformat(),
+        "totalLetters": len(letters),
+    }
 
 
 def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict:
@@ -6132,7 +6274,60 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
                         (safe_row_id,),
                     )
                 audit_rows = cursor.fetchall() or []
-            ignition_engagement_letters = _auth_register_ignition_engagement_letters(cursor, row, user_id)
+            cached_companies_house = _normalise_auth_register_companies_house(row.get("companies_house"))
+            cached_letters = (
+                cached_companies_house.get("ignitionEngagementLetters")
+                if isinstance(cached_companies_house.get("ignitionEngagementLetters"), list)
+                else []
+            )
+            cached_sync = (
+                cached_companies_house.get("ignitionEngagementLetterSync")
+                if isinstance(cached_companies_house.get("ignitionEngagementLetterSync"), dict)
+                else {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
+            )
+            cached_ignition_match = (
+                cached_companies_house.get("ignitionMatch")
+                if isinstance(cached_companies_house.get("ignitionMatch"), dict)
+                else {}
+            )
+            synced_letters, sync_meta = _auth_register_ignition_engagement_letters(
+                cursor,
+                row,
+                user_id,
+                _coerce_text(cached_ignition_match.get("clientId"), 120),
+            )
+            ignition_engagement_letters = synced_letters if synced_letters else list(cached_letters)
+            ignition_engagement_sync = sync_meta if synced_letters else dict(cached_sync)
+            if (
+                json.dumps(ignition_engagement_letters, sort_keys=True) != json.dumps(cached_letters, sort_keys=True)
+                or json.dumps(ignition_engagement_sync, sort_keys=True) != json.dumps(cached_sync, sort_keys=True)
+            ):
+                next_companies_house = dict(cached_companies_house)
+                next_companies_house["ignitionEngagementLetters"] = ignition_engagement_letters
+                next_companies_house["ignitionEngagementLetterSync"] = ignition_engagement_sync
+                cursor.execute(
+                    """
+                    INSERT INTO ch_auth_register_client_profiles (
+                        register_row_id,
+                        companies_house,
+                        updated_by_user_id,
+                        created_by_user_id,
+                        updated_at
+                    )
+                    VALUES (%s, %s::jsonb, %s, %s, NOW())
+                    ON CONFLICT (register_row_id) DO UPDATE
+                    SET companies_house = EXCLUDED.companies_house,
+                        updated_by_user_id = EXCLUDED.updated_by_user_id,
+                        updated_at = NOW()
+                    """,
+                    (
+                        safe_row_id,
+                        json.dumps(next_companies_house),
+                        user_id or None,
+                        user_id or None,
+                    ),
+                )
+                row["companies_house"] = next_companies_house
         connection.commit()
 
     try:
