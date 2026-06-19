@@ -89236,8 +89236,14 @@
             }
 
             function sidebarMiniSearchCandidates() {
+                const assignmentIndexes = practicePackAssignmentIndexes(practicePackAssignmentRows());
                 return (Array.isArray(state?.customers) ? state.customers : []).map((customer) => {
                     const registerRow = findClientRegisterRowForSidebarCustomer(customer);
+                    const meReportClient = findSidebarMiniSearchMeReportClient(customer);
+                    const assignment = practicePackAssignmentForClient(
+                        String(customer?.name || customer?.clientName || registerRow?.displayName || "").trim(),
+                        assignmentIndexes
+                    );
                     const companyNo = confirmationStatementCompanyNumber(customer) || "";
                     const contact = String(customer.contact || "").trim();
                     const manager = String(
@@ -89245,11 +89251,17 @@
                         || registerRow?.manager
                         || registerRow?.accountManager
                         || registerRow?.assignedManager
+                        || meReportClient?.internalClientOwner
+                        || assignment?.manager
                         || customer?.clientManager
                         || customer?.manager
+                        || customer?.customer?.clientManager
+                        || customer?.customer?.manager
                         || customer?.accountManager
+                        || customer?.customer?.accountManager
                         || customer?.assignedManager
                         || customer?.owner
+                        || customer?.customer?.owner
                         || customer?.internalClientOwner
                         || ""
                     ).trim() || "Unassigned";
@@ -89262,6 +89274,34 @@
                         companyNo: String(companyNo || "").trim(),
                     };
                 }).filter((item) => item.id);
+            }
+
+            function findSidebarMiniSearchMeReportClient(customer = {}) {
+                const clients = Array.isArray(meReportData?.clients) ? meReportData.clients : [];
+                if (!clients.length) return null;
+                const customerId = String(customer?.id || customer?.clientId || "").trim();
+                const companyNumber = normaliseCompanyNumberInput(
+                    customer?.companyNumber
+                    || customer?.registrationNumber
+                    || customer?.companyNo
+                    || customer?.accountNumber
+                    || confirmationStatementCompanyNumber(customer)
+                    || ""
+                );
+                const nameKey = normaliseStatus(customer?.name || customer?.clientName || "");
+                if (customerId) {
+                    const byId = clients.find((item) => String(item?.id || "").trim() === customerId);
+                    if (byId) return byId;
+                }
+                if (companyNumber) {
+                    const byNumber = clients.find((item) => normaliseCompanyNumberInput(item?.companyNumber || "") === companyNumber);
+                    if (byNumber) return byNumber;
+                }
+                if (nameKey) {
+                    const byName = clients.find((item) => normaliseStatus(item?.clientName || "") === nameKey);
+                    if (byName) return byName;
+                }
+                return null;
             }
 
             function findClientRegisterRowForSidebarCustomer(customer = {}) {
@@ -89347,6 +89387,16 @@
                 const results = document.getElementById("sidebarMiniSearchResults");
                 if (!input || !results) return;
                 const query = String(input.value || "").trim().toLowerCase();
+                if (!companiesHouseSettings.authRegisterLoaded && !companiesHouseSettings.authRegisterLoading) {
+                    loadAuthCodeRegisterDirectory(false)
+                        .finally(() => {
+                            if (sidebarSearchMiniMode) renderSidebarMiniSearchPanel();
+                        });
+                }
+                if (companiesHouseSettings.authRegisterLoading && !query) {
+                    results.innerHTML = '<div class="sidebar-mini-search-empty">Loading client register managers...</div>';
+                    return;
+                }
                 const candidates = sidebarMiniSearchCandidates();
                 if (!query) {
                     results.innerHTML = '<div class="sidebar-mini-search-empty">Type to search the client register.</div>';
