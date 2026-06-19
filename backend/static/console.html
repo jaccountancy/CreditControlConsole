@@ -23247,21 +23247,39 @@
                 text-decoration: underline;
             }
             #chRegisterClientPageNotesList .timeline-item {
-                min-height: 120px;
+                min-height: 88px;
                 display: grid;
-                align-content: center;
                 gap: 8px;
+                border-radius: 12px;
+                border: 1px solid rgba(86, 112, 155, 0.18);
+                background: linear-gradient(180deg, rgba(250, 253, 255, 0.96), rgba(243, 249, 255, 0.92));
+                box-shadow: 0 8px 18px rgba(25, 57, 107, 0.08);
+                align-content: start;
             }
             #chRegisterClientPageNotesList .timeline-head {
-                justify-content: center;
+                justify-content: space-between;
+                align-items: baseline;
                 flex-wrap: wrap;
-                text-align: center;
                 margin-bottom: 0;
             }
+            #chRegisterClientPageNotesList .timeline-title {
+                font-weight: 820;
+                color: #1f3359;
+            }
+            #chRegisterClientPageNotesList .timeline-stamp {
+                color: #657da8;
+                font-size: 0.8rem;
+                font-weight: 700;
+            }
             #chRegisterClientPageNotesList .timeline-body.rich-note-body {
-                text-align: center;
-                justify-self: center;
-                max-width: 64ch;
+                text-align: left;
+                justify-self: stretch;
+                max-width: none;
+                color: #2a3f63;
+                line-height: 1.56;
+            }
+            .ch-register-note-modal-panel {
+                width: min(760px, 92vw);
             }
             #chRegisterClientPageTimeline.ch-register-timeline-stream {
                 position: relative;
@@ -38005,20 +38023,8 @@
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="notes" hidden>
                                         <h4>Notes</h4>
                                         <p class="detail-meta">Internal account notes and handover context.</p>
-                                        <div class="ch-register-note-editor">
-                                            <div class="ch-register-note-toolbar" id="chRegisterClientPageNoteToolbar" role="toolbar" aria-label="Note formatting tools">
-                                                <button type="button" data-note-command="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><strong>B</strong></button>
-                                                <button type="button" data-note-command="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><em>I</em></button>
-                                                <button type="button" data-note-command="underline" title="Underline (Ctrl/Cmd+U)" aria-label="Underline"><u>U</u></button>
-                                                <button type="button" data-note-command="insertUnorderedList" title="Bullet list" aria-label="Bullet list">• List</button>
-                                                <button type="button" data-note-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
-                                                <button type="button" data-note-command="createLink" title="Insert link" aria-label="Insert link">Link</button>
-                                                <button type="button" data-note-command="removeFormat" title="Clear formatting" aria-label="Clear formatting">Clear</button>
-                                            </div>
-                                            <div id="chRegisterClientPageNoteInput" class="ch-register-note-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Add a client note…"></div>
-                                        </div>
                                         <div class="detail-actions" style="margin-top: 10px;">
-                                            <button class="ghost-button" type="button" id="chRegisterClientPageAddNoteButton">Add note</button>
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageOpenAddNoteModalButton">Add Note</button>
                                         </div>
                                         <div class="mini-timeline" id="chRegisterClientPageNotesList"></div>
                                     </section>
@@ -38498,6 +38504,36 @@
                                     </div>
                                     <div class="ch-register-engagement-modal-body">
                                         <iframe class="ch-register-engagement-modal-frame" id="chRegisterClientPageEngagementLetterModalFrame" title="Engagement letter preview"></iframe>
+                                    </div>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="chRegisterClientPageAddNoteModal" hidden>
+                                <section class="company-secretarial-modal-panel ch-register-note-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterClientPageAddNoteModalTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client Notes</p>
+                                            <h4 id="chRegisterClientPageAddNoteModalTitle">Add note</h4>
+                                            <p class="detail-meta">Write internal context and handover notes for this client.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageAddNoteModalCloseButton">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="ch-register-note-editor">
+                                        <div class="ch-register-note-toolbar" id="chRegisterClientPageNoteToolbar" role="toolbar" aria-label="Note formatting tools">
+                                            <button type="button" data-note-command="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><strong>B</strong></button>
+                                            <button type="button" data-note-command="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><em>I</em></button>
+                                            <button type="button" data-note-command="underline" title="Underline (Ctrl/Cmd+U)" aria-label="Underline"><u>U</u></button>
+                                            <button type="button" data-note-command="insertUnorderedList" title="Bullet list" aria-label="Bullet list">• List</button>
+                                            <button type="button" data-note-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
+                                            <button type="button" data-note-command="createLink" title="Insert link" aria-label="Insert link">Link</button>
+                                            <button type="button" data-note-command="removeFormat" title="Clear formatting" aria-label="Clear formatting">Clear</button>
+                                        </div>
+                                        <div id="chRegisterClientPageNoteInput" class="ch-register-note-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Add a client note…"></div>
+                                    </div>
+                                    <p class="detail-meta" style="margin-top:8px;">Tip: use <strong>@name</strong> to tag a teammate and send a notification.</p>
+                                    <div class="detail-actions" style="margin-top: 10px;">
+                                        <button class="primary-button" type="button" id="chRegisterClientPageAddNoteButton">Add note</button>
                                     </div>
                                 </section>
                             </div>
@@ -123194,6 +123230,7 @@
                     });
                     const taggedCount = createClientNoteTagNotifications(note, row, rowId);
                     if (input) input.innerHTML = "";
+                    closeClientRegisterClientPageAddNoteModal();
                     await openClientRegisterClientPage(rowId);
                     setClientRegisterClientPageTab("notes");
                     showToast(
@@ -123205,6 +123242,26 @@
                 } catch (error) {
                     showToast(error?.message || "Unable to add note.", "error");
                 }
+            }
+
+            function closeClientRegisterClientPageAddNoteModal() {
+                const modal = document.getElementById("chRegisterClientPageAddNoteModal");
+                if (!modal) return;
+                modal.hidden = true;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function openClientRegisterClientPageAddNoteModal() {
+                const modal = document.getElementById("chRegisterClientPageAddNoteModal");
+                const input = document.getElementById("chRegisterClientPageNoteInput");
+                if (!modal || !input) return;
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+                window.setTimeout(() => {
+                    input.focus();
+                }, 0);
             }
 
             function openCompaniesHouseFromClientRegisterClientPage() {
@@ -124374,6 +124431,11 @@
                 document.getElementById("chRegisterClientPageEngagementLetterOpenExternalButton")?.addEventListener("click", openClientRegisterEngagementLetterExternal);
                 document.getElementById("chRegisterClientPageCallStatsRefreshButton")?.addEventListener("click", () => {
                     loadClientRegisterClientPageCallStats({ force: true, silent: false });
+                });
+                document.getElementById("chRegisterClientPageOpenAddNoteModalButton")?.addEventListener("click", openClientRegisterClientPageAddNoteModal);
+                document.getElementById("chRegisterClientPageAddNoteModalCloseButton")?.addEventListener("click", closeClientRegisterClientPageAddNoteModal);
+                document.getElementById("chRegisterClientPageAddNoteModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "chRegisterClientPageAddNoteModal") closeClientRegisterClientPageAddNoteModal();
                 });
                 document.getElementById("chRegisterClientPageNoteToolbar")?.addEventListener("click", (event) => {
                     const button = event?.target?.closest?.("[data-note-command]");
