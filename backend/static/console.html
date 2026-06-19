@@ -39852,7 +39852,7 @@
                             <div class="empty-state">
                                 <p class="eyebrow" id="payrollHeadcountWizardState">Setup</p>
                                 <h4 id="payrollHeadcountWizardMessage">Waiting to sync payroll data.</h4>
-                                <p id="payrollHeadcountWizardDetail">The system will pull employee headcount and payroll-run count from Xero Payroll, then save this month's snapshot.</p>
+                                <p id="payrollHeadcountWizardDetail">The system pulls active employees from Xero Payroll and saves this month's snapshot.</p>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="payrollHeadcountWizardSyncButton" type="button">Run payroll sync</button>
@@ -51971,7 +51971,7 @@
                 wizardMessage.textContent = payrollHeadcountWizardState.message || "Waiting to sync payroll data.";
                 wizardDetail.textContent = payrollHeadcountWizardState.error
                     ? payrollHeadcountWizardState.error
-                    : "The system will pull employee headcount and payroll-run count from Xero Payroll, then save this month's snapshot.";
+                    : "The system pulls active employees from Xero Payroll and saves this month's snapshot.";
                 wizardSyncButton.disabled = payrollHeadcountWizardState.syncing || !payrollHeadcountWizardState.tenantId;
                 wizardSyncButton.textContent = payrollHeadcountWizardState.syncing ? "Syncing..." : "Run payroll sync";
             }
@@ -52085,6 +52085,14 @@
                 };
             }
 
+            function payrollHeadcountSnapshotMonthLabel(snapshot = {}) {
+                const monthStartRaw = String(snapshot?.monthStart || "").trim();
+                if (!monthStartRaw) return "";
+                const monthDate = new Date(`${monthStartRaw}T00:00:00`);
+                if (Number.isNaN(monthDate.getTime())) return "";
+                return monthDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+            }
+
             async function setupPayrollHeadcountWorkspace(tenantId = "", options = {}) {
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) {
@@ -52152,14 +52160,18 @@
                         await loadPayrollHeadcount(true);
                     }
                     const snapshot = payload?.snapshot || {};
-                    const headcount = Number(snapshot?.headcount || 0).toLocaleString("en-GB");
-                    const payrolls = Number(snapshot?.payrollCount || 0).toLocaleString("en-GB");
-                    showToast(`Payroll sync complete: ${headcount} headcount · ${payrolls} payroll run${Number(snapshot?.payrollCount || 0) === 1 ? "" : "s"}.`, "success");
+                    const headcountValue = Number(snapshot?.headcount || 0);
+                    const headcount = headcountValue.toLocaleString("en-GB");
+                    const monthLabel = payrollHeadcountSnapshotMonthLabel(snapshot);
+                    showToast(
+                        `Payroll sync complete: ${headcount} active employee${headcountValue === 1 ? "" : "s"}${monthLabel ? ` (${monthLabel})` : ""}.`,
+                        "success"
+                    );
                     if (fromWizard) {
                         payrollHeadcountWizardState = {
                             ...payrollHeadcountWizardState,
                             syncing: false,
-                            message: `Sync complete. ${headcount} headcount and ${payrolls} payroll run${Number(snapshot?.payrollCount || 0) === 1 ? "" : "s"} saved for this month.`,
+                            message: `Sync complete. ${headcount} active employee${headcountValue === 1 ? "" : "s"}${monthLabel ? ` saved for ${monthLabel}.` : " saved for this month."}`,
                             error: Array.isArray(payload?.errors) && payload.errors.length ? payload.errors.join(" | ") : "",
                         };
                     }
