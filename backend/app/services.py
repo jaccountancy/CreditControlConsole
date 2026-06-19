@@ -20250,6 +20250,88 @@ async def merge_me_report_contacts(user: dict, client_id: str, payload: dict) ->
     return me_report_payload(user)
 
 
+async def rename_me_report_nominal_account(user: dict, client_id: str, payload: dict) -> dict:
+    client = _me_report_client_row(user, client_id)
+    corrected_name = str(payload.get("correctedName") or payload.get("newName") or "").strip()
+    account_id = str(payload.get("accountId") or payload.get("accountID") or "").strip()
+    account_code = str(payload.get("accountCode") or "").strip()
+    if not corrected_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="correctedName is required.")
+    if not account_id and not account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide accountId or accountCode.")
+
+    connection_row = _me_report_xero_connection(user, client)
+    account_payload = {}
+    if account_id:
+        account_payload = await xero_api_get(connection_row, f"{ACCOUNTS_URL}/{account_id}")
+    elif account_code:
+        safe_code = account_code.replace('"', "").strip()
+        account_payload = await xero_api_get(connection_row, ACCOUNTS_URL, params={"where": f'Code=="{safe_code}"'})
+
+    accounts = account_payload.get("Accounts") if isinstance(account_payload, dict) else []
+    if not isinstance(accounts, list):
+        accounts = []
+    account = None
+    if account_id:
+        account = next((row for row in accounts if str(row.get("AccountID") or "").strip() == account_id), None)
+    if account is None and account_code:
+        account = next((row for row in accounts if str(row.get("Code") or "").strip().lower() == account_code.lower()), None)
+    if account is None and accounts:
+        account = accounts[0]
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nominal account was not found in Xero.")
+
+    resolved_account_id = str(account.get("AccountID") or account_id or "").strip()
+    resolved_account_code = str(account.get("Code") or account_code or "").strip()
+    if not resolved_account_id or not resolved_account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to resolve target account details.")
+
+    refreshed_connection = await refresh_connection(connection_row["id"])
+    request_payload = {
+        "Accounts": [{
+            "AccountID": resolved_account_id,
+            "Code": resolved_account_code,
+            "Name": corrected_name,
+        }]
+    }
+    async with httpx.AsyncClient(timeout=45.0) as http_client:
+        response = await http_client.post(
+            ACCOUNTS_URL,
+            headers={
+                "Authorization": f'Bearer {refreshed_connection["access_token"]}',
+                "xero-tenant-id": refreshed_connection["tenant_id"],
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Idempotency-Key": str(uuid4()),
+            },
+            json=request_payload,
+        )
+    if response.is_error:
+        detail_text = ""
+        try:
+            detail_json = response.json()
+            detail_text = detail_json.get("Detail") or detail_json.get("detail") or ""
+        except ValueError:
+            detail_text = str(response.text or "")[:500]
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=detail_text or "Xero rejected the nominal account rename request.",
+        )
+
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.nominal_account_renamed",
+        {
+            "accountId": resolved_account_id,
+            "accountCode": resolved_account_code,
+            "correctedName": corrected_name,
+        },
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
 async def delete_me_report_draft_sales_invoice(user: dict, client_id: str, invoice_id: str) -> dict:
     client = _me_report_client_row(user, client_id)
     invoice_id = str(invoice_id or "").strip()

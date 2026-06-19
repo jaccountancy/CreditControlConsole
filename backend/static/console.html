@@ -36957,6 +36957,22 @@
                                                     <p class="task-bookkeeping-review-summary" id="taskBookkeepingAutomationSummary">Checking connected Xero workspace, synced contacts, and current month transactions.</p>
                                                     <div class="task-bookkeeping-review-checks" id="taskBookkeepingAutomationChecks"></div>
                                                     <div class="task-bookkeeping-data-snapshot" id="taskBookkeepingAutomationData"></div>
+                                                    <h5 style="margin-top: 10px;">Nominal spelling review (AI)</h5>
+                                                    <div class="task-bookkeeping-unreconciled-table-wrap">
+                                                        <table class="task-bookkeeping-unreconciled-table" aria-label="Nominal spelling review">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Code</th>
+                                                                    <th>Current name</th>
+                                                                    <th>AI suggestion</th>
+                                                                    <th>Action</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="taskBookkeepingNominalSpellingBody">
+                                                                <tr><td colspan="4">No suspected nominal spelling issues found.</td></tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </article>
                                             </section>
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="reconciliations" hidden>
@@ -36992,6 +37008,23 @@
                                                         </table>
                                                     </div>
                                                     <p class="detail-meta">Click any figure to drill into source transactions.</p>
+                                                    <h5 style="margin-top: 10px;">Income and expenditure breakdown</h5>
+                                                    <div class="task-bookkeeping-unreconciled-table-wrap">
+                                                        <table class="task-bookkeeping-unreconciled-table" aria-label="Profit and loss nominal breakdown">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Type</th>
+                                                                    <th>Code</th>
+                                                                    <th>Account</th>
+                                                                    <th>Period</th>
+                                                                    <th>YTD</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="taskBookkeepingProfitLossBreakdownBody">
+                                                                <tr><td colspan="5">No nominal breakdown rows extracted for this period.</td></tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </article>
                                             </section>
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="balance_sheet" hidden>
@@ -37068,10 +37101,11 @@
                                                                     <th>Description</th>
                                                                     <th>Amount</th>
                                                                     <th>Reason</th>
+                                                                    <th>Action</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="taskBookkeepingDuplicateTransactionsBody">
-                                                                <tr><td colspan="4">No duplicate transaction risks detected.</td></tr>
+                                                                <tr><td colspan="5">No duplicate transaction risks detected.</td></tr>
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -37088,10 +37122,11 @@
                                                                     <th>Primary</th>
                                                                     <th>Duplicate</th>
                                                                     <th>Reason</th>
+                                                                    <th>Action</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="taskBookkeepingDuplicateContactsBody">
-                                                                <tr><td colspan="3">No duplicate contact risks detected.</td></tr>
+                                                                <tr><td colspan="4">No duplicate contact risks detected.</td></tr>
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -37101,6 +37136,7 @@
                                                 <article class="task-bookkeeping-workflow-card">
                                                     <h5>Stage 10 · Lock Date Check</h5>
                                                     <p class="task-bookkeeping-review-summary" id="taskBookkeepingLockDateSummary">Checking Xero lock-date readiness for this task period.</p>
+                                                    <div class="task-bookkeeping-data-snapshot" id="taskBookkeepingLockDateSnapshot"></div>
                                                 </article>
                                             </section>
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="equity_monitor" hidden>
@@ -37119,13 +37155,14 @@
                                                             <thead>
                                                                 <tr>
                                                                     <th>Class</th>
+                                                                    <th>Nominal codes</th>
                                                                     <th>Register</th>
                                                                     <th>Balance sheet</th>
                                                                     <th>Difference</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="taskBookkeepingFixedAssetsBody">
-                                                                <tr><td colspan="4">No fixed asset reconciliation rows available yet.</td></tr>
+                                                                <tr><td colspan="5">No fixed asset reconciliation rows available yet.</td></tr>
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -44076,6 +44113,7 @@
                         juksibAutomationSettings: config.endpoints?.juksibAutomationSettings || "/api/juksib/automation/settings",
                         juksibAutomationRunNow: config.endpoints?.juksibAutomationRunNow || "/api/juksib/automation/run-now",
                         meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
+                        meReportRenameNominalAccount: config.endpoints?.meReportRenameNominalAccount || "/api/me-report/clients/:clientId/xero/nominal-accounts/rename",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
                         meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
@@ -112287,6 +112325,18 @@
                 return "";
             }
 
+            function taskBookkeepingTransactionXeroURL(row = {}) {
+                const directUrl = String(row?.xeroUrl || row?.url || "").trim();
+                if (directUrl) return directUrl;
+                const invoiceId = String(row?.invoiceId || row?.xeroInvoiceId || "").trim();
+                if (invoiceId) return `https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=${encodeURIComponent(invoiceId)}`;
+                const creditNoteId = String(row?.creditNoteId || "").trim();
+                if (creditNoteId) return `https://go.xero.com/AccountsReceivable/ViewCreditNote.aspx?creditNoteID=${encodeURIComponent(creditNoteId)}`;
+                const bankTransactionId = String(row?.bankTransactionId || row?.transactionId || row?.id || "").trim();
+                if (bankTransactionId) return `https://go.xero.com/Bank/ViewTransaction.aspx?bankTransactionID=${encodeURIComponent(bankTransactionId)}`;
+                return "";
+            }
+
             function taskBookkeepingFilterTransactionsForPeriod(rows = [], periodConfig = {}) {
                 const month = Number(periodConfig?.month || 0);
                 const year = Number(periodConfig?.year || 0);
@@ -112297,6 +112347,18 @@
                     return (txDate.getMonth() + 1) === month && txDate.getFullYear() === year;
                 });
                 return filtered.length ? filtered : rows;
+            }
+
+            function taskBookkeepingFixedAssetClassLabel(value = "") {
+                const text = String(value || "").toLowerCase();
+                if (/motor|vehicle|car|van/.test(text)) return "Motor vehicles";
+                if (/computer|it|software|laptop|hardware/.test(text)) return "IT equipment";
+                if (/plant|machinery|machine/.test(text)) return "Plant and machinery";
+                if (/furniture|fixture|fitting/.test(text)) return "Fixtures and fittings";
+                if (/freehold|leasehold|property|building/.test(text)) return "Property";
+                if (/intangible|goodwill|licen|patent/.test(text)) return "Intangible assets";
+                if (/accumulated depreciation|depreciation|amortisation/.test(text)) return "Depreciation and amortisation";
+                return "Other fixed assets";
             }
 
             function taskBookkeepingRegisterRowForTask(row = {}) {
@@ -112412,6 +112474,51 @@
                 };
             }
 
+            function taskBookkeepingLatestSubmittedAccountsISO(row = {}) {
+                const registerRow = taskBookkeepingRegisterRowForTask(row) || {};
+                const candidates = [
+                    registerRow.latestSubmittedAccountsDate,
+                    registerRow.lastAccountsMadeUpTo,
+                    registerRow.accountsMadeUpTo,
+                    registerRow.accountsLastMadeUpTo,
+                    registerRow.lastAccountsTo,
+                    registerRow.accountsSubmittedTo,
+                    registerRow.accountsPeriodEnd,
+                    row.latestSubmittedAccountsDate,
+                    row.lastAccountsMadeUpTo,
+                    row.accountsMadeUpTo,
+                    row.accountsPeriodEnd,
+                ];
+                for (const candidate of candidates) {
+                    const parsed = parseDateValue(candidate);
+                    if (parsed) return parsed.toISOString().slice(0, 10);
+                }
+                return "";
+            }
+
+            function taskBookkeepingLockDateSnapshot(row = {}) {
+                const tenantId = String(bmTaskResolvedXeroMatch(row)?.tenantId || row?.xeroMatch?.tenantId || "").trim();
+                const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                const lockRow = lockRows.find((item) => String(item?.tenantId || "").trim() === tenantId) || null;
+                const xeroLockDateISO = String(
+                    microAnalyzerTenantLockDateISO(tenantId)
+                    || lockRow?.lockDateISO
+                    || lockRow?.lockDate
+                    || ""
+                ).trim();
+                const submittedAccountsISO = taskBookkeepingLatestSubmittedAccountsISO(row);
+                const lockDate = parseDateValue(xeroLockDateISO);
+                const submittedDate = parseDateValue(submittedAccountsISO);
+                const matches = !!(lockDate && submittedDate && lockDate.getTime() >= submittedDate.getTime());
+                return {
+                    tenantId,
+                    xeroLockDateISO,
+                    submittedAccountsISO,
+                    lockRow,
+                    matches,
+                };
+            }
+
             function taskBookkeepingReviewState(row = {}, workflow = {}) {
                 const periodConfig = taskBookkeepingWorkflowPeriodConfig(row);
                 const meClient = taskBookkeepingFindMeReportClient(row);
@@ -112447,6 +112554,7 @@
                     .filter((item) => Math.abs(Number(item.amount || 0)) >= 0.01);
                 const fixedAssetDifference = meReportFixedAssetDifferenceValue(summary);
                 const lockDateCheck = taskBookkeepingLockDateCheck(row);
+                const lockDateSnapshot = taskBookkeepingLockDateSnapshot(row);
                 const duplicateTransactionRisks = meReportObjectRows(summary.duplicateTransactionRisks)
                     .slice(0, 80)
                     .map((item) => ({
@@ -112472,6 +112580,7 @@
                     .slice(0, 40)
                     .map((item) => ({
                         label: String(item?.assetClass || item?.label || item?.name || "Fixed assets").trim(),
+                        nominalCodes: String(item?.nominalCodes || item?.nominals || "").trim(),
                         registerTotal: meReportMoneyValue(item?.registerTotal || item?.fixedAssetRegisterTotal || 0),
                         balanceSheetTotal: meReportMoneyValue(item?.balanceSheetTotal || item?.balanceSheetFixedAssetTotal || 0),
                         difference: meReportMoneyValue(item?.difference ?? ((item?.balanceSheetTotal || 0) - (item?.registerTotal || 0))),
@@ -112479,10 +112588,56 @@
                 if (!fixedAssetRows.length) {
                     fixedAssetRows.push({
                         label: "Total fixed assets",
+                        nominalCodes: "",
                         registerTotal: meReportMoneyValue(summary.fixedAssetRegisterTotal || 0),
                         balanceSheetTotal: meReportMoneyValue(summary.balanceSheetFixedAssetTotal || 0),
                         difference: fixedAssetDifference,
                     });
+                }
+                const fixedAssetNominalAccounts = trialBalanceAccounts.filter((account) => {
+                    const text = `${String(account.accountCode || account.code || "")} ${String(account.accountName || account.name || "")} ${String(account.accountType || account.type || "")}`.toLowerCase();
+                    return /(fixed asset|intangible|goodwill|plant|machinery|motor|vehicle|computer|fixture|fitting|furniture|leasehold|freehold|property|accumulated depreciation|depreciation|amortisation)/.test(text);
+                });
+                if (fixedAssetNominalAccounts.length) {
+                    const registerByClass = new Map();
+                    fixedAssetRows.forEach((row) => {
+                        const classLabel = taskBookkeepingFixedAssetClassLabel(row.label);
+                        registerByClass.set(classLabel, row);
+                    });
+                    const nominalByClass = new Map();
+                    fixedAssetNominalAccounts.forEach((account) => {
+                        const code = String(account.accountCode || account.code || "").trim();
+                        const name = String(account.accountName || account.name || "Fixed asset nominal").trim();
+                        const classLabel = taskBookkeepingFixedAssetClassLabel(name);
+                        if (!nominalByClass.has(classLabel)) {
+                            nominalByClass.set(classLabel, {
+                                label: classLabel,
+                                nominalCodes: new Set(),
+                                balanceSheetTotal: 0,
+                            });
+                        }
+                        const bucket = nominalByClass.get(classLabel);
+                        if (code) bucket.nominalCodes.add(code);
+                        bucket.balanceSheetTotal += meReportMoneyValue(account.amount ?? (Number(account.debitYTD || 0) - Number(account.creditYTD || 0)));
+                    });
+                    const classLabels = Array.from(new Set([...registerByClass.keys(), ...nominalByClass.keys()]));
+                    fixedAssetRows.splice(0, fixedAssetRows.length, ...classLabels.map((label) => {
+                        const registerRow = registerByClass.get(label);
+                        const nominalRow = nominalByClass.get(label);
+                        const registerTotal = meReportMoneyValue(registerRow?.registerTotal || 0);
+                        const balanceSheetTotal = meReportMoneyValue(
+                            nominalRow ? nominalRow.balanceSheetTotal : (registerRow?.balanceSheetTotal || 0)
+                        );
+                        return {
+                            label: registerRow?.label || label,
+                            nominalCodes: nominalRow?.nominalCodes?.size
+                                ? Array.from(nominalRow.nominalCodes).sort((left, right) => left.localeCompare(right)).join(", ")
+                                : String(registerRow?.nominalCodes || "").trim(),
+                            registerTotal,
+                            balanceSheetTotal,
+                            difference: meReportMoneyValue(balanceSheetTotal - registerTotal),
+                        };
+                    }));
                 }
                 const fixedAssetMismatchCount = fixedAssetRows.reduce((count, item) => (
                     count + (Math.abs(Number(item?.difference || 0)) >= 0.01 ? 1 : 0)
@@ -112645,6 +112800,7 @@
                     duplicateTransactionRisks,
                     duplicateContactRows,
                     lockDateCheck,
+                    lockDateSnapshot,
                     equityAssets: meReportMoneyValue(balanceTotals.assets || 0),
                     equityLiabilities: meReportMoneyValue(balanceTotals.liabilities || 0),
                     equityNetAssets,
@@ -112700,6 +112856,86 @@
                 return deduped.slice(0, 12);
             }
 
+            function taskBookkeepingSpellingMemory() {
+                if (!companiesHouseSettings.bmTaskNominalSpellingMemory || typeof companiesHouseSettings.bmTaskNominalSpellingMemory !== "object") {
+                    companiesHouseSettings.bmTaskNominalSpellingMemory = {};
+                }
+                return companiesHouseSettings.bmTaskNominalSpellingMemory;
+            }
+
+            function taskBookkeepingNominalSpellingIssueRows(reviewState = {}) {
+                const summary = reviewState?.summary || {};
+                const memory = taskBookkeepingSpellingMemory();
+                const typoMap = [
+                    [/recievable/gi, "receivable"],
+                    [/payble/gi, "payable"],
+                    [/acount/gi, "account"],
+                    [/accout/gi, "account"],
+                    [/expence/gi, "expense"],
+                    [/liabilty/gi, "liability"],
+                    [/debtorss?/gi, "debtors"],
+                    [/creditorss?/gi, "creditors"],
+                    [/amourtisation/gi, "amortisation"],
+                    [/depretiation/gi, "depreciation"],
+                ];
+                return meReportObjectRows(summary.trialBalanceAccounts)
+                    .map((account) => {
+                        const accountCode = String(account.accountCode || account.code || "").trim();
+                        const accountName = String(account.accountName || account.name || "").trim();
+                        const accountId = String(account.accountId || account.accountID || account.id || "").trim();
+                        if (!accountName) return null;
+                        let suggestedName = accountName;
+                        const reasons = [];
+                        typoMap.forEach(([regex, replacement]) => {
+                            if (regex.test(suggestedName)) {
+                                suggestedName = suggestedName.replace(regex, replacement);
+                                reasons.push(`Looks like "${replacement}" is misspelled.`);
+                            }
+                        });
+                        if (/\s{2,}/.test(accountName)) {
+                            suggestedName = suggestedName.replace(/\s{2,}/g, " ");
+                            reasons.push("Contains repeated spaces.");
+                        }
+                        if (/([a-zA-Z])\1{3,}/.test(accountName)) {
+                            reasons.push("Contains repeated characters.");
+                        }
+                        const memoryKey = `${accountCode}|${normaliseStatus(accountName)}`;
+                        if (!reasons.length || memory[memoryKey]?.confirmed === true) return null;
+                        return {
+                            memoryKey,
+                            accountId,
+                            accountCode,
+                            accountName,
+                            suggestedName,
+                            reason: reasons.join(" "),
+                        };
+                    })
+                    .filter(Boolean)
+                    .slice(0, 50);
+            }
+
+            async function taskBookkeepingUpdateNominalNameInXero(client = {}, issue = {}, correctedName = "") {
+                if (!client?.id) {
+                    showToast("No linked ME Report client found for this task.", "error");
+                    return;
+                }
+                const name = String(correctedName || "").trim();
+                if (!name) return;
+                await requestJSON(
+                    api.endpoints.meReportRenameNominalAccount,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({
+                            accountId: String(issue?.accountId || ""),
+                            accountCode: String(issue?.accountCode || ""),
+                            accountName: String(issue?.accountName || ""),
+                            correctedName: name,
+                        }),
+                    },
+                    { clientId: client.id }
+                );
+            }
+
             function taskBookkeepingRenderProfitLossTable(reviewState = {}) {
                 const head = document.getElementById("taskBookkeepingProfitLossHead");
                 const body = document.getElementById("taskBookkeepingProfitLossBody");
@@ -112753,6 +112989,69 @@
                         </tr>
                     `;
                 }).join("");
+            }
+
+            function taskBookkeepingProfitLossBreakdownRows(reviewState = {}) {
+                const summary = reviewState?.summary || {};
+                const periodConfig = reviewState?.periodConfig || {};
+                return meReportObjectRows(summary.trialBalanceAccounts)
+                    .filter((account) => {
+                        const accountType = String(account.accountType || account.type || "").toLowerCase();
+                        if (accountType) return !meReportIsBalanceSheetAccountType(accountType);
+                        const name = String(account.accountName || account.name || "").toLowerCase();
+                        const code = String(account.accountCode || account.code || "").trim();
+                        const looksBalanceSheet = /(asset|liabilit|equity|capital|reserve|retained|bank|creditor|debtor|receivable|payable|loan|accrual|prepayment|fixed asset)/.test(name);
+                        if (looksBalanceSheet) return false;
+                        const firstDigit = Number.parseInt(code.slice(0, 1), 10);
+                        return Number.isFinite(firstDigit) ? (firstDigit >= 4 && firstDigit <= 9) : true;
+                    })
+                    .map((account) => {
+                        const code = String(account.accountCode || account.code || "").trim();
+                        const name = String(account.accountName || account.name || "Nominal account").trim();
+                        const ytdRaw = meReportMoneyValue(account.amount ?? (Number(account.debitYTD || 0) - Number(account.creditYTD || 0)));
+                        const txRows = taskBookkeepingFilterTransactionsForPeriod(meReportObjectRows(account.transactions), periodConfig);
+                        const periodRaw = txRows.length
+                            ? txRows.reduce((sum, tx) => sum + meReportMoneyValue(tx.amount || 0), 0)
+                            : meReportMoneyValue(account.periodAmount ?? account.monthAmount ?? account.amountMonth ?? ((Number(account.debitMonth || 0) - Number(account.creditMonth || 0))));
+                        const text = `${code} ${name} ${String(account.accountType || account.type || "")}`.toLowerCase();
+                        const isIncome = /(income|revenue|sales|turnover|other income|interest income)/.test(text);
+                        const isExpenditure = /(expense|cost|wages|salary|payroll|rent|utilities|motor|travel|marketing|insurance|professional|fees|depreciation|amortisation|interest paid|tax)/.test(text);
+                        const type = isIncome && !isExpenditure ? "Income" : "Expenditure";
+                        const periodAmount = type === "Income" ? Math.abs(periodRaw) : Math.abs(periodRaw);
+                        const ytdAmount = type === "Income" ? Math.abs(ytdRaw) : Math.abs(ytdRaw);
+                        return {
+                            code,
+                            name,
+                            type,
+                            periodAmount,
+                            ytdAmount,
+                            hasTransactions: txRows.length > 0,
+                        };
+                    })
+                    .filter((row) => row.periodAmount !== 0 || row.ytdAmount !== 0)
+                    .sort((left, right) => {
+                        if (left.type !== right.type) return left.type.localeCompare(right.type);
+                        return Math.abs(right.periodAmount) - Math.abs(left.periodAmount);
+                    });
+            }
+
+            function taskBookkeepingRenderProfitLossBreakdownTable(reviewState = {}) {
+                const body = document.getElementById("taskBookkeepingProfitLossBreakdownBody");
+                if (!body) return;
+                const rows = taskBookkeepingProfitLossBreakdownRows(reviewState).slice(0, 200);
+                if (!rows.length) {
+                    body.innerHTML = '<tr><td colspan="5">No nominal breakdown rows extracted for this period.</td></tr>';
+                    return;
+                }
+                body.innerHTML = rows.map((row) => `
+                    <tr>
+                        <td>${escapeHTML(row.type)}</td>
+                        <td>${escapeHTML(row.code || "--")}</td>
+                        <td>${escapeHTML(row.name)}</td>
+                        <td>${escapeHTML(formatCurrency(row.periodAmount || 0))}</td>
+                        <td>${escapeHTML(formatCurrency(row.ytdAmount || 0))}</td>
+                    </tr>
+                `).join("");
             }
 
             function taskBookkeepingRenderBalanceSheetTable(reviewState = {}) {
@@ -112960,17 +113259,17 @@
             function taskBookkeepingComputedTaxAndDividend(summary = {}, adjustments = {}) {
                 const chartOfAccountsYtdProfit = taskBookkeepingChartOfAccountsYtdProfit(summary);
                 const inferredSignals = taskBookkeepingInferredTaxAndDividendSignals(summary);
+                const ytdProfitFromSalesAndExpense = (
+                    taskBookkeepingNumberOrNull(summary.yearToDateSales) !== null
+                    && taskBookkeepingNumberOrNull(summary.yearToDateExpenses) !== null
+                )
+                    ? (Number(summary.yearToDateSales || 0) - Number(summary.yearToDateExpenses || 0))
+                    : null;
                 const ytdProfit = taskBookkeepingNumberOrNull(summary.estimatedTaxableProfit)
                     ?? taskBookkeepingNumberOrNull(summary.yearToDateProfit)
                     ?? taskBookkeepingNumberOrNull(summary.accountingProfit)
                     ?? taskBookkeepingNumberOrNull(summary.profitBeforeTax)
-                    ?? (
-                        taskBookkeepingNumberOrNull(summary.yearToDateSales) !== null
-                            && taskBookkeepingNumberOrNull(summary.yearToDateExpenses) !== null
-                    )
-                        ? (
-                            Number(summary.yearToDateSales || 0) - Number(summary.yearToDateExpenses || 0)
-                        )
+                    ?? ytdProfitFromSalesAndExpense
                     ?? chartOfAccountsYtdProfit
                     ?? 0;
                 const capitalAllowances = Math.max(0, taskBookkeepingNumberOrNull(adjustments.capitalAllowances) ?? 0);
@@ -113101,6 +113400,46 @@
                     return String(workflow.reviewer || "").trim().length > 0 && String(workflow.notes || "").trim().length >= 5;
                 }
                 return true;
+            }
+
+            function taskBookkeepingCanAdvanceToStageIndex(stages = [], targetStageIndex = 0, workflow = {}, reviewState = {}) {
+                const required = (Array.isArray(stages) ? stages : []).slice(0, Math.max(0, Number(targetStageIndex || 0)));
+                return required.every((stage) => taskBookkeepingStageCanAdvance(String(stage?.id || ""), workflow, reviewState));
+            }
+
+            function taskBookkeepingOpenBlockedAdvanceModal(stages = [], workflow = {}, reviewState = {}, targetStageIndex = 0) {
+                const required = (Array.isArray(stages) ? stages : []).slice(0, Math.max(0, Number(targetStageIndex || 0)));
+                const pending = required.filter((stage) => !taskBookkeepingStageCanAdvance(String(stage?.id || ""), workflow, reviewState));
+                const detailByStage = {
+                    data_pull: "Connect the Xero workspace and ensure month data has been pulled.",
+                    month_checks: "Complete all automated quality checks for the selected month.",
+                    reconciliations: "Void or reconcile all unreconciled transactions.",
+                    profit_loss: "Review and verify the profit and loss figures and drilldowns.",
+                    balance_sheet: "Validate the balance sheet rows and investigate differences.",
+                    corporation_tax: "Confirm the CT estimate and any allowances/losses.",
+                    dividends: "Confirm dividend availability once CT is finalised.",
+                    duplicate_transactions: "Clear or approve all duplicate transaction risks.",
+                    duplicate_contacts: "Resolve duplicate contacts, including Xero merges where needed.",
+                    lock_date_check: "Confirm lock date aligns with latest submitted accounts period.",
+                    equity_monitor: "Resolve net-assets vs equity variance.",
+                    fixed_assets: "Resolve fixed asset register vs nominal/balance sheet differences.",
+                    reviewer: "Select reviewer and add review notes.",
+                };
+                showOperationReviewDialog({
+                    eyebrow: "Review submit blocked",
+                    title: "Workflow not ready for 1st review",
+                    subtitle: "Complete the items below before Review submit can proceed.",
+                    confirmLabel: "Close",
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ body, summary, cancelButton }) => {
+                        if (cancelButton) cancelButton.hidden = true;
+                        if (summary) summary.innerHTML = `<span class="operation-review-chip">${pending.length.toLocaleString("en-GB")} item${pending.length === 1 ? "" : "s"} pending</span>`;
+                        body.innerHTML = pending.length
+                            ? `<ul>${pending.map((stage) => `<li><strong>${escapeHTML(stage.label || stage.id || "Stage")}</strong>: ${escapeHTML(detailByStage[stage.id] || "Complete this stage before continuing.")}</li>`).join("")}</ul>`
+                            : "<p>No blocking items found.</p>";
+                    },
+                });
             }
 
             function taskBookkeepingConfidenceScores(reviewState = {}, workflow = {}) {
@@ -113263,12 +113602,11 @@
                     return;
                 }
 
-                const managerPool = Array.from(new Set(
-                    (Array.isArray(allRows) ? allRows : [])
-                        .map((item) => String(item?.assigneeName || "").trim())
-                        .filter(Boolean)
-                )).sort((left, right) => left.localeCompare(right));
-                const defaultReviewer = String(workflow.reviewer || row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
+                const allowedReviewers = ["Dean", "Amie", "Hannah"];
+                const allowedReviewerLookup = new Set(allowedReviewers.map((name) => normaliseStatus(name)));
+                const managerPool = allowedReviewers.slice();
+                const candidateReviewer = String(workflow.reviewer || row?.workflowReviewer || row?.assigneeName || bmTaskCurrentActorName()).trim();
+                const defaultReviewer = allowedReviewerLookup.has(normaliseStatus(candidateReviewer)) ? candidateReviewer : managerPool[0];
                 if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
                 if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
                 const stages = taskBookkeepingWizardStages();
@@ -113315,6 +113653,7 @@
                 const automationChecksWrap = document.getElementById("taskBookkeepingAutomationChecks");
                 const automationSummary = document.getElementById("taskBookkeepingAutomationSummary");
                 const automationData = document.getElementById("taskBookkeepingAutomationData");
+                const nominalSpellingBody = document.getElementById("taskBookkeepingNominalSpellingBody");
                 const blockingList = document.getElementById("taskBookkeepingBlockingList");
                 const unreconciledBody = document.getElementById("taskBookkeepingUnreconciledBody");
                 const missingNotesInput = document.getElementById("taskBookkeepingMissingNotesInput");
@@ -113328,7 +113667,9 @@
                 const finalBlockingList = document.getElementById("taskBookkeepingFinalBlockingList");
                 const duplicateTransactionsBody = document.getElementById("taskBookkeepingDuplicateTransactionsBody");
                 const duplicateContactsBody = document.getElementById("taskBookkeepingDuplicateContactsBody");
+                const profitLossBreakdownBody = document.getElementById("taskBookkeepingProfitLossBreakdownBody");
                 const lockDateSummary = document.getElementById("taskBookkeepingLockDateSummary");
+                const lockDateSnapshot = document.getElementById("taskBookkeepingLockDateSnapshot");
                 const equitySummary = document.getElementById("taskBookkeepingEquitySummary");
                 const equitySnapshot = document.getElementById("taskBookkeepingEquitySnapshot");
                 const fixedAssetsSummary = document.getElementById("taskBookkeepingFixedAssetsSummary");
@@ -113360,8 +113701,8 @@
                             const targetStage = String(button.getAttribute("data-task-bookkeeping-stage-jump") || "");
                             const targetIndex = Number(stageIndexById.get(targetStage) ?? -1);
                             if (targetIndex < 0) return;
-                            if (targetIndex > stageIndex && !taskBookkeepingStageCanAdvance(resolvedStage, hydratedWorkflow, reviewState)) {
-                                showToast("Complete this stage before moving forward.", "info");
+                            if (targetIndex > stageIndex && !taskBookkeepingCanAdvanceToStageIndex(stages, targetIndex, hydratedWorkflow, reviewState)) {
+                                showToast("Resolve blockers in earlier stages before moving forward.", "info");
                                 return;
                             }
                             companiesHouseSettings.bmTaskBookkeepingWorkflow = {
@@ -113379,9 +113720,13 @@
                 if (backButton) backButton.disabled = stageIndex <= 0;
                 if (nextButton) {
                     const atLastStage = stageIndex >= stages.length - 1;
+                    const canAdvanceToNext = taskBookkeepingCanAdvanceToStageIndex(stages, stageIndex + 1, hydratedWorkflow, reviewState);
+                    const isReviewSubmitStep = stageIndex === stages.length - 2;
                     nextButton.hidden = atLastStage;
-                    nextButton.disabled = atLastStage || !taskBookkeepingStageCanAdvance(resolvedStage, hydratedWorkflow, reviewState);
+                    nextButton.disabled = atLastStage || (!canAdvanceToNext && !isReviewSubmitStep);
                     nextButton.textContent = stageIndex === stages.length - 2 ? "Review submit" : "Next";
+                    nextButton.dataset.taskBookkeepingNextLocked = (!canAdvanceToNext && isReviewSubmitStep) ? "true" : "false";
+                    nextButton.style.opacity = (!canAdvanceToNext && isReviewSubmitStep) ? "0.6" : "";
                 }
                 if (submitButton) {
                     submitButton.hidden = resolvedStage !== "submit";
@@ -113471,6 +113816,65 @@
                         </article>
                     `).join("");
                 }
+                if (nominalSpellingBody) {
+                    const issues = taskBookkeepingNominalSpellingIssueRows(reviewState);
+                    nominalSpellingBody.innerHTML = issues.length
+                        ? issues.map((issue, index) => `
+                            <tr>
+                                <td>${escapeHTML(issue.accountCode || "--")}</td>
+                                <td>${escapeHTML(issue.accountName || "--")}<small>${escapeHTML(issue.reason || "")}</small></td>
+                                <td>${escapeHTML(issue.suggestedName || issue.accountName || "--")}</td>
+                                <td>
+                                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                        <button class="ignition-mini-button" type="button" data-task-bookkeeping-spelling-confirm="${index}">Confirm spelling</button>
+                                        <button class="ignition-mini-button" type="button" data-task-bookkeeping-spelling-correct="${index}">Correct in Xero</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join("")
+                        : '<tr><td colspan="4">No suspected nominal spelling issues found.</td></tr>';
+                    nominalSpellingBody.querySelectorAll("[data-task-bookkeeping-spelling-confirm]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const index = Number(button.getAttribute("data-task-bookkeeping-spelling-confirm") || -1);
+                            const issue = issues[index];
+                            if (!issue) return;
+                            const memory = taskBookkeepingSpellingMemory();
+                            memory[issue.memoryKey] = {
+                                confirmed: true,
+                                confirmedName: issue.accountName,
+                                confirmedAt: new Date().toISOString(),
+                            };
+                            saveBmTaskLocalState();
+                            renderTaskSubpages();
+                        });
+                    });
+                    nominalSpellingBody.querySelectorAll("[data-task-bookkeeping-spelling-correct]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const index = Number(button.getAttribute("data-task-bookkeeping-spelling-correct") || -1);
+                            const issue = issues[index];
+                            if (!issue || !reviewState.meClient?.id) return;
+                            const suggested = String(issue.suggestedName || issue.accountName || "").trim();
+                            const corrected = window.prompt("Correct nominal account name", suggested) || "";
+                            if (!String(corrected || "").trim()) return;
+                            try {
+                                await taskBookkeepingUpdateNominalNameInXero(reviewState.meClient, issue, corrected);
+                                const memory = taskBookkeepingSpellingMemory();
+                                memory[issue.memoryKey] = {
+                                    confirmed: true,
+                                    confirmedName: String(corrected || "").trim(),
+                                    confirmedAt: new Date().toISOString(),
+                                };
+                                saveBmTaskLocalState();
+                                showToast("Nominal account name updated in Xero.", "success");
+                                await loadMeReport(true);
+                                renderTaskSubpages();
+                            } catch (error) {
+                                if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                                else showToast(error?.message || "Unable to update nominal account in Xero.", "error");
+                            }
+                        });
+                    });
+                }
                 if (blockingList) {
                     blockingList.hidden = reviewState.blockingChecks.length === 0;
                     blockingList.innerHTML = reviewState.blockingChecks.map((item) => `<li>${escapeHTML(item.label)}</li>`).join("");
@@ -113540,19 +113944,25 @@
                             const date = taskBookkeepingTransactionDateISO(tx);
                             const description = String(tx.description || tx.reference || tx.narrative || "Unreconciled transaction").trim();
                             const amount = Number(tx.amount ?? tx.total ?? tx.netAmount ?? 0);
+                            const xeroUrl = taskBookkeepingTransactionXeroURL(tx);
                             return `
                                 <tr>
                                     <td>${escapeHTML(date ? formatDate(date) : "--")}</td>
                                     <td>${escapeHTML(description)}${txId ? `<small>${escapeHTML(txId)}</small>` : ""}</td>
                                     <td>${escapeHTML(formatCurrency(amount))}</td>
-                                    <td>${txId && client?.id ? `<button class="ghost-button" type="button" data-task-bookkeeping-delete-unreconciled="${escapeHTML(txId)}">Delete / Void</button>` : "Manual review"}</td>
+                                    <td>
+                                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                            ${xeroUrl ? `<a class="ignition-mini-button" target="_blank" rel="noopener" href="${escapeHTML(xeroUrl)}">Open in Xero</a>` : `<button class="ignition-mini-button" type="button" disabled>Open in Xero</button>`}
+                                            ${txId && client?.id ? `<button class="ignition-mini-button" type="button" data-task-bookkeeping-void-unreconciled="${escapeHTML(txId)}">Void in Xero</button>` : `<button class="ignition-mini-button" type="button" disabled>Void in Xero</button>`}
+                                        </div>
+                                    </td>
                                 </tr>
                             `;
                         }).join("")
                         : '<tr><td colspan="4">No unreconciled transactions detected for this period.</td></tr>';
-                    unreconciledBody.querySelectorAll("[data-task-bookkeeping-delete-unreconciled]").forEach((button) => {
+                    unreconciledBody.querySelectorAll("[data-task-bookkeeping-void-unreconciled]").forEach((button) => {
                         button.addEventListener("click", async () => {
-                            const transactionId = String(button.getAttribute("data-task-bookkeeping-delete-unreconciled") || "").trim();
+                            const transactionId = String(button.getAttribute("data-task-bookkeeping-void-unreconciled") || "").trim();
                             if (!transactionId || !reviewState.meClient?.id) return;
                             await deleteMeReportUnreconciledTransaction(reviewState.meClient, transactionId);
                             renderTaskSubpages();
@@ -113561,29 +113971,74 @@
                 }
                 if (duplicateTransactionsBody) {
                     duplicateTransactionsBody.innerHTML = reviewState.duplicateTransactionRisks.length
-                        ? reviewState.duplicateTransactionRisks.map((item) => `
+                        ? reviewState.duplicateTransactionRisks.map((item) => {
+                            const xeroUrl = taskBookkeepingTransactionXeroURL(item);
+                            return `
                             <tr>
                                 <td>${escapeHTML(item.date ? formatDate(item.date) : "--")}</td>
                                 <td>${escapeHTML(item.description || item.reference || "Possible duplicate")}</td>
                                 <td>${escapeHTML(formatCurrency(item.amount || 0))}</td>
                                 <td>${escapeHTML(item.reason || item.detail || "Potential duplicate posting pattern detected.")}</td>
+                                <td>${xeroUrl ? `<a class="ignition-mini-button" target="_blank" rel="noopener" href="${escapeHTML(xeroUrl)}">Open in Xero</a>` : '<button class="ignition-mini-button" type="button" disabled>Open in Xero</button>'}</td>
                             </tr>
-                        `).join("")
-                        : '<tr><td colspan="4">No duplicate transaction risks detected.</td></tr>';
+                        `;
+                        }).join("")
+                        : '<tr><td colspan="5">No duplicate transaction risks detected.</td></tr>';
                 }
                 if (duplicateContactsBody) {
                     duplicateContactsBody.innerHTML = reviewState.duplicateContactRows.length
-                        ? reviewState.duplicateContactRows.map((item) => `
+                        ? reviewState.duplicateContactRows.map((item, index) => {
+                            const canMergeFromException = String(item.exceptionId || "").trim().length > 0;
+                            const canMergeFromPair = !!(reviewState.meClient?.id && item.primaryContactId && item.duplicateContactId);
+                            const canMerge = canMergeFromException || canMergeFromPair;
+                            return `
                             <tr>
                                 <td>${escapeHTML(item.primaryContactName || item.primaryContactId || "--")}</td>
                                 <td>${escapeHTML(item.duplicateContactName || item.duplicateContactId || "--")}</td>
                                 <td>${escapeHTML(item.reason || "Potential duplicate contact detected.")}</td>
+                                <td>${canMerge ? `<button class="ignition-mini-button" type="button" data-task-bookkeeping-merge-contact="${index}">Merge in Xero</button>` : '<button class="ignition-mini-button" type="button" disabled>Merge unavailable</button>'}</td>
                             </tr>
-                        `).join("")
-                        : '<tr><td colspan="3">No duplicate contact risks detected.</td></tr>';
+                        `;
+                        }).join("")
+                        : '<tr><td colspan="4">No duplicate contact risks detected.</td></tr>';
+                    duplicateContactsBody.querySelectorAll("[data-task-bookkeeping-merge-contact]").forEach((button) => {
+                        button.addEventListener("click", async () => {
+                            const index = Number(button.getAttribute("data-task-bookkeeping-merge-contact") || -1);
+                            const rowItem = reviewState.duplicateContactRows[index];
+                            if (!rowItem) return;
+                            if (rowItem.exceptionId) {
+                                await mergeMeReportContact(rowItem.exceptionId);
+                                renderTaskSubpages();
+                                return;
+                            }
+                            if (reviewState.meClient?.id && rowItem.primaryContactId && rowItem.duplicateContactId) {
+                                await mergeMeReportContactPair(reviewState.meClient, rowItem.primaryContactId, rowItem.duplicateContactId);
+                                renderTaskSubpages();
+                            }
+                        });
+                    });
                 }
                 if (lockDateSummary) {
                     lockDateSummary.textContent = reviewState.lockDateCheck?.detail || "Lock-date check unavailable.";
+                }
+                if (lockDateSnapshot) {
+                    const snapshot = reviewState.lockDateSnapshot || {};
+                    lockDateSnapshot.innerHTML = [
+                        { label: "Xero tenant", detail: snapshot.tenantId || "Not mapped" },
+                        { label: "Xero lock date", detail: snapshot.xeroLockDateISO ? formatDate(snapshot.xeroLockDateISO) : "Not available" },
+                        { label: "Latest submitted accounts", detail: snapshot.submittedAccountsISO ? formatDate(snapshot.submittedAccountsISO) : "Not available" },
+                        {
+                            label: "Match check",
+                            detail: snapshot.xeroLockDateISO && snapshot.submittedAccountsISO
+                                ? (snapshot.matches ? "Pass: lock date covers latest submitted accounts period." : "Fail: lock date is behind latest submitted accounts period.")
+                                : "Unable to compare (missing lock date or submitted accounts date)."
+                        },
+                    ].map((item) => `
+                        <article class="task-bookkeeping-data-snapshot-item">
+                            <strong>${escapeHTML(item.label)}</strong>
+                            <small>${escapeHTML(item.detail)}</small>
+                        </article>
+                    `).join("");
                 }
                 if (equitySummary) {
                     equitySummary.textContent = `Net assets ${formatCurrency(reviewState.equityNetAssets || 0)} versus equity ${formatCurrency(reviewState.equityTotal || 0)}. Delta ${formatCurrency(reviewState.equityDelta || 0)}.`;
@@ -113614,14 +114069,16 @@
                         ? reviewState.fixedAssetRows.map((item) => `
                             <tr>
                                 <td>${escapeHTML(item.label || "Fixed assets")}</td>
+                                <td>${escapeHTML(item.nominalCodes || "--")}</td>
                                 <td>${escapeHTML(formatCurrency(item.registerTotal || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(item.balanceSheetTotal || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(item.difference || 0))}</td>
                             </tr>
                         `).join("")
-                        : '<tr><td colspan="4">No fixed asset reconciliation rows available yet.</td></tr>';
+                        : '<tr><td colspan="5">No fixed asset reconciliation rows available yet.</td></tr>';
                 }
                 taskBookkeepingRenderProfitLossTable(reviewState);
+                if (profitLossBreakdownBody) taskBookkeepingRenderProfitLossBreakdownTable(reviewState);
                 taskBookkeepingRenderBalanceSheetTable(reviewState);
                 taskBookkeepingRenderTaxNominalCodes(reviewState);
                 const aiSuggestionList = document.getElementById("taskBookkeepingAiSuggestions");
@@ -113724,12 +114181,10 @@
                     return `JUKBK-${String(candidate).padStart(3, "0")}`;
                 };
                 const workflowReference = existingReference || nextBookkeepingReference();
-                const managerPool = Array.from(new Set(
-                    (Array.isArray(allRows) ? allRows : [])
-                        .map((item) => String(item?.assigneeName || "").trim())
-                        .filter(Boolean)
-                )).sort((left, right) => left.localeCompare(right));
-                const defaultReviewer = String(row?.workflowReviewer || row?.assigneeName || managerPool[0] || bmTaskCurrentActorName()).trim();
+                const managerPool = ["Dean", "Amie", "Hannah"];
+                const allowedReviewerLookup = new Set(managerPool.map((name) => normaliseStatus(name)));
+                const candidateReviewer = String(row?.workflowReviewer || row?.assigneeName || bmTaskCurrentActorName()).trim();
+                const defaultReviewer = allowedReviewerLookup.has(normaliseStatus(candidateReviewer)) ? candidateReviewer : managerPool[0];
                 companiesHouseSettings.bmTaskBookkeepingWorkflow = {
                     open: true,
                     rowId,
@@ -118760,9 +119215,8 @@
                     const reviewState = taskBookkeepingReviewState(row, workflow);
                     const stages = taskBookkeepingWizardStages();
                     const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
-                    const current = stages[index] || stages[0];
-                    if (!taskBookkeepingStageCanAdvance(current.id, workflow, reviewState)) {
-                        showToast(`Complete ${current.label.toLowerCase()} before continuing.`, "info");
+                    if (!taskBookkeepingCanAdvanceToStageIndex(stages, index + 1, workflow, reviewState)) {
+                        taskBookkeepingOpenBlockedAdvanceModal(stages, workflow, reviewState, index + 1);
                         return;
                     }
                     if (index >= stages.length - 1) return;

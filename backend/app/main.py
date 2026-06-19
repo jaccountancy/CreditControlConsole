@@ -270,6 +270,7 @@ from .services import (
     gmail_oauth_configured,
     merge_me_report_duplicate_contact,
     merge_me_report_contacts,
+    rename_me_report_nominal_account,
     delete_me_report_draft_sales_invoice,
     me_report_juk_invoice_check,
     mark_me_report_purchases_paid_personally,
@@ -4879,6 +4880,12 @@ async def api_me_report_juk_invoice_check(client_id: str, request: Request, user
 @app.delete("/api/me-report/clients/{client_id}/xero/unreconciled-transactions/{transaction_id}")
 async def api_delete_me_report_unreconciled_transaction(client_id: str, transaction_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": await delete_me_report_unreconciled_transaction(user, client_id, transaction_id)}
+
+
+@app.post("/api/me-report/clients/{client_id}/xero/nominal-accounts/rename")
+async def api_rename_me_report_nominal_account(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": await rename_me_report_nominal_account(user, client_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/me-report/clients/{client_id}/reports")
