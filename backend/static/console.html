@@ -303,46 +303,39 @@
             body.client-register-sidebar-mode {
                 --app-sidebar-width: 236px;
             }
-            body.client-register-sidebar-mode .app-sidebar,
-            body.client-register-sidebar-mode .settings-mode-sidebar {
+            body.client-register-sidebar-mode .settings-mode-sidebar,
+            body.client-register-sidebar-mode .client-mode-sidebar {
                 opacity: 0;
                 pointer-events: none;
                 transform: translateX(-14px);
             }
-            body.client-register-sidebar-mode .client-mode-sidebar {
+            body.client-register-sidebar-mode .app-sidebar {
                 opacity: 1;
                 pointer-events: auto;
                 transform: translateX(0);
-                gap: 10px;
-                padding: 0;
-                background: transparent;
-                border: 0;
-                box-shadow: none;
-                backdrop-filter: none;
-                overflow: hidden;
-                align-items: stretch;
             }
-            body.client-register-sidebar-mode .client-mode-sidebar .client-summary-card {
+            body.client-register-sidebar-mode .app-sidebar .app-sidebar-bottom {
                 display: none;
             }
-            body.client-register-sidebar-mode .client-mode-sidebar .ch-register-client-page-sidebar {
-                flex: 1 1 100%;
-                min-height: 0;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-                padding: 12px 10px;
-                border-radius: 22px;
-                background: rgba(244, 248, 255, 0.94);
-                border: 1px solid rgba(61, 85, 130, 0.10);
-                box-shadow: 0 10px 28px rgba(30, 47, 77, 0.08);
-                backdrop-filter: blur(12px);
-                overflow: hidden;
+            body.client-register-sidebar-mode .app-sidebar .app-nav > :not(.ch-register-client-page-sidebar) {
+                display: none;
             }
-            body.client-register-sidebar-mode .client-mode-sidebar .ch-register-client-page-tabs {
-                flex: 1 1 auto;
+            body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-sidebar {
+                position: static;
+                top: auto;
+                border: 0;
+                border-radius: 0;
+                background: transparent;
+                box-shadow: none;
+                padding: 0;
+                display: grid;
+                gap: 10px;
+                max-height: none;
+                overflow: visible;
+            }
+            body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-tabs {
                 min-height: 0;
+                max-height: calc(100vh - 320px);
                 overflow-y: auto;
                 overflow-x: hidden;
             }
@@ -48731,18 +48724,18 @@
             }
 
             function syncClientRegisterSidebarDocking() {
-                const clientSidebarRail = document.querySelector(".client-mode-sidebar");
+                const appSidebarNav = document.querySelector(".app-sidebar .app-nav");
                 const clientPageShell = document.querySelector("#chRegisterClientPage .ch-register-client-page-shell");
                 const clientPageSidebar = document.querySelector("#chRegisterClientPage .ch-register-client-page-sidebar");
-                if (!clientSidebarRail || !clientPageShell || !clientPageSidebar) return;
+                if (!appSidebarNav || !clientPageShell || !clientPageSidebar) return;
 
                 const shouldDockToRail = activeView === "client-auth-register"
                     && Boolean(companiesHouseSettings?.authRegisterClientPage?.open);
                 const mainPanel = clientPageShell.querySelector(".ch-register-client-page-main");
 
                 if (shouldDockToRail) {
-                    if (clientPageSidebar.parentElement !== clientSidebarRail) {
-                        clientSidebarRail.appendChild(clientPageSidebar);
+                    if (clientPageSidebar.parentElement !== appSidebarNav) {
+                        appSidebarNav.appendChild(clientPageSidebar);
                     }
                     return;
                 }
