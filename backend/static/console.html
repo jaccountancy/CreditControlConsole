@@ -89370,12 +89370,21 @@
                         || customer?.internalClientOwner
                         || ""
                     ).trim() || "Unassigned";
+                    const clientReference = String(
+                        registerRow?.clientId
+                        || registerRow?.id
+                        || meReportClient?.clientId
+                        || customer?.clientId
+                        || customer?.customer?.clientId
+                        || ""
+                    ).trim();
                     return {
                         id: String(customer.id || "").trim(),
                         title: String(customer.name || "Unnamed client").trim(),
                         email: String(customer.email || "").trim(),
                         contact,
                         manager,
+                        clientReference,
                         companyNo: String(companyNo || "").trim(),
                     };
                 }).filter((item) => item?.id);
@@ -89508,7 +89517,7 @@
                     return;
                 }
                 const filtered = candidates.filter((item) => {
-                    const haystack = `${item.title} ${item.id} ${item.manager} ${item.companyNo} ${item.contact} ${item.email}`.toLowerCase();
+                    const haystack = `${item.title} ${item.id} ${item.clientReference} ${item.manager} ${item.companyNo} ${item.contact} ${item.email}`.toLowerCase();
                     return haystack.includes(query);
                 }).slice(0, 24);
                 if (!filtered.length) {
@@ -89519,6 +89528,7 @@
                     <button class="sidebar-mini-search-result" type="button" data-sidebar-search-client-id="${escapeHTML(item.id)}">
                         <strong>${escapeHTML(item.title)}</strong>
                         <small>${escapeHTML(`Manager: ${item.manager}`)}</small>
+                        ${item.clientReference ? `<small>${escapeHTML(`Client ID: ${item.clientReference}`)}</small>` : ""}
                     </button>
                 `).join("");
             }
