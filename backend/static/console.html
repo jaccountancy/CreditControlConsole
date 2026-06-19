@@ -34775,9 +34775,154 @@
                     height: 320px;
                 }
             }
+            .app-loading-screen {
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: clamp(20px, 4vw, 48px);
+                background:
+                    radial-gradient(1200px 700px at 15% 10%, rgba(68, 133, 217, 0.18), transparent 62%),
+                    radial-gradient(900px 500px at 90% 90%, rgba(55, 110, 189, 0.2), transparent 64%),
+                    linear-gradient(160deg, #edf3fe 0%, #d6e4fb 42%, #cddbf3 100%);
+                opacity: 1;
+                visibility: visible;
+                transition: opacity 260ms ease, visibility 260ms ease;
+            }
+            .app-loading-screen.is-hidden {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+            }
+            .app-loading-card {
+                width: min(620px, 100%);
+                border-radius: 32px;
+                border: 1px solid rgba(64, 116, 192, 0.22);
+                background: linear-gradient(155deg, rgba(255, 255, 255, 0.95), rgba(245, 250, 255, 0.92));
+                box-shadow: 0 30px 80px rgba(39, 74, 128, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+                padding: clamp(28px, 4vw, 44px);
+                display: grid;
+                gap: 20px;
+            }
+            .app-loading-brand {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+            }
+            .app-loading-brand-mark {
+                width: 52px;
+                height: 52px;
+                border-radius: 16px;
+                background: linear-gradient(145deg, rgba(64, 123, 208, 0.12), rgba(64, 123, 208, 0.28));
+                border: 1px solid rgba(64, 123, 208, 0.3);
+                display: grid;
+                place-items: center;
+                position: relative;
+                overflow: hidden;
+            }
+            .app-loading-brand-mark img {
+                width: 30px;
+                height: 30px;
+                object-fit: contain;
+                position: relative;
+                z-index: 1;
+            }
+            .app-loading-brand-mark::before {
+                content: "";
+                position: absolute;
+                inset: -40%;
+                border-radius: 999px;
+                border: 2px solid rgba(64, 123, 208, 0.32);
+                animation: appLoadingSpin 2.6s linear infinite;
+            }
+            .app-loading-brand-copy strong {
+                display: block;
+                font-size: clamp(1.1rem, 2.2vw, 1.4rem);
+                letter-spacing: 0.01em;
+                color: #1d2e50;
+            }
+            .app-loading-brand-copy span {
+                display: block;
+                margin-top: 2px;
+                color: #4f658b;
+                font-size: 0.9rem;
+            }
+            .app-loading-status {
+                margin: 8px 0 0;
+            }
+            .app-loading-phase {
+                margin: 0;
+                color: #1e3560;
+                font-weight: 700;
+                font-size: clamp(1.2rem, 2.7vw, 1.6rem);
+                letter-spacing: 0.01em;
+            }
+            .app-loading-detail {
+                margin: 6px 0 0;
+                color: #54709b;
+                font-size: 0.95rem;
+                line-height: 1.5;
+            }
+            .app-loading-progress {
+                position: relative;
+                height: 10px;
+                border-radius: 999px;
+                background: rgba(65, 119, 196, 0.16);
+                overflow: hidden;
+            }
+            .app-loading-progress-fill {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 12%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #3f78c9, #6fa5ea 58%, #9dc6f5);
+                box-shadow: 0 0 22px rgba(75, 131, 209, 0.45);
+                transition: width 220ms ease;
+            }
+            .app-loading-footnote {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                color: #5f759c;
+                font-size: 0.83rem;
+            }
+            .app-loading-footnote strong {
+                color: #2c4775;
+                font-weight: 700;
+            }
+            @keyframes appLoadingSpin {
+                to { transform: rotate(360deg); }
+            }
                 </style>
             </head>
             <body>
+                <div class="app-loading-screen" id="appLoadingScreen" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="app-loading-card">
+                        <div class="app-loading-brand">
+                            <span class="app-loading-brand-mark" aria-hidden="true">
+                                <img src="/static/JaccountancyBlueIcon.png" alt="">
+                            </span>
+                            <span class="app-loading-brand-copy">
+                                <strong>Credit Control Console</strong>
+                                <span>Jenius workspace boot</span>
+                            </span>
+                        </div>
+                        <div class="app-loading-status">
+                            <p class="app-loading-phase" id="appLoadingPhase">Preparing workspace</p>
+                            <p class="app-loading-detail" id="appLoadingDetail">Setting up client context and secure session.</p>
+                        </div>
+                        <div class="app-loading-progress" aria-hidden="true">
+                            <span class="app-loading-progress-fill" id="appLoadingProgressFill"></span>
+                        </div>
+                        <div class="app-loading-footnote">
+                            <span>Jenius orchestration in progress</span>
+                            <strong id="appLoadingProgressLabel">10%</strong>
+                        </div>
+                    </div>
+                </div>
                 <div class="console-app">
                 <div class="console-app-frame">
                 <aside class="app-sidebar" aria-label="Main navigation">
@@ -130442,7 +130587,46 @@
                 });
             }
 
+            function updateDedicatedLoadingScreen({ phase, detail, progress } = {}) {
+                const screen = document.getElementById("appLoadingScreen");
+                if (!screen) return;
+                screen.classList.remove("is-hidden");
+                screen.removeAttribute("aria-hidden");
+                const phaseNode = document.getElementById("appLoadingPhase");
+                if (phaseNode && typeof phase === "string" && phase.trim()) phaseNode.textContent = phase.trim();
+                const detailNode = document.getElementById("appLoadingDetail");
+                if (detailNode && typeof detail === "string" && detail.trim()) detailNode.textContent = detail.trim();
+                const normalizedProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, Number(progress))) : null;
+                if (normalizedProgress !== null) {
+                    const progressFill = document.getElementById("appLoadingProgressFill");
+                    if (progressFill) progressFill.style.width = `${normalizedProgress}%`;
+                    const progressLabel = document.getElementById("appLoadingProgressLabel");
+                    if (progressLabel) progressLabel.textContent = `${Math.round(normalizedProgress)}%`;
+                }
+            }
+
+            function hideDedicatedLoadingScreen() {
+                const screen = document.getElementById("appLoadingScreen");
+                if (!screen) return;
+                screen.classList.add("is-hidden");
+                screen.setAttribute("aria-hidden", "true");
+            }
+
+            function showDedicatedLoadingScreen({ phase, detail, progress } = {}) {
+                updateDedicatedLoadingScreen({
+                    phase: phase || "Preparing workspace",
+                    detail: detail || "Setting up client context and secure session.",
+                    progress: Number.isFinite(progress) ? progress : 10,
+                });
+            }
+
             async function init() {
+                showDedicatedLoadingScreen({
+                    phase: "Launching Credit Control Console",
+                    detail: "Initializing navigation, workspace state, and secure context.",
+                    progress: 8,
+                });
+                try {
                 trimEmbeddedPageChrome();
                 wireAdaptiveTopbarLayout();
                 ensureConfirmationStatementsNavEntry();
@@ -130475,6 +130659,11 @@
                     navigateApp("home");
                 }
                 syncAppNavBrowserHistory(activeNavForView(), { replace: true });
+                updateDedicatedLoadingScreen({
+                    phase: "Rendering workspace shell",
+                    detail: "Preparing your screens and controls.",
+                    progress: 20,
+                });
                 try {
                     renderAll();
                 } catch (error) {
@@ -130505,13 +130694,33 @@
                         console.error(`Unable to initialise ${wire.name}`, error);
                     }
                 });
+                updateDedicatedLoadingScreen({
+                    phase: "Syncing cloud data",
+                    detail: "Fetching latest client, service, and billing records.",
+                    progress: 52,
+                });
                 panelPayload = await hydrateFromAPI();
+                updateDedicatedLoadingScreen({
+                    phase: "Loading company workflows",
+                    detail: "Finalising Companies House and register queue state.",
+                    progress: 74,
+                });
                 await loadCompanySecretarialQueue();
+                updateDedicatedLoadingScreen({
+                    phase: "Applying live updates",
+                    detail: "Painting your latest workspace view.",
+                    progress: 86,
+                });
                 try {
                     renderAll();
                 } catch (error) {
                     console.error("Unable to render console after loading API data", error);
                 }
+                updateDedicatedLoadingScreen({
+                    phase: "Starting background monitors",
+                    detail: "Enabling sync listeners and incremental refresh tasks.",
+                    progress: 95,
+                });
                 if (activeView === "insights") {
                     loadInsights();
                 }
@@ -130606,6 +130815,24 @@
                     }
                 } catch (error) {
                     console.error("Unable to auto-start Ignition sync", error);
+                }
+                updateDedicatedLoadingScreen({
+                    phase: "Ready",
+                    detail: "Workspace loaded successfully.",
+                    progress: 100,
+                });
+                } catch (error) {
+                    console.error("Unable to initialise workspace", error);
+                    updateDedicatedLoadingScreen({
+                        phase: "Startup issue detected",
+                        detail: "Some data failed to load. Opening workspace with available data.",
+                        progress: 100,
+                    });
+                    showToast("Some startup data could not be loaded. Please refresh or retry sync.", "warning");
+                } finally {
+                    window.setTimeout(() => {
+                        hideDedicatedLoadingScreen();
+                    }, 320);
                 }
             }
             init();
