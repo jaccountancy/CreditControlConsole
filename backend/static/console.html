@@ -37164,6 +37164,7 @@
                                                     <span class="ch-client-status-badge" id="chRegisterClientPageStatusBadge">Active Client</span>
                                                     <span class="ch-client-status-badge ch-client-connection-badge is-muted" id="chRegisterClientPageXeroStatusBadge">Xero not connected</span>
                                                     <span class="ch-client-status-badge ch-client-connection-badge is-muted" id="chRegisterClientPageIgnitionStatusBadge">Ignition not connected</span>
+                                                    <span class="ch-client-status-badge ch-client-connection-badge is-muted" id="chRegisterClientPageCompaniesHouseStatusBadge">Companies House not connected</span>
                                                 </div>
                                             </div>
                                             <p class="detail-meta" id="chRegisterClientPageMeta">Loading client details…</p>
@@ -120691,6 +120692,38 @@
                     profile?.ignitionMatch?.clientName,
                 ].some(hasText);
 
+                const companyNumber = String(
+                    row?.companyNumber
+                    || row?.company_number
+                    || profile?.companiesHouse?.companyNumber
+                    || profile?.companiesHouse?.company_number
+                    || ""
+                ).trim();
+                const companiesHouseDataPresent = [
+                    row?.lastFiledDate,
+                    row?.last_filed_date,
+                    row?.nextDueDate,
+                    row?.next_due_date,
+                    row?.incorporationDate,
+                    row?.incorporation_date,
+                    profile?.companiesHouse?.lastSyncAt,
+                    profile?.companiesHouse?.checkedAt,
+                    profile?.companiesHouse?.companyStatus,
+                    profile?.companiesHouse?.company_status,
+                ].some(hasText)
+                    || (Array.isArray(row?.filingHistory) && row.filingHistory.length > 0)
+                    || (Array.isArray(row?.officers) && row.officers.length > 0)
+                    || (Array.isArray(row?.pscs) && row.pscs.length > 0);
+                const companiesHouseConnected = [
+                    row?.companiesHouseConnected,
+                    row?.chConnected,
+                    row?.hasCompaniesHouseMatch,
+                    profile?.companiesHouseConnected,
+                    profile?.companiesHouse?.connected,
+                    profile?.companiesHouse?.matched,
+                    profile?.companiesHouse?.isConnected,
+                ].some(truthy) || (hasText(companyNumber) && companiesHouseDataPresent);
+
                 const proposalTextPool = [];
                 const proposalSources = [
                     row?.ignitionActiveProposals,
@@ -120722,6 +120755,7 @@
                 return {
                     xeroConnected,
                     ignitionConnected,
+                    companiesHouseConnected,
                     detectedPlanLabel,
                     isSelfAssessmentClient,
                 };
@@ -120885,6 +120919,7 @@
                 const statusBadge = document.getElementById("chRegisterClientPageStatusBadge");
                 const xeroStatusBadge = document.getElementById("chRegisterClientPageXeroStatusBadge");
                 const ignitionStatusBadge = document.getElementById("chRegisterClientPageIgnitionStatusBadge");
+                const companiesHouseStatusBadge = document.getElementById("chRegisterClientPageCompaniesHouseStatusBadge");
                 const planStatusBadge = document.getElementById("chRegisterClientPagePlanStatusBadge");
                 const selfAssessmentStatusBadge = document.getElementById("chRegisterClientPageSelfAssessmentStatusBadge");
                 const clientIdBadge = document.getElementById("chRegisterClientPageClientIdBadge");
@@ -120921,6 +120956,11 @@
                     ignitionStatusBadge.textContent = matchSummary.ignitionConnected ? "Connected to Ignition" : "Ignition not connected";
                     ignitionStatusBadge.classList.remove("is-good", "is-muted");
                     ignitionStatusBadge.classList.add(matchSummary.ignitionConnected ? "is-good" : "is-muted");
+                }
+                if (companiesHouseStatusBadge) {
+                    companiesHouseStatusBadge.textContent = matchSummary.companiesHouseConnected ? "Connected to Companies House" : "Companies House not connected";
+                    companiesHouseStatusBadge.classList.remove("is-good", "is-muted");
+                    companiesHouseStatusBadge.classList.add(matchSummary.companiesHouseConnected ? "is-good" : "is-muted");
                 }
                 if (planStatusBadge) {
                     const planLabel = String(matchSummary.detectedPlanLabel || "").trim();
@@ -121660,8 +121700,8 @@
                             <tr>
                                 <td>${escapeHTML(String(psc?.name || psc?.etag || "—"))}</td>
                                 <td>${escapeHTML(String(psc?.kind || psc?.natures_of_control?.[0] || "—"))}</td>
-                                <td>${escapeHTML(String(psc?.notified_on || "—"))}</td>
-                                <td>${escapeHTML(String(psc?.ceased_on || "—"))}</td>
+                                <td>${escapeHTML(String(psc?.notifiedOn || psc?.notified_on || "—"))}</td>
+                                <td>${escapeHTML(String(psc?.ceasedOn || psc?.ceased_on || "—"))}</td>
                             </tr>
                         `).join("")
                         : '<tr><td colspan="4" class="ch-empty-state">No PSC data returned from Companies House yet.</td></tr>';
