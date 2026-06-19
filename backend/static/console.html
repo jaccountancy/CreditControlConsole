@@ -46964,6 +46964,9 @@
                     );
                 } finally {
                     payrollHeadcountLoading = false;
+                    if (activeView === "payroll-headcount") {
+                        renderPayrollHeadcountScreen();
+                    }
                 }
             }
 
@@ -54200,6 +54203,15 @@
                 const allTenantIds = new Set(connections.map((row) => String(row?.tenantId || "").trim()).filter(Boolean));
                 const previousSelection = JSON.stringify(payrollHeadcountIncludedTenantIds || []);
                 payrollHeadcountIncludedTenantIds = (payrollHeadcountIncludedTenantIds || []).filter((tenantId) => allTenantIds.has(String(tenantId || "").trim()));
+                let hasStoredSelection = false;
+                try {
+                    hasStoredSelection = localStorage.getItem(payrollHeadcountIncludedTenantIdsStorageKey) !== null;
+                } catch {
+                    hasStoredSelection = payrollHeadcountIncludedTenantIds.length > 0;
+                }
+                if (!hasStoredSelection && !payrollHeadcountIncludedTenantIds.length && allTenantIds.size) {
+                    payrollHeadcountIncludedTenantIds = [...allTenantIds];
+                }
                 if (JSON.stringify(payrollHeadcountIncludedTenantIds || []) !== previousSelection) {
                     persistPayrollHeadcountIncludedTenantIds();
                 }
@@ -80199,6 +80211,9 @@
                     meReportLoading = false;
                     if (!meReportHasPendingSubmissionWork()) stopMeReportBulkQueuePolling();
                     renderMeReportScreen();
+                    if (activeView === "payroll-headcount") {
+                        renderPayrollHeadcountScreen();
+                    }
                 }
             }
 
