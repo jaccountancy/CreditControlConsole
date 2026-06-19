@@ -62727,11 +62727,12 @@
                 const managerPhoto = document.getElementById("clientManagerPhoto");
                 if (managerPhoto) {
                     const explicitPhoto = String(client?.managerPhoto || client?.profilePhoto || "").trim();
+                    const mappedPhoto = clientRegisterStaffPhotoForName(manager);
                     const fallbackSlug = String(manager || "")
                         .toLowerCase()
                         .replace(/[^a-z0-9]+/g, "-")
                         .replace(/^-+|-+$/g, "");
-                    const src = explicitPhoto || (fallbackSlug ? `/static/assets/managers/${fallbackSlug}.png` : "");
+                    const src = explicitPhoto || mappedPhoto || (fallbackSlug ? `/static/assets/managers/${fallbackSlug}.png` : "");
                     managerPhoto.hidden = !src;
                     if (src) {
                         managerPhoto.src = src;
@@ -120467,6 +120468,18 @@
                     "Lauren Thompson": "/static/avatars/lauren-thompson.png",
                 };
                 if (directMap[raw]) return directMap[raw];
+                const aliasMap = {
+                    "Jay": directMap["Jay Wilson"],
+                    "Amie": directMap["Amie Thirlwell"],
+                    "Hannah": directMap["Hannah Leach"],
+                    "Dean": directMap["Dean Horton"],
+                    "Indie": directMap["Indie Singh"],
+                    "Martha": directMap["Martha Shields"],
+                    "Mia": directMap["Mia Lombardi"],
+                    "Tom": directMap["Tom Hadden"],
+                    "Lauren": directMap["Lauren Thompson"],
+                };
+                if (aliasMap[raw]) return aliasMap[raw];
                 const slug = raw
                     .toLowerCase()
                     .replace(/[^a-z0-9\s-]/g, "")
