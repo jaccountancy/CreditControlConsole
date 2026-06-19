@@ -22962,6 +22962,29 @@
             }
             .timeline-title { font-weight: 700; }
             .timeline-body { color: var(--ink); font-size: 0.94rem; }
+            .timeline-body.rich-note-body {
+                line-height: 1.5;
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
+            .timeline-body.rich-note-body p {
+                margin: 0 0 0.55em;
+            }
+            .timeline-body.rich-note-body p:last-child {
+                margin-bottom: 0;
+            }
+            .timeline-body.rich-note-body ul,
+            .timeline-body.rich-note-body ol {
+                margin: 0.4em 0 0.6em 1.35em;
+                padding: 0;
+            }
+            .timeline-body.rich-note-body li {
+                margin: 0.2em 0;
+            }
+            .timeline-body.rich-note-body a {
+                color: var(--blue);
+                text-decoration: underline;
+            }
             #chRegisterClientPageTimeline.ch-register-timeline-stream {
                 position: relative;
                 margin-top: 10px;
@@ -28061,16 +28084,11 @@
                 grid-column: 1 / -1;
             }
             .ch-register-client-page-main > .ch-register-client-write-banner {
-                order: 4;
-                grid-column: 1 / -1;
-            }
-            .ch-register-client-page-main > .ch-register-client-sync-strip,
-            .ch-register-client-page-main > .ch-register-client-page-inline-note {
-                order: 5;
+                order: 3;
                 grid-column: 1 / -1;
             }
             .ch-register-client-page-main > .ch-register-client-page-panel:not([data-client-page-panel="client-info"]) {
-                order: 6;
+                order: 4;
                 grid-column: 1 / -1;
             }
             body.client-register-sidebar-mode .ch-register-client-page-shell {
@@ -28482,10 +28500,113 @@
                 border-top-right-radius: 0;
                 min-width: 0;
             }
+            .ch-register-note-editor {
+                margin-top: 8px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.92);
+                overflow: hidden;
+            }
+            .ch-register-note-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                padding: 8px;
+                border-bottom: 1px solid rgba(91, 116, 160, 0.18);
+                background: rgba(255, 255, 255, 0.9);
+            }
+            .ch-register-note-toolbar button {
+                min-height: 28px;
+                min-width: 30px;
+                padding: 4px 8px;
+                border-radius: 9px;
+                border: 1px solid rgba(91, 116, 160, 0.2);
+                background: #ffffff;
+                color: #2c426a;
+                font-weight: 800;
+                cursor: pointer;
+                font-family: inherit;
+                font-size: 0.86rem;
+            }
+            .ch-register-note-toolbar button:hover,
+            .ch-register-note-toolbar button:focus-visible {
+                border-color: rgba(29, 103, 242, 0.32);
+                color: var(--blue);
+                background: rgba(233, 241, 255, 0.86);
+                outline: none;
+            }
+            .ch-register-note-input {
+                min-height: 132px;
+                padding: 12px;
+                font-size: 0.98rem;
+                line-height: 1.48;
+                color: var(--ink);
+                outline: none;
+                white-space: pre-wrap;
+            }
+            .ch-register-note-input:empty::before {
+                content: attr(data-placeholder);
+                color: var(--muted);
+                font-weight: 700;
+            }
+            .ch-register-note-input ul,
+            .ch-register-note-input ol {
+                margin: 0.35em 0 0.55em 1.35em;
+                padding: 0;
+            }
+            .ch-register-note-input p {
+                margin: 0 0 0.55em;
+            }
+            .ch-register-note-input p:last-child {
+                margin-bottom: 0;
+            }
             .ch-register-client-overview {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 12px;
+            }
+            .ch-register-summary-card {
+                grid-column: 1 / -1;
+            }
+            .ch-register-summary-layout {
+                display: grid;
+                grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+                grid-template-areas:
+                    "relationship health"
+                    "snapshot health";
+                gap: 12px;
+                align-items: stretch;
+            }
+            .ch-register-summary-block {
+                border: 1px solid rgba(91, 116, 160, 0.16);
+                border-radius: 12px;
+                background: #fcfdff;
+                padding: 10px;
+                display: grid;
+                gap: 10px;
+                min-width: 0;
+            }
+            .ch-register-summary-block > header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .ch-register-summary-block > header h5 {
+                margin: 0;
+                font-size: 0.86rem;
+                letter-spacing: 0.05em;
+                color: #5d7096;
+                font-weight: 900;
+            }
+            .ch-register-summary-block.ch-register-relationship-card {
+                grid-area: relationship;
+            }
+            .ch-register-summary-block.ch-register-health-card {
+                grid-area: health;
+            }
+            .ch-register-summary-block.ch-register-snapshot-card {
+                grid-area: snapshot;
             }
             .ch-register-relationship-card { order: 1; }
             .ch-register-health-card { order: 2; }
@@ -28653,9 +28774,7 @@
                 font-weight: 800;
             }
             @media (max-width: 1500px) {
-                .ch-register-client-overview {
-                    grid-template-columns: 1fr;
-                }
+                .ch-register-summary-layout { grid-template-columns: 1fr; grid-template-areas: "relationship" "health" "snapshot"; }
                 .ch-register-health-layout {
                     grid-template-columns: minmax(0, 1fr);
                 }
@@ -36550,64 +36669,65 @@
                                         </aside>
                                         <div class="ch-register-client-page-main">
                                     <section class="ch-register-client-overview" id="chRegisterClientOverviewCards">
-                                        <article class="ch-register-overview-card ch-register-health-card">
-                                            <header>
-                                                <h4>CLIENT HEALTH</h4>
-                                                <button class="ghost-button ch-register-health-explain-toggle" type="button" id="chRegisterClientHealthExplainButton" aria-expanded="false" aria-controls="chRegisterClientHealthExplainPanel">Why this grade?</button>
-                                            </header>
-                                            <div class="ch-register-health-explain" id="chRegisterClientHealthExplainPanel" hidden></div>
-                                            <div class="ch-register-health-layout">
-                                                <div class="ch-register-health-dial">
-                                                    <strong id="chRegisterClientHealthGrade">A+</strong>
-                                                </div>
-                                                <ul class="ch-register-health-list">
-                                                    <li><span>VAT</span><strong id="chRegisterClientHealthVatStatus">Up to date</strong></li>
-                                                    <li><span>Payroll</span><strong id="chRegisterClientHealthPayrollStatus">Up to date</strong></li>
-                                                    <li><span>Accounts</span><strong id="chRegisterClientHealthAccountsStatus">Filed</strong></li>
-                                                    <li><span>Corporation Tax</span><strong id="chRegisterClientHealthCtStatus">Up to date</strong></li>
-                                                    <li><span>Companies House</span><strong id="chRegisterClientHealthChStatus">Up to date</strong></li>
-                                                    <li><span>AML</span><strong id="chRegisterClientHealthAmlStatus">Compliant</strong></li>
-                                                </ul>
-                                                <div class="ch-register-health-deadline">
-                                                    <span>NEXT DEADLINE</span>
-                                                    <strong id="chRegisterClientHealthDaysToDeadline">--</strong>
-                                                    <small>Days</small>
-                                                </div>
-                                            </div>
-                                        </article>
-                                        <article class="ch-register-overview-card ch-register-snapshot-card">
-                                            <header><h4>CLIENT SNAPSHOT</h4></header>
-                                            <div class="ch-register-snapshot-grid">
-                                                <div class="ch-register-snapshot-metric"><span>TURNOVER</span><strong id="chRegisterClientSnapshotTurnover">--</strong><small>Last 12 months</small></div>
-                                                <button class="ch-register-snapshot-metric ch-register-snapshot-quick-action" type="button" id="chRegisterClientSnapshotVatQuickAction"><span>VAT STATUS</span><strong id="chRegisterClientSnapshotVatStatus">--</strong><small id="chRegisterClientSnapshotVatMeta">--</small></button>
-                                                <div class="ch-register-snapshot-metric"><span>PAYROLL</span><strong id="chRegisterClientSnapshotPayrollFrequency">--</strong><small id="chRegisterClientSnapshotPayrollMeta">--</small></div>
-                                                <div class="ch-register-snapshot-metric"><span>STAFF</span><strong id="chRegisterClientSnapshotStaffCount">--</strong><small>On payroll</small></div>
-                                            </div>
-                                        </article>
-                                        <article class="ch-register-overview-card ch-register-relationship-card">
-                                            <header><h4>CLIENT RELATIONSHIP</h4></header>
-                                            <div class="ch-register-relationship-head">
-                                                <div class="ch-register-manager-avatar" id="chRegisterClientRelationshipAvatarWrap">
-                                                    <img id="chRegisterClientRelationshipAvatarPhoto" alt="" hidden>
-                                                    <span id="chRegisterClientRelationshipAvatar">--</span>
-                                                </div>
-                                                <div>
-                                                    <strong id="chRegisterClientRelationshipManager">Unassigned</strong>
-                                                    <small>Client Manager</small>
-                                                </div>
-                                            </div>
-                                            <div class="ch-register-relationship-grid">
-                                                <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipInteractions">0</strong><span>Interactions</span></div>
-                                                <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipSatisfaction">--</strong><span>Satisfaction</span></div>
-                                                <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipReviewGap">--</strong><span>Last review</span></div>
-                                                <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipOpenTasks">0</strong><span>Open tasks</span></div>
+                                        <article class="ch-register-overview-card ch-register-summary-card">
+                                            <header><h4>CLIENT SUMMARY</h4></header>
+                                            <div class="ch-register-summary-layout">
+                                                <section class="ch-register-summary-block ch-register-relationship-card">
+                                                    <header><h5>CLIENT RELATIONSHIP</h5></header>
+                                                    <div class="ch-register-relationship-head">
+                                                        <div class="ch-register-manager-avatar" id="chRegisterClientRelationshipAvatarWrap">
+                                                            <img id="chRegisterClientRelationshipAvatarPhoto" alt="" hidden>
+                                                            <span id="chRegisterClientRelationshipAvatar">--</span>
+                                                        </div>
+                                                        <div>
+                                                            <strong id="chRegisterClientRelationshipManager">Unassigned</strong>
+                                                            <small>Client Manager</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="ch-register-relationship-grid">
+                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipInteractions">0</strong><span>Interactions</span></div>
+                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipSatisfaction">--</strong><span>Satisfaction</span></div>
+                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipReviewGap">--</strong><span>Last review</span></div>
+                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipOpenTasks">0</strong><span>Open tasks</span></div>
+                                                    </div>
+                                                </section>
+                                                <section class="ch-register-summary-block ch-register-health-card">
+                                                    <header>
+                                                        <h5>CLIENT HEALTH</h5>
+                                                        <button class="ghost-button ch-register-health-explain-toggle" type="button" id="chRegisterClientHealthExplainButton" aria-expanded="false" aria-controls="chRegisterClientHealthExplainPanel">Why this grade?</button>
+                                                    </header>
+                                                    <div class="ch-register-health-explain" id="chRegisterClientHealthExplainPanel" hidden></div>
+                                                    <div class="ch-register-health-layout">
+                                                        <div class="ch-register-health-dial">
+                                                            <strong id="chRegisterClientHealthGrade">A+</strong>
+                                                        </div>
+                                                        <ul class="ch-register-health-list">
+                                                            <li><span>VAT</span><strong id="chRegisterClientHealthVatStatus">Up to date</strong></li>
+                                                            <li><span>Payroll</span><strong id="chRegisterClientHealthPayrollStatus">Up to date</strong></li>
+                                                            <li><span>Accounts</span><strong id="chRegisterClientHealthAccountsStatus">Filed</strong></li>
+                                                            <li><span>Corporation Tax</span><strong id="chRegisterClientHealthCtStatus">Up to date</strong></li>
+                                                            <li><span>Companies House</span><strong id="chRegisterClientHealthChStatus">Up to date</strong></li>
+                                                            <li><span>AML</span><strong id="chRegisterClientHealthAmlStatus">Compliant</strong></li>
+                                                        </ul>
+                                                        <div class="ch-register-health-deadline">
+                                                            <span>NEXT DEADLINE</span>
+                                                            <strong id="chRegisterClientHealthDaysToDeadline">--</strong>
+                                                            <small>Days</small>
+                                                        </div>
+                                                    </div>
+                                                </section>
+                                                <section class="ch-register-summary-block ch-register-snapshot-card">
+                                                    <header><h5>CLIENT SNAPSHOT</h5></header>
+                                                    <div class="ch-register-snapshot-grid">
+                                                        <div class="ch-register-snapshot-metric"><span>TURNOVER</span><strong id="chRegisterClientSnapshotTurnover">--</strong><small>Last 12 months</small></div>
+                                                        <button class="ch-register-snapshot-metric ch-register-snapshot-quick-action" type="button" id="chRegisterClientSnapshotVatQuickAction"><span>VAT STATUS</span><strong id="chRegisterClientSnapshotVatStatus">--</strong><small id="chRegisterClientSnapshotVatMeta">--</small></button>
+                                                        <div class="ch-register-snapshot-metric"><span>PAYROLL</span><strong id="chRegisterClientSnapshotPayrollFrequency">--</strong><small id="chRegisterClientSnapshotPayrollMeta">--</small></div>
+                                                        <div class="ch-register-snapshot-metric"><span>STAFF</span><strong id="chRegisterClientSnapshotStaffCount">--</strong><small>On payroll</small></div>
+                                                    </div>
+                                                </section>
                                             </div>
                                         </article>
                                     </section>
-                                    <div class="ch-register-client-save-strip" id="chRegisterClientPageSaveStrip" data-state="idle">
-                                        <span class="ch-register-client-save-strip-copy" id="chRegisterClientPageSaveStripCopy">Changes save automatically as you type.</span>
-                                        <button class="ghost-button" type="button" id="chRegisterClientPageRetrySaveButton" hidden>Retry save</button>
-                                    </div>
                                     <div class="ch-register-client-write-banner" id="chRegisterClientPageWriteBanner" hidden>
                                         <span class="ch-register-client-write-banner-copy" id="chRegisterClientPageWriteBannerCopy">A write action failed.</span>
                                         <div class="ch-register-client-write-banner-actions">
@@ -36615,8 +36735,6 @@
                                             <button class="ghost-button" type="button" id="chRegisterClientPageWriteBannerDismissButton">Dismiss</button>
                                         </div>
                                     </div>
-                                    <p class="detail-meta ch-register-client-sync-strip" id="chRegisterClientPageSyncStamp">Xero sync: -- · Companies House sync: --</p>
-                                    <p class="detail-meta ch-register-client-page-inline-note" id="chRegisterClientPageInlineNote">Core details for the selected client profile.</p>
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="client-info">
                                         <div class="ch-settings-head">
                                             <div>
@@ -36827,7 +36945,18 @@
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="notes" hidden>
                                         <h4>Notes</h4>
                                         <p class="detail-meta">Internal account notes and handover context.</p>
-                                        <textarea id="chRegisterClientPageNoteInput" rows="4" placeholder="Add a client note…"></textarea>
+                                        <div class="ch-register-note-editor">
+                                            <div class="ch-register-note-toolbar" id="chRegisterClientPageNoteToolbar" role="toolbar" aria-label="Note formatting tools">
+                                                <button type="button" data-note-command="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><strong>B</strong></button>
+                                                <button type="button" data-note-command="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><em>I</em></button>
+                                                <button type="button" data-note-command="underline" title="Underline (Ctrl/Cmd+U)" aria-label="Underline"><u>U</u></button>
+                                                <button type="button" data-note-command="insertUnorderedList" title="Bullet list" aria-label="Bullet list">• List</button>
+                                                <button type="button" data-note-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
+                                                <button type="button" data-note-command="createLink" title="Insert link" aria-label="Insert link">Link</button>
+                                                <button type="button" data-note-command="removeFormat" title="Clear formatting" aria-label="Clear formatting">Clear</button>
+                                            </div>
+                                            <div id="chRegisterClientPageNoteInput" class="ch-register-note-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Add a client note…"></div>
+                                        </div>
                                         <div class="detail-actions" style="margin-top: 10px;">
                                             <button class="ghost-button" type="button" id="chRegisterClientPageAddNoteButton">Add note</button>
                                         </div>
@@ -91035,6 +91164,97 @@
                 }[character]));
             }
 
+            function sanitizeClientRichNoteHTML(value) {
+                const template = document.createElement("template");
+                template.innerHTML = String(value ?? "");
+                const allowedTags = new Set(["B", "STRONG", "I", "EM", "U", "P", "BR", "UL", "OL", "LI", "A"]);
+                const blockedProtocolPattern = /^(javascript|data|vbscript):/i;
+                const cleanNode = (node) => {
+                    Array.from(node.childNodes || []).forEach((child) => {
+                        if (child.nodeType === Node.COMMENT_NODE) {
+                            child.remove();
+                            return;
+                        }
+                        if (child.nodeType !== Node.ELEMENT_NODE) return;
+                        const tagName = String(child.tagName || "").toUpperCase();
+                        if (!allowedTags.has(tagName)) {
+                            const fragment = document.createDocumentFragment();
+                            while (child.firstChild) fragment.appendChild(child.firstChild);
+                            child.replaceWith(fragment);
+                            cleanNode(fragment);
+                            return;
+                        }
+                        Array.from(child.attributes || []).forEach((attribute) => {
+                            const name = String(attribute?.name || "").toLowerCase();
+                            if (tagName === "A" && name === "href") {
+                                const hrefValue = String(attribute?.value || "").trim();
+                                if (!hrefValue || blockedProtocolPattern.test(hrefValue)) {
+                                    child.removeAttribute("href");
+                                    return;
+                                }
+                                child.setAttribute("href", hrefValue);
+                                child.setAttribute("target", "_blank");
+                                child.setAttribute("rel", "noopener noreferrer");
+                                return;
+                            }
+                            child.removeAttribute(attribute.name);
+                        });
+                        if (tagName === "A" && !child.getAttribute("href")) {
+                            const fragment = document.createDocumentFragment();
+                            while (child.firstChild) fragment.appendChild(child.firstChild);
+                            child.replaceWith(fragment);
+                            cleanNode(fragment);
+                            return;
+                        }
+                        cleanNode(child);
+                    });
+                };
+                cleanNode(template.content);
+                return template.innerHTML.trim();
+            }
+
+            function normaliseClientNoteMarkup(value) {
+                const source = String(value ?? "");
+                if (!source.trim()) return "";
+                if (/[<][a-z!/]/i.test(source)) {
+                    return sanitizeClientRichNoteHTML(source);
+                }
+                return escapeHTML(source).replace(/\n/g, "<br>");
+            }
+
+            function readClientNoteEditorHTML() {
+                const editor = document.getElementById("chRegisterClientPageNoteInput");
+                if (!editor) return "";
+                const sanitised = sanitizeClientRichNoteHTML(editor.innerHTML || "");
+                if (!sanitised) return "";
+                const probe = document.createElement("template");
+                probe.innerHTML = sanitised;
+                const plainText = String(probe.content.textContent || "").replace(/\u00A0/g, " ").trim();
+                return plainText ? sanitised : "";
+            }
+
+            function applyClientNoteEditorCommand(command) {
+                const editor = document.getElementById("chRegisterClientPageNoteInput");
+                if (!editor) return;
+                editor.focus();
+                if (command === "createLink") {
+                    let url = window.prompt("Enter link URL", "https://");
+                    if (url == null) return;
+                    url = String(url).trim();
+                    if (!url) return;
+                    if (!/^(https?:|mailto:|tel:)/i.test(url)) {
+                        url = `https://${url}`;
+                    }
+                    if (/^(javascript|data|vbscript):/i.test(url)) {
+                        showToast("Unsupported link format.", "error");
+                        return;
+                    }
+                    document.execCommand("createLink", false, url);
+                    return;
+                }
+                document.execCommand(command, false, null);
+            }
+
             function aiInlineTitleForDetail(detail = "") {
                 const copy = String(detail || "").toLowerCase();
                 if (copy.includes("extract")) return "Jenius AI is extracting";
@@ -118422,30 +118642,6 @@
                     const clientId = String(row?.clientId || "").trim();
                     clientIdBadge.textContent = clientId ? `Client ID ${clientId}` : "Client ID --";
                 }
-                const saveStrip = document.getElementById("chRegisterClientPageSaveStrip");
-                const saveStripCopy = document.getElementById("chRegisterClientPageSaveStripCopy");
-                const retrySaveButton = document.getElementById("chRegisterClientPageRetrySaveButton");
-                const saveState = String(pageState.saveState || (pageState.saving ? "saving" : "idle")).trim() || "idle";
-                if (saveStrip) {
-                    saveStrip.dataset.state = saveState;
-                }
-                if (saveStripCopy) {
-                    const saveStamp = String(pageState.lastSavedAt || "").trim();
-                    const saveError = String(pageState.saveError || "").trim();
-                    if (saveState === "saving" || pageState.saving) {
-                        saveStripCopy.textContent = "Saving changes...";
-                    } else if (saveState === "error" && saveError) {
-                        saveStripCopy.textContent = `Save failed: ${saveError}`;
-                    } else if (saveStamp) {
-                        saveStripCopy.textContent = `Changes save automatically as you type. Last saved ${chFormatDateTime(saveStamp)}.`;
-                    } else {
-                        saveStripCopy.textContent = "Changes save automatically as you type.";
-                    }
-                }
-                if (retrySaveButton) {
-                    retrySaveButton.hidden = !(saveState === "error");
-                    retrySaveButton.disabled = !!pageState.saving;
-                }
                 const writeFailureBanner = document.getElementById("chRegisterClientPageWriteBanner");
                 const writeFailureBannerCopy = document.getElementById("chRegisterClientPageWriteBannerCopy");
                 const writeFailureRetry = document.getElementById("chRegisterClientPageWriteBannerRetryButton");
@@ -118457,13 +118653,6 @@
                     writeFailureRetry.hidden = !writeFailureAction;
                     writeFailureRetry.dataset.retryAction = writeFailureAction;
                     writeFailureRetry.disabled = !!pageState.saving || !!pageState.xeroMatching;
-                }
-                const inlineNote = document.getElementById("chRegisterClientPageInlineNote");
-                if (inlineNote) {
-                    const stamp = String(pageState.lastSavedAt || "").trim();
-                    inlineNote.textContent = stamp
-                        ? `Changes save automatically as you type. Last saved ${chFormatDateTime(stamp)}.`
-                        : "Changes save automatically as you type.";
                 }
                 const xeroSyncStampNode = document.getElementById("chRegisterClientPageSyncStamp");
                 const vatSyncMetaNode = document.getElementById("chRegisterClientPageVatSyncMeta");
@@ -118852,7 +119041,7 @@
                         ? rows.map((item) => `
                             <article class="timeline-item">
                                 <div class="timeline-head"><span class="timeline-title">${escapeHTML(item?.createdByName || "Team")}</span><span class="timeline-stamp">${escapeHTML(item?.createdAt ? chFormatDateTime(item.createdAt) : "—")}</span></div>
-                                <div class="timeline-body">${escapeHTML(item?.note || "")}</div>
+                                <div class="timeline-body rich-note-body">${normaliseClientNoteMarkup(item?.note || "")}</div>
                             </article>
                         `).join("")
                         : `<article class="timeline-item"><div class="timeline-body">No notes added yet.</div></article>`;
@@ -119252,7 +119441,7 @@
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId) return;
                 const input = document.getElementById("chRegisterClientPageNoteInput");
-                const note = String(input?.value || "").trim();
+                const note = readClientNoteEditorHTML();
                 if (!note) {
                     showToast("Enter a note first.", "info");
                     return;
@@ -119262,7 +119451,7 @@
                         method: "POST",
                         body: JSON.stringify({ note }),
                     });
-                    if (input) input.value = "";
+                    if (input) input.innerHTML = "";
                     await openClientRegisterClientPage(rowId);
                     setClientRegisterClientPageTab("notes");
                     showToast("Note added.", "success");
@@ -120211,9 +120400,6 @@
                 document.getElementById("chRegisterClientPagePopulateCodesButton")?.addEventListener("click", () => {
                     document.getElementById("chAuthCodeRegisterPopulateButton")?.click();
                 });
-                document.getElementById("chRegisterClientPageRetrySaveButton")?.addEventListener("click", () => {
-                    saveClientRegisterClientPage({ silent: false, source: "retry-save-strip" });
-                });
                 document.getElementById("chRegisterClientPageReloadDirectoryButton")?.addEventListener("click", () => {
                     document.getElementById("chAuthCodeRegisterReloadButton")?.click();
                 });
@@ -120264,6 +120450,29 @@
                 document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", openClientRegisterJukInvoiceLookupModal);
                 document.getElementById("chRegisterClientPageCallStatsRefreshButton")?.addEventListener("click", () => {
                     loadClientRegisterClientPageCallStats({ force: true, silent: false });
+                });
+                document.getElementById("chRegisterClientPageNoteToolbar")?.addEventListener("click", (event) => {
+                    const button = event?.target?.closest?.("[data-note-command]");
+                    if (!button) return;
+                    event.preventDefault();
+                    const command = String(button.getAttribute("data-note-command") || "").trim();
+                    if (!command) return;
+                    applyClientNoteEditorCommand(command);
+                });
+                document.getElementById("chRegisterClientPageNoteInput")?.addEventListener("keydown", (event) => {
+                    const isModifier = event.ctrlKey || event.metaKey;
+                    if (!isModifier) return;
+                    const key = String(event.key || "").toLowerCase();
+                    if (key === "b") {
+                        event.preventDefault();
+                        applyClientNoteEditorCommand("bold");
+                    } else if (key === "i") {
+                        event.preventDefault();
+                        applyClientNoteEditorCommand("italic");
+                    } else if (key === "u") {
+                        event.preventDefault();
+                        applyClientNoteEditorCommand("underline");
+                    }
                 });
                 document.getElementById("chRegisterClientPageAddNoteButton")?.addEventListener("click", addNoteToClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageRiskWorkflowButton")?.addEventListener("click", openRiskAssessmentWorkflowFromClientRegisterPage);
