@@ -1167,6 +1167,114 @@
                 justify-content: flex-end;
                 gap: 8px;
             }
+            .sidebar-notification-detail-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 2460;
+                display: grid;
+                place-items: center;
+                background: rgba(15, 24, 38, 0.52);
+                padding: 18px;
+            }
+            .sidebar-notification-detail-card {
+                width: min(760px, 100%);
+                max-height: min(88vh, 900px);
+                overflow: auto;
+                border-radius: 18px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                background: #fff;
+                box-shadow: 0 24px 44px rgba(30, 47, 77, 0.22);
+                padding: 18px;
+                display: grid;
+                gap: 14px;
+            }
+            .sidebar-notification-detail-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .sidebar-notification-detail-head h3 {
+                margin: 0;
+                font-size: 1.12rem;
+                color: var(--ink);
+            }
+            .sidebar-notification-detail-head p {
+                margin: 4px 0 0;
+                color: var(--muted);
+                font-size: 0.84rem;
+            }
+            .sidebar-notification-detail-close {
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                border-radius: 10px;
+                background: #fff;
+                width: 30px;
+                height: 30px;
+                font-size: 1.1rem;
+                line-height: 1;
+                color: #3f5b8b;
+            }
+            .sidebar-notification-detail-close:hover,
+            .sidebar-notification-detail-close:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.45);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.14);
+            }
+            .sidebar-notification-detail-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .sidebar-notification-detail-item {
+                border: 1px solid rgba(61, 85, 130, 0.12);
+                border-radius: 11px;
+                background: #f8fbff;
+                padding: 10px;
+                display: grid;
+                gap: 5px;
+            }
+            .sidebar-notification-detail-item span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .sidebar-notification-detail-item strong {
+                color: var(--ink);
+                font-size: 0.92rem;
+                font-weight: 800;
+                overflow-wrap: anywhere;
+            }
+            .sidebar-notification-detail-note {
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 12px;
+                background: #fbfdff;
+                padding: 12px;
+                display: grid;
+                gap: 7px;
+            }
+            .sidebar-notification-detail-note h4 {
+                margin: 0;
+                color: var(--ink);
+                font-size: 0.96rem;
+            }
+            .sidebar-notification-detail-note p {
+                margin: 0;
+                color: #2d456f;
+                font-size: 0.86rem;
+                line-height: 1.46;
+                white-space: pre-wrap;
+            }
+            .sidebar-notification-detail-actions {
+                display: flex;
+                justify-content: flex-end;
+            }
+            @media (max-width: 760px) {
+                .sidebar-notification-detail-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
             .app-sidebar-brand::before {
                 content: "";
                 position: absolute;
@@ -31452,6 +31560,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Outstanding ESigns</strong><span>Awaiting signature</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-create-esig-request" data-app-nav="create-esig-request">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14"></path><path d="M5 12h14"></path><rect x="4" y="4" width="16" height="16" rx="3"></rect></svg></span>
+                                    <span class="app-nav-copy"><strong>Create New E-Sig Request</strong><span>Start a signature workflow</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-completed-esigns" data-app-nav="completed-esigns">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="m8.5 12 2.5 2.5 4.5-4.5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Completed ESigns</strong><span>Signed archive</span></span>
@@ -34973,6 +35085,46 @@
                                         <h4>Outstanding signatures</h4>
                                         <p class="detail-meta">This page is ready for pending e-sign workflows.</p>
                                     </div>
+                                </div>
+                            </article>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="createESigRequestScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">E-Signitures</p>
+                                    <h3>Create New E-Sig Request</h3>
+                                    <p class="detail-meta">Prepare and issue a new signature request for a client document pack.</p>
+                                </div>
+                            </div>
+                            <article class="ch-settings-card">
+                                <div class="ch-settings-head">
+                                    <div>
+                                        <h4>New request setup</h4>
+                                        <p class="detail-meta">Capture the key details and send the signature request.</p>
+                                    </div>
+                                </div>
+                                <div class="ch-register-risk-grid">
+                                    <label>Client name
+                                        <input type="text" placeholder="Client name">
+                                    </label>
+                                    <label>Client email
+                                        <input type="email" placeholder="client@example.com">
+                                    </label>
+                                    <label>Document title
+                                        <input type="text" placeholder="Director loan confirmation">
+                                    </label>
+                                    <label>Due date
+                                        <input type="date">
+                                    </label>
+                                    <label style="grid-column: 1 / -1;">Message to signer
+                                        <textarea rows="4" placeholder="Add signing notes, completion instructions, or reminders."></textarea>
+                                    </label>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="primary-button" type="button">Send e-sign request</button>
                                 </div>
                             </article>
                         </section>
@@ -40235,6 +40387,35 @@
                         </form>
                     </div>
                 </section>
+                <section class="sidebar-notification-detail-modal" id="sidebarNotificationDetailModal" aria-modal="true" role="dialog" aria-labelledby="sidebarNotificationDetailModalTitle" hidden>
+                    <div class="sidebar-notification-detail-card">
+                        <header class="sidebar-notification-detail-head">
+                            <div>
+                                <h3 id="sidebarNotificationDetailModalTitle">Notification details</h3>
+                                <p>Full information and note content from the selected sidebar notification.</p>
+                            </div>
+                            <button class="sidebar-notification-detail-close" id="sidebarNotificationDetailModalClose" type="button" aria-label="Close notification details">&times;</button>
+                        </header>
+                        <div class="sidebar-notification-detail-grid">
+                            <article class="sidebar-notification-detail-item"><span>Subject</span><strong id="sidebarNotificationDetailSubject">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Status</span><strong id="sidebarNotificationDetailStatus">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Priority</span><strong id="sidebarNotificationDetailPriority">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Category</span><strong id="sidebarNotificationDetailCategory">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Assigned to</span><strong id="sidebarNotificationDetailAssignee">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Created by</span><strong id="sidebarNotificationDetailCreator">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Source</span><strong id="sidebarNotificationDetailSource">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Created at</span><strong id="sidebarNotificationDetailCreatedAt">--</strong></article>
+                            <article class="sidebar-notification-detail-item"><span>Due date</span><strong id="sidebarNotificationDetailDueDate">--</strong></article>
+                        </div>
+                        <section class="sidebar-notification-detail-note">
+                            <h4>Full note</h4>
+                            <p id="sidebarNotificationDetailNote">No note content available.</p>
+                        </section>
+                        <div class="sidebar-notification-detail-actions">
+                            <button class="ghost-button" id="sidebarNotificationDetailOpenPageButton" type="button">Open in Notifications</button>
+                        </div>
+                    </div>
+                </section>
 
                 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
@@ -40268,7 +40449,7 @@
             const SUPPLIER_RECONCILIATION_SUPPLIERS_KEY = `${STORAGE_KEY}:supplier-reconciliation-suppliers`;
             const SUPPLIER_RECONCILIATION_STATEMENTS_KEY = `${STORAGE_KEY}:supplier-reconciliation-statements`;
             const NOTIFICATION_ESCALATION_HOURS = 48;
-            const AUTO_LOGOUT_INACTIVITY_MS = 10 * 60 * 1000;
+            const AUTO_LOGOUT_INACTIVITY_MS = 20 * 60 * 1000;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://jenius.jaccountancy.co.uk";
@@ -40817,6 +40998,7 @@
                 "nlac-list": "NLAC List",
                 "add-new-client": "Add a new Client",
                 "outstanding-esigns": "Outstanding ESigns",
+                "create-esig-request": "Create New E-Sig Request",
                 "completed-esigns": "Completed ESigns",
                 "sa100-prep": "SA100 Prep",
                 "ye-prep": "YE Prep",
@@ -40863,6 +41045,7 @@
                 "nlac-list": "Review and manage the NLAC client list workspace.",
                 "add-new-client": "Create and capture core details for a new client record.",
                 "outstanding-esigns": "Monitor documents that are still waiting for signature.",
+                "create-esig-request": "Prepare and send a new document bundle for client e-signature.",
                 "completed-esigns": "Review signed documents and completed e-sign workflows.",
                 "sa100-prep": "Start and review self-assessment preparation workspaces from bank categorisation through draft SA100 computations.",
                 "ye-prep": "Review connected Xero workspaces used for year-end preparation and client setup.",
@@ -40927,6 +41110,7 @@
             let notificationEscalationHours = NOTIFICATION_ESCALATION_HOURS;
             let sidebarNotificationsMiniMode = false;
             let sidebarSearchMiniMode = false;
+            let sidebarNotificationDetailId = "";
             let taskCompleteActionMenuContext = null;
             let lastSystemActivityView = "";
             let searchTerm = "";
@@ -45567,6 +45751,7 @@
                 if (activeView === "nlac-list") return "nlac-list";
                 if (activeView === "add-new-client") return "add-new-client";
                 if (activeView === "outstanding-esigns") return "outstanding-esigns";
+                if (activeView === "create-esig-request") return "create-esig-request";
                 if (activeView === "completed-esigns") return "completed-esigns";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
                 if (activeView === "sa100-prep") return "sa100-prep";
@@ -45952,6 +46137,7 @@
                 setElementVisible(document.getElementById("nlacListScreen"), activeView === "nlac-list");
                 setElementVisible(document.getElementById("addNewClientScreen"), activeView === "add-new-client");
                 setElementVisible(document.getElementById("outstandingESignsScreen"), activeView === "outstanding-esigns");
+                setElementVisible(document.getElementById("createESigRequestScreen"), activeView === "create-esig-request");
                 setElementVisible(document.getElementById("completedESignsScreen"), activeView === "completed-esigns");
                 setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secretarial" || activeView === "company-secreterial");
                 setElementVisible(document.getElementById("newFormationsScreen"), activeView === "new-formations");
@@ -45985,7 +46171,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -55112,6 +55298,7 @@
                 if (section === "nlac-list") return openNlacListScreen();
                 if (section === "add-new-client") return openAddNewClientScreen();
                 if (section === "outstanding-esigns") return openOutstandingESignsScreen();
+                if (section === "create-esig-request") return openCreateESigRequestScreen();
                 if (section === "completed-esigns") return openCompletedESignsScreen();
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
                 if (section === "company-secretarial" || section === "company-secreterial") return openCompanySecreterialScreen();
@@ -55285,6 +55472,7 @@
             ]);
             const eSignituresNavSections = new Set([
                 "outstanding-esigns",
+                "create-esig-request",
                 "completed-esigns",
             ]);
             const practiceToolsNavSections = new Set([
@@ -55423,6 +55611,7 @@
                 "nlac-list": "credit-control-nlac-list",
                 "add-new-client": "credit-control-add-new-client",
                 "outstanding-esigns": "credit-control-outstanding-esigns",
+                "create-esig-request": "credit-control-create-esig-request",
                 "completed-esigns": "credit-control-completed-esigns",
                 "company-secretarial": "credit-control-company-secretarial",
                 "company-secreterial": "credit-control-company-secreterial",
@@ -58663,6 +58852,15 @@
 
             function openOutstandingESignsScreen() {
                 activeView = "outstanding-esigns";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openCreateESigRequestScreen() {
+                activeView = "create-esig-request";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
@@ -84754,6 +84952,7 @@
                     "nlac-list": "NLAC List",
                     "add-new-client": "Add a new Client",
                     "outstanding-esigns": "Outstanding ESigns",
+                    "create-esig-request": "Create New E-Sig Request",
                     "completed-esigns": "Completed ESigns",
                     "company-secretarial": "Company Secretarial",
                     "hmrc-64-8s": "HMRC 64-8s",
@@ -86093,6 +86292,49 @@
             function closeSidebarNotifyModal() {
                 const modal = document.getElementById("sidebarNotifyModal");
                 if (modal) modal.hidden = true;
+            }
+
+            function sidebarNotificationStatusLabel(record) {
+                const status = String(record?.status || "").trim().toLowerCase();
+                const isReviewed = Boolean(record?.reviewedAt);
+                if (status === "archived") return "Archived";
+                if (isReviewed) return "Reviewed";
+                return "Needs review";
+            }
+
+            function openSidebarNotificationDetail(recordId) {
+                const id = String(recordId || "").trim();
+                if (!id) return;
+                const record = (notificationRecords || []).find((item) => String(item?.id || "") === id);
+                if (!record) {
+                    showToast("Notification details are not available.", "error");
+                    return;
+                }
+                sidebarNotificationDetailId = id;
+                const assign = (elementId, value) => {
+                    const node = document.getElementById(elementId);
+                    if (!node) return;
+                    node.textContent = String(value || "").trim() || "--";
+                };
+                assign("sidebarNotificationDetailSubject", record.subject || "Notification");
+                assign("sidebarNotificationDetailStatus", sidebarNotificationStatusLabel(record));
+                assign("sidebarNotificationDetailPriority", String(record.priority || "medium").replace(/[-_]/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()));
+                assign("sidebarNotificationDetailCategory", record.category || "System");
+                assign("sidebarNotificationDetailAssignee", record.assignedToName || "Unassigned");
+                assign("sidebarNotificationDetailCreator", record.createdByName || "System");
+                assign("sidebarNotificationDetailSource", notificationSourceTone(record.source));
+                assign("sidebarNotificationDetailCreatedAt", formatDateTime(record.createdAt || record.updatedAt || ""));
+                assign("sidebarNotificationDetailDueDate", record.dueDate ? formatDate(record.dueDate) : "No due date");
+                assign("sidebarNotificationDetailNote", record.content || "No note content available.");
+                const modal = document.getElementById("sidebarNotificationDetailModal");
+                if (!modal) return;
+                modal.hidden = false;
+            }
+
+            function closeSidebarNotificationDetail() {
+                const modal = document.getElementById("sidebarNotificationDetailModal");
+                if (modal) modal.hidden = true;
+                sidebarNotificationDetailId = "";
             }
 
             function renderSidebarUserProfile() {
@@ -105080,6 +105322,27 @@
                         showToast("Notification sent.", "success");
                     });
                 }
+                const sidebarNotificationDetailModalClose = document.getElementById("sidebarNotificationDetailModalClose");
+                if (sidebarNotificationDetailModalClose && sidebarNotificationDetailModalClose.dataset.wired !== "true") {
+                    sidebarNotificationDetailModalClose.dataset.wired = "true";
+                    sidebarNotificationDetailModalClose.addEventListener("click", closeSidebarNotificationDetail);
+                }
+                const sidebarNotificationDetailModal = document.getElementById("sidebarNotificationDetailModal");
+                if (sidebarNotificationDetailModal && sidebarNotificationDetailModal.dataset.wired !== "true") {
+                    sidebarNotificationDetailModal.dataset.wired = "true";
+                    sidebarNotificationDetailModal.addEventListener("click", (event) => {
+                        if (event.target?.id === "sidebarNotificationDetailModal") closeSidebarNotificationDetail();
+                    });
+                }
+                const sidebarNotificationDetailOpenPageButton = document.getElementById("sidebarNotificationDetailOpenPageButton");
+                if (sidebarNotificationDetailOpenPageButton && sidebarNotificationDetailOpenPageButton.dataset.wired !== "true") {
+                    sidebarNotificationDetailOpenPageButton.dataset.wired = "true";
+                    sidebarNotificationDetailOpenPageButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        closeSidebarNotificationDetail();
+                        openNotificationsScreen();
+                    });
+                }
                 const helpButton = document.getElementById("helpButton");
                 if (helpButton) helpButton.addEventListener("click", (event) => {
                     event.preventDefault();
@@ -105436,6 +105699,8 @@
                         }
                         const sidebarNotifyModal = document.getElementById("sidebarNotifyModal");
                         if (sidebarNotifyModal && !sidebarNotifyModal.hidden) closeSidebarNotifyModal();
+                        const sidebarNotificationDetailModal = document.getElementById("sidebarNotificationDetailModal");
+                        if (sidebarNotificationDetailModal && !sidebarNotificationDetailModal.hidden) closeSidebarNotificationDetail();
                     });
                 }
                 document.getElementById("productReleasesRefreshButton")?.addEventListener("click", async () => {
@@ -105510,7 +105775,17 @@
                         const openTrigger = event.target.closest?.("[data-sidebar-mini-notification-open], [data-sidebar-mini-notification-id]");
                         if (!openTrigger) return;
                         event.preventDefault();
-                        openNotificationsScreen();
+                        const recordId = String(
+                            openTrigger.dataset.sidebarMiniNotificationOpen
+                            || openTrigger.dataset.sidebarMiniNotificationId
+                            || openTrigger.closest?.("[data-sidebar-mini-notification-id]")?.dataset?.sidebarMiniNotificationId
+                            || ""
+                        ).trim();
+                        if (!recordId) {
+                            openNotificationsScreen();
+                            return;
+                        }
+                        openSidebarNotificationDetail(recordId);
                     });
                 }
                 const sidebarMiniSearchInput = document.getElementById("sidebarMiniSearchInput");
