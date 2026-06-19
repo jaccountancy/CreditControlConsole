@@ -26915,6 +26915,41 @@
             #chAuthCodeRegisterSortDirection {
                 min-width: 122px;
             }
+            #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select {
+                position: relative;
+                justify-content: flex-start;
+                padding-right: 14px;
+            }
+            #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select .icon-expand-label {
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select select {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                border: 0;
+                opacity: 0;
+                cursor: pointer;
+                appearance: none;
+                background: transparent;
+            }
+            @media (hover: hover) and (pointer: fine) {
+                #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select:hover,
+                #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select:focus-within {
+                    max-width: 248px;
+                    min-width: 164px;
+                }
+                #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select:hover .icon-expand-label,
+                #chAuthCodeRegisterTableWrap .ch-register-toolbar .ch-register-toolbar-select:focus-within .icon-expand-label {
+                    max-width: 188px;
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
             .ch-register-toolbar-meta {
                 margin-left: auto;
                 color: var(--muted);
@@ -28226,11 +28261,13 @@
                 flex-wrap: wrap;
             }
             #chRegisterClientPageStatusBadgeGroup {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                align-items: stretch;
+                display: inline-grid;
+                grid-template-columns: max-content repeat(3, minmax(56px, max-content));
+                align-items: center;
+                justify-content: flex-start;
                 gap: 8px;
-                width: 100%;
+                width: auto;
+                max-width: 100%;
             }
             .ch-client-status-badge {
                 display: inline-flex;
@@ -28249,20 +28286,24 @@
                 min-width: 0;
             }
             #chRegisterClientPageStatusBadgeGroup .ch-client-connection-badge {
-                width: 100%;
+                min-width: 56px;
+                white-space: nowrap;
                 text-align: center;
             }
             #chRegisterClientPageStatusBadgeGroup .ch-client-status-badge {
-                width: 100%;
+                width: auto;
             }
             @media (max-width: 1280px) {
                 #chRegisterClientPageStatusBadgeGroup {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    grid-template-columns: repeat(2, max-content);
                 }
             }
             @media (max-width: 760px) {
                 #chRegisterClientPageStatusBadgeGroup {
                     grid-template-columns: 1fr;
+                }
+                #chRegisterClientPageStatusBadgeGroup .ch-client-status-badge {
+                    width: 100%;
                 }
             }
             .ch-client-status-badge.ch-client-connection-badge-button {
@@ -37673,31 +37714,89 @@
                                 <div class="ch-companies-table-wrap" id="chAuthCodeRegisterTableWrap">
                                     <div class="ch-register-toolbar">
                                     <input id="chAuthCodeRegisterSearch" type="search" placeholder="Search company, ID, VAT number, manager, email, phone, address, source...">
-                                    <select id="chAuthCodeRegisterManagerFilter" aria-label="Filter by manager">
-                                        <option value="">All managers</option>
-                                    </select>
-                                    <select id="chAuthCodeRegisterSourceFilter" aria-label="Filter by source file">
-                                        <option value="">All source files</option>
-                                    </select>
-                                    <select id="chAuthCodeRegisterSortKey" aria-label="Sort rows by">
-                                        <option value="clientId">Sort: Client ID</option>
-                                        <option value="displayName">Sort: Company</option>
-                                        <option value="clientManager">Sort: Manager</option>
-                                        <option value="companyNumber">Sort: Number</option>
-                                        <option value="sourceFilename">Sort: Source file</option>
-                                        <option value="uploadedAt">Sort: Uploaded</option>
-                                    </select>
-                                    <select id="chAuthCodeRegisterSortDirection" aria-label="Sort direction">
-                                        <option value="asc">Ascending</option>
-                                        <option value="desc">Descending</option>
-                                    </select>
+                                    <label class="ghost-button icon-expand-button ch-register-toolbar-select" aria-label="Filter by manager" title="Filter by manager">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <circle cx="12" cy="8" r="3.2"></circle>
+                                                <path d="M5 19c1.2-3 3.8-4.5 7-4.5s5.8 1.5 7 4.5"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label" id="chAuthCodeRegisterManagerFilterLabel">All managers</span>
+                                        <select id="chAuthCodeRegisterManagerFilter" aria-label="Filter by manager">
+                                            <option value="">All managers</option>
+                                        </select>
+                                    </label>
+                                    <label class="ghost-button icon-expand-button ch-register-toolbar-select" aria-label="Filter by source file" title="Filter by source file">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path>
+                                                <path d="M14 3v5h5"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label" id="chAuthCodeRegisterSourceFilterLabel">All source files</span>
+                                        <select id="chAuthCodeRegisterSourceFilter" aria-label="Filter by source file">
+                                            <option value="">All source files</option>
+                                        </select>
+                                    </label>
+                                    <label class="ghost-button icon-expand-button ch-register-toolbar-select" aria-label="Sort rows by" title="Sort rows by">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <path d="M4 7h14"></path>
+                                                <path d="M4 12h10"></path>
+                                                <path d="M4 17h6"></path>
+                                                <path d="M18 8l2-2 2 2"></path>
+                                                <path d="M20 6v12"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label" id="chAuthCodeRegisterSortKeyLabel">Sort: Client ID</span>
+                                        <select id="chAuthCodeRegisterSortKey" aria-label="Sort rows by">
+                                            <option value="clientId">Sort: Client ID</option>
+                                            <option value="displayName">Sort: Company</option>
+                                            <option value="clientManager">Sort: Manager</option>
+                                            <option value="companyNumber">Sort: Number</option>
+                                            <option value="sourceFilename">Sort: Source file</option>
+                                            <option value="uploadedAt">Sort: Uploaded</option>
+                                        </select>
+                                    </label>
+                                    <label class="ghost-button icon-expand-button ch-register-toolbar-select" aria-label="Sort direction" title="Sort direction">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <path d="M7 6v12"></path>
+                                                <path d="M4.5 15.5 7 18l2.5-2.5"></path>
+                                                <path d="M17 18V6"></path>
+                                                <path d="M14.5 8.5 17 6l2.5 2.5"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label" id="chAuthCodeRegisterSortDirectionLabel">Descending</span>
+                                        <select id="chAuthCodeRegisterSortDirection" aria-label="Sort direction">
+                                            <option value="asc">Ascending</option>
+                                            <option value="desc">Descending</option>
+                                        </select>
+                                    </label>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterPrevPageButton">Prev</button>
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterPageMeta">Page 1 of 1</span>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterNextPageButton">Next</button>
                                     <button class="ghost-button" type="button" id="chAuthCodeRegisterLoadMoreButton">Load more</button>
-                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterColumnsButton">Columns</button>
-                                        <button class="ghost-button" type="button" id="chAuthCodeRegisterResetFiltersButton">Reset</button>
-                                        <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
+                                    <button class="ghost-button icon-expand-button" type="button" id="chAuthCodeRegisterColumnsButton" aria-label="Columns" title="Columns">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+                                                <path d="M9 4v16"></path>
+                                                <path d="M15 4v16"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label">Columns</span>
+                                    </button>
+                                    <button class="ghost-button icon-expand-button" type="button" id="chAuthCodeRegisterResetFiltersButton" aria-label="Reset" title="Reset">
+                                        <span class="button-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                                <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+                                                <path d="M3 4v5h5"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="icon-expand-label">Reset</span>
+                                    </button>
+                                    <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
                                     </div>
                                     <table class="ch-table" style="width: 100%; table-layout: fixed;">
                                         <thead id="chAuthCodeRegisterTableHead"></thead>
@@ -37711,9 +37810,9 @@
                                                 <h3 id="chRegisterClientPageTitle">Client profile</h3>
                                                 <div class="ch-client-status-badge-group" id="chRegisterClientPageStatusBadgeGroup">
                                                     <span class="ch-client-status-badge" id="chRegisterClientPageStatusBadge">Active Client</span>
-                                                    <button class="ch-client-status-badge ch-client-connection-badge ch-client-connection-badge-button is-muted" type="button" id="chRegisterClientPageXeroStatusBadge">Xero not connected</button>
-                                                    <button class="ch-client-status-badge ch-client-connection-badge ch-client-connection-badge-button is-muted" type="button" id="chRegisterClientPageIgnitionStatusBadge">Ignition not connected</button>
-                                                    <span class="ch-client-status-badge ch-client-connection-badge is-muted" id="chRegisterClientPageCompaniesHouseStatusBadge">Companies House not connected</span>
+                                                    <button class="ch-client-status-badge ch-client-connection-badge ch-client-connection-badge-button is-bad" type="button" id="chRegisterClientPageXeroStatusBadge" title="Xero not connected" aria-label="Xero not connected">Xero</button>
+                                                    <button class="ch-client-status-badge ch-client-connection-badge ch-client-connection-badge-button is-bad" type="button" id="chRegisterClientPageIgnitionStatusBadge" title="Ignition not connected" aria-label="Ignition not connected">Ignition</button>
+                                                    <span class="ch-client-status-badge ch-client-connection-badge is-bad" id="chRegisterClientPageCompaniesHouseStatusBadge" title="Companies House not connected" aria-label="Companies House not connected">CH</span>
                                                 </div>
                                             </div>
                                             <p class="detail-meta" id="chRegisterClientPageMeta">Loading client details…</p>
@@ -119761,6 +119860,22 @@
                 });
             }
 
+            function syncAuthRegisterToolbarSelectLabel(selectId, labelId, fallback = "") {
+                const select = document.getElementById(selectId);
+                const label = document.getElementById(labelId);
+                if (!select || !label) return;
+                const option = select.options?.[select.selectedIndex] || null;
+                const text = String(option?.textContent || fallback || "").trim();
+                label.textContent = text || fallback;
+            }
+
+            function syncAuthRegisterToolbarSelectLabels() {
+                syncAuthRegisterToolbarSelectLabel("chAuthCodeRegisterManagerFilter", "chAuthCodeRegisterManagerFilterLabel", "All managers");
+                syncAuthRegisterToolbarSelectLabel("chAuthCodeRegisterSourceFilter", "chAuthCodeRegisterSourceFilterLabel", "All source files");
+                syncAuthRegisterToolbarSelectLabel("chAuthCodeRegisterSortKey", "chAuthCodeRegisterSortKeyLabel", "Sort: Client ID");
+                syncAuthRegisterToolbarSelectLabel("chAuthCodeRegisterSortDirection", "chAuthCodeRegisterSortDirectionLabel", "Descending");
+            }
+
             function renderAuthCodeRegisterDirectory(rows, totalCount = 0) {
                 const body = document.getElementById("chAuthCodeRegisterTableBody");
                 const managerFilter = document.getElementById("chAuthCodeRegisterManagerFilter");
@@ -119800,6 +119915,7 @@
                 if (sortDirectionSelect) {
                     sortDirectionSelect.value = tableState.sortDirection === "asc" ? "asc" : "desc";
                 }
+                syncAuthRegisterToolbarSelectLabels();
                 const filteredRows = filteredAuthRegisterRows(list);
                 const visibleColumns = authRegisterVisibleColumns();
                 const totalPages = Math.max(1, Math.ceil(filteredRows.length / AUTH_REGISTER_PAGE_SIZE));
@@ -122698,21 +122814,30 @@
                 }
                 const matchSummary = clientRegisterDetectConnections(payload || {}, row, profile);
                 if (xeroStatusBadge) {
-                    xeroStatusBadge.textContent = matchSummary.xeroConnected ? "Connected to Xero" : "Xero not connected";
-                    xeroStatusBadge.classList.remove("is-good", "is-muted");
-                    xeroStatusBadge.classList.add(matchSummary.xeroConnected ? "is-good" : "is-muted");
+                    const xeroConnected = !!matchSummary.xeroConnected;
+                    xeroStatusBadge.textContent = "Xero";
+                    xeroStatusBadge.title = xeroConnected ? "Xero connected" : "Xero not connected";
+                    xeroStatusBadge.setAttribute("aria-label", xeroStatusBadge.title);
+                    xeroStatusBadge.classList.remove("is-good", "is-muted", "is-bad");
+                    xeroStatusBadge.classList.add(xeroConnected ? "is-good" : "is-bad");
                     xeroStatusBadge.disabled = !!pageState.loading || !!pageState.saving || !!pageState.xeroMatching;
                 }
                 if (ignitionStatusBadge) {
-                    ignitionStatusBadge.textContent = matchSummary.ignitionConnected ? "Connected to Ignition" : "Ignition not connected";
-                    ignitionStatusBadge.classList.remove("is-good", "is-muted");
-                    ignitionStatusBadge.classList.add(matchSummary.ignitionConnected ? "is-good" : "is-muted");
+                    const ignitionConnected = !!matchSummary.ignitionConnected;
+                    ignitionStatusBadge.textContent = "Ignition";
+                    ignitionStatusBadge.title = ignitionConnected ? "Ignition connected" : "Ignition not connected";
+                    ignitionStatusBadge.setAttribute("aria-label", ignitionStatusBadge.title);
+                    ignitionStatusBadge.classList.remove("is-good", "is-muted", "is-bad");
+                    ignitionStatusBadge.classList.add(ignitionConnected ? "is-good" : "is-bad");
                     ignitionStatusBadge.disabled = !!pageState.loading || !!pageState.saving || !!pageState.xeroMatching;
                 }
                 if (companiesHouseStatusBadge) {
-                    companiesHouseStatusBadge.textContent = matchSummary.companiesHouseConnected ? "Connected to Companies House" : "Companies House not connected";
-                    companiesHouseStatusBadge.classList.remove("is-good", "is-muted");
-                    companiesHouseStatusBadge.classList.add(matchSummary.companiesHouseConnected ? "is-good" : "is-muted");
+                    const companiesHouseConnected = !!matchSummary.companiesHouseConnected;
+                    companiesHouseStatusBadge.textContent = "CH";
+                    companiesHouseStatusBadge.title = companiesHouseConnected ? "Companies House connected" : "Companies House not connected";
+                    companiesHouseStatusBadge.setAttribute("aria-label", companiesHouseStatusBadge.title);
+                    companiesHouseStatusBadge.classList.remove("is-good", "is-muted", "is-bad");
+                    companiesHouseStatusBadge.classList.add(companiesHouseConnected ? "is-good" : "is-bad");
                 }
                 if (planStatusBadge) {
                     const planLabel = String(matchSummary.detectedPlanLabel || "").trim();
