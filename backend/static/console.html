@@ -119709,6 +119709,25 @@
                 const p11dDetails = serviceDetails?.p11d || {};
                 const selfAssessmentDetails = serviceDetails?.selfAssessment || {};
                 const juk = profile?.jukInvoices || {};
+                const accountsPeriods = clientRegisterAccountsPeriods(row, accountsReturns);
+                const resolvedAccountsYearEnd = clientRegisterFirstNonEmpty([
+                    accountsReturns?.companyYearEnd,
+                    accountsPeriods[0]?.yearEnd,
+                    row?.yearEndDate,
+                    row?.accountsMadeUpTo,
+                    row?.accountsLastMadeUpTo,
+                    row?.accountsPeriodEnd,
+                    row?.accountsSubmittedTo,
+                ]);
+                const resolvedAccountsDueDate = clientRegisterFirstNonEmpty([
+                    accountsReturns?.accountsNextDueDate,
+                    accountsPeriods.find((item) => !item?.submittedAt)?.dueDate,
+                    row?.accountsNextDueDate,
+                    row?.accountsDueDate,
+                    row?.accountsDueOn,
+                    row?.nextAccountsDueOn,
+                    row?.nextDueDate,
+                ]);
                 const title = document.getElementById("chRegisterClientPageTitle");
                 const eyebrow = document.getElementById("chRegisterClientPageEyebrow");
                 const meta = document.getElementById("chRegisterClientPageMeta");
@@ -119928,12 +119947,12 @@
                 const payrollStatus = serviceHealthState(!!services?.payroll, payrollDetails?.rtiDeadline);
                 const accountsStatus = serviceHealthState(
                     !isIndividual && !!(services?.accounts || services?.ct600Return),
-                    accountsReturns?.accountsNextDueDate,
+                    resolvedAccountsDueDate,
                     "Not required"
                 );
                 const ctStatus = serviceHealthState(
                     !isIndividual && !!services?.ct600Return,
-                    accountsReturns?.accountsNextDueDate,
+                    resolvedAccountsDueDate,
                     "Not required"
                 );
                 const companiesHouseStatus = String(row?.companyStatus || "").trim() || "Active";
@@ -120061,8 +120080,8 @@
                 assignReadOnly("chRegisterClientInfoPayrollPaye", payrollDetails.employersPayeReference || "");
                 assignReadOnly("chRegisterClientInfoPayrollOffice", payrollDetails.accountsOfficeReference || "");
                 assignReadOnly("chRegisterClientInfoPayrollRti", payrollDetails.rtiDeadline || "");
-                assignReadOnly("chRegisterClientInfoAccountsYearEnd", accountsReturns.companyYearEnd || "");
-                assignReadOnly("chRegisterClientInfoAccountsDue", accountsReturns.accountsNextDueDate || "");
+                assignReadOnly("chRegisterClientInfoAccountsYearEnd", resolvedAccountsYearEnd || "");
+                assignReadOnly("chRegisterClientInfoAccountsDue", resolvedAccountsDueDate || "");
                 assignReadOnly("chRegisterClientInfoP11dDue", p11dDetails.nextReturnDueDate || "");
                 setHidden("chRegisterClientInfoVatWrap", !services?.vatReturns);
                 setHidden("chRegisterClientInfoVatFrequencyWrap", !services?.vatReturns);
@@ -120241,8 +120260,8 @@
                 assign("chRegisterClientPageChLastFiledDate", chMeta.lastFiledDate || "");
                 assign("chRegisterClientPageChAuthStatus", chMeta.authCodeStatus || "");
                 assign("chRegisterClientPageChNotes", chMeta.notes || "");
-                assign("chRegisterClientPageAccountsYearEnd", accountsReturns.companyYearEnd || "");
-                assign("chRegisterClientPageAccountsNextDueDate", accountsReturns.accountsNextDueDate || "");
+                assign("chRegisterClientPageAccountsYearEnd", resolvedAccountsYearEnd || "");
+                assign("chRegisterClientPageAccountsNextDueDate", resolvedAccountsDueDate || "");
                 renderClientRegisterAccountsReturnsPanel(row, accountsReturns);
                 assign("chRegisterClientPageConfirmationStatementDate", confirmationStatement.statementDate || "");
                 assign("chRegisterClientPageConfirmationStatementDueDate", confirmationStatement.statementDueDate || "");
