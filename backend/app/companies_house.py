@@ -5210,12 +5210,24 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
+    xero_match = source.get("xeroMatch") if isinstance(source.get("xeroMatch"), dict) else {}
+    ignition_match = source.get("ignitionMatch") if isinstance(source.get("ignitionMatch"), dict) else {}
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
         "lastFiledDate": _coerce_text(source.get("lastFiledDate"), 80),
         "authCodeStatus": _coerce_text(source.get("authCodeStatus"), 80),
         "notes": _coerce_text(source.get("notes"), 3000),
+        "xeroMatch": {
+            "tenantId": _coerce_text(xero_match.get("tenantId"), 120),
+            "tenantName": _coerce_text(xero_match.get("tenantName"), 250),
+            "matchedAt": _coerce_text(xero_match.get("matchedAt"), 80),
+        },
+        "ignitionMatch": {
+            "clientId": _coerce_text(ignition_match.get("clientId"), 120),
+            "clientName": _coerce_text(ignition_match.get("clientName"), 250),
+            "matchedAt": _coerce_text(ignition_match.get("matchedAt"), 80),
+        },
         "serviceDetails": {
             "accountsReturns": {
                 "companyYearEnd": _coerce_text(accounts_returns.get("companyYearEnd"), 80),
@@ -5293,6 +5305,10 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "lastFiledDate": row.get("last_filed_date").isoformat() if row.get("last_filed_date") else "",
         "sourceFilename": row.get("source_filename") or "",
         "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+        "xeroTenantId": row.get("xero_tenant_id") or "",
+        "xeroTenantName": row.get("xero_tenant_name") or "",
+        "ignitionClientId": row.get("ignition_client_id") or "",
+        "ignitionClientName": row.get("ignition_client_name") or "",
         "services": services,
     }
 
@@ -5596,6 +5612,10 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                {r_col("vat_number", default_expr="''")},
                {r_col("company_utr", default_expr="''")},
                {r_col("personal_utr", default_expr="''")},
+               {r_col("xero_tenant_id", default_expr="''")},
+               {r_col("xero_tenant_name", default_expr="''")},
+               {r_col("ignition_client_id", default_expr="''")},
+               {r_col("ignition_client_name", default_expr="''")},
                {c_col("id", default_expr="NULL::uuid", alias="company_id")},
                {c_col("company_status", default_expr="''")},
                {c_col("filing_authority_reference", default_expr="''")},
@@ -5770,10 +5790,277 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
     return changes
 
 
-def get_auth_register_client_page(row_id: str) -> dict:
+def _ignition_client_match_keys(name: str) -> list[str]:
+    text = str(name or "").strip().lower()
+    if not text:
+        return []
+    text = text.replace("&", " and ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    text = re.sub(
+        r"\b(limited|ltd|plc|llp|limited liability partnership|company|co|uk|the)\b",
+        " ",
+        text,
+    )
+    text = re.sub(r"\s+", " ", text).strip()
+    compact = text.replace(" ", "")
+    return [item for item in {text, compact} if item]
+
+
+def _ignition_proposal_client_id(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+    customer = payload.get("customer") if isinstance(payload.get("customer"), dict) else {}
+    values = (
+        payload.get("client_id"),
+        payload.get("clientId"),
+        payload.get("customer_id"),
+        payload.get("customerId"),
+        payload.get("contact_id"),
+        payload.get("contactId"),
+        client.get("id"),
+        client.get("client_id"),
+        customer.get("id"),
+        customer.get("client_id"),
+    )
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _ignition_proposal_client_name(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+    customer = payload.get("customer") if isinstance(payload.get("customer"), dict) else {}
+    values = (
+        payload.get("client_name"),
+        payload.get("clientName"),
+        payload.get("customer_name"),
+        payload.get("customerName"),
+        payload.get("business_name"),
+        payload.get("company_name"),
+        client.get("name"),
+        client.get("business_name"),
+        client.get("company_name"),
+        customer.get("name"),
+        customer.get("business_name"),
+        customer.get("company_name"),
+    )
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _ignition_proposal_accepted(payload: dict) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    status = str(payload.get("state") or payload.get("status") or "").strip().lower()
+    if status == "accepted":
+        return True
+    return any(
+        str(payload.get(key) or "").strip()
+        for key in ("accepted_at", "acceptedAt", "signed_at", "signedAt")
+    )
+
+
+def _ignition_first_text(payload: dict, keys: tuple[str, ...], limit: int = 250) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in keys:
+        text = _coerce_text(payload.get(key), limit)
+        if text:
+            return text
+    return ""
+
+
+def _ignition_first_number(payload: dict, keys: tuple[str, ...]) -> float:
+    if not isinstance(payload, dict):
+        return 0.0
+    for key in keys:
+        raw = payload.get(key)
+        if raw in (None, ""):
+            continue
+        try:
+            return float(raw)
+        except Exception:
+            continue
+    return 0.0
+
+
+def _ignition_find_best_pdf_url(payload: object, depth: int = 0) -> str:
+    if depth > 5 or payload is None:
+        return ""
+    if isinstance(payload, str):
+        text = payload.strip()
+        if text.startswith("http://") or text.startswith("https://"):
+            lower = text.lower()
+            if lower.endswith(".pdf") or "pdf" in lower:
+                return text
+            if any(token in lower for token in ("engagement", "proposal", "document", "contract")):
+                return text
+        return ""
+    if isinstance(payload, list):
+        for item in payload:
+            hit = _ignition_find_best_pdf_url(item, depth + 1)
+            if hit:
+                return hit
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    preferred_keys = (
+        "documentUrl",
+        "document_url",
+        "pdfUrl",
+        "pdf_url",
+        "proposalPdfUrl",
+        "proposal_pdf_url",
+        "proposalUrl",
+        "proposal_url",
+        "publicUrl",
+        "public_url",
+        "signedUrl",
+        "signed_url",
+    )
+    for key in preferred_keys:
+        if key in payload:
+            hit = _ignition_find_best_pdf_url(payload.get(key), depth + 1)
+            if hit:
+                return hit
+    for value in payload.values():
+        hit = _ignition_find_best_pdf_url(value, depth + 1)
+        if hit:
+            return hit
+    return ""
+
+
+def _auth_register_ignition_engagement_letters(cursor, row: dict, user_id: str) -> list[dict]:
+    client_name = _coerce_text(
+        row.get("display_name")
+        or row.get("client_name")
+        or row.get("company_name"),
+        250,
+    )
+    matched_ignition_client_id = _coerce_text(row.get("ignition_client_id"), 120)
+    if not user_id:
+        return []
+    cursor.execute(
+        """
+        SELECT external_id,
+               payload,
+               source_created_at,
+               source_updated_at,
+               created_at
+        FROM ignition_reporting_records
+        WHERE user_id = %s
+          AND dataset = 'proposals'
+        ORDER BY COALESCE(source_updated_at, source_created_at, created_at) DESC
+        LIMIT 25000
+        """,
+        (user_id,),
+    )
+    records = cursor.fetchall() or []
+    row_name_keys = set(_ignition_client_match_keys(client_name))
+    letters: list[dict] = []
+    seen: set[str] = set()
+    for record in records:
+        proposal = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+        if not proposal or not _ignition_proposal_accepted(proposal):
+            continue
+        proposal_client_id = _ignition_proposal_client_id(proposal)
+        proposal_client_name = _ignition_proposal_client_name(proposal)
+        by_client_id = bool(matched_ignition_client_id and proposal_client_id and proposal_client_id == matched_ignition_client_id)
+        by_name = bool(row_name_keys and set(_ignition_client_match_keys(proposal_client_name)).intersection(row_name_keys))
+        if not by_client_id and not by_name:
+            continue
+        proposal_external_id = _coerce_text(
+            proposal.get("id")
+            or proposal.get("proposal_id")
+            or proposal.get("proposalId")
+            or proposal.get("reference_number")
+            or proposal.get("proposal_number")
+            or proposal.get("referenceNumber")
+            or proposal.get("proposalNumber")
+            or record.get("external_id"),
+            180,
+        )
+        dedupe_key = proposal_external_id or _coerce_text(proposal.get("name"), 300)
+        if not dedupe_key or dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        accepted_at = _ignition_first_text(
+            proposal,
+            ("accepted_at", "acceptedAt", "signed_at", "signedAt", "updated_at", "updatedAt", "created_at", "createdAt"),
+            80,
+        ) or (
+            record.get("source_updated_at").isoformat()
+            if record.get("source_updated_at")
+            else (
+                record.get("source_created_at").isoformat()
+                if record.get("source_created_at")
+                else (record.get("created_at").isoformat() if record.get("created_at") else "")
+            )
+        )
+        proposal_name = _coerce_text(
+            proposal.get("name")
+            or proposal.get("proposal_name")
+            or proposal.get("proposalName")
+            or proposal.get("reference_number")
+            or proposal.get("proposal_number")
+            or "Ignition proposal",
+            300,
+        )
+        proposal_number = _ignition_first_text(
+            proposal,
+            ("reference_number", "proposal_number", "referenceNumber", "proposalNumber"),
+            120,
+        )
+        pdf_url = _ignition_find_best_pdf_url(proposal)
+        letters.append(
+            {
+                "proposalExternalId": proposal_external_id,
+                "proposalName": proposal_name,
+                "proposalNumber": proposal_number,
+                "clientId": proposal_client_id,
+                "clientName": proposal_client_name,
+                "acceptedAt": accepted_at,
+                "startDate": _ignition_first_text(proposal, ("start_date", "startDate"), 80),
+                "endDate": _ignition_first_text(proposal, ("end_date", "endDate"), 80),
+                "state": _coerce_text(proposal.get("state") or proposal.get("status"), 80),
+                "amount": _ignition_first_number(
+                    proposal,
+                    (
+                        "total",
+                        "value",
+                        "amount",
+                        "monthly_fee",
+                        "monthlyFee",
+                        "mrr",
+                    ),
+                ),
+                "currency": _ignition_first_text(proposal, ("currency", "currency_code", "currencyCode"), 20),
+                "pdfUrl": pdf_url,
+                "proposalUrl": _ignition_first_text(
+                    proposal,
+                    ("proposalUrl", "proposal_url", "publicUrl", "public_url"),
+                    1200,
+                ),
+            }
+        )
+        if len(letters) >= 300:
+            break
+    return letters
+
+
+def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict:
     safe_row_id = str(row_id or "").strip()
     if not safe_row_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    user_id = _coerce_text((user or {}).get("id"), 120) if isinstance(user, dict) else ""
     with get_connection() as connection:
         with connection.cursor() as cursor:
             row = _auth_register_client_page_row(cursor, safe_row_id)
@@ -5845,6 +6132,7 @@ def get_auth_register_client_page(row_id: str) -> dict:
                         (safe_row_id,),
                     )
                 audit_rows = cursor.fetchall() or []
+            ignition_engagement_letters = _auth_register_ignition_engagement_letters(cursor, row, user_id)
         connection.commit()
 
     try:
@@ -5921,6 +6209,7 @@ def get_auth_register_client_page(row_id: str) -> dict:
             }
             for item in audit_rows
         ],
+        "ignitionEngagementLetters": ignition_engagement_letters,
     }
 
 
@@ -6025,7 +6314,7 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 ),
             )
         connection.commit()
-    return get_auth_register_client_page(safe_row_id)
+    return get_auth_register_client_page(safe_row_id, user)
 
 
 def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:

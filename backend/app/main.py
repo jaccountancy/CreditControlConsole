@@ -3472,7 +3472,7 @@ def api_companies_house_auth_code_register_client_page(
     row_id: str,
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", **get_auth_register_client_page(row_id)}
+    return {"status": "ok", **get_auth_register_client_page(row_id, user)}
 
 
 @app.patch("/api/companies-house/auth-code-register/{row_id}/client-page")
