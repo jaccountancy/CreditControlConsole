@@ -36866,7 +36866,7 @@
                                         </aside>
                                         <div class="ch-register-client-page-main">
                                     <div class="ch-register-client-page-tab-rail">
-                                        <div class="page-pills ch-register-client-page-tabs is-topbar-tabs" id="chRegisterClientPageTabs" role="tablist" aria-label="Client page steps">
+                                        <div class="page-pills ch-register-client-page-tabs is-sidebar-tabs" id="chRegisterClientPageTabs" role="tablist" aria-label="Client page steps">
                                             <button class="page-pill app-nav-button is-active" type="button" data-client-page-tab="client-info"><span class="tab-icon app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"></path></svg></span><span class="app-nav-copy"><strong>Client Info</strong></span></button>
                                             <button class="page-pill app-nav-button" type="button" data-client-page-tab="services"><span class="tab-icon app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg></span><span class="app-nav-copy"><strong>Services Required</strong></span></button>
                                             <button class="page-pill app-nav-button" type="button" data-client-page-tab="timeline"><span class="tab-icon app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg></span><span class="app-nav-copy"><strong>Timeline</strong></span></button>
@@ -49625,6 +49625,16 @@
                 const shouldDockToRail = activeView === "client-auth-register"
                     && Boolean(companiesHouseSettings?.authRegisterClientPage?.open);
                 const mainPanel = clientPageShell.querySelector(".ch-register-client-page-main");
+                const tabRail = clientPageShell.querySelector(".ch-register-client-page-tab-rail");
+                const tabsWrap = document.getElementById("chRegisterClientPageTabs");
+
+                if (tabsWrap) {
+                    tabsWrap.classList.remove("is-topbar-tabs");
+                    tabsWrap.classList.add("is-sidebar-tabs");
+                }
+                if (tabRail && tabRail.parentElement !== clientPageSidebar) {
+                    clientPageSidebar.appendChild(tabRail);
+                }
 
                 if (shouldDockToRail) {
                     if (clientPageSidebar.parentElement !== appSidebarNav) {
