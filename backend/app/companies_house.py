@@ -5248,6 +5248,18 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                 }
             )
     engagement_sync = source.get("ignitionEngagementLetterSync") if isinstance(source.get("ignitionEngagementLetterSync"), dict) else {}
+    try:
+        sync_start_year = int(engagement_sync.get("syncStartYear") or 0)
+    except Exception:
+        sync_start_year = 0
+    try:
+        sync_end_year = int(engagement_sync.get("syncEndYear") or 0)
+    except Exception:
+        sync_end_year = 0
+    try:
+        sync_total_letters = int(engagement_sync.get("totalLetters") or len(engagement_letters) or 0)
+    except Exception:
+        sync_total_letters = len(engagement_letters)
     sync_years_raw = engagement_sync.get("syncedYears")
     sync_years: list[int] = []
     if isinstance(sync_years_raw, list):
