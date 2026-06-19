@@ -1307,9 +1307,9 @@ def _payroll_headcount_from_payrun_details(payrun_details_payload: dict) -> int:
 def _payroll_headcount_effective_count(active_employee_count: int, latest_payrun_headcount: int | None) -> int:
     base_count = max(0, int(active_employee_count or 0))
     payrun_count = int(latest_payrun_headcount) if latest_payrun_headcount is not None else 0
-    if payrun_count > 0:
-        return payrun_count
-    return base_count
+    if payrun_count <= 0:
+        return base_count
+    return max(base_count, payrun_count)
 
 
 def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -> list[dict]:

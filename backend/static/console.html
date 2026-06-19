@@ -5560,6 +5560,16 @@
                 display: grid;
                 align-items: stretch;
             }
+            #supplierPaymentsScreen .detail-actions {
+                flex-wrap: wrap;
+                justify-content: flex-start;
+                align-items: center;
+            }
+            #supplierPaymentsScreen .detail-actions .ghost-button,
+            #supplierPaymentsScreen .detail-actions .primary-button {
+                flex: 0 1 auto;
+                max-width: 100%;
+            }
             .sync-indicator {
                 display: inline-flex;
                 align-items: center;
@@ -39109,7 +39119,7 @@
                                 <input id="supplierPaymentsDateInput" type="date" aria-label="Payment date">
                                 <input id="supplierPaymentsReferenceInput" type="text" placeholder="Bulk payment reference (optional)">
                             </div>
-                            <label style="display: block; margin-top: 10px;">
+                            <label id="supplierPaymentsNoteWrap" style="display: block; margin-top: 10px;" hidden>
                                 Notes to post to Xero history
                                 <textarea id="supplierPaymentsNoteInput" rows="2" placeholder="Paid via Barclays bulk payment."></textarea>
                             </label>
@@ -48294,8 +48304,26 @@
                 }
             }
 
+            function supplierPaymentsBarclaysConnected(barclays = {}) {
+                if (!barclays || typeof barclays !== "object") return false;
+                if (barclays.connected === true) return true;
+                const statusValue = String(barclays.status || "").trim().toLowerCase();
+                return ["connected", "active", "authorised", "authorized", "ok"].includes(statusValue);
+            }
+
             async function supplierPaymentsSettleViaBarclays() {
                 if (supplierPaymentsSubmitting) return;
+                const barclays = supplierPaymentsData?.barclays && typeof supplierPaymentsData.barclays === "object"
+                    ? supplierPaymentsData.barclays
+                    : {};
+                if (!barclays.configured) {
+                    showToast("Barclays Open Banking is not configured.", "warning");
+                    return;
+                }
+                if (!supplierPaymentsBarclaysConnected(barclays)) {
+                    await supplierPaymentsConnectBarclays();
+                    return;
+                }
                 const accountSelect = document.getElementById("supplierPaymentsAccountSelect");
                 const paymentDateInput = document.getElementById("supplierPaymentsDateInput");
                 const referenceInput = document.getElementById("supplierPaymentsReferenceInput");
@@ -48513,10 +48541,11 @@
                 const barclays = supplierPaymentsData?.barclays && typeof supplierPaymentsData.barclays === "object"
                     ? supplierPaymentsData.barclays
                     : { configured: false, connected: false, status: "disconnected", expiresAt: "" };
+                const barclaysConnected = supplierPaymentsBarclaysConnected(barclays);
                 if (barclaysStatusNode) {
                     if (!barclays.configured) {
                         barclaysStatusNode.textContent = "Barclays status: not configured.";
-                    } else if (barclays.connected) {
+                    } else if (barclaysConnected) {
                         const expiresCopy = barclays.expiresAt ? ` Token expires ${formatDateTime(barclays.expiresAt)}.` : "";
                         barclaysStatusNode.textContent = `Barclays status: connected.${expiresCopy}`;
                     } else {
@@ -48525,11 +48554,15 @@
                 }
                 if (connectBarclaysButton) {
                     connectBarclaysButton.disabled = !barclays.configured || supplierPaymentsSubmitting || supplierPaymentsLoading;
-                    connectBarclaysButton.textContent = barclays.connected ? "Reconnect Barclays" : "Connect Barclays";
+                    connectBarclaysButton.textContent = barclaysConnected ? "Reconnect Barclays" : "Connect Barclays";
                 }
                 if (barclaysPayButton) {
-                    barclaysPayButton.disabled = !barclays.configured || !barclays.connected || supplierPaymentsSubmitting || supplierPaymentsLoading;
-                    barclaysPayButton.textContent = supplierPaymentsSubmitting ? "Submitting to Barclays..." : "Pay selected via Barclays";
+                    barclaysPayButton.disabled = !barclays.configured || supplierPaymentsSubmitting || supplierPaymentsLoading;
+                    barclaysPayButton.textContent = supplierPaymentsSubmitting
+                        ? "Submitting to Barclays..."
+                        : barclaysConnected
+                            ? "Pay selected via Barclays"
+                            : "Connect Barclays to pay";
                 }
                 if (accountSelect) {
                     const accounts = Array.isArray(supplierPaymentsData.accounts) ? supplierPaymentsData.accounts : [];

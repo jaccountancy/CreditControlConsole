@@ -81,8 +81,9 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(len(employees), 2)
         self.assertEqual(len(payruns), 1)
 
-    def test_effective_headcount_prefers_latest_payrun_when_available(self):
-        self.assertEqual(services._payroll_headcount_effective_count(40, 10), 10)
+    def test_effective_headcount_keeps_highest_active_or_latest_payrun_count(self):
+        self.assertEqual(services._payroll_headcount_effective_count(40, 10), 40)
+        self.assertEqual(services._payroll_headcount_effective_count(10, 25), 25)
         self.assertEqual(services._payroll_headcount_effective_count(10, None), 10)
         self.assertEqual(services._payroll_headcount_effective_count(10, 0), 10)
 
