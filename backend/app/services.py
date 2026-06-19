@@ -16552,7 +16552,7 @@ def _me_report_duplicate_and_misposting_risks(trial_balance_accounts: list[dict]
     return deduped_risks[:40], warning_items[:40]
 
 
-def _me_report_director_loan_account_code(account: dict) -> str:
+def _me_report_account_code_key(account: dict) -> str:
     code = str(account.get("accountCode") or account.get("code") or "").strip().upper()
     if code:
         return code[:80]
@@ -16592,7 +16592,7 @@ def _me_report_director_loan_account_data(accounts: list[dict], overrides: dict)
     for account in accounts or []:
         if not isinstance(account, dict):
             continue
-        code = _me_report_director_loan_account_code(account)
+        code = _me_report_account_code_key(account)
         if not code:
             continue
         default_match = _me_report_director_loan_account_default_match(account)
@@ -17006,7 +17006,7 @@ def _me_report_dla_account_codes(summary: dict | None) -> set[str]:
             account_rows.extend(value)
     for account in account_rows:
         if isinstance(account, dict):
-            code = _me_report_director_loan_account_code(account)
+            code = _me_report_account_code_key(account)
             if code:
                 codes.add(code)
     return codes
@@ -19897,7 +19897,7 @@ def _me_report_xero_bank_transaction(payload: dict) -> dict:
     return row if isinstance(row, dict) else {}
 
 
-def _me_report_director_loan_account_code(client_id: str) -> str:
+def _me_report_director_loan_account_code_for_client(client_id: str) -> str:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -19996,7 +19996,7 @@ async def mark_me_report_purchases_paid_personally(user: dict, client_id: str, p
     if not invoice_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide at least one purchase invoice id.")
 
-    dla_account_code = _me_report_director_loan_account_code(str(client_id))
+    dla_account_code = _me_report_director_loan_account_code_for_client(str(client_id))
     if not dla_account_code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -38952,7 +38952,7 @@ def _month_label(value: date) -> str:
     return value.strftime("%b %Y")
 
 
-def _month_start(value: date) -> date:
+def _insights_month_start(value: date) -> date:
     return date(value.year, value.month, 1)
 
 
@@ -38963,7 +38963,7 @@ def _previous_month(value: date) -> date:
 
 
 def _last_months(count: int = 12) -> list[date]:
-    current = _month_start(utcnow().date())
+    current = _insights_month_start(utcnow().date())
     months = [current]
     for _ in range(count - 1):
         current = _previous_month(current)
@@ -39060,7 +39060,7 @@ def _build_insights_analytics(user: dict) -> dict:
         invoice_date = _parse_optional_iso_date(invoice["invoiceDate"])
         if not invoice_date:
             continue
-        key = _month_key(_month_start(invoice_date))
+        key = _month_key(_insights_month_start(invoice_date))
         month = month_lookup.get(key)
         if not month:
             continue
