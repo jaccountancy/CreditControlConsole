@@ -27784,6 +27784,22 @@
                 justify-content: flex-end;
                 flex-wrap: wrap;
             }
+            .ch-register-client-page-actions .ch-client-id-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 34px;
+                padding: 7px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(48, 88, 160, 0.28);
+                background: rgba(238, 245, 255, 0.94);
+                color: #2f5388;
+                font-size: 0.8rem;
+                font-weight: 850;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
             .ch-register-client-page-actions > button {
                 min-height: 44px;
                 border-radius: 14px;
@@ -36448,6 +36464,7 @@
                                             </div>
                                         </div>
                                         <div class="detail-actions ch-register-client-page-actions">
+                                            <span class="ch-client-id-badge" id="chRegisterClientPageClientIdBadge">CLIENT ID --</span>
                                             <button class="primary-button" type="button" id="chRegisterClientPageUploadFilesButton" hidden>Upload files</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPagePopulateCodesButton" hidden>Populate missing company auth codes</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPageReloadDirectoryButton" hidden>Reload directory</button>
@@ -118410,6 +118427,7 @@
                 const eyebrow = document.getElementById("chRegisterClientPageEyebrow");
                 const meta = document.getElementById("chRegisterClientPageMeta");
                 const statusBadge = document.getElementById("chRegisterClientPageStatusBadge");
+                const clientIdBadge = document.getElementById("chRegisterClientPageClientIdBadge");
                 if (title) {
                     title.innerHTML = `<strong>${escapeHTML(clientRegisterClientDisplayName(row))}</strong>`;
                 }
@@ -118433,6 +118451,10 @@
                     statusBadge.style.background = isActive ? "rgba(229, 248, 236, 0.92)" : "rgba(255, 239, 228, 0.94)";
                     statusBadge.style.borderColor = isActive ? "rgba(43, 156, 96, 0.26)" : "rgba(224, 124, 38, 0.36)";
                     statusBadge.style.color = isActive ? "#228050" : "#ab5d12";
+                }
+                if (clientIdBadge) {
+                    const clientId = String(row?.clientId || "").trim();
+                    clientIdBadge.textContent = clientId ? `Client ID ${clientId}` : "Client ID --";
                 }
                 const saveStrip = document.getElementById("chRegisterClientPageSaveStrip");
                 const saveStripCopy = document.getElementById("chRegisterClientPageSaveStripCopy");
