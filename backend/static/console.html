@@ -303,17 +303,48 @@
             body.client-register-sidebar-mode {
                 --app-sidebar-width: 236px;
             }
-            body.client-register-sidebar-mode .client-mode-sidebar,
+            body.client-register-sidebar-mode .app-sidebar,
             body.client-register-sidebar-mode .settings-mode-sidebar {
                 opacity: 0;
                 pointer-events: none;
                 transform: translateX(-14px);
             }
-            body.client-register-sidebar-mode .app-sidebar .app-sidebar-card,
-            body.client-register-sidebar-mode .app-sidebar .app-sidebar-bottom {
-                opacity: 0;
-                pointer-events: none;
-                transform: translateX(-12px);
+            body.client-register-sidebar-mode .client-mode-sidebar {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateX(0);
+                gap: 10px;
+                padding: 0;
+                background: transparent;
+                border: 0;
+                box-shadow: none;
+                backdrop-filter: none;
+                overflow: hidden;
+                align-items: stretch;
+            }
+            body.client-register-sidebar-mode .client-mode-sidebar .client-summary-card {
+                display: none;
+            }
+            body.client-register-sidebar-mode .client-mode-sidebar .ch-register-client-page-sidebar {
+                flex: 1 1 100%;
+                min-height: 0;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px 10px;
+                border-radius: 22px;
+                background: rgba(244, 248, 255, 0.94);
+                border: 1px solid rgba(61, 85, 130, 0.10);
+                box-shadow: 0 10px 28px rgba(30, 47, 77, 0.08);
+                backdrop-filter: blur(12px);
+                overflow: hidden;
+            }
+            body.client-register-sidebar-mode .client-mode-sidebar .ch-register-client-page-tabs {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
             body.settings-sidebar-mode .app-sidebar,
             body.factory-reset-sidebar-mode .app-sidebar,
@@ -27807,16 +27838,7 @@
                 gap: 14px;
             }
             body.client-register-sidebar-mode .ch-register-client-page-shell {
-                grid-template-columns: minmax(220px, 252px) minmax(0, 1fr);
-            }
-            body.client-register-sidebar-mode .ch-register-client-page-sidebar {
-                position: sticky;
-                top: 12px;
-                left: auto;
-                width: auto;
-                max-height: calc(100vh - 150px);
-                z-index: 1;
-                overflow-y: auto;
+                grid-template-columns: 1fr;
             }
             @media (max-width: 980px) {
                 .ch-register-client-page-topbar {
@@ -48708,6 +48730,28 @@
                 if (breadcrumb) breadcrumb.textContent = topbarBreadcrumbText(account ? "bank-statements" : activeNavForView());
             }
 
+            function syncClientRegisterSidebarDocking() {
+                const clientSidebarRail = document.querySelector(".client-mode-sidebar");
+                const clientPageShell = document.querySelector("#chRegisterClientPage .ch-register-client-page-shell");
+                const clientPageSidebar = document.querySelector("#chRegisterClientPage .ch-register-client-page-sidebar");
+                if (!clientSidebarRail || !clientPageShell || !clientPageSidebar) return;
+
+                const shouldDockToRail = activeView === "client-auth-register"
+                    && Boolean(companiesHouseSettings?.authRegisterClientPage?.open);
+                const mainPanel = clientPageShell.querySelector(".ch-register-client-page-main");
+
+                if (shouldDockToRail) {
+                    if (clientPageSidebar.parentElement !== clientSidebarRail) {
+                        clientSidebarRail.appendChild(clientPageSidebar);
+                    }
+                    return;
+                }
+
+                if (mainPanel && clientPageSidebar.parentElement !== clientPageShell) {
+                    clientPageShell.insertBefore(clientPageSidebar, mainPanel);
+                }
+            }
+
             function syncActiveViewShell() {
                 setElementVisible(document.getElementById("ledgerView"), activeView === "ledger");
                 setElementVisible(document.getElementById("clientScreen"), activeView === "client");
@@ -48764,6 +48808,7 @@
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
                 document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
