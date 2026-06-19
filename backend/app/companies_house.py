@@ -5376,6 +5376,7 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "xeroTenantName": row.get("xero_tenant_name") or "",
         "ignitionClientId": row.get("ignition_client_id") or "",
         "ignitionClientName": row.get("ignition_client_name") or "",
+        "authCode": row.get("auth_code") or "",
         "services": services,
     }
 
@@ -5679,6 +5680,8 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                {r_col("vat_number", default_expr="''")},
                {r_col("company_utr", default_expr="''")},
                {r_col("personal_utr", default_expr="''")},
+               {r_col("normalised_name", default_expr="''")},
+               {r_col("code_encrypted", default_expr="''")},
                {r_col("xero_tenant_id", default_expr="''")},
                {r_col("xero_tenant_name", default_expr="''")},
                {r_col("ignition_client_id", default_expr="''")},
@@ -6233,6 +6236,15 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
             row = _auth_register_client_page_row(cursor, safe_row_id)
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
+                str(row.get("display_name") or "").lower(), 250
+            )
+            row["auth_code"] = _decrypt_register_auth_code(
+                _coerce_text(row.get("code_encrypted"), 5000),
+                safe_row_id,
+                _coerce_text(row.get("company_number"), 40),
+                normalised_name,
+            )
             cursor.execute(
                 """
                 SELECT EXISTS (
