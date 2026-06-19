@@ -8670,10 +8670,10 @@
                 margin-top: 4px;
                 overflow: visible;
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
-                align-items: center;
+                grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
+                align-items: stretch;
                 column-gap: 18px;
-                row-gap: 12px;
+                row-gap: 14px;
                 border: 1px solid rgba(61, 85, 130, 0.16);
                 border-radius: 22px;
                 padding: 22px 24px;
@@ -8796,21 +8796,26 @@
                 line-height: 1.35;
             }
             #insightsHeroCard .detail-actions {
-                align-self: center;
+                align-self: stretch;
                 display: grid;
                 gap: 10px;
-                justify-items: end;
+                justify-items: stretch;
                 justify-self: end;
-                width: min(320px, 100%);
+                width: min(360px, 100%);
+                padding: 10px;
+                border-radius: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.14);
+                background: rgba(255, 255, 255, 0.72);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
             }
             #insightsHeroCard .insights-hero-datetime {
                 display: grid;
                 gap: 2px;
-                justify-items: end;
+                justify-items: start;
                 min-width: 220px;
                 width: 100%;
-                text-align: right;
-                padding: 8px 12px;
+                text-align: left;
+                padding: 10px 12px;
                 border-radius: 14px;
                 border: 1px solid rgba(29, 103, 242, 0.2);
                 background: rgba(255, 255, 255, 0.82);
@@ -8938,21 +8943,12 @@
                 margin-left: auto;
             }
             #insightsQuickAccessDock {
-                position: absolute;
-                top: 14px;
-                right: 14px;
+                position: relative;
                 z-index: 140;
                 display: grid;
-                justify-items: end;
+                justify-items: stretch;
                 gap: 8px;
-            }
-            #insightsHeroGreetingLine {
-                display: inline-flex;
-                align-items: center;
-                max-width: calc(100% - 220px);
-                min-width: 0;
-                padding-right: 6px;
-                overflow-wrap: anywhere;
+                width: 100%;
             }
             .insights-quick-access-toggle {
                 border: 1px solid rgba(90, 124, 196, 0.36);
@@ -10978,9 +10974,6 @@
                     margin-left: auto;
                     justify-items: stretch;
                     width: 100%;
-                }
-                #insightsHeroGreetingLine {
-                    max-width: 100%;
                 }
                 .insights-quick-access-toggle {
                     min-width: 0;
@@ -32987,9 +32980,6 @@
                                 <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
                                     <span id="refreshInsightsButtonLabel">Refresh with Jenius AI</span>
                                 </button>
-                            </div>
-                            <div class="insights-hero-greeting-line" id="insightsHeroGreetingBar">
-                                <span id="insightsHeroGreetingLine">Good Evening, Monday, 7th June 2026, 19:21</span>
                                 <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
                                     <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access ▾</button>
                                     <div class="insights-quick-access-menu" id="insightsQuickAccessMenu" hidden>
@@ -89826,8 +89816,6 @@
                 if (salutationTarget) {
                     salutationTarget.textContent = insightsGreetingTimestamp(now);
                 }
-                const greetingLineTarget = document.getElementById("insightsHeroGreetingLine");
-                if (greetingLineTarget) greetingLineTarget.textContent = insightsGreetingTimestamp(now);
                 const dayTarget = document.getElementById("insightsLiveDay");
                 const dateTarget = document.getElementById("insightsLiveDate");
                 const timeTarget = document.getElementById("insightsLiveTime");
@@ -90390,7 +90378,6 @@
                 const ai = payload.ai || {};
                 const hero = document.getElementById("insightsHeroCard");
                 const heroLoadingHost = document.getElementById("insightsHeroLoadingHost");
-                const greetingBar = document.getElementById("insightsHeroGreetingBar");
                 if (hero) hero.hidden = false;
                 if (insightsLoading && !insightsData) {
                     if (hero) hero.classList.add("is-home-loading");
@@ -90398,7 +90385,6 @@
                         heroLoadingHost.hidden = false;
                         heroLoadingHost.innerHTML = insightsLoadingStageMarkup({ inTopGlobalCard: true });
                     }
-                    if (greetingBar) greetingBar.classList.add("is-hidden-for-loading");
                     target.innerHTML = "";
                     startInsightsLoaderSequence();
                     return;
@@ -90409,7 +90395,6 @@
                     heroLoadingHost.hidden = true;
                     heroLoadingHost.innerHTML = "";
                 }
-                if (greetingBar) greetingBar.classList.remove("is-hidden-for-loading");
                 target.innerHTML = aiCopilotHomeInsights(analytics, ai);
                 renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
