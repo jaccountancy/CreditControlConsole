@@ -5248,6 +5248,42 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                 }
             )
     engagement_sync = source.get("ignitionEngagementLetterSync") if isinstance(source.get("ignitionEngagementLetterSync"), dict) else {}
+    client_links_source = source.get("clientLinks") if isinstance(source.get("clientLinks"), dict) else {}
+    raw_client_links = client_links_source.get("links") if isinstance(client_links_source.get("links"), list) else []
+    client_links: list[dict] = []
+    seen_client_links: set[tuple[str, str, str]] = set()
+    for item in raw_client_links:
+        if not isinstance(item, dict):
+            continue
+        target_row_id = _coerce_text(item.get("targetRowId"), 120)
+        if not target_row_id:
+            continue
+        relationship = _coerce_text(item.get("relationship"), 80).lower() or "related"
+        direction = _coerce_text(item.get("direction"), 40).lower() or "outbound"
+        dedupe_key = (target_row_id, relationship, direction)
+        if dedupe_key in seen_client_links:
+            continue
+        seen_client_links.add(dedupe_key)
+        try:
+            confidence = float(item.get("confidence") or 0)
+        except Exception:
+            confidence = 0.0
+        confidence = min(1.0, max(0.0, confidence))
+        client_links.append(
+            {
+                "targetRowId": target_row_id,
+                "targetClientId": _coerce_text(item.get("targetClientId"), 120),
+                "targetDisplayName": _coerce_text(item.get("targetDisplayName"), 250),
+                "targetClientType": _coerce_text(item.get("targetClientType"), 120),
+                "relationship": relationship,
+                "direction": direction,
+                "status": _coerce_text(item.get("status"), 80) or "linked",
+                "confidence": confidence,
+                "source": _coerce_text(item.get("source"), 120) or "manual",
+                "matchedAt": _coerce_text(item.get("matchedAt"), 80),
+                "updatedAt": _coerce_text(item.get("updatedAt"), 80),
+            }
+        )
     try:
         sync_start_year = int(engagement_sync.get("syncStartYear") or 0)
     except Exception:
@@ -5294,6 +5330,10 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
             "syncedYears": sync_years,
             "lastSyncedAt": _coerce_text(engagement_sync.get("lastSyncedAt"), 80),
             "totalLetters": max(0, sync_total_letters),
+        },
+        "clientLinks": {
+            "links": client_links[:500],
+            "updatedAt": _coerce_text(client_links_source.get("updatedAt"), 80),
         },
         "serviceDetails": {
             "accountsReturns": {
@@ -5817,6 +5857,11 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
     }
     for key, label in ch_fields.items():
         add_change(label, before_ch.get(key), after_ch.get(key))
+    before_client_links = before_ch.get("clientLinks") if isinstance(before_ch.get("clientLinks"), dict) else {}
+    after_client_links = after_ch.get("clientLinks") if isinstance(after_ch.get("clientLinks"), dict) else {}
+    before_link_rows = before_client_links.get("links") if isinstance(before_client_links.get("links"), list) else []
+    after_link_rows = after_client_links.get("links") if isinstance(after_client_links.get("links"), list) else []
+    add_change("Client links count", len(before_link_rows), len(after_link_rows))
     before_service_details = before_ch.get("serviceDetails") if isinstance(before_ch.get("serviceDetails"), dict) else {}
     after_service_details = after_ch.get("serviceDetails") if isinstance(after_ch.get("serviceDetails"), dict) else {}
     service_detail_fields = {
