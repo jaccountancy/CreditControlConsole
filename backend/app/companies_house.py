@@ -5861,24 +5861,20 @@ def get_auth_register_client_page(row_id: str) -> dict:
         if not confirmation_statement.get("statementDate"):
             confirmation_statement["statementDate"] = companies_house_profile.get("lastFiledDate") or ""
 
-        # Keep Accounts/CT details aligned where possible, without making client-page loading depend on a live CH call.
-        needs_accounts_sync = not accounts_returns.get("companyYearEnd") or not accounts_returns.get("accountsNextDueDate")
-        company_number = normalise_company_number(row.get("company_number") or "")
-        if needs_accounts_sync and company_number and _is_valid_company_number(company_number):
-            try:
-                live_snapshot = _fetch_ch_company_snapshot(company_number, prefer_cache=True)
-            except Exception:
-                live_snapshot = {}
-            year_end_value = live_snapshot.get("companyYearEnd")
-            next_due_value = live_snapshot.get("accountsNextDueDate")
-            if isinstance(year_end_value, date):
-                accounts_returns["companyYearEnd"] = year_end_value.isoformat()
-            elif isinstance(year_end_value, str) and year_end_value.strip():
-                accounts_returns["companyYearEnd"] = year_end_value.strip()
-            if isinstance(next_due_value, date):
-                accounts_returns["accountsNextDueDate"] = next_due_value.isoformat()
-            elif isinstance(next_due_value, str) and next_due_value.strip():
-                accounts_returns["accountsNextDueDate"] = next_due_value.strip()
+        # Keep client-page loads fast and deterministic: never do live CH network calls here.
+        # Use already-stored register/company dates as fallback when profile account dates are missing.
+        if not accounts_returns.get("companyYearEnd"):
+            fallback_year_end = row.get("next_made_up_to_date")
+            if isinstance(fallback_year_end, date):
+                accounts_returns["companyYearEnd"] = fallback_year_end.isoformat()
+            elif isinstance(fallback_year_end, str) and fallback_year_end.strip():
+                accounts_returns["companyYearEnd"] = fallback_year_end.strip()
+        if not accounts_returns.get("accountsNextDueDate"):
+            fallback_next_due = row.get("next_due_date")
+            if isinstance(fallback_next_due, date):
+                accounts_returns["accountsNextDueDate"] = fallback_next_due.isoformat()
+            elif isinstance(fallback_next_due, str) and fallback_next_due.strip():
+                accounts_returns["accountsNextDueDate"] = fallback_next_due.strip()
         if not vat.get("vatNumber"):
             vat["vatNumber"] = _coerce_text(row.get("vat_number"), 120)
         if not vat.get("vatAddress"):
