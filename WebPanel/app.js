@@ -397,6 +397,55 @@ function formatDate(value) {
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
+function invoicePayments(invoice) {
+    const customer = findCustomerById(invoice?.customerId);
+    if (!customer || !Array.isArray(customer.payments)) return [];
+    const invoiceId = String(invoice?.id || "").trim();
+    const xeroInvoiceId = String(invoice?.xeroInvoiceId || "").trim();
+    const invoiceNumber = String(invoice?.invoiceNumber || "").trim().toLowerCase();
+    const matches = customer.payments.filter((payment) => {
+        const paymentInvoiceId = String(payment?.invoiceId || "").trim();
+        const paymentXeroInvoiceId = String(payment?.xeroInvoiceId || "").trim();
+        const paymentInvoiceNumber = String(payment?.invoiceNumber || "").trim().toLowerCase();
+        return (invoiceId && paymentInvoiceId === invoiceId)
+            || (xeroInvoiceId && paymentXeroInvoiceId === xeroInvoiceId)
+            || (invoiceNumber && paymentInvoiceNumber === invoiceNumber);
+    });
+    return matches.sort((a, b) => dateSortValue(b?.date) - dateSortValue(a?.date));
+}
+
+function paymentChannelLabel(payment) {
+    const accountName = String(payment?.accountName || "").toLowerCase();
+    const reference = String(payment?.reference || "").toLowerCase();
+    const statusText = String(payment?.status || "").toLowerCase();
+    const combined = `${accountName} ${reference} ${statusText}`;
+
+    if (combined.includes("stripe")) return "Stripe";
+    if (combined.includes("juk trading") || combined.includes("trading account") || combined.includes("jaccountancy trading")) {
+        return "JUK Trading Account";
+    }
+
+    const ignitionHint = combined.includes("ignition") || combined.includes("pi clearing") || combined.includes("pi-clearing");
+    if (ignitionHint && (combined.includes("direct debit") || /\bdd\b/.test(combined))) return "Ignition (direct debit)";
+    if (ignitionHint && combined.includes("card")) return "Ignition (card)";
+    if (ignitionHint) return "Ignition (direct debit)";
+
+    if (combined.includes("direct debit")) return "Ignition (direct debit)";
+    if (combined.includes("card")) return "Ignition (card)";
+
+    return "JUK Trading Account";
+}
+
+function paidInvoiceHoverText(invoice) {
+    const payments = invoicePayments(invoice);
+    const latestPayment = payments[0] || null;
+    const paidOnValue = latestPayment?.date || invoice?.paidDate || invoice?.paidAt || invoice?.invoiceDate || invoice?.dueDate;
+    const paidOnLabel = formatDate(paidOnValue);
+    const channelLabel = paymentChannelLabel(latestPayment);
+    if (paidOnLabel && paidOnLabel !== "--") return `Paid on ${paidOnLabel} via ${channelLabel}`;
+    return `Paid via ${channelLabel}`;
+}
+
 function noteSnippet(invoice) {
     if (invoice.notes?.length) return invoice.notes[0].body || invoice.notes[0].title || "";
     if (invoice.statuses?.length) return invoice.statuses[0].body || "";
@@ -657,6 +706,12 @@ function renderInvoiceTable() {
     } else {
         paged.forEach((invoice) => {
             const category = invoiceCategory(invoice);
+            const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
+            const paidDateLabel = category === "paid"
+                ? paidHoverText.replace(/^Paid on\s*/i, "")
+                : category === "overdue"
+                    ? "Payment overdue"
+                    : formatDate(invoice.promisedDate || invoice.dueDate);
             const row = document.createElement("tr");
             row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
             row.innerHTML = `
@@ -664,7 +719,7 @@ function renderInvoiceTable() {
                 <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
                 <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
-                <td><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
+                <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
                 <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
                 <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                 <td><button class="row-menu" type="button">⋮</button></td>

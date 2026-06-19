@@ -28232,6 +28232,32 @@
                 justify-content: center !important;
                 text-align: center;
             }
+            .ch-register-client-page-sidebar-actions > #chRegisterClientPageMarkNlacButton.is-nlac-inline {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center !important;
+                gap: 6px;
+            }
+            .ch-register-client-page-sidebar-actions > #chRegisterClientPageMarkNlacButton.is-nlac-inline svg {
+                width: 14px;
+                height: 14px;
+                stroke: currentColor;
+                fill: none;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                flex: 0 0 auto;
+            }
+            .ch-register-client-page-sidebar-actions > #chRegisterClientPageMarkNlacButton.is-nlac-inline .sidebar-logo-corner-action-label {
+                max-width: none;
+                opacity: 1;
+                overflow: visible;
+                white-space: nowrap;
+                font-size: 0.78rem;
+                font-weight: 850;
+                letter-spacing: 0.01em;
+                transition: none;
+            }
             .ch-register-client-page-sidebar-actions > #chRegisterClientPageMatchXeroButton,
             .ch-register-client-page-sidebar-actions > #chRegisterClientPageXeroHint {
                 grid-column: 1 / -1;
@@ -28334,6 +28360,18 @@
             }
             .ch-register-client-page-xero-hint[hidden] {
                 display: none !important;
+            }
+            .ch-client-connection-badge.is-actionable {
+                cursor: pointer;
+                transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+            }
+            .ch-client-connection-badge.is-actionable:hover,
+            .ch-client-connection-badge.is-actionable:focus-visible {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: rgba(233, 241, 255, 0.9);
+                color: #1f63d7;
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                outline: none;
             }
             .ch-register-xero-match-modal-panel {
                 width: min(560px, 96vw);
@@ -33811,10 +33849,6 @@
                             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
                             <span class="sidebar-logo-corner-action-label">Mark NLAC</span>
                         </button>
-                        <button class="sidebar-logo-corner-action is-right" id="chRegisterClientPageMatchXeroLogoButton" type="button" aria-label="Match Xero" title="Match Xero" hidden>
-                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M10 13a5 5 0 0 1 0-7l1.5-1.5a5 5 0 0 1 7 7L17 13"></path><path d="M14 11a5 5 0 0 1 0 7L12.5 19.5a5 5 0 0 1-7-7L7 11"></path></svg>
-                            <span class="sidebar-logo-corner-action-label">Match Xero</span>
-                        </button>
                         <span class="sidebar-archived-urgent-badge" id="sidebarArchivedUrgentBadge" title="Archived urgent notifications" aria-label="Archived urgent notifications" hidden>0</span>
                         <nav class="app-nav">
                         <div class="app-nav-group" data-app-nav-group="clients">
@@ -37152,8 +37186,11 @@
                                     <section class="ch-register-client-page-shell">
                                         <aside class="ch-register-client-page-sidebar" id="chRegisterClientPageSidebar">
                                             <div class="ch-register-client-page-sidebar-actions">
-                                                <button class="ghost-button ch-register-client-page-back-button ch-register-client-page-primary-action" type="button" id="chRegisterClientPageBackButton"><span class="back-icon" aria-hidden="true">&lt;--</span><span class="back-label">bACK</span></button>
-                                                <button class="ghost-button ch-register-client-page-primary-action" type="button" id="chRegisterClientPageMarkNlacButton">Mark NLAC</button>
+                                                <button class="ghost-button ch-register-client-page-back-button ch-register-client-page-primary-action" type="button" id="chRegisterClientPageBackButton">Back</button>
+                                                <button class="ghost-button ch-register-client-page-primary-action is-nlac-inline" type="button" id="chRegisterClientPageMarkNlacButton" aria-label="Mark NLAC" title="Mark NLAC">
+                                                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+                                                    <span class="sidebar-logo-corner-action-label">Mark NLAC</span>
+                                                </button>
                                                 <button class="ghost-button ch-register-client-page-xero-button" type="button" id="chRegisterClientPageMatchXeroButton" hidden>Match Xero</button>
                                                 <p class="ch-register-client-page-xero-hint" id="chRegisterClientPageXeroHint" hidden></p>
                                             </div>
@@ -37779,7 +37816,7 @@
                                                             <tr>
                                                                 <th>Date</th>
                                                                 <th>Type</th>
-                                                                <th>Description</th>
+                                                                <th>Description (AI enhanced)</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="chRegisterClientPageChFilingHistoryBody"></tbody>
@@ -37965,6 +38002,33 @@
                                         <div class="detail-actions">
                                             <button class="primary-button" id="chRegisterClientPageXeroMatchApplyButton" type="submit">Match selected organisation</button>
                                             <button class="ghost-button" id="chRegisterClientPageXeroMatchConnectButton" type="button">Connect new Xero organisation</button>
+                                        </div>
+                                    </form>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="chRegisterClientPageIgnitionMatchModal" hidden>
+                                <section class="company-secretarial-modal-panel ch-register-xero-match-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterClientPageIgnitionMatchTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client Page</p>
+                                            <h4 id="chRegisterClientPageIgnitionMatchTitle">Match Ignition Client</h4>
+                                            <p class="detail-meta" id="chRegisterClientPageIgnitionMatchMeta">Select a synced Ignition client for this record.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="chRegisterClientPageIgnitionMatchCloseButton" type="button">Close</button>
+                                        </div>
+                                    </div>
+                                    <form class="ch-register-xero-match-form" id="chRegisterClientPageIgnitionMatchForm">
+                                        <label for="chRegisterClientPageIgnitionMatchClientSelect">
+                                            Synced Ignition client
+                                            <select id="chRegisterClientPageIgnitionMatchClientSelect" required>
+                                                <option value="">Select a synced Ignition client</option>
+                                            </select>
+                                        </label>
+                                        <p class="detail-meta" id="chRegisterClientPageIgnitionMatchStatus">Choose an Ignition client and confirm to save the match.</p>
+                                        <div class="detail-actions">
+                                            <button class="primary-button" id="chRegisterClientPageIgnitionMatchApplyButton" type="submit">Match selected client</button>
+                                            <button class="ghost-button" id="chRegisterClientPageIgnitionMatchRefreshButton" type="button">Refresh Ignition data</button>
                                         </div>
                                     </form>
                                 </section>
@@ -119304,6 +119368,42 @@
                 }
             }
 
+            function closeClientRegisterIgnitionMatchModal() {
+                const modal = document.getElementById("chRegisterClientPageIgnitionMatchModal");
+                if (!modal) return;
+                modal.hidden = true;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function clientRegisterConnectedIgnitionClients() {
+                const rows = Array.isArray(ignitionData?.dashboard?.clients) ? ignitionData.dashboard.clients : [];
+                const unique = new Map();
+                rows.forEach((item) => {
+                    const clientId = String(
+                        item?.clientId
+                        || item?.ignitionClientId
+                        || item?.id
+                        || item?.client_id
+                        || ""
+                    ).trim();
+                    if (!clientId) return;
+                    const clientName = String(
+                        item?.clientName
+                        || item?.name
+                        || item?.displayName
+                        || item?.legalName
+                        || item?.companyName
+                        || clientId
+                    ).trim();
+                    if (!unique.has(clientId)) {
+                        unique.set(clientId, { clientId, clientName: clientName || clientId });
+                    }
+                });
+                return Array.from(unique.values()).sort((a, b) => a.clientName.localeCompare(b.clientName, "en-GB"));
+            }
+
             async function openClientRegisterXeroMatchModal() {
                 const modal = document.getElementById("chRegisterClientPageXeroMatchModal");
                 const select = document.getElementById("chRegisterClientPageXeroMatchTenantSelect");
@@ -119342,6 +119442,44 @@
                 status.textContent = tenants.length
                     ? "Choose an organisation and confirm to save the match."
                     : "No connected organisations found yet. Connect a new Xero organisation first.";
+                modal.hidden = false;
+                document.body.classList.add("is-modal-open");
+            }
+
+            async function openClientRegisterIgnitionMatchModal() {
+                const modal = document.getElementById("chRegisterClientPageIgnitionMatchModal");
+                const select = document.getElementById("chRegisterClientPageIgnitionMatchClientSelect");
+                const status = document.getElementById("chRegisterClientPageIgnitionMatchStatus");
+                const meta = document.getElementById("chRegisterClientPageIgnitionMatchMeta");
+                if (!modal || !select || !status || !meta) return;
+                const payload = clientPagePayload();
+                const row = payload?.row || {};
+                let clients = clientRegisterConnectedIgnitionClients();
+                if (!clients.length) {
+                    try {
+                        await loadIgnition(true);
+                        clients = clientRegisterConnectedIgnitionClients();
+                    } catch (error) {
+                        console.warn("Unable to refresh Ignition clients before opening match modal", error);
+                    }
+                }
+                const currentClientId = String(row?.ignitionClientId || row?.ignitionMatch?.clientId || "").trim();
+                const currentClientName = String(row?.ignitionClientName || row?.ignitionMatch?.clientName || "").trim();
+                if (!clients.length && currentClientId) {
+                    clients = [{ clientId: currentClientId, clientName: currentClientName || currentClientId }];
+                }
+                const clientName = clientRegisterClientDisplayName(row);
+                meta.textContent = `${clientName} · Select an Ignition client to save this match.`;
+                select.innerHTML = `
+                    <option value="">Select a synced Ignition client</option>
+                    ${clients.map((client) => (
+                        `<option value="${escapeHTML(client.clientId)}">${escapeHTML(client.clientName)}${client.clientId !== client.clientName ? ` (${escapeHTML(client.clientId)})` : ""}</option>`
+                    )).join("")}
+                `;
+                select.value = currentClientId || "";
+                status.textContent = clients.length
+                    ? "Choose an Ignition client and confirm to save the match."
+                    : "No synced Ignition clients found yet. Refresh Ignition data first.";
                 modal.hidden = false;
                 document.body.classList.add("is-modal-open");
             }
@@ -119424,6 +119562,93 @@
                     const message = String(error?.message || "Unable to update Xero match.").trim();
                     status.textContent = `${message} Please try again.`;
                     setClientRegisterWriteFailure(`${message} Your previous Xero match is unchanged.`, "retry-xero-match");
+                    renderClientRegisterClientPage();
+                    showToast(message, "error");
+                } finally {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        xeroMatching: false,
+                    };
+                    renderClientRegisterClientPage();
+                }
+            }
+
+            async function submitClientRegisterIgnitionMatch(event) {
+                event.preventDefault();
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                if (pageState.xeroMatching) return;
+                const rowId = String(pageState.rowId || "").trim();
+                const payload = clientPagePayload();
+                const row = payload?.row || {};
+                const select = document.getElementById("chRegisterClientPageIgnitionMatchClientSelect");
+                const status = document.getElementById("chRegisterClientPageIgnitionMatchStatus");
+                if (!rowId || !select || !status) return;
+                const clientId = String(select.value || "").trim();
+                if (!clientId) {
+                    status.textContent = "Select a synced Ignition client.";
+                    return;
+                }
+                const client = clientRegisterConnectedIgnitionClients().find((item) => item.clientId === clientId) || null;
+                const clientName = String(client?.clientName || clientId).trim();
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    xeroMatching: true,
+                };
+                setClientRegisterWriteFailure("", "");
+                renderClientRegisterClientPage();
+                const updateLocalRow = () => {
+                    const nextPayload = {
+                        ...(payload || {}),
+                        row: {
+                            ...(row || {}),
+                            ignitionClientId: clientId,
+                            ignitionClientName: clientName,
+                            ignitionConnected: true,
+                            ignitionMatch: {
+                                ...((row && row.ignitionMatch && typeof row.ignitionMatch === "object") ? row.ignitionMatch : {}),
+                                clientId,
+                                clientName,
+                                matched: true,
+                            },
+                        },
+                    };
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        payload: nextPayload,
+                    };
+                    companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((item) => {
+                        if (String(item?.id || "") !== rowId) return item;
+                        return {
+                            ...item,
+                            ignitionClientId: clientId,
+                            ignitionClientName: clientName,
+                            ignitionConnected: true,
+                            ignitionMatch: {
+                                ...((item && item.ignitionMatch && typeof item.ignitionMatch === "object") ? item.ignitionMatch : {}),
+                                clientId,
+                                clientName,
+                                matched: true,
+                            },
+                        };
+                    });
+                };
+                try {
+                    await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            ignitionClientId: clientId,
+                            ignitionClientName: clientName,
+                        }),
+                    });
+                    updateLocalRow();
+                    closeClientRegisterIgnitionMatchModal();
+                    setClientRegisterWriteFailure("", "");
+                    renderClientRegisterClientPage();
+                    showToast(`Ignition matched to ${clientName}.`, "success");
+                } catch (error) {
+                    const message = String(error?.message || "Unable to update Ignition match.").trim();
+                    status.textContent = `${message} Please try again.`;
+                    setClientRegisterWriteFailure(`${message} Your previous Ignition match is unchanged.`, "retry-ignition-match");
                     renderClientRegisterClientPage();
                     showToast(message, "error");
                 } finally {
@@ -120550,6 +120775,62 @@
                 return values.length ? values[0] : null;
             }
 
+            function clientRegisterHumaniseFilingToken(value) {
+                const token = String(value || "").trim();
+                if (!token) return "";
+                return token
+                    .replace(/[_\-./]+/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .replace(/\b\w/g, (match) => match.toUpperCase());
+            }
+
+            function clientRegisterBuildFilingDescription(filing) {
+                const descriptionValues = filing?.description_values && typeof filing.description_values === "object"
+                    ? filing.description_values
+                    : (filing?.descriptionValues && typeof filing.descriptionValues === "object" ? filing.descriptionValues : {});
+                const rawDescription = String(
+                    filing?.description
+                    || descriptionValues?.description
+                    || filing?.type
+                    || ""
+                ).trim();
+                const looksLikeCode = /^[a-z0-9._/-]+$/.test(rawDescription.toLowerCase());
+                const baseDescription = looksLikeCode
+                    ? clientRegisterHumaniseFilingToken(rawDescription)
+                    : rawDescription;
+
+                const keyLabels = {
+                    made_up_date: "Made up to",
+                    made_up_to: "Made up to",
+                    period_start_on: "Period start",
+                    period_end_on: "Period end",
+                    period_end_date: "Period end",
+                    period_from: "Period start",
+                    period_to: "Period end",
+                    date: "Date",
+                };
+                const valueBits = Object.entries(descriptionValues || {})
+                    .filter(([key, value]) => {
+                        if (!String(value || "").trim()) return false;
+                        const keyLower = String(key || "").toLowerCase();
+                        return keyLower !== "description";
+                    })
+                    .slice(0, 4)
+                    .map(([key, value]) => {
+                        const keyLower = String(key || "").toLowerCase();
+                        const label = keyLabels[keyLower] || clientRegisterHumaniseFilingToken(keyLower);
+                        return `${label}: ${String(value || "").trim()}`;
+                    });
+
+                if (valueBits.length && baseDescription) {
+                    return `${baseDescription}. ${valueBits.join(" · ")}`;
+                }
+                if (baseDescription) return baseDescription;
+                if (valueBits.length) return valueBits.join(" · ");
+                return "—";
+            }
+
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -120777,14 +121058,11 @@
                     if (!button) return;
                     button.hidden = false;
                     button.disabled = !!pageState.loading || !!pageState.saving || isNlac;
-                    if (button.id === "chRegisterClientPageMarkNlacButton") {
-                        button.textContent = markNlacButtonText;
-                    } else {
-                        button.title = markNlacButtonText;
-                        button.setAttribute("aria-label", markNlacButtonText);
-                        const label = button.querySelector(".sidebar-logo-corner-action-label");
-                        if (label) label.textContent = markNlacButtonText;
-                    }
+                    button.title = markNlacButtonText;
+                    button.setAttribute("aria-label", markNlacButtonText);
+                    const label = button.querySelector(".sidebar-logo-corner-action-label");
+                    if (label) label.textContent = markNlacButtonText;
+                    else button.textContent = markNlacButtonText;
                 });
                 const xeroMatchButton = document.getElementById("chRegisterClientPageMatchXeroButton");
                 const xeroMatchLogoButton = document.getElementById("chRegisterClientPageMatchXeroLogoButton");
@@ -121396,7 +121674,7 @@
                             <tr>
                                 <td>${escapeHTML(String(filing?.date || filing?.made_up_date || "—"))}</td>
                                 <td>${escapeHTML(String(filing?.type || "—"))}</td>
-                                <td>${escapeHTML(String(filing?.description || filing?.description_values?.description || "—"))}</td>
+                                <td>${escapeHTML(clientRegisterBuildFilingDescription(filing))}</td>
                             </tr>
                         `).join("")
                         : '<tr><td colspan="3" class="ch-empty-state">No filing history returned from Companies House yet.</td></tr>';

@@ -385,8 +385,8 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 }
 
 .summary-chip.is-active.summary-outstanding {
-    background: linear-gradient(135deg, #ffbf66, #ff9800);
-    box-shadow: 0 14px 28px rgba(255, 152, 0, 0.22);
+    background: linear-gradient(135deg, #ff7b7b, #ef4444);
+    box-shadow: 0 14px 28px rgba(239, 68, 68, 0.24);
 }
 
 .summary-chip.is-active.summary-overdue {
@@ -424,13 +424,13 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 .summary-paid { --chip-accent: var(--green); }
-.summary-outstanding { --chip-accent: var(--orange); }
+.summary-outstanding { --chip-accent: var(--red); }
 .summary-overdue { --chip-accent: var(--red); }
 .summary-query { --chip-accent: #00a6c8; }
 .summary-court { --chip-accent: var(--purple); }
 .summary-bad-debt { --chip-accent: var(--ink); }
 .summary-paid strong, .summary-paid .summary-value { color: var(--green); }
-.summary-outstanding strong, .summary-outstanding .summary-value { color: var(--orange); }
+.summary-outstanding strong, .summary-outstanding .summary-value { color: var(--red); }
 .summary-overdue strong, .summary-overdue .summary-value { color: var(--red); }
 .summary-query strong, .summary-query .summary-value { color: #008bad; }
 .summary-court strong, .summary-court .summary-value { color: var(--purple); }
@@ -587,8 +587,8 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     background: rgba(39, 176, 95, 0.025);
 }
 .invoice-table tbody tr.row-outstanding {
-    border-left-color: var(--orange);
-    background: rgba(255, 159, 47, 0.035);
+    border-left-color: var(--red);
+    background: rgba(255, 83, 83, 0.045);
 }
 .invoice-table tbody tr.row-overdue {
     border-left-color: var(--red);
@@ -655,6 +655,9 @@ body.is-dense .note-snippet {
 .amount-cell, .paid-amount { font-weight: 800; }
 .payment-cell { display: grid; gap: 4px; }
 .payment-status { display: inline-flex; align-items: center; gap: 8px; }
+.payment-status[title] { cursor: help; }
+.paid-amount.is-paid { color: var(--green); }
+.paid-amount.is-outstanding { color: var(--red); }
 .payment-progress {
     width: 118px;
     height: 8px;
@@ -679,7 +682,7 @@ body.is-dense .note-snippet {
     font-weight: 900;
 }
 .payment-dot.paid { color: var(--green); border: 2px solid rgba(39, 176, 95, 0.25); }
-.payment-dot.outstanding { color: var(--orange); border: 2px solid rgba(255, 159, 47, 0.28); }
+.payment-dot.outstanding { color: var(--red); border: 2px solid rgba(255, 83, 83, 0.28); }
 .payment-dot.query { color: var(--purple); border: 2px solid rgba(141, 98, 255, 0.28); }
 .payment-dot.overdue, .payment-dot.court, .payment-dot.bad-debt { color: var(--red); border: 2px solid rgba(255, 83, 83, 0.28); }
 .status-pill {
@@ -693,7 +696,7 @@ body.is-dense .note-snippet {
     font-weight: 850;
 }
 .status-pill.paid { color: #168246; background: rgba(39, 176, 95, 0.13); }
-.status-pill.outstanding { color: #b96800; background: rgba(255, 159, 47, 0.16); }
+.status-pill.outstanding { color: #d72638; background: rgba(255, 83, 83, 0.15); }
 .status-pill.query { color: #007f9a; background: rgba(0, 166, 200, 0.13); }
 .status-pill.overdue { color: #d72638; background: rgba(255, 83, 83, 0.15); }
 .status-pill.court { color: var(--purple); background: var(--purple-soft); }
@@ -1759,6 +1762,64 @@ function formatDate(value) {
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
+function escapeHTML(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function invoicePayments(invoice) {
+    const customer = findCustomerById(invoice?.customerId);
+    if (!customer || !Array.isArray(customer.payments)) return [];
+    const invoiceId = String(invoice?.id || "").trim();
+    const xeroInvoiceId = String(invoice?.xeroInvoiceId || "").trim();
+    const invoiceNumber = String(invoice?.invoiceNumber || "").trim().toLowerCase();
+    const matches = customer.payments.filter((payment) => {
+        const paymentInvoiceId = String(payment?.invoiceId || "").trim();
+        const paymentXeroInvoiceId = String(payment?.xeroInvoiceId || "").trim();
+        const paymentInvoiceNumber = String(payment?.invoiceNumber || "").trim().toLowerCase();
+        return (invoiceId && paymentInvoiceId === invoiceId)
+            || (xeroInvoiceId && paymentXeroInvoiceId === xeroInvoiceId)
+            || (invoiceNumber && paymentInvoiceNumber === invoiceNumber);
+    });
+    return matches.sort((a, b) => dateSortValue(b?.date) - dateSortValue(a?.date));
+}
+
+function paymentChannelLabel(payment) {
+    const accountName = String(payment?.accountName || "").toLowerCase();
+    const reference = String(payment?.reference || "").toLowerCase();
+    const statusText = String(payment?.status || "").toLowerCase();
+    const combined = `${accountName} ${reference} ${statusText}`;
+
+    if (combined.includes("stripe")) return "Stripe";
+    if (combined.includes("juk trading") || combined.includes("trading account") || combined.includes("jaccountancy trading")) {
+        return "JUK Trading Account";
+    }
+
+    const ignitionHint = combined.includes("ignition") || combined.includes("pi clearing") || combined.includes("pi-clearing");
+    if (ignitionHint && (combined.includes("direct debit") || /\bdd\b/.test(combined))) return "Ignition (direct debit)";
+    if (ignitionHint && combined.includes("card")) return "Ignition (card)";
+    if (ignitionHint) return "Ignition (direct debit)";
+
+    if (combined.includes("direct debit")) return "Ignition (direct debit)";
+    if (combined.includes("card")) return "Ignition (card)";
+
+    return "JUK Trading Account";
+}
+
+function paidInvoiceHoverText(invoice) {
+    const payments = invoicePayments(invoice);
+    const latestPayment = payments[0] || null;
+    const paidOnValue = latestPayment?.date || invoice?.paidDate || invoice?.paidAt || invoice?.invoiceDate || invoice?.dueDate;
+    const paidOnLabel = formatDate(paidOnValue);
+    const channelLabel = paymentChannelLabel(latestPayment);
+    if (paidOnLabel && paidOnLabel !== "--") return `Paid on ${paidOnLabel} via ${channelLabel}`;
+    return `Paid via ${channelLabel}`;
+}
+
 function paymentPercent(invoice) {
     const total = Number(invoice.total || 0);
     if (total <= 0) return 0;
@@ -2055,6 +2116,12 @@ function renderInvoiceTable() {
         paged.forEach((invoice) => {
             const category = invoiceCategory(invoice);
             const progress = paymentPercent(invoice);
+            const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
+            const paidDateLabel = category === "paid"
+                ? paidHoverText.replace(/^Paid on\s*/i, "")
+                : category === "overdue"
+                    ? "Payment overdue"
+                    : formatDate(invoice.promisedDate || invoice.dueDate);
             const row = document.createElement("tr");
             row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
@@ -2063,7 +2130,7 @@ function renderInvoiceTable() {
                 <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
                 <td data-column="description"><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
-                <td data-column="paid"><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
+                <td data-column="paid"><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${paidDateLabel}</div></div></td>
                 <td data-column="status">${statusPill(invoice)}</td>
                 <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                 <td><div class="row-actions" aria-label="Invoice quick actions">
