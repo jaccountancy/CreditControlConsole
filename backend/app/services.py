@@ -1026,7 +1026,13 @@ def _payroll_headcount_employee_is_active(employee: dict) -> bool:
         _parse_any_date(employee.get("TerminationDate"))
         or _parse_any_date(employee.get("EndDate"))
         or _parse_any_date(employee.get("DateOfLeaving"))
+        or _parse_any_date(employee.get("TerminationDateUTC"))
+        or _parse_any_date(employee.get("DateOfLeavingUTC"))
+        or _parse_any_date(employee.get("LeaveDate"))
     )
+    # Some payroll datasets use sentinel zero/min dates to indicate no termination.
+    if termination_date and termination_date <= date(1970, 1, 2):
+        termination_date = None
     if termination_date and termination_date < utcnow().date():
         return False
     return True
@@ -1077,6 +1083,33 @@ def _payroll_headcount_from_payrun_details(payrun_details_payload: dict) -> int:
         if isinstance(payslip, dict)
         and str(payslip.get("NetPay") if payslip.get("NetPay") is not None else "").strip() != ""
     )
+
+
+def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
+    candidate = (
+        payload.get(plural_key)
+        or payload.get(plural_key.lower())
+        or payload.get(singular_key)
+        or payload.get(singular_key.lower())
+        or []
+    )
+    if isinstance(candidate, list):
+        return [row for row in candidate if isinstance(row, dict)]
+    if isinstance(candidate, dict):
+        nested = (
+            candidate.get(plural_key)
+            or candidate.get(plural_key.lower())
+            or candidate.get(singular_key)
+            or candidate.get(singular_key.lower())
+            or []
+        )
+        if isinstance(nested, list):
+            return [row for row in nested if isinstance(row, dict)]
+        if any(key in candidate for key in ("EmployeeID", "PayRunID", "Status", "EmployeeStatus")):
+            return [candidate]
+    return []
 
 
 def _payroll_headcount_workspace_row_payload(row: dict, snapshots: list[dict] | None = None) -> dict:
@@ -1508,10 +1541,8 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
         _fetch_payroll_dataset(XERO_PAYROLL_PAYRUNS_URL, "Pay runs"),
     )
 
-    employees_source = employees_payload.get("Employees") if isinstance(employees_payload, dict) else []
-    payruns_source = payruns_payload.get("PayRuns") if isinstance(payruns_payload, dict) else []
-    employees = [row for row in employees_source if isinstance(row, dict)] if isinstance(employees_source, list) else []
-    payruns = [row for row in payruns_source if isinstance(row, dict)] if isinstance(payruns_source, list) else []
+    employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
+    payruns = _payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
 
     if not employees and not payruns and errors:
         reconnect_hint = (
@@ -1542,6 +1573,13 @@ async def sync_payroll_headcount_workspace(user: dict, tenant_id: str) -> dict:
     payroll_count = current_month_payrun_count if payruns else 0
 
     active_headcount = sum(1 for employee in employees if _payroll_headcount_employee_is_active(employee))
+    if active_headcount == 0 and employees:
+        active_headcount = sum(
+            1
+            for employee in employees
+            if str(employee.get("EmployeeStatus") or employee.get("Status") or employee.get("status") or "").strip().lower()
+            not in {"terminated", "inactive", "deleted", "archived"}
+        )
     if active_headcount == 0 and monthly_payruns:
         latest_payrun = max(
             monthly_payruns,

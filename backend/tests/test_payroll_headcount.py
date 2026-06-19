@@ -61,6 +61,26 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(services._payroll_headcount_month_start_iso("/Date(1764547200000+0000)/"), "2025-12-01")
         self.assertEqual(services._payroll_headcount_month_start_iso(""), "")
 
+    def test_employee_active_ignores_placeholder_termination_dates(self):
+        self.assertTrue(
+            services._payroll_headcount_employee_is_active(
+                {"Status": "ACTIVE", "DateOfLeaving": "0001-01-01"}
+            )
+        )
+        self.assertTrue(
+            services._payroll_headcount_employee_is_active(
+                {"EmployeeStatus": "ACTIVE", "TerminationDate": "1970-01-01"}
+            )
+        )
+
+    def test_payroll_rows_support_wrapped_payload_shapes(self):
+        employees_payload = {"Employees": {"Employee": [{"EmployeeID": "emp-1"}, {"EmployeeID": "emp-2"}]}}
+        payruns_payload = {"PayRuns": {"PayRun": [{"PayRunID": "run-1"}]}}
+        employees = services._payroll_headcount_rows(employees_payload, "Employees", "Employee")
+        payruns = services._payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
+        self.assertEqual(len(employees), 2)
+        self.assertEqual(len(payruns), 1)
+
     def test_workspace_upsert_repairs_missing_schema_and_retries_once(self):
         now = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
         row = {
