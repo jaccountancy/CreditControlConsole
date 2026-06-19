@@ -28212,10 +28212,11 @@
                 margin: 0;
             }
             .ch-register-client-page-title-row {
-                display: flex;
-                align-items: center;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                align-items: start;
                 gap: 8px;
-                flex-wrap: wrap;
+                width: 100%;
             }
             .ch-client-status-badge-group,
             .ch-client-plan-badge-group {
@@ -28227,8 +28228,8 @@
             #chRegisterClientPageStatusBadgeGroup {
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
-                align-items: center;
-                gap: 6px;
+                align-items: stretch;
+                gap: 8px;
                 width: 100%;
             }
             .ch-client-status-badge {
@@ -28236,15 +28237,15 @@
                 align-items: center;
                 justify-content: center;
                 min-height: 26px;
-                padding: 4px 10px;
+                padding: 6px 10px;
                 border-radius: 999px;
                 border: 1px solid rgba(43, 156, 96, 0.26);
                 background: rgba(229, 248, 236, 0.92);
                 color: #228050;
                 font-size: 0.84rem;
                 font-weight: 800;
-                white-space: nowrap;
-                line-height: 1;
+                white-space: normal;
+                line-height: 1.15;
                 min-width: 0;
             }
             #chRegisterClientPageStatusBadgeGroup .ch-client-connection-badge {
@@ -28253,6 +28254,16 @@
             }
             #chRegisterClientPageStatusBadgeGroup .ch-client-status-badge {
                 width: 100%;
+            }
+            @media (max-width: 1280px) {
+                #chRegisterClientPageStatusBadgeGroup {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+            @media (max-width: 760px) {
+                #chRegisterClientPageStatusBadgeGroup {
+                    grid-template-columns: 1fr;
+                }
             }
             .ch-client-status-badge.ch-client-connection-badge-button {
                 font: inherit;
@@ -29920,14 +29931,40 @@
                 gap: 14px;
             }
             .ch-client-page-ch-hero {
-                display: flex;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
                 align-items: flex-start;
-                justify-content: space-between;
                 gap: 16px;
                 padding: 14px 16px;
                 border: 1px solid color-mix(in srgb, var(--line) 80%, #d8e3f6);
                 border-radius: 14px;
                 background: linear-gradient(145deg, #ffffff, #f4f8ff);
+            }
+            .ch-client-page-ch-hero-main {
+                min-width: 0;
+                display: grid;
+                gap: 10px;
+            }
+            .ch-client-page-ch-hero-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .ch-client-page-ch-hero-tools {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .ch-client-page-ch-hero-tools .detail-meta {
+                margin: 0;
+                text-align: left;
+            }
+            .ch-client-page-ch-hero-tools button {
+                min-height: 34px;
+                padding: 7px 12px;
             }
             .ch-client-page-ch-hero h4 {
                 margin: 0;
@@ -30011,8 +30048,14 @@
             }
             @media (max-width: 900px) {
                 .ch-client-page-ch-hero {
-                    flex-direction: column;
+                    grid-template-columns: 1fr;
                     align-items: flex-start;
+                }
+                .ch-client-page-ch-hero-head {
+                    width: 100%;
+                }
+                .ch-client-page-ch-hero-tools {
+                    width: 100%;
                 }
                 .ch-client-page-ch-logo {
                     width: min(170px, 62vw);
@@ -37804,9 +37847,6 @@
                                             <div>
                                                 <h4>Client Info</h4>
                                             </div>
-                                            <div class="detail-actions">
-                                                <button class="ghost-button" type="button" id="chRegisterClientPageOpenCompaniesHouseButton" hidden>Open Companies House page</button>
-                                            </div>
                                         </div>
                                         <div class="ch-register-risk-grid">
                                             <label>Client name
@@ -38248,10 +38288,18 @@
                                     <section class="ch-settings-card ch-register-client-page-panel" data-client-page-panel="companies-house" hidden>
                                         <div class="ch-client-page-ch-dashboard">
                                             <div class="ch-client-page-ch-hero">
-                                                <div>
-                                                    <h4>Companies House</h4>
-                                                    <p class="detail-meta">Operational Companies House tracking for this client.</p>
-                                                    <p class="detail-meta ch-register-client-panel-sync-meta" id="chRegisterClientPageCompaniesHouseSyncMeta">Companies House sync: --</p>
+                                                <div class="ch-client-page-ch-hero-main">
+                                                    <div class="ch-client-page-ch-hero-head">
+                                                        <div>
+                                                            <h4>Companies House</h4>
+                                                            <p class="detail-meta">Operational Companies House tracking for this client.</p>
+                                                        </div>
+                                                        <button class="ghost-button" type="button" id="chRegisterClientPageOpenCompaniesHouseButton" hidden>Quick access</button>
+                                                    </div>
+                                                    <div class="ch-client-page-ch-hero-tools">
+                                                        <p class="detail-meta ch-register-client-panel-sync-meta" id="chRegisterClientPageCompaniesHouseSyncMeta">Companies House sync: --</p>
+                                                        <button class="ghost-button" type="button" id="chRegisterClientPageCompaniesHouseRefreshButton">Refresh</button>
+                                                    </div>
                                                 </div>
                                                 <img class="ch-client-page-ch-logo" src="/static/companies-house-logo.png" alt="Companies House logo" loading="lazy">
                                             </div>
@@ -114003,6 +114051,7 @@
                 authRegisterClientPage: {
                     open: false,
                     loading: false,
+                    loadingToastShown: false,
                     saving: false,
                     hasUnsavedChanges: false,
                     saveState: "idle",
@@ -114351,6 +114400,9 @@
                     companiesHouseSettings.bmTasksLoadedAt = String(payload?.uploadedAt || "");
                     companiesHouseSettings.bmTasksSummary = payload?.summary || {};
                     renderBmTasksTable();
+                    if (companiesHouseSettings?.authRegisterClientPage?.open) {
+                        renderClientRegisterClientPage();
+                    }
                     const count = Number(
                         companiesHouseSettings.bmTasksSummary?.taskRows
                         || companiesHouseSettings.bmTasksSummary?.vatOutstandingRows
@@ -121963,7 +122015,12 @@
                 mapButton.dataset.googleUrl = urls.google;
                 mapButton.dataset.appleUrl = urls.apple;
                 mapButton.disabled = !address;
-                frame.src = urls.embed || "about:blank";
+                const nextEmbed = urls.embed || "about:blank";
+                const currentEmbed = String(frame.dataset.currentEmbed || "").trim();
+                if (currentEmbed !== nextEmbed) {
+                    frame.src = nextEmbed;
+                    frame.dataset.currentEmbed = nextEmbed;
+                }
                 hint.textContent = address ? "Click to expand" : "No address available";
             }
 
@@ -122663,38 +122720,12 @@
                 if (xeroSyncStampNode) xeroSyncStampNode.textContent = `Xero sync: ${xeroSyncLabel} · Companies House sync: ${chSyncLabel}`;
                 if (vatSyncMetaNode) vatSyncMetaNode.textContent = `Xero sync: ${xeroSyncLabel}`;
                 if (chSyncMetaNode) chSyncMetaNode.textContent = `Companies House sync: ${chSyncLabel}`;
-                if (pageState.loading && !payload) {
-                    if (meta) meta.textContent = "Loading client data from Companies House and Xero...";
-                    if (inlineNote) inlineNote.textContent = "Preparing client workspace...";
-                    renderClientRegisterClientPageSaveStrip();
-                    const callSummary = document.getElementById("chRegisterClientPageCallStatsSummary");
-                    const callCards = document.getElementById("chRegisterClientPageCallStatsCards");
-                    const callBody = document.getElementById("chRegisterClientPageCallStatsBody");
-                    if (callSummary) callSummary.textContent = "Loading matched call stats for this client…";
-                    if (callCards) {
-                        callCards.innerHTML = `
-                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:56%;"></div><div class="call-stats-skeleton" style="height:22px;width:44%;margin-top:10px;"></div></article>
-                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:60%;"></div><div class="call-stats-skeleton" style="height:22px;width:52%;margin-top:10px;"></div></article>
-                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:48%;"></div><div class="call-stats-skeleton" style="height:22px;width:65%;margin-top:10px;"></div></article>
-                            <article class="metric-card"><div class="call-stats-skeleton" style="height:12px;width:54%;"></div><div class="call-stats-skeleton" style="height:22px;width:42%;margin-top:10px;"></div></article>
-                        `;
-                    }
-                    if (callBody) callBody.innerHTML = `<tr><td colspan="6"><div class="call-stats-skeleton" style="height:30px;"></div></td></tr>`;
-                    const vaultMeta = document.getElementById("chRegisterClientPageVaultMeta");
-                    const vaultBody = document.getElementById("chRegisterClientPageVaultBody");
-                    if (vaultMeta) vaultMeta.textContent = "Loading vault links for this client...";
-                    if (vaultBody) vaultBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:30px;"></div></td></tr>`;
-                    const officersBody = document.getElementById("chRegisterClientPageChOfficersBody");
-                    const pscBody = document.getElementById("chRegisterClientPageChPscBody");
-                    const filingsBody = document.getElementById("chRegisterClientPageChFilingHistoryBody");
-                    if (officersBody) officersBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
-                    if (pscBody) pscBody.innerHTML = `<tr><td colspan="4"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
-                    if (filingsBody) filingsBody.innerHTML = `<tr><td colspan="3"><div class="call-stats-skeleton" style="height:28px;"></div></td></tr>`;
-                    renderClientRegisterEngagementLettersPanel(null);
-                    setClientRegisterClientPageTab(pageState.activeTab || "client-info");
-                    scheduleClientRegisterSidebarFit();
-                    renderTopbarIdentity();
-                    return;
+                if (pageState.loading && !payload && !pageState.loadingToastShown) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        loadingToastShown: true,
+                    };
+                    showToast("Loading client profile…", "info");
                 }
                 const assignReadOnly = (id, value) => {
                     const node = document.getElementById(id);
@@ -123427,6 +123458,7 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: true,
                     loading: true,
+                    loadingToastShown: false,
                     saving: false,
                     hasUnsavedChanges: false,
                     saveState: "idle",
@@ -123455,10 +123487,14 @@
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
                 try {
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page`);
+                    const [payload] = await Promise.all([
+                        requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page`),
+                        loadBmTasksDirectory(true),
+                    ]);
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
+                        loadingToastShown: false,
                         payload,
                     };
                     renderClientRegisterClientPage();
@@ -123467,9 +123503,48 @@
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
+                        loadingToastShown: false,
                     };
                     renderClientRegisterClientPage();
                     showToast(error?.message || "Unable to load client page.", "error");
+                }
+            }
+
+            async function refreshClientRegisterClientPage() {
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const rowId = String(pageState.rowId || "").trim();
+                if (!rowId || pageState.loading) return;
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...pageState,
+                    loading: true,
+                    loadingToastShown: false,
+                };
+                renderClientRegisterClientPage();
+                try {
+                    const [payload] = await Promise.all([
+                        requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`),
+                        loadBmTasksDirectory(true),
+                    ]);
+                    const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                    if (!latestState.open || String(latestState.rowId || "").trim() !== rowId) return;
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...latestState,
+                        loading: false,
+                        loadingToastShown: false,
+                        payload,
+                    };
+                    renderClientRegisterClientPage();
+                    loadClientRegisterClientPageCallStats({ force: false, silent: true });
+                    showToast("Companies House panel refreshed.", "success");
+                } catch (error) {
+                    const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...latestState,
+                        loading: false,
+                        loadingToastShown: false,
+                    };
+                    renderClientRegisterClientPage();
+                    showToast(error?.message || "Unable to refresh client page.", "error");
                 }
             }
 
@@ -124813,6 +124888,7 @@
                 });
                 document.getElementById("chRegisterClientVatWarningActionButton")?.addEventListener("click", openClientRegisterVatNoVatModal);
                 document.getElementById("chRegisterClientPageOpenCompaniesHouseButton")?.addEventListener("click", openCompaniesHouseFromClientRegisterClientPage);
+                document.getElementById("chRegisterClientPageCompaniesHouseRefreshButton")?.addEventListener("click", refreshClientRegisterClientPage);
                 document.getElementById("chRegisterClientPageShowRegisteredOfficeClientsButton")?.addEventListener("click", openRegisteredOfficeClientsModal);
                 document.getElementById("chRegisterRegisteredOfficeClientsCloseButton")?.addEventListener("click", closeRegisteredOfficeClientsModal);
                 document.getElementById("chRegisterRegisteredOfficeClientsExportButton")?.addEventListener("click", exportRegisteredOfficeClientsCsv);
