@@ -120425,6 +120425,8 @@
                         error: "",
                         loadedAt: "",
                     },
+                    autoXeroMatching: false,
+                    autoXeroScanned: false,
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -120967,6 +120969,253 @@
                     ));
             }
 
+            function clientRegisterAssignedXeroTenantIds(excludeRowId = "") {
+                const safeExcludeRowId = String(excludeRowId || "").trim();
+                const assigned = new Set();
+                const rows = Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
+                rows.forEach((item) => {
+                    const itemRowId = String(item?.id || "").trim();
+                    if (!itemRowId || (safeExcludeRowId && itemRowId === safeExcludeRowId)) return;
+                    const tenantId = String(
+                        item?.tenantId
+                        || item?.xeroTenantId
+                        || item?.xeroMatch?.tenantId
+                        || ""
+                    ).trim();
+                    if (tenantId) assigned.add(tenantId);
+                });
+                return assigned;
+            }
+
+            function clientRegisterBestXeroTenantMatch(row = {}, profile = {}, options = {}) {
+                const excludeRowId = String(options?.excludeRowId || "").trim();
+                const allTenants = clientRegisterConnectedXeroTenants();
+                if (!allTenants.length) return null;
+                const assignedTenantIds = clientRegisterAssignedXeroTenantIds(excludeRowId);
+                const candidates = allTenants.filter((tenant) => {
+                    const tenantId = String(tenant?.tenantId || "").trim();
+                    return tenantId && !assignedTenantIds.has(tenantId);
+                });
+                if (!candidates.length) return null;
+
+                const rowCompanyNumber = normaliseCompanyNumberInput(
+                    row?.companyNumber
+                    || profile?.companyNumber
+                    || ""
+                );
+                const clientName = clientRegisterClientDisplayName(row);
+                const rowClientId = String(row?.clientId || "").trim().toLowerCase();
+                const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                const lockByTenantId = new Map();
+                lockRows.forEach((lockRow) => {
+                    const tenantId = String(lockRow?.tenantId || "").trim();
+                    if (!tenantId) return;
+                    lockByTenantId.set(tenantId, lockRow);
+                });
+
+                let best = null;
+                let bestScore = 0;
+                let secondScore = 0;
+                candidates.forEach((tenant) => {
+                    const tenantId = String(tenant?.tenantId || "").trim();
+                    if (!tenantId) return;
+                    const tenantName = xeroWorkspaceLabel(tenant?.tenantName || "", tenantId, tenantId);
+                    const lockRow = lockByTenantId.get(tenantId) || null;
+                    const tenantCompanyNumber = normaliseCompanyNumberInput(
+                        lockRow?.mapping?.companyNumber
+                        || lockRow?.companiesHouse?.companyNumber
+                        || ""
+                    );
+                    const tenantClientId = String(lockRow?.clientId || "").trim().toLowerCase();
+                    const nameScore = Math.max(
+                        clientRegisterNameMatchConfidence(clientName, tenantName),
+                        clientRegisterNameMatchConfidence(String(row?.displayName || ""), tenantName),
+                        clientRegisterNameMatchConfidence(String(row?.companyName || ""), tenantName)
+                    );
+
+                    let score = nameScore;
+                    if (rowCompanyNumber && tenantCompanyNumber && rowCompanyNumber === tenantCompanyNumber) {
+                        score = 1;
+                    } else if (rowClientId && tenantClientId && rowClientId === tenantClientId) {
+                        score = Math.max(score, 0.94);
+                    }
+                    if (score > bestScore) {
+                        secondScore = bestScore;
+                        bestScore = score;
+                        best = {
+                            tenantId,
+                            tenantName,
+                            confidence: score,
+                        };
+                    } else if (score > secondScore) {
+                        secondScore = score;
+                    }
+                });
+                if (!best) return null;
+                const auto = bestScore >= 0.999 || (bestScore >= 0.94 && (bestScore - secondScore) >= 0.08);
+                const needsConfirmation = !auto && bestScore >= 0.82 && (bestScore - secondScore) >= 0.06;
+                if (!auto && !needsConfirmation) return null;
+                return {
+                    ...best,
+                    secondConfidence: secondScore,
+                    auto,
+                    needsConfirmation,
+                };
+            }
+
+            async function clientRegisterPersistXeroMatch({ rowId = "", payload = {}, row = {}, profile = {}, tenantId = "", tenantName = "" } = {}) {
+                const safeRowId = String(rowId || "").trim();
+                const safeTenantId = String(tenantId || "").trim();
+                const safeTenantName = String(tenantName || safeTenantId).trim();
+                if (!safeRowId || !safeTenantId) return null;
+
+                const savePayload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page`, {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        companiesHouse: {
+                            ...(profile?.companiesHouse || {}),
+                            xeroMatch: {
+                                tenantId: safeTenantId,
+                                tenantName: safeTenantName,
+                                matchedAt: new Date().toISOString(),
+                            },
+                        },
+                    }),
+                });
+
+                const nextPayload = {
+                    ...(payload || {}),
+                    row: {
+                        ...(row || {}),
+                        xeroTenantId: safeTenantId,
+                        xeroTenantName: safeTenantName,
+                        tenantId: safeTenantId,
+                        tenantName: safeTenantName,
+                        xeroConnected: true,
+                        xeroMatch: {
+                            ...((row && row.xeroMatch && typeof row.xeroMatch === "object") ? row.xeroMatch : {}),
+                            tenantId: safeTenantId,
+                            tenantName: safeTenantName,
+                        },
+                    },
+                };
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    payload: nextPayload,
+                };
+                companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((item) => {
+                    if (String(item?.id || "") !== safeRowId) return item;
+                    return {
+                        ...item,
+                        xeroTenantId: safeTenantId,
+                        xeroTenantName: safeTenantName,
+                        tenantId: safeTenantId,
+                        tenantName: safeTenantName,
+                        xeroConnected: true,
+                        xeroMatch: {
+                            ...((item && item.xeroMatch && typeof item.xeroMatch === "object") ? item.xeroMatch : {}),
+                            tenantId: safeTenantId,
+                            tenantName: safeTenantName,
+                        },
+                    };
+                });
+
+                if (savePayload?.profile || savePayload?.row) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        payload: {
+                            ...(payload || {}),
+                            ...savePayload,
+                            row: { ...(companiesHouseSettings.authRegisterClientPage?.payload?.row || {}), ...(savePayload?.row || {}) },
+                        },
+                    };
+                }
+                return savePayload;
+            }
+
+            async function clientRegisterAutoMatchXeroTenant(options = {}) {
+                const source = String(options?.source || "automatic").trim().toLowerCase();
+                const promptForConfirmation = options?.promptForConfirmation !== false;
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const rowId = String(pageState.rowId || "").trim();
+                if (!rowId || pageState.loading || pageState.xeroMatching || pageState.autoXeroMatching) return;
+                if (source === "automatic" && pageState.autoXeroScanned) return;
+
+                const payload = clientPagePayload() || {};
+                const row = payload?.row || {};
+                const profile = payload?.profile || {};
+                if (String(row?.id || "").trim() !== rowId) return;
+
+                const existingMatch = clientRegisterResolvedXeroTenant(row, profile);
+                if (existingMatch?.tenantId) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        autoXeroScanned: source === "automatic" ? true : pageState.autoXeroScanned,
+                    };
+                    return;
+                }
+
+                let match = clientRegisterBestXeroTenantMatch(row, profile, { excludeRowId: rowId });
+                if (!match) {
+                    try {
+                        if (typeof loadMeReport === "function") {
+                            await loadMeReport(true);
+                            match = clientRegisterBestXeroTenantMatch(row, profile, { excludeRowId: rowId });
+                        }
+                    } catch (error) {
+                        console.warn("Unable to refresh Xero connections before client-page auto-match", error);
+                    }
+                }
+
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    autoXeroScanned: source === "automatic" ? true : pageState.autoXeroScanned,
+                };
+
+                if (!match) return;
+                const confidenceLabel = `${Math.round(Number(match.confidence || 0) * 100)}%`;
+                const approved = match.auto || (promptForConfirmation && window.confirm(
+                    `Link this client to Xero organisation "${match.tenantName}" (${confidenceLabel} confidence)?`
+                ));
+                if (!approved) return;
+
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    autoXeroMatching: true,
+                    xeroMatching: true,
+                };
+                renderClientRegisterClientPage();
+                try {
+                    await clientRegisterPersistXeroMatch({
+                        rowId,
+                        payload,
+                        row,
+                        profile,
+                        tenantId: match.tenantId,
+                        tenantName: match.tenantName,
+                    });
+                    setClientRegisterWriteFailure("", "");
+                    renderClientRegisterClientPage();
+                    showToast(
+                        `Xero auto-match saved: ${match.tenantName} (${confidenceLabel}).`,
+                        match.auto ? "success" : "info"
+                    );
+                } catch (error) {
+                    const message = String(error?.message || "Unable to auto-match Xero organisation.").trim();
+                    setClientRegisterWriteFailure(`${message} Your previous Xero match is unchanged.`, "retry-xero-match");
+                    renderClientRegisterClientPage();
+                    showToast(message, "error");
+                } finally {
+                    const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...latestState,
+                        autoXeroMatching: false,
+                        xeroMatching: false,
+                    };
+                    renderClientRegisterClientPage();
+                }
+            }
+
             function clientRegisterSummaryVatNumber(row = {}, vatDetails = {}) {
                 return clientRegisterNormaliseVatNumber(
                     vatDetails?.vatNumber
@@ -121466,7 +121715,9 @@
                 let clients = clientRegisterConnectedIgnitionClients();
                 if (!clients.length) {
                     try {
-                        await loadIgnition(true);
+                        const payload = await requestJSON(api.endpoints.ignition);
+                        ignitionData = normaliseIgnitionPayload(payload);
+                        ignitionLoadedAt = Date.now();
                         clients = clientRegisterConnectedIgnitionClients();
                     } catch (error) {
                         console.warn("Unable to refresh Ignition clients before opening match modal", error);
@@ -121527,69 +121778,15 @@
                 };
                 setClientRegisterWriteFailure("", "");
                 renderClientRegisterClientPage();
-                const updateLocalRow = () => {
-                    const nextPayload = {
-                        ...(payload || {}),
-                        row: {
-                            ...(row || {}),
-                            xeroTenantId: tenantId,
-                            xeroTenantName: tenantName,
-                            tenantId,
-                            tenantName,
-                            xeroConnected: true,
-                            xeroMatch: {
-                                ...((row && row.xeroMatch && typeof row.xeroMatch === "object") ? row.xeroMatch : {}),
-                                tenantId,
-                                tenantName,
-                            },
-                        },
-                    };
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        payload: nextPayload,
-                    };
-                    companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((item) => {
-                        if (String(item?.id || "") !== rowId) return item;
-                        return {
-                            ...item,
-                            xeroTenantId: tenantId,
-                            xeroTenantName: tenantName,
-                            tenantId,
-                            tenantName,
-                            xeroConnected: true,
-                            xeroMatch: {
-                                ...((item && item.xeroMatch && typeof item.xeroMatch === "object") ? item.xeroMatch : {}),
-                                tenantId,
-                                tenantName,
-                            },
-                        };
-                    });
-                };
                 try {
-                    const savePayload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`, {
-                        method: "PATCH",
-                        body: JSON.stringify({
-                            companiesHouse: {
-                                ...(profile?.companiesHouse || {}),
-                                xeroMatch: {
-                                    tenantId,
-                                    tenantName,
-                                    matchedAt: new Date().toISOString(),
-                                },
-                            },
-                        }),
+                    await clientRegisterPersistXeroMatch({
+                        rowId,
+                        payload,
+                        row,
+                        profile,
+                        tenantId,
+                        tenantName,
                     });
-                    updateLocalRow();
-                    if (savePayload?.profile || savePayload?.row) {
-                        companiesHouseSettings.authRegisterClientPage = {
-                            ...companiesHouseSettings.authRegisterClientPage,
-                            payload: {
-                                ...(payload || {}),
-                                ...savePayload,
-                                row: { ...(companiesHouseSettings.authRegisterClientPage?.payload?.row || {}), ...(savePayload?.row || {}) },
-                            },
-                        };
-                    }
                     closeClientRegisterXeroMatchModal();
                     setClientRegisterWriteFailure("", "");
                     renderClientRegisterClientPage();
@@ -124579,6 +124776,7 @@
                     renderClientRegisterClientPage();
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                     window.setTimeout(() => {
+                        clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
                         clientRegisterAutoMatchClientLinks({ source: "automatic", promptForConfirmation: true });
                     }, 0);
                 } catch (error) {
