@@ -120427,6 +120427,17 @@
                     if (!vaultFiles.length && !vaultLoading) refreshVaultData({ silent: true });
                     renderClientRegisterClientPageVaultPanel();
                 }
+                if (next === "juk-invoices") {
+                    window.setTimeout(() => {
+                        const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                        if (!latestState.open || String(latestState.activeTab || "").trim() !== "juk-invoices") return;
+                        openClientRegisterJukInvoiceLookupModal({
+                            auto: true,
+                            suppressToast: true,
+                            silentNoCustomers: true,
+                        });
+                    }, 0);
+                }
             }
 
             function closeClientRegisterClientPage() {
@@ -122539,19 +122550,36 @@
                 return invoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
             }
 
-            async function openClientRegisterJukInvoiceLookupModal() {
+            async function openClientRegisterJukInvoiceLookupModal(options = {}) {
+                const auto = !!options?.auto;
+                const suppressToast = !!options?.suppressToast;
+                const silentNoCustomers = !!options?.silentNoCustomers;
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 if (pageState.jukInvoiceLookupBusy) return;
                 const payload = clientPagePayload();
                 const row = payload?.row || {};
-                const candidates = clientRegisterJukCustomerCandidates(row);
+                let candidates = clientRegisterJukCustomerCandidates(row);
                 if (!candidates.length) {
-                    showToast("No Xero customers are loaded. Sync Credit Control first.", "error");
-                    return;
+                    if (auto) {
+                        try {
+                            await hydrateFromAPI();
+                        } catch (error) {
+                            console.warn("Unable to refresh panel data before auto-fetching JUK invoices", error);
+                        }
+                        candidates = clientRegisterJukCustomerCandidates(row);
+                    }
+                    if (!candidates.length) {
+                        if (!silentNoCustomers) {
+                            showToast("No Xero customers are loaded. Sync Credit Control first.", "error");
+                        }
+                        return;
+                    }
                 }
                 const chosen = candidates[0];
                 if (!chosen?.customer) {
-                    showToast("Automatic customer match could not be resolved.", "error");
+                    if (!suppressToast) {
+                        showToast("Automatic customer match could not be resolved.", "error");
+                    }
                     return;
                 }
                 companiesHouseSettings.authRegisterClientPage = {
@@ -122561,7 +122589,36 @@
                 };
                 renderClientRegisterClientPage();
                 try {
+                    const latestLookup = companiesHouseSettings.authRegisterClientPage?.jukInvoiceLookup || {};
+                    const previousRows = Array.isArray(latestLookup?.rows) ? latestLookup.rows : [];
+                    const previousById = new Map(previousRows.map((invoice) => [String(invoice?.id || ""), invoice]));
                     const rows = clientRegisterJukInvoicesFromCustomer(chosen.customer);
+                    let createdCount = 0;
+                    let updatedCount = 0;
+                    rows.forEach((invoice) => {
+                        const invoiceId = String(invoice?.id || "").trim();
+                        if (!invoiceId) return;
+                        const previous = previousById.get(invoiceId);
+                        if (!previous) {
+                            createdCount += 1;
+                            return;
+                        }
+                        const beforeSignature = JSON.stringify({
+                            amountDue: Number(previous?.amountDue || 0),
+                            total: Number(previous?.total || 0),
+                            status: String(previous?.status || ""),
+                            paymentStatus: String(previous?.paymentStatus || ""),
+                            dueDate: String(previous?.dueDate || ""),
+                        });
+                        const afterSignature = JSON.stringify({
+                            amountDue: Number(invoice?.amountDue || 0),
+                            total: Number(invoice?.total || 0),
+                            status: String(invoice?.status || ""),
+                            paymentStatus: String(invoice?.paymentStatus || ""),
+                            dueDate: String(invoice?.dueDate || ""),
+                        });
+                        if (beforeSignature !== afterSignature) updatedCount += 1;
+                    });
                     const outstandingTotal = rows.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
@@ -122574,6 +122631,10 @@
                             lastSyncAt: new Date().toISOString(),
                             rows,
                             outstandingTotal,
+                            incrementalSummary: {
+                                createdCount,
+                                updatedCount,
+                            },
                         },
                         jukInvoiceLookupAnimateUntil: Date.now() + 1800,
                     };
@@ -122589,17 +122650,21 @@
                             renderClientRegisterClientPage();
                         }
                     }, 1850);
-                    showToast(
-                        `Loaded ${rows.length.toLocaleString("en-GB")} invoice${rows.length === 1 ? "" : "s"} from ${chosen.customerName}.`,
-                        "success"
-                    );
+                    if (!suppressToast) {
+                        showToast(
+                            `Loaded ${rows.length.toLocaleString("en-GB")} invoice${rows.length === 1 ? "" : "s"} from ${chosen.customerName}.`,
+                            "success"
+                        );
+                    }
                 } catch (error) {
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         jukInvoiceLookupBusy: false,
                     };
                     renderClientRegisterClientPage();
-                    showToast(error?.message || "Unable to load JUK invoices for this client.", "error");
+                    if (!suppressToast) {
+                        showToast(error?.message || "Unable to load JUK invoices for this client.", "error");
+                    }
                 }
             }
 
@@ -124716,8 +124781,14 @@
                         const syncLabel = syncedAt ? `Last sync ${chFormatDateTime(syncedAt)}` : "Not synced yet";
                         const matchLabel = matchedName ? `Matched: ${matchedName}` : "Auto-match pending";
                         const confidenceLabel = matchedName ? `AI confidence ${confidencePct}%` : "AI confidence pending";
+                        const incremental = jukLookup?.incrementalSummary && typeof jukLookup.incrementalSummary === "object"
+                            ? jukLookup.incrementalSummary
+                            : {};
+                        const incrementalLabel = (Number(incremental.createdCount || 0) > 0 || Number(incremental.updatedCount || 0) > 0)
+                            ? `Changes: +${Number(incremental.createdCount || 0).toLocaleString("en-GB")} new, ${Number(incremental.updatedCount || 0).toLocaleString("en-GB")} updated`
+                            : "No invoice changes detected";
                         jukFetchStatus.textContent = clientInvoices.length
-                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${syncLabel}`
+                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${incrementalLabel} · ${syncLabel}`
                             : `No invoices loaded. ${matchLabel}. Use Get invoices to auto-run AI matching across Xero contacts.`;
                         jukFetchStatus.classList.remove("is-muted", "is-success", "is-error");
                         jukFetchStatus.classList.add(clientInvoices.length ? "is-success" : "is-muted");
