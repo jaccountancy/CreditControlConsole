@@ -2099,7 +2099,6 @@
             body.client-register-sidebar-mode .sidebar-logo-corner-action[hidden] {
                 display: none !important;
             }
-            body.client-register-sidebar-mode .ch-register-client-page-sidebar-actions > #chRegisterClientPageMarkNlacButton,
             body.client-register-sidebar-mode .ch-register-client-page-sidebar-actions > #chRegisterClientPageMatchXeroButton,
             body.client-register-sidebar-mode .ch-register-client-page-sidebar-actions > #chRegisterClientPageXeroHint {
                 display: none !important;
@@ -28105,7 +28104,7 @@
                 min-height: 38px !important;
                 display: inline-flex !important;
                 align-items: center !important;
-                justify-content: flex-start !important;
+                justify-content: center !important;
                 gap: 8px;
                 grid-template-columns: none !important;
                 white-space: nowrap;
@@ -28205,6 +28204,7 @@
             }
             .ch-register-client-page-sidebar-actions {
                 display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 8px;
                 margin-bottom: 12px;
                 padding-bottom: 12px;
@@ -28226,6 +28226,15 @@
                 line-height: 1.12;
                 box-shadow: none;
                 transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+            }
+            .ch-register-client-page-sidebar-actions > .ch-register-client-page-primary-action {
+                width: 100%;
+                justify-content: center !important;
+                text-align: center;
+            }
+            .ch-register-client-page-sidebar-actions > #chRegisterClientPageMatchXeroButton,
+            .ch-register-client-page-sidebar-actions > #chRegisterClientPageXeroHint {
+                grid-column: 1 / -1;
             }
             .ch-register-client-page-sidebar-actions > .ghost-button:hover:not(:disabled),
             .ch-register-client-page-sidebar-actions > .ghost-button:focus-visible:not(:disabled) {
@@ -37143,8 +37152,8 @@
                                     <section class="ch-register-client-page-shell">
                                         <aside class="ch-register-client-page-sidebar" id="chRegisterClientPageSidebar">
                                             <div class="ch-register-client-page-sidebar-actions">
-                                                <button class="ghost-button ch-register-client-page-back-button" type="button" id="chRegisterClientPageBackButton"><span class="back-icon" aria-hidden="true">←</span><span class="back-label">Back to Client Register</span></button>
-                                                <button class="ghost-button is-attention" type="button" id="chRegisterClientPageMarkNlacButton">Mark NLAC</button>
+                                                <button class="ghost-button ch-register-client-page-back-button ch-register-client-page-primary-action" type="button" id="chRegisterClientPageBackButton"><span class="back-icon" aria-hidden="true">&lt;--</span><span class="back-label">bACK</span></button>
+                                                <button class="ghost-button ch-register-client-page-primary-action" type="button" id="chRegisterClientPageMarkNlacButton">Mark NLAC</button>
                                                 <button class="ghost-button ch-register-client-page-xero-button" type="button" id="chRegisterClientPageMatchXeroButton" hidden>Match Xero</button>
                                                 <p class="ch-register-client-page-xero-hint" id="chRegisterClientPageXeroHint" hidden></p>
                                             </div>
@@ -37186,7 +37195,7 @@
                                                         <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipCalls30d">0</strong><span>Calls (30d)</span></div>
                                                         <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipSatisfaction">--</strong><span>Satisfaction</span></div>
                                                         <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipReviewGap">--</strong><span>Last review</span></div>
-                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipOpenTasks">0</strong><span>Open tasks</span></div>
+                                                        <div class="ch-register-relationship-metric"><strong id="chRegisterClientRelationshipOpenTasks">0</strong><span>Outstanding Balance</span></div>
                                                     </div>
                                                 </section>
                                                 <section class="ch-register-summary-block ch-register-health-card">
@@ -37235,6 +37244,10 @@
                                             </div>
                                         </article>
                                     </section>
+                                    <div class="ch-register-client-save-strip" id="chRegisterClientPageSaveStrip" data-state="dirty" hidden>
+                                        <span class="ch-register-client-save-strip-copy" id="chRegisterClientPageSaveStripCopy">Changes are cached locally. Save when you are ready.</span>
+                                        <button class="ghost-button" type="button" id="chRegisterClientPageSaveButton">Save changes</button>
+                                    </div>
                                     <div class="ch-register-client-write-banner" id="chRegisterClientPageWriteBanner" hidden>
                                         <span class="ch-register-client-write-banner-copy" id="chRegisterClientPageWriteBannerCopy">A write action failed.</span>
                                         <div class="ch-register-client-write-banner-actions">
@@ -44307,7 +44320,6 @@
             let vaultClientFilter = String(vaultPreferences.clientFilter || "");
             let vaultSelectedFileIds = new Set();
             let vaultLoadedAt = "";
-            let clientRegisterClientPageAutosaveTimer = null;
             const RENDER_DIAGNOSTIC_LIMIT = 8;
             let renderDiagnostics = [];
             let renderDiagnosticsRibbonDismissed = false;
@@ -113271,6 +113283,7 @@
                     open: false,
                     loading: false,
                     saving: false,
+                    hasUnsavedChanges: false,
                     saveState: "idle",
                     saveError: "",
                     xeroMatching: false,
@@ -118444,15 +118457,12 @@
             }
 
             function closeClientRegisterClientPage() {
-                if (clientRegisterClientPageAutosaveTimer) {
-                    window.clearTimeout(clientRegisterClientPageAutosaveTimer);
-                    clientRegisterClientPageAutosaveTimer = null;
-                }
                 companiesHouseSettings.authRegisterClientPage = {
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: false,
                     loading: false,
                     saving: false,
+                    hasUnsavedChanges: false,
                     saveState: "idle",
                     saveError: "",
                     xeroMatching: false,
@@ -119798,13 +119808,33 @@
                 });
             }
 
-            function scheduleClientRegisterClientPageAutosave() {
-                if (clientRegisterClientPageAutosaveTimer) {
-                    window.clearTimeout(clientRegisterClientPageAutosaveTimer);
+            function markClientRegisterClientPageDirty(options = {}) {
+                const showPrompt = options.showPrompt !== false;
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                if (!pageState.open || pageState.loading) return;
+                if (pageState.hasUnsavedChanges) return;
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...pageState,
+                    hasUnsavedChanges: true,
+                    saveState: pageState.saveState === "error" ? "error" : "dirty",
+                };
+                renderClientRegisterClientPageSaveStrip();
+                if (showPrompt) {
+                    showToast(
+                        "You have unsaved client-page changes.",
+                        "info",
+                        {
+                            label: "Save now",
+                            onClick: () => { saveClientRegisterClientPage({ silent: false, source: "save-prompt" }); },
+                        },
+                        null,
+                        { title: "Changes pending" }
+                    );
                 }
-                clientRegisterClientPageAutosaveTimer = window.setTimeout(() => {
-                    saveClientRegisterClientPage({ silent: true, source: "autosave" });
-                }, 460);
+            }
+
+            function scheduleClientRegisterClientPageAutosave() {
+                markClientRegisterClientPageDirty();
             }
 
             function wireClientRegisterClientPageAutosave() {
@@ -119813,13 +119843,13 @@
                     const node = document.getElementById(id);
                     if (!node || node.dataset.clientPageAutosaveWired === "true") return;
                     node.dataset.clientPageAutosaveWired = "true";
-                    node.addEventListener("input", scheduleClientRegisterClientPageAutosave);
-                    node.addEventListener("change", scheduleClientRegisterClientPageAutosave);
+                    node.addEventListener("input", () => markClientRegisterClientPageDirty({ showPrompt: false }));
+                    node.addEventListener("change", () => markClientRegisterClientPageDirty({ showPrompt: true }));
                 });
                 document.querySelectorAll("[data-client-page-service]").forEach((node) => {
                     if (node.dataset.clientPageAutosaveWired === "true") return;
                     node.dataset.clientPageAutosaveWired = "true";
-                    node.addEventListener("change", scheduleClientRegisterClientPageAutosave);
+                    node.addEventListener("change", () => markClientRegisterClientPageDirty({ showPrompt: true }));
                 });
             }
 
@@ -120260,6 +120290,31 @@
                 });
             }
 
+            function renderClientRegisterClientPageSaveStrip() {
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const strip = document.getElementById("chRegisterClientPageSaveStrip");
+                const copy = document.getElementById("chRegisterClientPageSaveStripCopy");
+                const button = document.getElementById("chRegisterClientPageSaveButton");
+                if (!strip) return;
+                const hasError = pageState.saveState === "error" && String(pageState.saveError || "").trim();
+                const pending = !!pageState.hasUnsavedChanges;
+                const saving = !!pageState.saving;
+                const shouldShow = pending || saving || !!hasError;
+                strip.hidden = !shouldShow;
+                strip.dataset.state = saving ? "saving" : hasError ? "error" : "dirty";
+                if (copy) {
+                    copy.textContent = saving
+                        ? "Saving client page changes..."
+                        : hasError
+                            ? String(pageState.saveError || "Unable to save client page.").trim()
+                            : "Changes are cached locally. Save when you are ready.";
+                }
+                if (button) {
+                    button.disabled = saving || !pending;
+                    button.textContent = saving ? "Saving..." : "Save changes";
+                }
+            }
+
             function clientRegisterProfileSectionChanged(currentValue, nextValue) {
                 return JSON.stringify(currentValue || {}) !== JSON.stringify(nextValue || {});
             }
@@ -120612,6 +120667,7 @@
                     writeFailureRetry.dataset.retryAction = writeFailureAction;
                     writeFailureRetry.disabled = !!pageState.saving || !!pageState.xeroMatching;
                 }
+                renderClientRegisterClientPageSaveStrip();
                 const xeroSyncStampNode = document.getElementById("chRegisterClientPageSyncStamp");
                 const vatSyncMetaNode = document.getElementById("chRegisterClientPageVatSyncMeta");
                 const chSyncMetaNode = document.getElementById("chRegisterClientPageCompaniesHouseSyncMeta");
@@ -120636,6 +120692,7 @@
                 if (pageState.loading && !payload) {
                     if (meta) meta.textContent = "Loading client data from Companies House and Xero...";
                     if (inlineNote) inlineNote.textContent = "Preparing client workspace...";
+                    renderClientRegisterClientPageSaveStrip();
                     const callSummary = document.getElementById("chRegisterClientPageCallStatsSummary");
                     const callCards = document.getElementById("chRegisterClientPageCallStatsCards");
                     const callBody = document.getElementById("chRegisterClientPageCallStatsBody");
@@ -121013,6 +121070,15 @@
                     }
                 }
                 const incorporatedYear = String(row?.incorporationDate || "").trim().slice(0, 4);
+                const jukClientInvoices = clientRegisterJukInvoicesForRow(row);
+                const earliestJukInvoiceDate = jukClientInvoices.reduce((earliest, invoice) => {
+                    const invoiceDate = parseDateValue(invoice?.invoiceDate || "");
+                    if (!invoiceDate) return earliest;
+                    return !earliest || invoiceDate.getTime() < earliest.getTime() ? invoiceDate : earliest;
+                }, null);
+                const invoiceHistoryLabel = earliestJukInvoiceDate
+                    ? `Invoices on record since ${formatDate(earliestJukInvoiceDate.toISOString().slice(0, 10))}`
+                    : "No invoice history loaded";
                 const satisfactionScore = Math.max(70, 98 - Math.round(Number(risk?.score || 0) / 6));
                 setText("chRegisterClientRelationshipManager", managerName);
                 setText("chRegisterClientRelationshipAvatar", managerInitials);
@@ -121023,7 +121089,7 @@
                 setText("chRegisterClientRelationshipOpenTasks", openTaskCount.toLocaleString("en-GB"));
                 setText(
                     "chRegisterClientRelationshipSince",
-                    `Client since ${incorporatedYear || "unknown"} · ${allTaskCount.toLocaleString("en-GB")} tracked task${allTaskCount === 1 ? "" : "s"}`
+                    `Incorporated ${incorporatedYear || "unknown"} · ${invoiceHistoryLabel} · ${allTaskCount.toLocaleString("en-GB")} tracked task${allTaskCount === 1 ? "" : "s"}`
                 );
                 assignReadOnly("chRegisterClientInfoVatNumber", vatDetails.vatNumber || row?.vatNumber || "");
                 assignReadOnly("chRegisterClientInfoVatFrequency", vatDetails.frequency || "");
@@ -121244,7 +121310,7 @@
                 const lookupAnimateUntil = Number(pageState?.jukInvoiceLookupAnimateUntil || 0);
                 const lookupAnimating = lookupAnimateUntil > Date.now();
                 if (jukInvoicesBody) {
-                    const clientInvoices = clientRegisterJukInvoicesForRow(row);
+                    const clientInvoices = jukClientInvoices;
                     const outstanding = clientInvoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
                     jukInvoicesBody.innerHTML = clientInvoices.length
                         ? clientInvoices.slice(0, 500).map((invoice) => `
@@ -121347,6 +121413,8 @@
                     ...companiesHouseSettings.authRegisterClientPage,
                     open: true,
                     loading: true,
+                    saving: false,
+                    hasUnsavedChanges: false,
                     saveState: "idle",
                     saveError: "",
                     xeroMatching: false,
@@ -121395,7 +121463,6 @@
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId) return;
                 if (pageState.saving) {
-                    if (silent) scheduleClientRegisterClientPageAutosave();
                     return;
                 }
                 const payload = clientPagePayload() || {};
@@ -121521,6 +121588,13 @@
                 const profileChangedAreas = clientRegisterClientPageChangedAreas(profile, outbound);
                 const changedAreas = registerChanged ? ["Client Info", ...profileChangedAreas] : [...profileChangedAreas];
                 if (!changedAreas.length) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...pageState,
+                        hasUnsavedChanges: false,
+                        saveState: "idle",
+                        saveError: "",
+                    };
+                    renderClientRegisterClientPageSaveStrip();
                     if (!silent) showToast("No changes detected.", "info");
                     return;
                 }
@@ -121565,6 +121639,7 @@
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         saving: false,
+                        hasUnsavedChanges: false,
                         saveState: "saved",
                         saveError: "",
                         lastSavedAt: new Date().toISOString(),
@@ -122726,6 +122801,9 @@
                 document.getElementById("chRegisterClientPageVatNoVatOpenServiceButton")?.addEventListener("click", () => {
                     closeClientRegisterVatNoVatModal();
                     setClientRegisterClientPageTab("service-vat");
+                });
+                document.getElementById("chRegisterClientPageSaveButton")?.addEventListener("click", () => {
+                    saveClientRegisterClientPage({ silent: false, source: "save-strip" });
                 });
                 document.getElementById("chRegisterClientPageWriteBannerRetryButton")?.addEventListener("click", (event) => {
                     const action = String(event?.currentTarget?.dataset?.retryAction || "").trim();
