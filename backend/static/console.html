@@ -29171,6 +29171,22 @@
                 color: #5d7196;
                 font-weight: 800;
             }
+            .ch-register-health-list li.has-missing-deadline {
+                position: relative;
+                padding-right: 12px;
+            }
+            .ch-register-health-list li.has-missing-deadline::after {
+                content: "";
+                position: absolute;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 7px;
+                height: 7px;
+                border-radius: 999px;
+                background: #db3b3b;
+                box-shadow: 0 0 0 2px rgba(219, 59, 59, 0.2);
+            }
             .ch-register-health-deadline {
                 border-radius: 12px;
                 border: 1px solid rgba(91, 116, 160, 0.16);
@@ -29410,6 +29426,16 @@
             #chRegisterClientPageJukInvoicesBody.is-animated {
                 animation: juk-table-fade-in 360ms ease-out;
             }
+            #chRegisterClientPageJukInvoicesBody tr.ch-juk-invoice-row.is-paid td:nth-child(6),
+            #chRegisterClientPageJukInvoicesBody tr.ch-juk-invoice-row.is-paid td:nth-child(7) {
+                color: #217a47;
+                font-weight: 800;
+            }
+            #chRegisterClientPageJukInvoicesBody tr.ch-juk-invoice-row.is-outstanding td:nth-child(6),
+            #chRegisterClientPageJukInvoicesBody tr.ch-juk-invoice-row.is-outstanding td:nth-child(7) {
+                color: #b12e2e;
+                font-weight: 800;
+            }
             @keyframes juk-fetch-pulse {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-1px); }
@@ -29427,6 +29453,26 @@
                 grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
                 gap: 10px;
                 margin-bottom: 10px;
+            }
+            .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-email-field {
+                grid-column: span 2;
+            }
+            .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-phone-field {
+                grid-column: auto;
+            }
+            .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-auth-field {
+                grid-column: 3;
+            }
+            #chRegisterClientPageInfoEmail {
+                font-size: 1rem;
+                transition: font-size 0.18s ease;
+            }
+            @media (max-width: 980px) {
+                .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-email-field,
+                .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-phone-field,
+                .ch-register-client-page-panel[data-client-page-panel="client-info"] .ch-register-risk-grid .ch-register-client-info-auth-field {
+                    grid-column: auto;
+                }
             }
             .ch-client-page-ch-dashboard {
                 display: grid;
@@ -37271,8 +37317,8 @@
                                                         <ul class="ch-register-health-list">
                                                             <li id="chRegisterClientHealthVatRow"><span>VAT</span><strong id="chRegisterClientHealthVatStatus">Up to date</strong></li>
                                                             <li id="chRegisterClientHealthPayrollRow"><span>Payroll</span><strong id="chRegisterClientHealthPayrollStatus">Up to date</strong></li>
-                                                            <li><span>Accounts</span><strong id="chRegisterClientHealthAccountsStatus">Filed</strong></li>
-                                                            <li><span>Corporation Tax</span><strong id="chRegisterClientHealthCtStatus">Up to date</strong></li>
+                                                            <li id="chRegisterClientHealthAccountsRow"><span>Accounts</span><strong id="chRegisterClientHealthAccountsStatus">Filed</strong></li>
+                                                            <li id="chRegisterClientHealthCtRow"><span>Corporation Tax</span><strong id="chRegisterClientHealthCtStatus">Up to date</strong></li>
                                                             <li><span>Companies House</span><strong id="chRegisterClientHealthChStatus">Up to date</strong></li>
                                                             <li><span>AML</span><strong id="chRegisterClientHealthAmlStatus">Compliant</strong></li>
                                                         </ul>
@@ -37343,13 +37389,13 @@
                                             <label>VAT number
                                                 <input id="chRegisterClientPageInfoVatNumber" type="text" readonly>
                                             </label>
-                                            <label>Email
+                                            <label class="ch-register-client-info-email-field">Email
                                                 <input id="chRegisterClientPageInfoEmail" type="text" readonly>
                                             </label>
-                                            <label>Phone
+                                            <label class="ch-register-client-info-phone-field">Phone
                                                 <input id="chRegisterClientPageInfoPhone" type="text" readonly>
                                             </label>
-                                            <label>Auth code
+                                            <label class="ch-register-client-info-auth-field">Auth code
                                                 <input id="chRegisterClientPageInfoAuthCode" type="text" readonly>
                                             </label>
                                             <label>Company UTR
@@ -50038,6 +50084,7 @@
 
                 sidebar.classList.remove("is-fit-tight", "is-fit-compact", "is-fit-micro");
                 tabsWrap.style.maxHeight = "";
+                fitClientInfoEmailField();
 
                 const isSidebarMode = document.body.classList.contains("client-register-sidebar-mode");
                 if (!isSidebarMode) return;
@@ -50059,6 +50106,7 @@
                 if (fits()) return;
 
                 sidebar.classList.add("is-fit-micro");
+                fitClientInfoEmailField();
             }
 
             function syncClientRegisterSidebarDocking() {
@@ -119126,13 +119174,50 @@
                 }
             }
 
-            function clientRegisterResolvedXeroTenant(row = {}) {
-                const fromRowTenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
-                const fromRowTenantName = String(row?.tenantName || row?.xeroTenantName || "").trim();
-                const fromXeroMatchTenantId = String(row?.xeroMatch?.tenantId || "").trim();
-                const fromXeroMatchTenantName = String(row?.xeroMatch?.tenantName || "").trim();
-                const tenantId = fromRowTenantId || fromXeroMatchTenantId;
-                const tenantName = fromRowTenantName || fromXeroMatchTenantName;
+            function clientRegisterResolvedXeroTenant(row = {}, profile = {}) {
+                const candidates = [
+                    {
+                        tenantId: row?.tenantId || row?.xeroTenantId || row?.xeroOrganisationId,
+                        tenantName: row?.tenantName || row?.xeroTenantName || row?.xeroOrganisationName,
+                    },
+                    {
+                        tenantId: row?.xeroMatch?.tenantId || row?.xeroMatch?.xeroTenantId,
+                        tenantName: row?.xeroMatch?.tenantName || row?.xeroMatch?.xeroTenantName,
+                    },
+                    {
+                        tenantId: profile?.tenantId || profile?.xeroTenantId || profile?.xeroOrganisationId,
+                        tenantName: profile?.tenantName || profile?.xeroTenantName || profile?.xeroOrganisationName,
+                    },
+                    {
+                        tenantId: profile?.xero?.tenantId || profile?.xero?.xeroTenantId || profile?.xero?.organisationId,
+                        tenantName: profile?.xero?.tenantName || profile?.xero?.xeroTenantName || profile?.xero?.organisationName,
+                    },
+                    {
+                        tenantId: profile?.xeroMatch?.tenantId || profile?.xeroMatch?.xeroTenantId,
+                        tenantName: profile?.xeroMatch?.tenantName || profile?.xeroMatch?.xeroTenantName,
+                    },
+                ];
+                const directHit = candidates.find((candidate) => String(candidate?.tenantId || "").trim());
+                let tenantId = String(directHit?.tenantId || "").trim();
+                let tenantName = String(directHit?.tenantName || "").trim();
+                if (!tenantId) {
+                    const rowCompanyNumber = normaliseCompanyNumberInput(row?.companyNumber || profile?.companyNumber || "");
+                    if (rowCompanyNumber) {
+                        const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                        const match = lockRows.find((lockRow) => {
+                            const lockCompanyNumber = normaliseCompanyNumberInput(
+                                lockRow?.mapping?.companyNumber
+                                || lockRow?.companiesHouse?.companyNumber
+                                || ""
+                            );
+                            return lockCompanyNumber && lockCompanyNumber === rowCompanyNumber;
+                        }) || null;
+                        if (match) {
+                            tenantId = String(match?.tenantId || "").trim();
+                            tenantName = String(match?.tenantName || "").trim();
+                        }
+                    }
+                }
                 return {
                     tenantId,
                     tenantName: xeroWorkspaceLabel(tenantName, tenantId, ""),
@@ -119277,7 +119362,7 @@
                 const row = payload?.row || {};
                 const profile = payload?.profile || {};
                 const vatDetails = profile?.companiesHouse?.serviceDetails?.vat || {};
-                const xeroTenant = clientRegisterResolvedXeroTenant(row);
+                const xeroTenant = clientRegisterResolvedXeroTenant(row, profile);
                 const tenantId = String(xeroTenant?.tenantId || "").trim();
                 if (!tenantId) {
                     showToast("Match this client to a Xero organisation first.", "info");
@@ -119612,7 +119697,7 @@
                 if (!modal || !select || !status || !meta) return;
                 const payload = clientPagePayload();
                 const row = payload?.row || {};
-                const currentMatch = clientRegisterResolvedXeroTenant(row);
+                const currentMatch = clientRegisterResolvedXeroTenant(row, payload?.profile || {});
                 let tenants = clientRegisterConnectedXeroTenants();
                 if (!tenants.length) {
                     try {
@@ -121008,6 +121093,53 @@
                 return values.length ? values[0] : null;
             }
 
+            function fitClientInfoEmailField() {
+                const input = document.getElementById("chRegisterClientPageInfoEmail");
+                if (!input) return;
+                const value = String(input.value || "").trim();
+                input.style.fontSize = "";
+                if (!value) return;
+                const style = window.getComputedStyle(input);
+                const basePx = parseFloat(style.fontSize || "16") || 16;
+                const canvas = fitClientInfoEmailField._canvas || (fitClientInfoEmailField._canvas = document.createElement("canvas"));
+                const context = canvas.getContext("2d");
+                if (!context) return;
+                context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+                const textWidth = context.measureText(value).width;
+                const horizontalPadding = (parseFloat(style.paddingLeft || "0") || 0) + (parseFloat(style.paddingRight || "0") || 0) + 6;
+                const available = Math.max(40, input.clientWidth - horizontalPadding);
+                if (!Number.isFinite(textWidth) || textWidth <= available) return;
+                const scaledPx = Math.max(11, Math.min(basePx, Math.floor(basePx * (available / textWidth))));
+                input.style.fontSize = `${scaledPx}px`;
+            }
+
+            function clientRegisterInvoicePaymentSourceLabel(invoice = {}) {
+                const sourceRaw = String(
+                    invoice?.paymentSource
+                    || invoice?.paymentMethod
+                    || invoice?.paymentChannel
+                    || invoice?.source
+                    || invoice?.statusSource
+                    || ""
+                ).trim();
+                const source = sourceRaw.toLowerCase();
+                if (source.includes("stripe")) return "Stripe";
+                if (source.includes("juk") && source.includes("trading")) return "JUK Trading Account";
+                if (source.includes("ignition") && (source.includes("debit") || source.includes("direct"))) return "Ignition (direct debit)";
+                if (source.includes("ignition") && source.includes("card")) return "Ignition (card)";
+                if (source.includes("ignition")) return "Ignition";
+                if (source.includes("trading account")) return "JUK Trading Account";
+                return sourceRaw || "Payment source not available";
+            }
+
+            function clientRegisterInvoiceHoverTitle(invoice = {}) {
+                const paidDateRaw = String(invoice?.paidAt || invoice?.paymentDate || invoice?.fullyPaidAt || invoice?.fullyPaidOn || "").trim();
+                const paidDateLabel = paidDateRaw ? formatDate(paidDateRaw) : "";
+                const sourceLabel = clientRegisterInvoicePaymentSourceLabel(invoice);
+                if (paidDateLabel) return `Paid on ${paidDateLabel} via ${sourceLabel}`;
+                return `Paid via ${sourceLabel}`;
+            }
+
             function clientRegisterHumaniseFilingToken(value) {
                 const token = String(value || "").trim();
                 if (!token) return "";
@@ -121256,6 +121388,7 @@
                 assignReadOnly("chRegisterClientPageInfoPhone", String(row?.clientPhone || "").trim());
                 assignReadOnly("chRegisterClientPageInfoAddress", String(row?.clientAddress || "").trim());
                 assignReadOnly("chRegisterClientPageInfoAuthCode", String(row?.authCodeHint || "").trim());
+                fitClientInfoEmailField();
                 assignReadOnly("chRegisterClientPageInfoCompanyUtr", String(row?.companyUtr || "").trim());
                 assignReadOnly("chRegisterClientPageInfoPersonalUtr", String(row?.personalUtr || "").trim());
                 assignReadOnly("chRegisterClientPageInfoCompanyStatus", String(row?.companyStatus || "").trim());
@@ -121306,7 +121439,7 @@
                 const xeroMatchButton = document.getElementById("chRegisterClientPageMatchXeroButton");
                 const xeroMatchLogoButton = document.getElementById("chRegisterClientPageMatchXeroLogoButton");
                 const xeroHint = document.getElementById("chRegisterClientPageXeroHint");
-                const xeroTenant = clientRegisterResolvedXeroTenant(row);
+                const xeroTenant = clientRegisterResolvedXeroTenant(row, profile);
                 const hasXeroTenantMatch = !!String(xeroTenant.tenantId || "").trim();
                 if (xeroStatusBadge && hasXeroTenantMatch) {
                     xeroStatusBadge.textContent = "Connected to Xero";
@@ -121412,6 +121545,15 @@
                 if (healthExplainButton) {
                     healthExplainButton.setAttribute("aria-expanded", pageState.showHealthExplain ? "true" : "false");
                 }
+                const markMissingDeadline = (rowId, shouldMark) => {
+                    const node = document.getElementById(rowId);
+                    if (!node) return;
+                    node.classList.toggle("has-missing-deadline", !!shouldMark);
+                };
+                markMissingDeadline("chRegisterClientHealthVatRow", !!services?.vatReturns && !String(vatDetails?.nextReturnDueDate || "").trim());
+                markMissingDeadline("chRegisterClientHealthPayrollRow", !!services?.payroll && !String(payrollDetails?.rtiDeadline || "").trim());
+                markMissingDeadline("chRegisterClientHealthAccountsRow", !isIndividual && !!(services?.accounts || services?.ct600Return) && !String(resolvedAccountsDueDate || "").trim());
+                markMissingDeadline("chRegisterClientHealthCtRow", !isIndividual && !!services?.ct600Return && !String(resolvedAccountsDueDate || "").trim());
 
                 const nextDeadlineCandidates = [
                     vatDetails?.nextReturnDueDate,
@@ -121847,8 +121989,17 @@
                     const clientInvoices = jukClientInvoices;
                     const outstanding = clientInvoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
                     jukInvoicesBody.innerHTML = clientInvoices.length
-                        ? clientInvoices.slice(0, 500).map((invoice) => `
-                            <tr>
+                        ? clientInvoices.slice(0, 500).map((invoice) => {
+                            const amountDue = Number(invoice?.amountDue || 0);
+                            const paymentStatusText = String(invoice?.paymentStatus || "").trim();
+                            const statusText = String(invoice?.status || "imported").trim();
+                            const paidByAmount = Number.isFinite(amountDue) && amountDue <= 0;
+                            const paidByStatus = /paid|settled|completed/i.test(`${paymentStatusText} ${statusText}`);
+                            const isPaid = paidByAmount || paidByStatus;
+                            const rowClass = isPaid ? "is-paid" : "is-outstanding";
+                            const hoverTitle = isPaid ? clientRegisterInvoiceHoverTitle(invoice) : "";
+                            return `
+                            <tr class="ch-juk-invoice-row ${rowClass}" ${hoverTitle ? `title="${escapeHTML(hoverTitle)}"` : ""}>
                                 <td>${escapeHTML(invoice.invoiceNumber || invoice.id || "—")}</td>
                                 <td>${escapeHTML(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : "—")}</td>
                                 <td>${escapeHTML(invoice.dueDate ? formatDate(invoice.dueDate) : "—")}</td>
@@ -121857,7 +122008,8 @@
                                 <td>${escapeHTML(invoice.paymentStatus || "—")}</td>
                                 <td>${escapeHTML(invoice.status || "imported")}</td>
                             </tr>
-                        `).join("")
+                        `;
+                        }).join("")
                         : `<tr><td colspan="7" class="ch-empty-state">No JUK invoices linked to this client yet. Use Get invoices to search Xero contacts and load all invoices.</td></tr>`;
                     if (jukFetchButton) {
                         const busy = !!pageState?.jukInvoiceLookupBusy;
