@@ -5864,6 +5864,15 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
 
 def _auth_register_timeline_label(event_type: str) -> str:
     kind = str(event_type or "").strip().lower()
+    known_labels = {
+        "company_synced_from_companies_house": "Company synced from Companies House",
+        "auth_code_populated_from_register": "Auth code populated from register",
+        "client_links_auto_matched": "Client links auto-matched",
+        "xero_match_updated": "Xero organisation match updated",
+        "ignition_match_updated": "Ignition client match updated",
+    }
+    if kind in known_labels:
+        return known_labels[kind]
     if kind == "client_profile_updated":
         return "Client profile updated"
     if kind == "client_note_added":
@@ -5872,40 +5881,106 @@ def _auth_register_timeline_label(event_type: str) -> str:
     return text.title() if text else "Updated"
 
 
+def _auth_register_timeline_compact_text(value: object, limit: int = 140) -> str:
+    if value is None:
+        return "—"
+    text = str(value).strip()
+    if not text:
+        return "—"
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)].rstrip()}…"
+
+
 def _auth_register_timeline_body(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""
     note_text = str(payload.get("note") or "").strip()
     if note_text:
-        return note_text[:500]
+        return _auth_register_timeline_compact_text(note_text, 500)
     change_rows = payload.get("changes")
     if isinstance(change_rows, list) and change_rows:
         parts: list[str] = []
-        for item in change_rows[:8]:
+        for item in change_rows[:4]:
             if not isinstance(item, dict):
                 continue
-            field = str(item.get("field") or "").strip()
-            before = str(item.get("before") or "—").strip() or "—"
-            after = str(item.get("after") or "—").strip() or "—"
+            field = _auth_register_timeline_compact_text(item.get("field"), 90)
+            before = _auth_register_timeline_compact_text(item.get("before"), 80)
+            after = _auth_register_timeline_compact_text(item.get("after"), 80)
             if not field:
                 continue
-            parts.append(f"{field}: {before} -> {after}")
+            parts.append(f"{field}: {before} → {after}")
+        extra_count = max(0, len(change_rows) - len(parts))
+        if extra_count:
+            parts.append(f"+{extra_count} more change{'s' if extra_count != 1 else ''}")
         if parts:
-            return " | ".join(parts)
+            return " • ".join(parts)
     parts: list[str] = []
     for key, value in list(payload.items())[:4]:
-        if isinstance(value, bool):
-            text = "Yes" if value else "No"
-        elif isinstance(value, (int, float)):
-            text = str(value)
-        elif isinstance(value, str):
-            text = value.strip()
-        else:
+        if isinstance(value, (dict, list)):
             continue
-        if not text:
+        text = _auth_register_timeline_compact_text(value, 120)
+        if not text or text == "—":
             continue
-        parts.append(f"{key}: {text[:120]}")
-    return " | ".join(parts)
+        parts.append(f"{_auth_register_timeline_compact_text(key, 60)}: {text}")
+    return " • ".join(parts)
+
+
+def _auth_register_timeline_source(event_type: str, payload: object) -> str:
+    kind = str(event_type or "").strip().lower()
+    source_raw = ""
+    if isinstance(payload, dict):
+        source_raw = _coerce_text(
+            payload.get("source")
+            or payload.get("sourceSystem")
+            or payload.get("origin")
+            or payload.get("eventSource"),
+            120,
+        ).lower()
+    if "companies_house" in kind or "companies house" in source_raw:
+        return "Companies House"
+    if "xero" in kind or "xero" in source_raw:
+        return "Xero"
+    if "ignition" in kind or "ignition" in source_raw:
+        return "Ignition"
+    if "auto" in kind or "automation" in source_raw:
+        return "Automation"
+    if kind in {"client_profile_updated", "client_note_added"}:
+        return "User"
+    return "System"
+
+
+def _auth_register_timeline_actor(payload: object, source: str) -> str:
+    if isinstance(payload, dict):
+        for key in (
+            "actorName",
+            "createdByName",
+            "updatedByName",
+            "performedBy",
+            "userName",
+            "user",
+            "actor",
+        ):
+            actor = _coerce_text(payload.get(key), 120)
+            if actor:
+                return actor
+    if source in {"Companies House", "Xero", "Ignition", "Automation"}:
+        return source
+    return "System"
+
+
+def _auth_register_timeline_entry(item: dict) -> dict:
+    event_type = item.get("event_type") or ""
+    payload = item.get("payload")
+    source = _auth_register_timeline_source(event_type, payload)
+    return {
+        "at": item.get("created_at").isoformat() if item.get("created_at") else None,
+        "title": _auth_register_timeline_label(event_type),
+        "body": _auth_register_timeline_body(payload),
+        "source": source,
+        "actor": _auth_register_timeline_actor(payload, source),
+    }
 
 
 def _auth_register_stringify_value(value: object) -> str:
@@ -6591,14 +6666,7 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
             }
             for note_row in notes_rows
         ],
-        "timeline": [
-            {
-                "at": item.get("created_at").isoformat() if item.get("created_at") else None,
-                "title": _auth_register_timeline_label(item.get("event_type") or ""),
-                "body": _auth_register_timeline_body(item.get("payload")),
-            }
-            for item in audit_rows
-        ],
+        "timeline": [_auth_register_timeline_entry(item) for item in audit_rows],
         "ignitionEngagementLetters": ignition_engagement_letters,
     }
 

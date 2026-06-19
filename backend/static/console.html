@@ -23343,8 +23343,50 @@
                 grid-column: 3;
             }
             .ch-register-timeline-card h5 {
-                margin: 0 0 6px;
+                margin: 0;
                 font-size: 1.04rem;
+            }
+            .ch-register-timeline-card-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 6px;
+            }
+            .ch-register-timeline-source {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                padding: 5px 10px;
+                font-size: 0.73rem;
+                font-weight: 800;
+                letter-spacing: 0.01em;
+                border: 1px solid transparent;
+                background: #f0f4fb;
+                color: #395073;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            .ch-register-timeline-source.is-user {
+                background: #edf5ff;
+                border-color: rgba(62, 116, 189, 0.24);
+                color: #2f5f9e;
+            }
+            .ch-register-timeline-source.is-companies-house {
+                background: #eaf8f2;
+                border-color: rgba(61, 145, 108, 0.24);
+                color: #2f7a5a;
+            }
+            .ch-register-timeline-source.is-automation {
+                background: #f5f0ff;
+                border-color: rgba(108, 84, 172, 0.24);
+                color: #5f459f;
+            }
+            .ch-register-timeline-source.is-system {
+                background: #f3f5f8;
+                border-color: rgba(96, 112, 133, 0.22);
+                color: #485a73;
             }
             .ch-register-timeline-card .timeline-stamp {
                 color: var(--muted);
@@ -23355,7 +23397,7 @@
             .ch-register-timeline-card .timeline-body {
                 color: var(--ink);
                 line-height: 1.45;
-                white-space: pre-wrap;
+                white-space: normal;
             }
             @media (max-width: 980px) {
                 #chRegisterClientPageTimeline.ch-register-timeline-stream::before {
@@ -124474,12 +124516,25 @@
                         }
                         const sideClass = rowCounter % 2 === 0 ? "is-right" : "is-left";
                         rowCounter += 1;
+                        const sourceRaw = String(item?.source || "").trim();
+                        const sourceLabel = sourceRaw || "System";
+                        const sourceKey = sourceLabel.toLowerCase();
+                        let sourceTone = "is-system";
+                        if (sourceKey.includes("companies house")) sourceTone = "is-companies-house";
+                        else if (sourceKey.includes("user")) sourceTone = "is-user";
+                        else if (sourceKey.includes("automation") || sourceKey.includes("auto")) sourceTone = "is-automation";
+                        const actorLabel = String(item?.actor || "").trim();
+                        const stampBits = [rawAt ? chFormatDateTime(rawAt) : "—"];
+                        if (actorLabel && actorLabel.toLowerCase() !== sourceLabel.toLowerCase()) stampBits.push(`by ${actorLabel}`);
                         renderedRows.push(`
                             <article class="ch-register-timeline-row ${sideClass}">
                                 <div class="ch-register-timeline-marker" aria-hidden="true"></div>
                                 <div class="ch-register-timeline-card">
-                                    <h5>${escapeHTML(item?.title || "Update")}</h5>
-                                    <div class="timeline-stamp">${escapeHTML(rawAt ? chFormatDateTime(rawAt) : "—")}</div>
+                                    <div class="ch-register-timeline-card-head">
+                                        <h5>${escapeHTML(item?.title || "Update")}</h5>
+                                        <span class="ch-register-timeline-source ${sourceTone}">${escapeHTML(sourceLabel)}</span>
+                                    </div>
+                                    <div class="timeline-stamp">${escapeHTML(stampBits.join(" • "))}</div>
                                     <div class="timeline-body">${escapeHTML(item?.body || "No additional detail.")}</div>
                                 </div>
                             </article>
