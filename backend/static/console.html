@@ -2157,6 +2157,22 @@
                 overflow-wrap: anywhere;
                 word-break: break-word;
             }
+            .sidebar-mini-notification-client-link {
+                border: 0;
+                padding: 0;
+                background: transparent;
+                cursor: pointer;
+                text-decoration: underline;
+                text-decoration-color: rgba(79, 121, 217, 0.35);
+                text-underline-offset: 2px;
+                transition: color 0.15s ease, text-decoration-color 0.15s ease;
+            }
+            .sidebar-mini-notification-client-link:hover,
+            .sidebar-mini-notification-client-link:focus-visible {
+                color: #325ca0;
+                text-decoration-color: rgba(50, 92, 160, 0.68);
+                outline: none;
+            }
             .sidebar-mini-notification-dismiss:hover,
             .sidebar-mini-notification-dismiss:focus-visible {
                 outline: none;
@@ -45584,6 +45600,10 @@
                     source: String(record.source || "System").trim() || "System",
                     subject: String(record.subject || "System notification").trim() || "System notification",
                     content: String(record.content || "").trim(),
+                    clientName: String(record.clientName || "").trim(),
+                    clientId: String(record.clientId || "").trim(),
+                    registerRowId: String(record.registerRowId || "").trim(),
+                    taskReference: String(record.taskReference || "").trim(),
                     createdById: String(record.createdById || "").trim(),
                     createdByName: String(record.createdByName || "System").trim() || "System",
                     assignedToId: String(record.assignedToId || "").trim(),
@@ -45688,6 +45708,10 @@
                     source: payload.source || "User",
                     subject: payload.subject || "Notification",
                     content: payload.content || "",
+                    clientName: String(payload.clientName || "").trim(),
+                    clientId: String(payload.clientId || "").trim(),
+                    registerRowId: String(payload.registerRowId || "").trim(),
+                    taskReference: String(payload.taskReference || "").trim(),
                     createdById: payload.createdById || current.id,
                     createdByName: payload.createdByName || current.name,
                     assignedToId: assigneeId,
@@ -45793,8 +45817,32 @@
                 return ["high", "critical"].includes(String(record?.priority || "").toLowerCase());
             }
 
+            function notificationIsBookkeepingReviewRecord(record) {
+                if (!record || typeof record !== "object") return false;
+                const externalRef = String(record.externalRef || "").trim().toLowerCase();
+                if (externalRef.startsWith("task-bookkeeping-sla:")) return true;
+                if (externalRef.startsWith("task-bookkeeping-sla-reminder:")) return true;
+                const text = [
+                    record.subject,
+                    record.content,
+                    record.category,
+                    record.taskReference,
+                ].join(" ").toLowerCase();
+                return text.includes("bookkeeping") && (text.includes("review") || text.includes("approval"));
+            }
+
+            function notificationIsActionableRecord(record) {
+                if (!record || typeof record !== "object") return false;
+                const source = String(record.source || "").trim().toLowerCase();
+                if (source.includes("user-activity")) return false;
+                if (source.includes("system")) return false;
+                if (source.includes("assistant") && !notificationIsBookkeepingReviewRecord(record)) return false;
+                return true;
+            }
+
             function notificationShouldHideFromScreen(record) {
                 if (!record || typeof record !== "object") return false;
+                if (!notificationIsActionableRecord(record)) return true;
                 const text = [
                     record.subject,
                     record.content,
@@ -90500,11 +90548,10 @@
                 return (notificationRecords || [])
                     .filter((record) => {
                         if (!record || typeof record !== "object") return false;
+                        if (!notificationIsActionableRecord(record)) return false;
                         const assignedToMe = String(record.assignedToId || "") === String(current.id || "");
                         const createdByMe = String(record.createdById || "") === String(current.id || "");
                         if (!(assignedToMe || createdByMe)) return false;
-                        const source = String(record.source || "").toLowerCase();
-                        if (source.includes("system") || source.includes("assistant")) return false;
                         return true;
                     })
                     .sort((left, right) => (Date.parse(right.createdAt || "") || 0) - (Date.parse(left.createdAt || "") || 0));
@@ -90551,6 +90598,7 @@
                     const match = content.match(/(?:^|[·|])\s*client\s*:\s*([^·|]+)/i);
                     return String(match?.[1] || "").trim();
                 };
+                const escapeAttribute = (value) => escapeHTML(String(value || "")).replace(/"/g, "&quot;");
                 const buildItem = (record, archived = false) => {
                     const clientName = extractClientName(record);
                     return `
@@ -90563,7 +90611,14 @@
                             <div class="sidebar-mini-notification-row">
                                 <time>${escapeHTML(formatDateTime(record.createdAt || record.updatedAt || ""))}</time>
                                 <div class="sidebar-mini-notification-meta">
-                                    ${clientName ? `<span class="sidebar-mini-notification-client" title="${escapeHTML(clientName)}">${escapeHTML(clientName)}</span>` : ""}
+                                    ${clientName ? `
+                                        <button
+                                            class="sidebar-mini-notification-client sidebar-mini-notification-client-link"
+                                            type="button"
+                                            data-sidebar-mini-notification-client-open="${escapeAttribute(record.id || "")}"
+                                            title="Open ${escapeAttribute(clientName)} client page"
+                                        >${escapeHTML(clientName)}</button>
+                                    ` : ""}
                                 </div>
                             </div>
                         </article>
@@ -90717,6 +90772,67 @@
                     if (byName) return byName;
                 }
                 return null;
+            }
+
+            function findClientRegisterRowForNotification(record = {}) {
+                const rows = Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
+                if (!rows.length) return null;
+                const registerRowId = String(record?.registerRowId || "").trim();
+                if (registerRowId) {
+                    const byId = rows.find((row) => String(row?.id || "").trim() === registerRowId);
+                    if (byId) return byId;
+                }
+                const clientRef = String(record?.clientId || "").trim().toLowerCase();
+                if (clientRef) {
+                    const byClientId = rows.find((row) => String(row?.clientId || "").trim().toLowerCase() === clientRef);
+                    if (byClientId) return byClientId;
+                }
+                const clientName = String(record?.clientName || "").trim();
+                if (clientName) {
+                    const nameKey = normalisePracticePackClientMatchName(clientName);
+                    const byName = rows.find((row) => (
+                        normalisePracticePackClientMatchName(
+                            row?.displayName
+                            || row?.companyName
+                            || row?.clientName
+                            || row?.xeroContactName
+                            || ""
+                        ) === nameKey
+                    ));
+                    if (byName) return byName;
+                }
+                return null;
+            }
+
+            async function openNotificationClientPage(recordId) {
+                const id = String(recordId || "").trim();
+                if (!id) return;
+                const record = (notificationRecords || []).find((row) => String(row?.id || "").trim() === id);
+                if (!record) {
+                    showToast("Notification client details are not available.", "error");
+                    return;
+                }
+                activeView = "client-auth-register";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                try {
+                    await loadAuthCodeRegisterDirectory(false);
+                } catch (error) {
+                    showToast(error?.message || "Unable to open client page.", "error");
+                    return;
+                }
+                const registerRow = findClientRegisterRowForNotification(record);
+                const registerRowId = String(registerRow?.id || "").trim();
+                if (!registerRowId) {
+                    showToast("Notification is linked to a client name but no register row was found.", "info");
+                    scrollConsoleToTop();
+                    return;
+                }
+                companiesHouseSettings.authRegisterSelectedRowId = registerRowId;
+                openClientRegisterClientPage(registerRowId);
+                scrollConsoleToTop();
             }
 
             async function openSidebarMiniClientResult(clientId) {
@@ -110308,6 +110424,7 @@
                         const client = clientId
                             ? (Array.isArray(state?.customers) ? state.customers : []).find((row) => String(row?.id || "") === clientId)
                             : null;
+                        const registerRow = client ? findClientRegisterRowForSidebarCustomer(client) : null;
                         const contentSegments = [message];
                         if (client?.name) contentSegments.push(`Client: ${client.name}`);
                         if (taskReference) contentSegments.push(`Task: ${taskReference}`);
@@ -110317,6 +110434,10 @@
                             source: "User",
                             subject,
                             content: contentSegments.join(" · "),
+                            clientName: String(client?.name || "").trim(),
+                            clientId: String(client?.id || "").trim(),
+                            registerRowId: String(registerRow?.id || "").trim(),
+                            taskReference,
                             assignedToId: assigneeId,
                             dueDate: "",
                             emailAlert: false,
@@ -110756,6 +110877,17 @@
                 if (sidebarMiniNotificationCentre && sidebarMiniNotificationCentre.dataset.wired !== "true") {
                     sidebarMiniNotificationCentre.dataset.wired = "true";
                     sidebarMiniNotificationCentre.addEventListener("click", (event) => {
+                        const clientTrigger = event.target.closest?.("[data-sidebar-mini-notification-client-open]");
+                        if (clientTrigger) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const recordId = String(clientTrigger.dataset.sidebarMiniNotificationClientOpen || "").trim();
+                            if (!recordId) return;
+                            sidebarNotificationsMiniMode = false;
+                            renderAll();
+                            void openNotificationClientPage(recordId);
+                            return;
+                        }
                         const archiveTrigger = event.target.closest?.("[data-sidebar-mini-notification-archive]");
                         if (archiveTrigger) {
                             event.preventDefault();
@@ -118634,6 +118766,7 @@
                 const title = document.getElementById("chRegisterClientPageTitle");
                 const eyebrow = document.getElementById("chRegisterClientPageEyebrow");
                 const meta = document.getElementById("chRegisterClientPageMeta");
+                const inlineNote = document.getElementById("chRegisterClientPageDynamicServiceMeta");
                 const statusBadge = document.getElementById("chRegisterClientPageStatusBadge");
                 const clientIdBadge = document.getElementById("chRegisterClientPageClientIdBadge");
                 if (title) {
