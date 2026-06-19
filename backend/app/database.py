@@ -101,6 +101,55 @@ ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS xero_error TEXT NO
 ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
 ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE TABLE IF NOT EXISTS esign_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    client_id TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    document_type TEXT NOT NULL DEFAULT '',
+    document_title TEXT NOT NULL DEFAULT '',
+    recipient_name TEXT NOT NULL DEFAULT '',
+    recipient_email TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'sent',
+    due_date DATE,
+    sent_at TIMESTAMPTZ,
+    viewed_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    external_provider TEXT NOT NULL DEFAULT 'foxit_esign',
+    external_request_id TEXT NOT NULL DEFAULT '',
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS document_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS document_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS recipient_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS recipient_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'sent';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMPTZ;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS external_provider TEXT NOT NULL DEFAULT 'foxit_esign';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS external_request_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE esign_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS esign_requests_status_created_idx
+ON esign_requests (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS esign_requests_recipient_email_idx
+ON esign_requests (recipient_email);
+
 CREATE TABLE IF NOT EXISTS code_breaker_ch_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_number TEXT NOT NULL,

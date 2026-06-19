@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
     ignition_api_base_url: str = "https://developers.ignitionapp.com/external/api/v1"
     ignition_renewals_recipient_email: str = "amie@jaccountancy.co.uk"
+    foxit_base_url: str | None = None
+    foxit_client_id: str | None = None
+    foxit_client_secret: str | None = None
+    foxit_env: str = "sandbox"
+    foxit_esign_send_path: str = "/api/esign/v1/requests"
+    foxit_esign_resend_path: str = "/api/esign/v1/requests/:requestId/resend"
+    foxit_esign_cancel_path: str = "/api/esign/v1/requests/:requestId/cancel"
+    foxit_esign_status_path: str = "/api/esign/v1/requests/:requestId"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

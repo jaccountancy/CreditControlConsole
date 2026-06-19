@@ -33562,6 +33562,114 @@ def _vault_activity(index_payload: dict, kind: str, message: str, detail: str = 
     index_payload["activities"] = activities[:VAULT_ACTIVITY_LIMIT]
 
 
+def _vault_client_folder_name(client_name: str) -> str:
+    clean = str(client_name or "").strip() or "Client"
+    return f"Client Vaults/{clean[:120]}"
+
+
+def _vault_register_rows_for_user(user: dict) -> list[dict]:
+    rows: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, client_id, client_name, company_name, company_number
+                    FROM ch_auth_code_register
+                    ORDER BY uploaded_at DESC, updated_at DESC
+                    LIMIT 5000
+                    """
+                )
+                rows = cursor.fetchall() or []
+            except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+                connection.rollback()
+                rows = []
+        connection.commit()
+    output: list[dict] = []
+    for row in rows:
+        row_id = str(row.get("id") or "").strip()
+        client_id = str(row.get("client_id") or "").strip()
+        client_name = str(row.get("company_name") or row.get("client_name") or "").strip()
+        company_number = re.sub(r"[^A-Za-z0-9]", "", str(row.get("company_number") or "").upper())[:16]
+        if not (row_id or client_id or client_name):
+            continue
+        output.append(
+            {
+                "rowId": row_id,
+                "clientId": client_id,
+                "clientName": client_name or client_id or row_id,
+                "companyNumber": company_number,
+                "nameKey": _bm_tasks_normalise_name_key(client_name),
+            }
+        )
+    return output
+
+
+def _vault_match_client(register_rows: list[dict], filename: str, extracted_text: str, summary: str = "") -> dict | None:
+    if not register_rows:
+        return None
+    hay = " ".join(
+        [
+            str(filename or ""),
+            str(summary or ""),
+            str(extracted_text or "")[:12000],
+        ]
+    ).lower()
+    compact = re.sub(r"[^a-z0-9]+", "", hay)
+    best: tuple[int, dict] | None = None
+    for row in register_rows:
+        score = 0
+        client_id = str(row.get("clientId") or "").strip().lower()
+        company_number = str(row.get("companyNumber") or "").strip().lower()
+        name_key = str(row.get("nameKey") or "").strip().lower()
+        if client_id and client_id in hay:
+            score = max(score, 95)
+        if company_number and company_number in compact:
+            score = max(score, 98)
+        if name_key and len(name_key) >= 5 and name_key in compact:
+            score = max(score, 82)
+        if score and (best is None or score > best[0]):
+            best = (score, row)
+    if not best:
+        return None
+    score, row = best
+    confidence = min(0.99, max(0.5, score / 100))
+    return {
+        "clientId": str(row.get("clientId") or "").strip(),
+        "clientName": str(row.get("clientName") or "").strip() or "Client",
+        "clientMatchConfidence": round(confidence, 2),
+        "clientMatchStatus": "matched",
+    }
+
+
+def _vault_resolve_client_query(register_rows: list[dict], query: str) -> dict | None:
+    needle = str(query or "").strip()
+    if not needle:
+        return None
+    needle_lower = needle.lower()
+    needle_compact = re.sub(r"[^a-z0-9]+", "", needle_lower)
+    for row in register_rows:
+        if needle_lower == str(row.get("clientId") or "").strip().lower():
+            return row
+        if needle_compact and needle_compact == re.sub(r"[^a-z0-9]+", "", str(row.get("companyNumber") or "").strip().lower()):
+            return row
+    best: tuple[int, dict] | None = None
+    for row in register_rows:
+        score = 0
+        client_name = str(row.get("clientName") or "")
+        row_compact = re.sub(r"[^a-z0-9]+", "", client_name.lower())
+        if needle_compact and row_compact:
+            if needle_compact == row_compact:
+                score = 90
+            elif needle_compact in row_compact or row_compact in needle_compact:
+                score = 70
+        if needle_lower and needle_lower in client_name.lower():
+            score = max(score, 74)
+        if score and (best is None or score > best[0]):
+            best = (score, row)
+    return best[1] if best else None
+
+
 async def _vault_ai_suggest_name(filename: str, content_type: str, extracted_text: str) -> dict:
     settings = get_settings()
     cleaned_name = _vault_clean_filename(filename)
@@ -33640,6 +33748,7 @@ async def vault_analyze_files(user: dict, files: list[dict]) -> dict:
     analyses: list[dict] = []
     if not files:
         return {"analyses": analyses}
+    register_rows = _vault_register_rows_for_user(user)
     for item in files:
         filename = str(item.get("filename") or "document")
         file_bytes = item.get("file_bytes") or b""
@@ -33648,7 +33757,9 @@ async def vault_analyze_files(user: dict, files: list[dict]) -> dict:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{filename} is larger than 75 MB.")
         extracted_text = _vault_extract_text(file_bytes, filename, content_type)
         suggestion = await _vault_ai_suggest_name(filename, content_type, extracted_text)
+        client_match = _vault_match_client(register_rows, filename, extracted_text, str(suggestion.get("summary") or ""))
         file_hash = hashlib.sha256(file_bytes).hexdigest()
+        matched_folder = _vault_client_folder_name(str(client_match.get("clientName") or "")) if client_match else ""
         analyses.append(
             {
                 "analysisId": str(uuid4()),
@@ -33657,12 +33768,16 @@ async def vault_analyze_files(user: dict, files: list[dict]) -> dict:
                 "sizeBytes": len(file_bytes),
                 "sha256": file_hash,
                 "suggestedName": _vault_clean_filename(suggestion.get("filename") or filename, default_ext=os.path.splitext(filename)[1]),
-                "suggestedFolder": str(suggestion.get("folder") or "Inbox").strip() or "Inbox",
+                "suggestedFolder": matched_folder or (str(suggestion.get("folder") or "Inbox").strip() or "Inbox"),
                 "summary": str(suggestion.get("summary") or "").strip(),
                 "source": str(suggestion.get("source") or "unknown"),
                 "tags": list(suggestion.get("tags") or []),
                 "engine": str(suggestion.get("engine") or "rule"),
                 "textPreview": (extracted_text or "")[:VAULT_MAX_TEXT_PREVIEW_CHARS],
+                "clientId": str(client_match.get("clientId") or "") if client_match else "",
+                "clientName": str(client_match.get("clientName") or "") if client_match else "",
+                "clientMatchStatus": str(client_match.get("clientMatchStatus") or "unmatched") if client_match else "unmatched",
+                "clientMatchConfidence": float(client_match.get("clientMatchConfidence") or 0) if client_match else 0,
             }
         )
     return {"analyses": analyses}
@@ -33673,6 +33788,8 @@ def _vault_search_rank(file_row: dict, term: str) -> int:
     hay_folder = str(file_row.get("folder") or "").lower()
     hay_summary = str(file_row.get("summary") or "").lower()
     hay_index = str(file_row.get("textIndex") or "").lower()
+    hay_client_id = str(file_row.get("clientId") or "").lower()
+    hay_client_name = str(file_row.get("clientName") or "").lower()
     hay_tags = " ".join(str(tag or "").lower() for tag in (file_row.get("tags") or []))
     score = 0
     if term in hay_name:
@@ -33685,15 +33802,20 @@ def _vault_search_rank(file_row: dict, term: str) -> int:
         score += 2
     if term in hay_index:
         score += 1
+    if term in hay_client_id:
+        score += 7
+    if term in hay_client_name:
+        score += 5
     return score
 
 
-def vault_payload(user: dict, search: str = "", folder: str = "", tag: str = "") -> dict:
+def vault_payload(user: dict, search: str = "", folder: str = "", tag: str = "", client: str = "") -> dict:
     index_payload = _vault_load_index(user["id"])
     files = list(index_payload.get("files") or [])
     query = str(search or "").strip().lower()
     folder_filter = str(folder or "").strip().lower()
     tag_filter = str(tag or "").strip().lower()
+    client_filter = str(client or "").strip().lower()
     if folder_filter:
         files = [row for row in files if str(row.get("folder") or "").strip().lower() == folder_filter]
     if tag_filter:
@@ -33701,6 +33823,15 @@ def vault_payload(user: dict, search: str = "", folder: str = "", tag: str = "")
             row
             for row in files
             if any(str(item or "").strip().lower() == tag_filter for item in (row.get("tags") or []))
+        ]
+    if client_filter:
+        files = [
+            row
+            for row in files
+            if (
+                client_filter in str(row.get("clientId") or "").strip().lower()
+                or client_filter in str(row.get("clientName") or "").strip().lower()
+            )
         ]
     if query:
         files = [row for row in files if _vault_search_rank(row, query) > 0]
@@ -33724,6 +33855,8 @@ def vault_payload(user: dict, search: str = "", folder: str = "", tag: str = "")
             "filteredFiles": len(files),
             "totalFolders": len(folders),
             "totalTags": len(tags),
+            "matchedClientFiles": len([row for row in (index_payload.get("files") or []) if str(row.get("clientMatchStatus") or "").lower() == "matched"]),
+            "unmatchedClientFiles": len([row for row in (index_payload.get("files") or []) if str(row.get("clientMatchStatus") or "").lower() != "matched"]),
             "lastActivityAt": (index_payload.get("activities") or [{}])[0].get("at", "") if index_payload.get("activities") else "",
         },
     }
@@ -33733,6 +33866,7 @@ async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: di
     manifest_by_hash = manifest_by_hash or {}
     index_payload = _vault_load_index(user["id"])
     file_rows = list(index_payload.get("files") or [])
+    register_rows = _vault_register_rows_for_user(user)
     existing_hash_map = {str(row.get("sha256") or ""): row for row in file_rows if str(row.get("sha256") or "")}
     now_iso = utcnow().isoformat()
     uploaded_count = 0
@@ -33759,11 +33893,14 @@ async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: di
 
         extracted_text = _vault_extract_text(file_bytes, original_name, content_type)
         ai_suggestion = await _vault_ai_suggest_name(original_name, content_type, extracted_text)
+        client_match = _vault_match_client(register_rows, original_name, extracted_text, str(ai_suggestion.get("summary") or ""))
         suggested_name = _vault_clean_filename(
             str(manifest.get("name") or ai_suggestion.get("filename") or original_name),
             default_ext=os.path.splitext(original_name)[1],
         )
-        suggested_folder = str(manifest.get("folder") or ai_suggestion.get("folder") or _vault_default_folder(original_name, extracted_text)).strip() or "Inbox"
+        manual_folder = str(manifest.get("folder") or "").strip()
+        auto_client_folder = _vault_client_folder_name(str(client_match.get("clientName") or "")) if client_match else ""
+        suggested_folder = manual_folder or auto_client_folder or str(ai_suggestion.get("folder") or _vault_default_folder(original_name, extracted_text)).strip() or "Inbox"
         summary = str(manifest.get("summary") or ai_suggestion.get("summary") or "").strip()
         source = str(manifest.get("source") or ai_suggestion.get("source") or "unknown").strip().lower() or "unknown"
         tag_list = manifest.get("tags") if isinstance(manifest.get("tags"), list) else ai_suggestion.get("tags")
@@ -33779,6 +33916,22 @@ async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: di
                 break
         if not tags:
             tags = _vault_default_tags(suggested_name, extracted_text, suggested_folder)
+        if client_match:
+            tags = ["Client Vault", *tags]
+            deduped_tags: list[str] = []
+            seen_tags: set[str] = set()
+            for tag in tags:
+                clean_tag = str(tag or "").strip()
+                if not clean_tag:
+                    continue
+                key = clean_tag.casefold()
+                if key in seen_tags:
+                    continue
+                seen_tags.add(key)
+                deduped_tags.append(clean_tag[:24])
+                if len(deduped_tags) >= 6:
+                    break
+            tags = deduped_tags
 
         file_id = str(uuid4())
         ext = os.path.splitext(suggested_name)[1] or os.path.splitext(original_name)[1]
@@ -33801,6 +33954,10 @@ async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: di
             "sha256": sha_value,
             "storagePath": storage_name,
             "textIndex": (extracted_text or "")[:VAULT_MAX_INDEX_CHARS],
+            "clientId": str(client_match.get("clientId") or "") if client_match else "",
+            "clientName": str(client_match.get("clientName") or "") if client_match else "",
+            "clientMatchStatus": str(client_match.get("clientMatchStatus") or "unmatched") if client_match else "unmatched",
+            "clientMatchConfidence": float(client_match.get("clientMatchConfidence") or 0) if client_match else 0,
         }
         file_rows.append(row)
         existing_hash_map[sha_value] = row
@@ -33808,6 +33965,14 @@ async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: di
         _vault_activity(index_payload, "upload", f"Uploaded {suggested_name}", f"Stored in {suggested_folder}.", file_id)
         _vault_activity(index_payload, "organize", f"Created/updated folder {suggested_folder}", "Jenius organized file placement.", file_id)
         _vault_activity(index_payload, "tag", f"Assigned tags to {suggested_name}", ", ".join(tags), file_id)
+        if client_match:
+            _vault_activity(
+                index_payload,
+                "client-match",
+                f"Matched {suggested_name} to {client_match.get('clientName')}",
+                f"Confidence {int(float(client_match.get('clientMatchConfidence') or 0) * 100)}%",
+                file_id,
+            )
         if str(original_name).strip() != suggested_name:
             _vault_activity(index_payload, "rename", f"Renamed {original_name}", f"New filename: {suggested_name}", file_id)
 
@@ -33829,6 +33994,14 @@ def vault_file_content(user: dict, file_id: str) -> tuple[bytes, str, str]:
     storage_path = _vault_files_dir(user["id"]) / storage_name
     if not storage_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vault file content is unavailable.")
+    _vault_activity(
+        index_payload,
+        "open",
+        f"Opened {str(row.get('displayName') or row.get('originalName') or 'file')}",
+        str(row.get("folder") or "Inbox"),
+        str(row.get("id") or ""),
+    )
+    _vault_save_index(user["id"], index_payload)
     return storage_path.read_bytes(), str(row.get("displayName") or row.get("originalName") or "file"), _vault_content_type(str(row.get("displayName") or row.get("originalName") or ""), row.get("contentType"))
 
 
@@ -33857,6 +34030,47 @@ def vault_delete_file(user: dict, file_id: str) -> dict:
     _vault_activity(index_payload, "delete", f"Deleted {display_name}", f"Removed from {folder_name}.", target_id)
     _vault_save_index(user["id"], index_payload)
     return {"deletedFileId": target_id, **vault_payload(user)}
+
+
+def vault_assign_files_to_client(user: dict, file_ids: list[str], client_query: str) -> dict:
+    selected_ids = [str(item or "").strip() for item in (file_ids or []) if str(item or "").strip()]
+    if not selected_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one Vault file to assign.")
+    register_rows = _vault_register_rows_for_user(user)
+    target_client = _vault_resolve_client_query(register_rows, client_query)
+    if not target_client:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No client register row matched that client reference.")
+
+    index_payload = _vault_load_index(user["id"])
+    files = list(index_payload.get("files") or [])
+    touched = 0
+    for row in files:
+        row_id = str(row.get("id") or "").strip()
+        if row_id not in selected_ids:
+            continue
+        row["clientId"] = str(target_client.get("clientId") or "")
+        row["clientName"] = str(target_client.get("clientName") or "")
+        row["clientMatchStatus"] = "matched"
+        row["clientMatchConfidence"] = 0.95
+        row["folder"] = _vault_client_folder_name(str(target_client.get("clientName") or "Client"))
+        tag_list = list(row.get("tags") or [])
+        if not any(str(tag or "").strip().casefold() == "client vault" for tag in tag_list):
+            tag_list.insert(0, "Client Vault")
+        row["tags"] = [str(tag).strip()[:24] for tag in tag_list if str(tag).strip()][:6]
+        touched += 1
+        _vault_activity(
+            index_payload,
+            "assign",
+            f"Assigned {row.get('displayName') or row.get('originalName') or 'file'} to {target_client.get('clientName')}",
+            f"Client ID {target_client.get('clientId') or '--'}",
+            row_id,
+        )
+
+    if touched <= 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No matching Vault files were found for assignment.")
+    index_payload["files"] = files
+    _vault_save_index(user["id"], index_payload)
+    return {"assignedCount": touched, **vault_payload(user)}
 
 
 def run_ignition_sync_job(user: dict, sync_run_id: str) -> None:

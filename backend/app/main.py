@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -284,6 +284,7 @@ from .services import (
     start_juksib_automation_worker,
     update_juksib_automation_settings,
     vault_analyze_files,
+    vault_assign_files_to_client,
     vault_delete_file,
     vault_file_content,
     vault_payload,
@@ -295,6 +296,14 @@ from .services import (
     _process_bank_statement_upload,
 )
 from .usage_metrics import deployment_updates_payload, usage_detail_payload, usage_overview_payload
+from .foxit_esign import (
+    FoxitESignConfigurationError,
+    foxit_esign_cancel_request,
+    foxit_esign_configured,
+    foxit_esign_resend_request,
+    foxit_esign_send_request,
+    foxit_esign_status_request,
+)
 from .ignition import (
     IgnitionConfigurationError,
     create_pkce_verifier,
@@ -4052,9 +4061,10 @@ def api_vault(
     search: str = Query("", alias="search"),
     folder: str = Query("", alias="folder"),
     tag: str = Query("", alias="tag"),
+    client: str = Query("", alias="client"),
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", **vault_payload(user, search=search, folder=folder, tag=tag)}
+    return {"status": "ok", **vault_payload(user, search=search, folder=folder, tag=tag, client=client)}
 
 
 @app.post("/api/vault/analyze")
@@ -4108,6 +4118,13 @@ def api_vault_file_content(file_id: str, user: dict = Depends(require_panel_user
 @app.delete("/api/vault/files/{file_id}")
 def api_vault_delete_file(file_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", **vault_delete_file(user, file_id)}
+
+
+@app.post("/api/vault/assign")
+def api_vault_assign(payload: dict | None = Body(default=None), user: dict = Depends(require_panel_user)):
+    file_ids = payload.get("fileIds") if isinstance(payload, dict) else []
+    client_query = payload.get("client") if isinstance(payload, dict) else ""
+    return {"status": "ok", **vault_assign_files_to_client(user, file_ids if isinstance(file_ids, list) else [], str(client_query or ""))}
 
 
 @app.post("/api/ignition/renewals/populate-client-ids")
@@ -4976,6 +4993,420 @@ async def api_override_bank_statement_transaction(transaction_id: str, request: 
 async def api_categorise_bank_statement_transactions(account_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "bankStatements": categorise_bank_statement_transactions(user, account_id, payload)}
+
+
+ESIGN_OUTSTANDING_STATUSES = ("draft", "prepared", "sent", "viewed")
+ESIGN_COMPLETED_STATUSES = ("signed", "completed")
+
+
+def _parse_esign_due_date(raw_value) -> str | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).date().isoformat()
+    except ValueError:
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Due date must be in YYYY-MM-DD format.") from exc
+
+
+def _serialise_esign_row(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "clientId": str(row.get("client_id") or ""),
+        "clientName": str(row.get("client_name") or ""),
+        "documentType": str(row.get("document_type") or ""),
+        "documentTitle": str(row.get("document_title") or ""),
+        "recipientName": str(row.get("recipient_name") or ""),
+        "recipientEmail": str(row.get("recipient_email") or ""),
+        "message": str(row.get("message") or ""),
+        "status": str(row.get("status") or "sent"),
+        "dueDate": row.get("due_date").isoformat() if row.get("due_date") else None,
+        "sentAt": row.get("sent_at").isoformat() if row.get("sent_at") else None,
+        "viewedAt": row.get("viewed_at").isoformat() if row.get("viewed_at") else None,
+        "completedAt": row.get("completed_at").isoformat() if row.get("completed_at") else None,
+        "cancelledAt": row.get("cancelled_at").isoformat() if row.get("cancelled_at") else None,
+        "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "externalProvider": str(row.get("external_provider") or "foxit_esign"),
+        "externalRequestId": str(row.get("external_request_id") or ""),
+    }
+
+
+def _fetch_esign_requests(status_filter: str = "all") -> list[dict]:
+    normalized = str(status_filter or "all").strip().lower()
+    where_clause = ""
+    params: tuple = ()
+    if normalized == "outstanding":
+        where_clause = "WHERE status = ANY(%s)"
+        params = (list(ESIGN_OUTSTANDING_STATUSES),)
+    elif normalized == "completed":
+        where_clause = "WHERE status = ANY(%s)"
+        params = (list(ESIGN_COMPLETED_STATUSES),)
+    elif normalized not in ("all", ""):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported e-sign status filter.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM esign_requests
+                {where_clause}
+                ORDER BY created_at DESC
+                """,
+                params,
+            )
+            rows = cursor.fetchall() or []
+    return [_serialise_esign_row(row) for row in rows]
+
+
+def _fetch_esign_request_by_id(request_id: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM esign_requests
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (request_id,),
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def _fetch_esign_request_by_external_id(external_request_id: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM esign_requests
+                WHERE external_request_id = %s
+                LIMIT 1
+                """,
+                (external_request_id,),
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def _is_local_esign_reference(external_request_id: str) -> bool:
+    value = str(external_request_id or "").strip().lower()
+    return value.startswith("mock_") or value.startswith("local_")
+
+
+def _normalise_esign_status(raw_status: str | None) -> str:
+    value = str(raw_status or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if value in {"draft", "prepared", "sent", "viewed", "signed", "completed", "declined", "expired", "cancelled", "failed"}:
+        return value
+    if value in {"in_progress", "processing", "out_for_signature", "waiting_for_signature"}:
+        return "sent"
+    if value in {"partially_signed"}:
+        return "viewed"
+    if value in {"done", "complete"}:
+        return "completed"
+    if value in {"canceled", "voided"}:
+        return "cancelled"
+    if value in {"rejected"}:
+        return "declined"
+    if value in {"error"}:
+        return "failed"
+    return "sent"
+
+
+def _build_foxit_create_payload(payload: dict, *, client_name: str, recipient_email: str, document_title: str) -> dict:
+    if isinstance(payload.get("foxitPayload"), dict):
+        return payload["foxitPayload"]
+    recipient_name = str(payload.get("recipientName") or "").strip() or client_name
+    document_type = str(payload.get("documentType") or "").strip() or "other"
+    message_text = str(payload.get("message") or "").strip()
+    due_date = _parse_esign_due_date(payload.get("dueDate"))
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    return {
+        "document": {
+            "title": document_title,
+            "type": document_type,
+        },
+        "recipients": [
+            {
+                "name": recipient_name,
+                "email": recipient_email,
+                "role": "signer",
+            }
+        ],
+        "message": message_text,
+        "dueDate": due_date,
+        "metadata": metadata,
+    }
+
+
+def _extract_foxit_status(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return "sent"
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    candidates = [
+        payload.get("status"),
+        payload.get("state"),
+        payload.get("event"),
+        data.get("status"),
+        data.get("state"),
+        data.get("event"),
+        payload.get("event_type"),
+        payload.get("eventType"),
+    ]
+    for candidate in candidates:
+        value = str(candidate or "").strip()
+        if value:
+            return _normalise_esign_status(value)
+    return "sent"
+
+
+def _update_esign_status_fields(request_id: str, status_value: str) -> None:
+    now = datetime.now(timezone.utc)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE esign_requests
+                SET status = %s,
+                    viewed_at = CASE
+                        WHEN %s = 'viewed' AND viewed_at IS NULL THEN %s
+                        ELSE viewed_at
+                    END,
+                    completed_at = CASE
+                        WHEN %s IN ('signed', 'completed') AND completed_at IS NULL THEN %s
+                        ELSE completed_at
+                    END,
+                    cancelled_at = CASE
+                        WHEN %s = 'cancelled' AND cancelled_at IS NULL THEN %s
+                        ELSE cancelled_at
+                    END,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (status_value, status_value, now, status_value, now, status_value, now, now, request_id),
+            )
+        connection.commit()
+
+
+@app.get("/api/esign/requests")
+async def api_esign_requests(status_filter: str = Query(default="all", alias="status"), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "requests": _fetch_esign_requests(status_filter)}
+
+
+@app.post("/api/esign/requests")
+async def api_create_esign_request(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "create e-sign requests")
+    payload = await request.json()
+    client_name = str(payload.get("clientName") or "").strip()
+    recipient_email = str(payload.get("recipientEmail") or "").strip()
+    document_title = str(payload.get("documentTitle") or "").strip()
+    if not client_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client name is required.")
+    if not recipient_email or "@" not in recipient_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A valid recipient email is required.")
+    if not document_title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document title is required.")
+    due_date = _parse_esign_due_date(payload.get("dueDate"))
+    send_immediately = bool(payload.get("sendImmediately", True))
+    provider_configured = foxit_esign_configured()
+    now = datetime.now(timezone.utc)
+    request_status = "prepared" if not send_immediately else "sent"
+    sent_at = now if send_immediately else None
+    external_request_id = f"local_{uuid4().hex}"
+    metadata_payload = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    metadata_payload = {**metadata_payload}
+    metadata_payload["providerConfigured"] = provider_configured
+    metadata_payload["foxitEnvironment"] = get_settings().foxit_env
+
+    if send_immediately and provider_configured:
+        foxit_payload = _build_foxit_create_payload(
+            payload,
+            client_name=client_name,
+            recipient_email=recipient_email,
+            document_title=document_title,
+        )
+        try:
+            provider_result = await foxit_esign_send_request(foxit_payload)
+            provider_request_id = str(provider_result.get("externalRequestId") or "").strip()
+            external_request_id = provider_request_id or f"foxit_pending_{uuid4().hex}"
+            request_status = _extract_foxit_status(provider_result.get("raw"))
+            sent_at = now if request_status in {"sent", "viewed", "signed", "completed"} else None
+            metadata_payload["foxitPayload"] = foxit_payload
+            metadata_payload["foxitResponse"] = provider_result.get("raw")
+        except FoxitESignConfigurationError as exc:
+            request_status = "prepared"
+            sent_at = None
+            metadata_payload["foxitWarning"] = str(exc)
+        except HTTPException as exc:
+            request_status = "failed"
+            sent_at = None
+            metadata_payload["foxitError"] = exc.detail
+            logger.warning("Foxit create request failed: %s", exc.detail)
+    elif send_immediately and not provider_configured:
+        request_status = "prepared"
+        sent_at = None
+        metadata_payload["foxitWarning"] = "Foxit credentials are not configured in this environment."
+
+    created_id = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO esign_requests (
+                    user_id,
+                    client_id,
+                    client_name,
+                    document_type,
+                    document_title,
+                    recipient_name,
+                    recipient_email,
+                    message,
+                    status,
+                    due_date,
+                    sent_at,
+                    external_provider,
+                    external_request_id,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'foxit_esign', %s, %s::jsonb, %s, %s
+                )
+                RETURNING id
+                """,
+                (
+                    user.get("id"),
+                    str(payload.get("clientId") or "").strip(),
+                    client_name,
+                    str(payload.get("documentType") or "").strip(),
+                    document_title,
+                    str(payload.get("recipientName") or "").strip(),
+                    recipient_email,
+                    str(payload.get("message") or "").strip(),
+                    request_status,
+                    due_date,
+                    sent_at,
+                    external_request_id,
+                    json.dumps(metadata_payload),
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone() or {}
+            created_id = str(row.get("id") or "")
+        connection.commit()
+    created = _fetch_esign_request_by_id(created_id)
+    if not created:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create e-sign request.")
+    response_payload = {"status": "ok", "request": _serialise_esign_row(created), "providerConfigured": provider_configured}
+    if request_status == "failed":
+        response_payload["warning"] = "Foxit send failed; request was saved in failed status."
+    return response_payload
+
+
+@app.post("/api/esign/requests/{request_id}/cancel")
+async def api_cancel_esign_request(request_id: str, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "cancel e-sign requests")
+    row = _fetch_esign_request_by_id(request_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="E-sign request not found.")
+    current_status = str(row.get("status") or "").strip().lower()
+    if current_status in ESIGN_COMPLETED_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed e-sign requests cannot be cancelled.")
+    external_request_id = str(row.get("external_request_id") or "").strip()
+    if external_request_id and not _is_local_esign_reference(external_request_id):
+        if not foxit_esign_configured():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Foxit eSign credentials are not configured.")
+        await foxit_esign_cancel_request(external_request_id)
+    _update_esign_status_fields(request_id, "cancelled")
+    updated = _fetch_esign_request_by_id(request_id)
+    return {"status": "ok", "request": _serialise_esign_row(updated or row)}
+
+
+@app.post("/api/esign/requests/{request_id}/resend")
+async def api_resend_esign_request(request_id: str, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "resend e-sign requests")
+    row = _fetch_esign_request_by_id(request_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="E-sign request not found.")
+    current_status = str(row.get("status") or "").strip().lower()
+    if current_status in ESIGN_COMPLETED_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed e-sign requests cannot be resent.")
+    if current_status == "cancelled":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled e-sign requests cannot be resent.")
+    external_request_id = str(row.get("external_request_id") or "").strip()
+    if external_request_id and not _is_local_esign_reference(external_request_id):
+        if not foxit_esign_configured():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Foxit eSign credentials are not configured.")
+        await foxit_esign_resend_request(external_request_id)
+    now = datetime.now(timezone.utc)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE esign_requests
+                SET status = 'sent',
+                    sent_at = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (now, now, request_id),
+            )
+        connection.commit()
+    updated = _fetch_esign_request_by_id(request_id)
+    return {"status": "ok", "request": _serialise_esign_row(updated or row)}
+
+
+@app.get("/api/esign/requests/{request_id}/status")
+async def api_esign_request_status(request_id: str, refresh: bool = Query(default=False), user: dict = Depends(require_panel_user)):
+    row = _fetch_esign_request_by_id(request_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="E-sign request not found.")
+    provider_payload = None
+    external_request_id = str(row.get("external_request_id") or "").strip()
+    if refresh and external_request_id and not _is_local_esign_reference(external_request_id) and foxit_esign_configured():
+        try:
+            provider_payload = await foxit_esign_status_request(external_request_id)
+            live_status = _extract_foxit_status(provider_payload)
+            _update_esign_status_fields(request_id, live_status)
+            row = _fetch_esign_request_by_id(request_id) or row
+        except HTTPException as exc:
+            logger.warning("Foxit status refresh failed for %s: %s", request_id, exc.detail)
+    return {
+        "status": "ok",
+        "request": _serialise_esign_row(row),
+        "providerStatus": provider_payload,
+    }
+
+
+@app.post("/api/webhooks/foxit-esign")
+async def api_foxit_esign_webhook(request: Request):
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook payload must be a JSON object.")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    external_request_id = str(
+        payload.get("requestId")
+        or payload.get("request_id")
+        or payload.get("documentId")
+        or payload.get("document_id")
+        or data.get("requestId")
+        or data.get("id")
+        or ""
+    ).strip()
+    if not external_request_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook payload did not include request ID.")
+    row = _fetch_esign_request_by_external_id(external_request_id)
+    if row is None:
+        return {"status": "ignored", "reason": "unknown_request_id", "requestId": external_request_id}
+    next_status = _extract_foxit_status(payload)
+    _update_esign_status_fields(str(row.get("id")), next_status)
+    return {"status": "ok", "requestId": external_request_id, "appliedStatus": next_status}
 
 
 @app.get("/api/supplier-reconciliation")
