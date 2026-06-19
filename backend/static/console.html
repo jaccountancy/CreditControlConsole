@@ -27859,10 +27859,11 @@
                 background: rgba(255, 255, 255, 0.64);
             }
             #clientAuthRegisterScreen #companiesHouseAuthCodeRegisterCard {
-                padding: 16px 18px;
-                border-radius: 16px;
-                border-color: rgba(61, 85, 130, 0.08);
-                box-shadow: 0 8px 16px rgba(30, 47, 77, 0.05);
+                padding: 12px 0;
+                border: 0;
+                border-radius: 0;
+                background: transparent;
+                box-shadow: none;
             }
             #clientAuthRegisterScreen .ch-register-client-page-topbar {
                 border-color: rgba(61, 85, 130, 0.08);
@@ -28031,7 +28032,38 @@
             .ch-register-client-page-main {
                 min-width: 0;
                 display: grid;
-                gap: 14px;
+                grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+                gap: 12px;
+                align-items: start;
+            }
+            .ch-register-client-page-main > [data-client-page-panel="client-info"] {
+                order: 1;
+                grid-column: 1;
+            }
+            .ch-register-client-page-main > .ch-register-client-overview {
+                order: 2;
+                grid-column: 2;
+                position: sticky;
+                top: 12px;
+                align-self: start;
+                margin: 0;
+            }
+            .ch-register-client-page-main > .ch-register-client-save-strip {
+                order: 3;
+                grid-column: 1 / -1;
+            }
+            .ch-register-client-page-main > .ch-register-client-write-banner {
+                order: 4;
+                grid-column: 1 / -1;
+            }
+            .ch-register-client-page-main > .ch-register-client-sync-strip,
+            .ch-register-client-page-main > .ch-register-client-page-inline-note {
+                order: 5;
+                grid-column: 1 / -1;
+            }
+            .ch-register-client-page-main > .ch-register-client-page-panel:not([data-client-page-panel="client-info"]) {
+                order: 6;
+                grid-column: 1 / -1;
             }
             body.client-register-sidebar-mode .ch-register-client-page-shell {
                 grid-template-columns: 1fr;
@@ -28078,6 +28110,16 @@
             @media (max-width: 1120px) {
                 .ch-register-client-page-shell {
                     grid-template-columns: 1fr;
+                }
+                .ch-register-client-page-main {
+                    grid-template-columns: 1fr;
+                }
+                .ch-register-client-page-main > .ch-register-client-overview {
+                    position: static;
+                    grid-column: 1;
+                }
+                .ch-register-client-page-main > [data-client-page-panel="client-info"] {
+                    grid-column: 1;
                 }
                 .ch-register-client-page-sidebar {
                     position: static;
@@ -36491,12 +36533,6 @@
                                             <button class="page-pill app-nav-button" type="button" data-client-page-tab="companies-house"><span class="tab-icon app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 10h2"></path><path d="M13 10h2"></path><path d="M9 14h2"></path><path d="M13 14h2"></path></svg></span><span class="app-nav-copy"><strong>Companies House</strong></span></button>
                                             <button class="page-pill app-nav-button" type="button" data-client-page-tab="juk-invoices"><span class="tab-icon app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10l2 2v16l-2-1-2 1-2-1-2 1-2-1-2 1V5l2-2z"></path><path d="M9 9h6"></path><path d="M9 13h6"></path></svg></span><span class="app-nav-copy"><strong>JUK Invoices</strong></span></button>
                                             </div>
-                                            <section class="ch-register-client-page-sidebar-fields" id="chRegisterClientPageSidebarFields">
-                                                <h5>Populated fields</h5>
-                                                <div class="ch-register-client-page-sidebar-fields-list" id="chRegisterClientPageSidebarFieldsList">
-                                                    <p class="ch-register-client-page-sidebar-fields-empty">Loading client fields...</p>
-                                                </div>
-                                            </section>
                                         </aside>
                                         <div class="ch-register-client-page-main">
                                     <section class="ch-register-client-overview" id="chRegisterClientOverviewCards">
@@ -118311,90 +118347,6 @@
                 return chFormatDateTime(raw);
             }
 
-            function clientRegisterSidebarFieldDisplayValue(value, options = {}) {
-                if (value == null) return "";
-                const raw = String(value).trim();
-                if (!raw) return "";
-                if (options.currency) {
-                    const amount = Number(raw);
-                    if (Number.isFinite(amount)) return formatCurrency(amount);
-                }
-                if (options.date) return formatDate(raw);
-                return raw;
-            }
-
-            function clientRegisterSidebarFieldEntries({ row = {}, services = {}, serviceDetails = {}, isIndividual = false, taskCount = 0 }) {
-                const entries = [];
-                const vatDetails = serviceDetails?.vat || {};
-                const payrollDetails = serviceDetails?.payroll || {};
-                const accountsReturns = serviceDetails?.accountsReturns || {};
-                const confirmationStatement = serviceDetails?.confirmationStatement || {};
-                const selfAssessmentDetails = serviceDetails?.selfAssessment || {};
-                const jukDetails = serviceDetails?.jukInvoices || {};
-                const push = (label, value, options = {}) => {
-                    const rendered = clientRegisterSidebarFieldDisplayValue(value, options);
-                    if (!rendered) return;
-                    entries.push({ label, value: rendered });
-                };
-                push("Client ID", row?.clientId);
-                push("Manager", row?.clientManager);
-                push("Email", row?.clientEmail);
-                push("Phone", row?.clientPhone);
-                push("Address", row?.clientAddress);
-                if (!isIndividual) {
-                    push("Company number", row?.companyNumber);
-                    push("Company UTR", row?.companyUtr);
-                    push("Company status", row?.companyStatus);
-                } else {
-                    push("Personal UTR", row?.personalUtr);
-                    push("Personal CH code", row?.filingAuthorityReference);
-                }
-                push("VAT number", vatDetails?.vatNumber || row?.vatNumber);
-                if (services?.vatReturns) {
-                    push("VAT frequency", vatDetails?.frequency);
-                    push("VAT period end", vatDetails?.periodEnd, { date: true });
-                    push("VAT due date", vatDetails?.nextReturnDueDate, { date: true });
-                }
-                if (services?.payroll) {
-                    push("PAYE reference", payrollDetails?.employersPayeReference);
-                    push("Accounts office", payrollDetails?.accountsOfficeReference);
-                    push("First payday", payrollDetails?.firstPayday, { date: true });
-                    push("RTI deadline", payrollDetails?.rtiDeadline, { date: true });
-                }
-                if (!isIndividual && (services?.accounts || services?.ct600Return)) {
-                    push("Year end", accountsReturns?.companyYearEnd, { date: true });
-                    push("Accounts due", accountsReturns?.accountsNextDueDate, { date: true });
-                }
-                if (!isIndividual && services?.confirmationStatement) {
-                    push("Statement date", confirmationStatement?.statementDate, { date: true });
-                    push("Statement due", confirmationStatement?.statementDueDate, { date: true });
-                }
-                if (isIndividual || services?.selfAssessmentReturn) {
-                    push("SA UTR", selfAssessmentDetails?.utr || row?.personalUtr);
-                    push("SA due date", selfAssessmentDetails?.nextReturnDueDate, { date: true });
-                }
-                push("JUK billing cycle", jukDetails?.billingCycle);
-                push("JUK outstanding", jukDetails?.outstandingAmount, { currency: true });
-                push("Tracked tasks", Number(taskCount || 0).toLocaleString("en-GB"));
-                return entries;
-            }
-
-            function renderClientRegisterClientPageSidebarFields({ row = {}, services = {}, serviceDetails = {}, isIndividual = false, taskCount = 0 }) {
-                const list = document.getElementById("chRegisterClientPageSidebarFieldsList");
-                if (!list) return;
-                const entries = clientRegisterSidebarFieldEntries({ row, services, serviceDetails, isIndividual, taskCount });
-                if (!entries.length) {
-                    list.innerHTML = '<p class="ch-register-client-page-sidebar-fields-empty">No populated fields yet.</p>';
-                    return;
-                }
-                list.innerHTML = entries.map((entry) => `
-                    <article class="ch-register-client-page-sidebar-field">
-                        <strong>${escapeHTML(entry.label || "Field")}</strong>
-                        <span>${escapeHTML(entry.value || "")}</span>
-                    </article>
-                `).join("");
-            }
-
             function renderClientRegisterClientPage() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const payload = clientPagePayload();
@@ -118772,17 +118724,6 @@
                     "chRegisterClientRelationshipSince",
                     `Client since ${incorporatedYear || "unknown"} · ${allTaskCount.toLocaleString("en-GB")} tracked task${allTaskCount === 1 ? "" : "s"}`
                 );
-                renderClientRegisterClientPageSidebarFields({
-                    row,
-                    services,
-                    serviceDetails: {
-                        ...serviceDetails,
-                        jukInvoices: juk,
-                    },
-                    isIndividual,
-                    taskCount: allTaskCount,
-                });
-
                 assignReadOnly("chRegisterClientInfoVatNumber", vatDetails.vatNumber || row?.vatNumber || "");
                 assignReadOnly("chRegisterClientInfoVatFrequency", vatDetails.frequency || "");
                 assignReadOnly("chRegisterClientInfoVatDue", vatDetails.nextReturnDueDate || "");
