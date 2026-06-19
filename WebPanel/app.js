@@ -1,5 +1,6 @@
 const STORAGE_KEY = "hymn-credit-control-ledger";
 const STORAGE_PREFIXES = [STORAGE_KEY, "creditControl.", "jenius-"];
+const CLIENT_MATCH_STORAGE_KEY = "hymn-credit-control-client-matches";
 const DEFAULT_API_BASE_URL = window.location.origin;
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
@@ -10,12 +11,17 @@ const emptyData = {
     selectedInvoice: null
 };
 const state = loadState();
+const initialStoredMatches = loadClientMatches();
+state.customers = (state.customers || [])
+    .map((customer) => normaliseCustomerIntegrations(customer))
+    .map((customer) => applyStoredMatch(customer, initialStoredMatches[customer.id]));
 let authRedirectScheduled = false;
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
 let selectedClientId = null;
 let activeView = "ledger";
 let searchTerm = "";
+let matchingSearchTerm = "";
 let clientFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
@@ -96,6 +102,41 @@ function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function loadClientMatches() {
+    try {
+        const raw = localStorage.getItem(CLIENT_MATCH_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistClientMatches() {
+    const payload = {};
+    state.customers.forEach((customer) => {
+        if (!customer?.id) return;
+        payload[customer.id] = {
+            xeroOrganisationId: customer.xeroOrganisationId || "",
+            ignitionClientId: customer.ignitionClientId || "",
+            xeroConnected: isTruthyConnectionFlag(customer.xeroConnected),
+            ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected)
+        };
+    });
+    localStorage.setItem(CLIENT_MATCH_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function isTruthyConnectionFlag(value) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value > 0;
+    if (typeof value === "string") {
+        const normalised = value.trim().toLowerCase();
+        return ["connected", "active", "true", "yes", "1"].includes(normalised);
+    }
+    return false;
+}
+
 function clearSensitiveState() {
     state.organisation = { ...emptyData.organisation };
     state.dashboard = { ...emptyData.dashboard };
@@ -120,20 +161,29 @@ function clearSensitiveStorage() {
             if (shouldRemove) keys.push(key);
         }
         keys.forEach((key) => localStorage.removeItem(key));
+        localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
     } catch {
         localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
     }
 }
 
 function replaceState(next) {
     const preservedInvoiceId = selectedInvoiceId;
     const localClientNotes = new Map(state.customers.map((customer) => [customer.id, customer.clientNotes || []]));
+    const localMatches = new Map(state.customers.map((customer) => [customer.id, {
+        xeroOrganisationId: customer.xeroOrganisationId || "",
+        ignitionClientId: customer.ignitionClientId || "",
+        xeroConnected: isTruthyConnectionFlag(customer.xeroConnected),
+        ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected)
+    }]));
+    const storedMatches = loadClientMatches();
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
     state.customers = next.customers.map((customer) => ({
-        ...customer,
+        ...normaliseCustomerIntegrations(customer),
         clientNotes: customer.clientNotes || localClientNotes.get(customer.id) || []
-    }));
+    })).map((customer) => applyStoredMatch(customer, storedMatches[customer.id] || localMatches.get(customer.id)));
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
     const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
@@ -141,6 +191,56 @@ function replaceState(next) {
     selectedInvoiceId = invoice?.id || null;
     selectedClientId = invoice?.customerId || selectedClientId;
     persistState();
+    persistClientMatches();
+}
+
+function normaliseCustomerIntegrations(customer) {
+    const integrations = customer?.integrations || {};
+    const xero = integrations.xero || customer?.xero || {};
+    const ignition = integrations.ignition || customer?.ignition || {};
+    const xeroOrganisationId = customer?.xeroOrganisationId
+        || customer?.xero_org_id
+        || customer?.xeroTenantId
+        || customer?.xero_tenant_id
+        || xero.organisationId
+        || xero.orgId
+        || xero.tenantId
+        || "";
+    const ignitionClientId = customer?.ignitionClientId
+        || customer?.ignition_client_id
+        || ignition.clientId
+        || ignition.id
+        || "";
+    const xeroConnected = isTruthyConnectionFlag(customer?.xeroConnected)
+        || isTruthyConnectionFlag(customer?.xero_connected)
+        || isTruthyConnectionFlag(xero?.connected)
+        || Boolean(xeroOrganisationId);
+    const ignitionConnected = isTruthyConnectionFlag(customer?.ignitionConnected)
+        || isTruthyConnectionFlag(customer?.ignition_connected)
+        || isTruthyConnectionFlag(ignition?.connected)
+        || Boolean(ignitionClientId);
+    return {
+        ...customer,
+        xeroOrganisationId,
+        ignitionClientId,
+        xeroConnected,
+        ignitionConnected
+    };
+}
+
+function applyStoredMatch(customer, stored) {
+    if (!stored) return customer;
+    const xeroOrganisationId = stored.xeroOrganisationId || customer.xeroOrganisationId || "";
+    const ignitionClientId = stored.ignitionClientId || customer.ignitionClientId || "";
+    const xeroConnected = isTruthyConnectionFlag(stored.xeroConnected) || Boolean(xeroOrganisationId) || customer.xeroConnected === true;
+    const ignitionConnected = isTruthyConnectionFlag(stored.ignitionConnected) || Boolean(ignitionClientId) || customer.ignitionConnected === true;
+    return {
+        ...customer,
+        xeroOrganisationId,
+        ignitionClientId,
+        xeroConnected,
+        ignitionConnected
+    };
 }
 
 function endpointURL(template, params = {}) {
@@ -608,8 +708,10 @@ function renderPagination(totalResults, totalPages, start, count) {
 function renderClientScreen() {
     const ledgerView = document.getElementById("ledgerView");
     const clientScreen = document.getElementById("clientScreen");
+    const settingsScreen = document.getElementById("settingsScreen");
     ledgerView.hidden = activeView !== "ledger";
     clientScreen.hidden = activeView !== "client";
+    settingsScreen.hidden = activeView !== "settings";
     if (activeView !== "client") return;
 
     const invoice = findInvoiceById(selectedInvoiceId);
@@ -629,6 +731,10 @@ function renderClientScreen() {
     const overdueCount = invoices.filter((item) => invoiceCategory(item) === "overdue").length;
     document.getElementById("clientStatusBadge").textContent = client ? `${openInvoices.length} open` : "Awaiting data";
     document.getElementById("clientStatusBadge").className = "status-badge";
+    const xeroConnected = client ? resolveIntegrationConnection(client, "xero") : false;
+    const ignitionConnected = client ? resolveIntegrationConnection(client, "ignition") : false;
+    renderConnectionBadge("clientXeroStatusBadge", "Connected to Xero", xeroConnected);
+    renderConnectionBadge("clientIgnitionStatusBadge", "Connected to Ignition", ignitionConnected);
 
     const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
@@ -654,6 +760,86 @@ function renderClientScreen() {
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
     renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
     renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+}
+
+function renderSettingsScreen() {
+    if (activeView !== "settings") return;
+    const tbody = document.getElementById("matchingTableBody");
+    if (!tbody) return;
+    const term = matchingSearchTerm.trim().toLowerCase();
+    const customers = state.customers.filter((customer) => {
+        if (!term) return true;
+        const haystack = [
+            customer.name,
+            customer.manager,
+            customer.contact,
+            customer.xeroOrganisationId,
+            customer.ignitionClientId
+        ].join(" ").toLowerCase();
+        return haystack.includes(term);
+    }).sort((a, b) => `${a.name || ""}`.localeCompare(`${b.name || ""}`));
+    tbody.innerHTML = "";
+    if (!customers.length) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td colspan="5"><p class="settings-empty">No clients match the current search.</p></td>`;
+        tbody.appendChild(row);
+        return;
+    }
+    customers.forEach((customer) => {
+        const row = document.createElement("tr");
+        const xeroConnected = resolveIntegrationConnection(customer, "xero");
+        const ignitionConnected = resolveIntegrationConnection(customer, "ignition");
+        row.innerHTML = `
+            <td>
+                <div class="settings-client-title">${customer.name || "Unnamed client"}</div>
+                <div class="settings-client-meta">${customer.manager || "Unassigned"} · ${customer.contact || customer.id || ""}</div>
+            </td>
+            <td><span class="status-badge ${xeroConnected ? "connected" : "disconnected"}">${xeroConnected ? "Connected" : "Not connected"}</span></td>
+            <td><span class="status-badge ${ignitionConnected ? "connected" : "disconnected"}">${ignitionConnected ? "Connected" : "Not connected"}</span></td>
+            <td>
+                <div class="settings-match-inputs">
+                    <input type="text" data-field="xeroOrganisationId" value="${escapeHTML(customer.xeroOrganisationId || "")}" placeholder="Xero organisation ID">
+                    <input type="text" data-field="ignitionClientId" value="${escapeHTML(customer.ignitionClientId || "")}" placeholder="Ignition client ID">
+                </div>
+            </td>
+            <td><button class="settings-save-match" type="button">Save match</button></td>
+        `;
+        const saveButton = row.querySelector(".settings-save-match");
+        saveButton.addEventListener("click", () => {
+            const xeroInput = row.querySelector('[data-field="xeroOrganisationId"]');
+            const ignitionInput = row.querySelector('[data-field="ignitionClientId"]');
+            customer.xeroOrganisationId = xeroInput?.value.trim() || "";
+            customer.ignitionClientId = ignitionInput?.value.trim() || "";
+            customer.xeroConnected = Boolean(customer.xeroOrganisationId);
+            customer.ignitionConnected = Boolean(customer.ignitionClientId);
+            persistState();
+            persistClientMatches();
+            renderAll();
+        });
+        tbody.appendChild(row);
+    });
+}
+
+function escapeHTML(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function renderConnectionBadge(targetId, label, connected) {
+    const badge = document.getElementById(targetId);
+    if (!badge) return;
+    badge.className = `status-badge ${connected ? "connected" : "disconnected"}`;
+    badge.textContent = `${label}: ${connected ? "Yes" : "No"}`;
+}
+
+function resolveIntegrationConnection(client, provider) {
+    if (!client) return false;
+    if (provider === "xero") return client.xeroConnected === true || Boolean(client.xeroOrganisationId);
+    return client.ignitionConnected === true || Boolean(client.ignitionClientId);
 }
 
 function renderClientInvoicePicker(invoices) {
@@ -763,6 +949,7 @@ function renderAll() {
     renderToolbarControls();
     renderInvoiceTable();
     renderClientScreen();
+    renderSettingsScreen();
 }
 
 function wireFilters() {
@@ -872,9 +1059,21 @@ function wireSyncButtons() {
 }
 
 function wireForms() {
+    document.getElementById("openSettingsButton").addEventListener("click", () => {
+        activeView = "settings";
+        renderAll();
+    });
+    document.getElementById("backToLedgerFromSettingsButton").addEventListener("click", () => {
+        activeView = "ledger";
+        renderAll();
+    });
     document.getElementById("backToLedgerButton").addEventListener("click", () => {
         activeView = "ledger";
         renderAll();
+    });
+    document.getElementById("matchingSearch").addEventListener("input", (event) => {
+        matchingSearchTerm = event.target.value || "";
+        renderSettingsScreen();
     });
     document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
         selectedInvoiceId = event.target.value;

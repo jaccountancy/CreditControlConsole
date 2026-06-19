@@ -24,6 +24,7 @@
                     <span class="sync-dot"></span>
                     <span id="syncStamp">Waiting for first sync</span>
                 </div>
+                <button class="ghost-button" id="openSettingsButton" type="button">Settings</button>
                 <a class="ghost-button action-link" id="connectXeroButton" href="/auth/xero/start?include_all_scopes=1">Connect Xero</a>
                 <button class="primary-button" id="primarySyncButton" type="button" disabled>Connect Xero to sync</button>
             </div>
@@ -105,7 +106,11 @@
                     <p class="detail-meta" id="clientMeta">Select an invoice from the ledger to open the client workspace.</p>
                 </div>
                 <div class="detail-actions">
-                    <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
+                    <div class="status-badge-stack">
+                        <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
+                        <div class="status-badge" id="clientXeroStatusBadge">Connected to Xero: No</div>
+                        <div class="status-badge" id="clientIgnitionStatusBadge">Connected to Ignition: No</div>
+                    </div>
                     <button class="primary-button save-client-button" id="saveClientChangesButton" type="button" hidden>Save Changes</button>
                     <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
                 </div>
@@ -258,6 +263,44 @@
                     <div class="mini-timeline" id="invoiceNotesTimeline"></div>
                 </section>
             </div>
+        </section>
+
+        <section class="settings-screen detail-card" id="settingsScreen" hidden>
+            <div class="detail-hero">
+                <div>
+                    <button class="text-button" id="backToLedgerFromSettingsButton" type="button">Back to ledger</button>
+                    <p class="eyebrow">Settings</p>
+                    <h2>Client Matching</h2>
+                    <p class="detail-meta">Map each client register record to Xero and Ignition so statuses are accurate across the workspace.</p>
+                </div>
+            </div>
+
+            <section class="detail-panel settings-matching-panel">
+                <div class="panel-heading settings-matching-head">
+                    <div>
+                        <p class="eyebrow">Matching register</p>
+                        <h3>Client register to integration mapping</h3>
+                    </div>
+                    <label class="search-wrap settings-search-wrap">
+                        <span class="search-icon">⌕</span>
+                        <input id="matchingSearch" type="search" placeholder="Search clients, manager, Xero org, Ignition client ID...">
+                    </label>
+                </div>
+                <div class="settings-table-wrap">
+                    <table class="settings-table">
+                        <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Xero</th>
+                                <th>Ignition</th>
+                                <th>Mapped IDs</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="matchingTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
         </section>
     </main>
 
