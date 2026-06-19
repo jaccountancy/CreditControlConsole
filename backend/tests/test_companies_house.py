@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import os
+import sys
 import unittest
 from datetime import date, datetime, timedelta
 from uuid import uuid4
+from pathlib import Path
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 os.environ.setdefault("PORT", "8000")
 os.environ.setdefault("BASE_URL", "https://example.com")
