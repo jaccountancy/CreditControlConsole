@@ -26953,8 +26953,25 @@
                 background: var(--blue-soft);
                 border-color: color-mix(in srgb, var(--blue) 35%, white);
             }
-            .submitted-employee-note-body { margin-top: 8px; max-width: 460px; }
-            .submitted-employee-note-body small { color: var(--muted); line-height: 1.45; display: block; white-space: normal; }
+            .submitted-employee-note-modal-panel {
+                width: min(860px, calc(100vw - 48px));
+            }
+            .submitted-employee-note-modal-meta {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.86rem;
+                font-weight: 700;
+            }
+            .submitted-employee-note-modal-body {
+                margin: 0;
+                padding: 14px 16px;
+                border-radius: 12px;
+                border: 1px solid var(--line);
+                background: var(--surface-soft);
+                color: var(--ink);
+                line-height: 1.55;
+                white-space: pre-wrap;
+            }
             .submitted-employee-preview-grid {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -44052,6 +44069,21 @@
                             </section>
                         </section>
                     </div>
+                    <div class="company-secretarial-modal" id="submittedEmployeeFormsNoteModal" hidden>
+                        <section class="company-secretarial-modal-panel submitted-employee-note-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsNoteTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Submitted Employee Forms</p>
+                                    <h4 id="submittedEmployeeFormsNoteTitle">Match reasoning</h4>
+                                    <p class="submitted-employee-note-modal-meta" id="submittedEmployeeFormsNoteMeta">Review matching notes for this row.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="submittedEmployeeFormsNoteCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <p class="submitted-employee-note-modal-body" id="submittedEmployeeFormsNoteBody">No note available.</p>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="clientCallStatsScreen" hidden>
                         <section class="detail-panel">
@@ -46243,8 +46275,7 @@
             let submittedEmployeeFormsWindowStartIso = "";
             let submittedEmployeeFormsLastSyncDiagnostics = null;
             let submittedEmployeeFormsPreviewRowId = "";
-            const submittedEmployeeFormsExpandedNotesStorageKey = `${STORAGE_KEY}:submitted-employee-forms-expanded-notes:v1`;
-            let submittedEmployeeFormsExpandedNoteRowIds = loadSubmittedEmployeeFormsExpandedNoteRowIds();
+            let submittedEmployeeFormsActiveNoteRowId = "";
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -57306,29 +57337,6 @@
                 wizardSyncButton.textContent = payrollHeadcountWizardState.syncing ? "Syncing..." : "Run payroll sync";
             }
 
-            function loadSubmittedEmployeeFormsExpandedNoteRowIds() {
-                try {
-                    const raw = localStorage.getItem(submittedEmployeeFormsExpandedNotesStorageKey);
-                    if (!raw) return new Set();
-                    const parsed = JSON.parse(raw);
-                    if (!Array.isArray(parsed)) return new Set();
-                    return new Set(parsed.map((value) => String(value || "").trim()).filter(Boolean));
-                } catch {
-                    return new Set();
-                }
-            }
-
-            function persistSubmittedEmployeeFormsExpandedNoteRowIds() {
-                try {
-                    localStorage.setItem(
-                        submittedEmployeeFormsExpandedNotesStorageKey,
-                        JSON.stringify([...submittedEmployeeFormsExpandedNoteRowIds])
-                    );
-                } catch {
-                    // Ignore storage failures.
-                }
-            }
-
             function submittedEmployeeFormsMatchedClientName(row) {
                 const direct = String(row?.xeroTenantName || "").trim();
                 if (direct) return direct;
@@ -57336,6 +57344,23 @@
                 const match = note.match(/matched employer '.*?' to ([^.]+)\./i);
                 if (match && match[1]) return String(match[1]).trim();
                 return "";
+            }
+
+            function renderSubmittedEmployeeFormsNoteModal(allRows = []) {
+                const noteModal = document.getElementById("submittedEmployeeFormsNoteModal");
+                const noteMeta = document.getElementById("submittedEmployeeFormsNoteMeta");
+                const noteBody = document.getElementById("submittedEmployeeFormsNoteBody");
+                if (!noteModal || !noteMeta || !noteBody) return;
+                const rows = Array.isArray(allRows) ? allRows : [];
+                const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsActiveNoteRowId || "").trim()) || null;
+                noteModal.hidden = !row;
+                if (!row) return;
+                const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
+                const received = formatDateTime(row?.receivedAt || row?.createdAt || "") || "--";
+                const status = String(row?.xeroStatus || "pending").replace(/-/g, " ");
+                const matchedClient = submittedEmployeeFormsMatchedClientName(row) || "No matched client";
+                noteMeta.textContent = `${employeeName} · ${received} · ${matchedClient} · ${status}`;
+                noteBody.textContent = String(row?.xeroNote || "").trim() || "No note available for this row.";
             }
 
             function renderSubmittedEmployeeFormsScreen() {
@@ -57349,7 +57374,9 @@
                 const clearSelectionButton = document.getElementById("submittedEmployeeFormsClearSelectionButton");
                 const previewModal = document.getElementById("submittedEmployeeFormsPreviewModal");
                 const previewCloseButton = document.getElementById("submittedEmployeeFormsPreviewCloseButton");
-                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton) return;
+                const noteModal = document.getElementById("submittedEmployeeFormsNoteModal");
+                const noteCloseButton = document.getElementById("submittedEmployeeFormsNoteCloseButton");
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !noteModal || !noteCloseButton) return;
                 summary.hidden = true;
                 summary.textContent = "";
 
@@ -57402,6 +57429,19 @@
                         }
                     });
                 }
+                if (noteCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    noteCloseButton.dataset.submittedEmployeeFormsWired = "true";
+                    noteCloseButton.addEventListener("click", () => {
+                        submittedEmployeeFormsActiveNoteRowId = "";
+                        renderSubmittedEmployeeFormsNoteModal([]);
+                    });
+                    noteModal.addEventListener("click", (event) => {
+                        if (event.target === noteModal) {
+                            submittedEmployeeFormsActiveNoteRowId = "";
+                            renderSubmittedEmployeeFormsNoteModal([]);
+                        }
+                    });
+                }
                 const gmail = submittedEmployeeFormsData?.gmail || {};
                 const gmailMessageLower = String(gmail?.message || "").trim().toLowerCase();
                 const gmailNeedsReconnect =
@@ -57428,6 +57468,7 @@
                         : "Step 2 of 2: Match employer name to a connected client workspace, then check Xero Payroll.";
                     tableBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
                     renderSubmittedEmployeeFormsPreviewModal([]);
+                    renderSubmittedEmployeeFormsNoteModal([]);
                     return;
                 }
 
@@ -57478,6 +57519,7 @@
                         : "";
                     tableBody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run Step 1 to pull emails where the subject starts with New Employee Details:.</p>${diagnosticsHtml}</div></td></tr>`;
                     renderSubmittedEmployeeFormsPreviewModal(allRows);
+                    renderSubmittedEmployeeFormsNoteModal(allRows);
                     return;
                 }
 
@@ -57498,7 +57540,6 @@
                         ? xeroStatus.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
                         : "Pending";
                     const note = String(row?.xeroNote || "").trim();
-                    const noteExpanded = rowId ? submittedEmployeeFormsExpandedNoteRowIds.has(rowId) : false;
                     return `
                         <tr>
                             <td><input type="checkbox" data-submitted-employee-form-select="${escapeHTML(rowId)}" ${selected ? "checked" : ""} ${submittedEmployeeFormsWizardStep <= 1 ? "disabled" : ""}></td>
@@ -57513,13 +57554,9 @@
                                     ? `<button
                                             class="submitted-employee-note-toggle"
                                             type="button"
-                                            data-submitted-employee-form-note-toggle="${escapeHTML(rowId)}"
-                                            aria-expanded="${noteExpanded ? "true" : "false"}"
+                                            data-submitted-employee-form-note-open="${escapeHTML(rowId)}"
                                             aria-label="Show match reasoning"
-                                        >?</button>
-                                        <div class="submitted-employee-note-body" data-submitted-employee-form-note-body="${escapeHTML(rowId)}" ${noteExpanded ? "" : "hidden"}>
-                                            <small>${escapeHTML(note)}</small>
-                                        </div>`
+                                        >?</button>`
                                     : `<small>--</small>`}
                             </td>
                         </tr>
@@ -57543,21 +57580,16 @@
                         renderSubmittedEmployeeFormsPreviewModal(allRows);
                     });
                 });
-                tableBody.querySelectorAll("[data-submitted-employee-form-note-toggle]").forEach((button) => {
+                tableBody.querySelectorAll("[data-submitted-employee-form-note-open]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        const rowId = String(button.dataset.submittedEmployeeFormNoteToggle || "").trim();
+                        const rowId = String(button.dataset.submittedEmployeeFormNoteOpen || "").trim();
                         if (!rowId) return;
-                        const body = tableBody.querySelector(`[data-submitted-employee-form-note-body="${rowId}"]`);
-                        if (!body) return;
-                        const nextExpanded = body.hidden;
-                        body.hidden = !nextExpanded;
-                        button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-                        if (nextExpanded) submittedEmployeeFormsExpandedNoteRowIds.add(rowId);
-                        else submittedEmployeeFormsExpandedNoteRowIds.delete(rowId);
-                        persistSubmittedEmployeeFormsExpandedNoteRowIds();
+                        submittedEmployeeFormsActiveNoteRowId = rowId;
+                        renderSubmittedEmployeeFormsNoteModal(rows);
                     });
                 });
                 renderSubmittedEmployeeFormsPreviewModal(allRows);
+                renderSubmittedEmployeeFormsNoteModal(allRows);
             }
 
             function renderSubmittedEmployeeFormsPreviewModal(allRows = []) {
