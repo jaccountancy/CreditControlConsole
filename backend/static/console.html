@@ -122332,6 +122332,38 @@
                 return `service-${String(serviceKey || "").trim()}`;
             }
 
+            function clientRegisterNormaliseServiceKey(serviceKey = "") {
+                const raw = String(serviceKey || "").trim();
+                if (!raw) return "";
+                if (raw.startsWith("service_")) return raw.slice("service_".length);
+                if (raw.startsWith("service")) {
+                    const suffix = raw.slice("service".length);
+                    if (suffix) return suffix.charAt(0).toLowerCase() + suffix.slice(1);
+                }
+                return raw;
+            }
+
+            function clientRegisterServiceStateLookup(servicesState = {}) {
+                const lookup = new Map();
+                Object.entries(servicesState || {}).forEach(([key, value]) => {
+                    if (!value) return;
+                    const rawKey = String(key || "").trim();
+                    if (!rawKey) return;
+                    const normalised = clientRegisterNormaliseServiceKey(rawKey);
+                    lookup.set(rawKey, true);
+                    if (normalised) lookup.set(normalised, true);
+                });
+                return lookup;
+            }
+
+            function clientRegisterServiceEnabled(servicesState = {}, serviceKey = "") {
+                const lookup = servicesState instanceof Map ? servicesState : clientRegisterServiceStateLookup(servicesState);
+                const rawKey = String(serviceKey || "").trim();
+                if (!rawKey) return false;
+                const normalised = clientRegisterNormaliseServiceKey(rawKey);
+                return lookup.get(rawKey) === true || (normalised ? lookup.get(normalised) === true : false);
+            }
+
             function clientRegisterHmrc648Cards(services = {}) {
                 const saEnabled = !!services?.selfAssessmentReturn;
                 const ctEnabled = !!services?.ct600Return || !!services?.accounts;
@@ -124372,6 +124404,7 @@
                 const isIndividualClient = clientRegisterIsIndividualClient(row);
                 const profileServices = profile?.services || {};
                 const servicesState = clientRegisterServiceState(profileServices, includeDraftServiceState);
+                const serviceLookup = clientRegisterServiceStateLookup(servicesState);
                 const baseTabs = [
                     { id: "client-info", label: "Client Info", icon: `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"></circle><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"></path></svg>` },
                     { id: "services", label: "Services Required", icon: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>` },
@@ -124402,7 +124435,7 @@
                 });
                 const coveredServiceKeys = new Set(visibilityFilteredCompositeTabs.flatMap((item) => item.keys));
                 const compositeTabs = visibilityFilteredCompositeTabs
-                    .filter((item) => item.keys.some((key) => !!servicesState[String(key || "")]))
+                    .filter((item) => item.keys.some((key) => clientRegisterServiceEnabled(serviceLookup, key)))
                     .map((item) => ({
                         id: item.id,
                         label: item.label,
@@ -124420,7 +124453,8 @@
                 const dynamicServiceTabs = visibleServiceDefinitions
                     .filter((service) => {
                         const key = String(service?.key || "");
-                        return !!servicesState[key] && !coveredServiceKeys.has(key);
+                        const normalisedKey = clientRegisterNormaliseServiceKey(key);
+                        return clientRegisterServiceEnabled(serviceLookup, key) && !coveredServiceKeys.has(normalisedKey);
                     })
                     .map((service) => {
                         const serviceKey = String(service?.key || "").trim();
@@ -126203,7 +126237,7 @@
                     servicesWrap.innerHTML = visibleServiceDefinitions.map((service) => `
                         <div class="ch-register-service-toggle">
                             <label for="chRegisterServiceToggle-${escapeHTML(service.key || "")}">${escapeHTML(service.label || service.key || "")}</label>
-                            <input type="checkbox" id="chRegisterServiceToggle-${escapeHTML(service.key || "")}" data-client-page-service="${escapeHTML(service.key || "")}" ${services?.[service.key] ? "checked" : ""}>
+                            <input type="checkbox" id="chRegisterServiceToggle-${escapeHTML(service.key || "")}" data-client-page-service="${escapeHTML(service.key || "")}" ${clientRegisterServiceEnabled(services, service?.key) ? "checked" : ""}>
                         </div>
                     `).join("");
                 }
@@ -126225,7 +126259,7 @@
                         : `<div class="empty-state"><p class="eyebrow">No HMRC services enabled</p><h4>Enable a service to begin</h4><p>Turn on a service in Services Required and save to start an HMRC 64-8/MTD submission.</p></div>`;
                 }
                 setClientRegisterClientPageEditingState(true);
-                renderClientRegisterClientPageTabs();
+                renderClientRegisterClientPageTabs({ includeDraftServiceState: true });
                 renderClientRegisterClientLinksPanel(payload || {});
                 wireClientRegisterClientPageAutosave();
                 renderClientRegisterClientPageVaultPanel();
