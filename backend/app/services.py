@@ -12053,6 +12053,27 @@ def _float(value) -> float:
     return float(value or 0)
 
 
+def _invoice_panel_category(invoice: dict) -> str:
+    category = str(invoice.get("panel_category") or invoice.get("category") or "").strip().lower()
+    if category in {"paid", "outstanding", "query", "overdue", "court", "bad-debt"}:
+        return category
+    control = str(invoice.get("control_status") or invoice.get("status") or "").lower()
+    amount_due = _float(invoice.get("amount_due"))
+    due_date = invoice.get("due_date") or invoice.get("invoice_date")
+    today = utcnow().date()
+    if amount_due <= 0 or "paid" in control:
+        return "paid"
+    if "bad debt" in control or "bad-debt" in control or "bad_debt" in control:
+        return "bad-debt"
+    if "court" in control or "legal" in control:
+        return "court"
+    if "query" in control or "queried" in control or "dispute" in control or "disputed" in control:
+        return "query"
+    if due_date and due_date < today:
+        return "overdue"
+    return "outstanding"
+
+
 def _serialize_timeline_items(rows: list[dict], title_key: str, body_key: str, stamp_key: str = "created_at") -> list[dict]:
     items = []
     for row in rows:
@@ -12096,6 +12117,7 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
         "badDebtCreditNoteId": invoice.get("bad_debt_credit_note_id") or "",
         "badDebtCreditNoteNumber": invoice.get("bad_debt_credit_note_number") or "",
         "badDebtCreditNoteAmount": _float(invoice.get("bad_debt_credit_note_amount")),
+        "category": _invoice_panel_category(invoice),
     }
     if detail:
         payload["notes"] = _serialize_timeline_items(detail["notes"], "full_name", "body")
@@ -13284,6 +13306,22 @@ def panel_payload(user: dict | None = None) -> dict:
     statuses_by_invoice: dict[str, list[dict]] = defaultdict(list)
     payments_by_customer: dict[str, list[dict]] = defaultdict(list)
     credit_totals_by_customer = {row["customer_id"]: row for row in credit_total_rows}
+    panel_summary_counts = {
+        "all": 0,
+        "paid": 0,
+        "query": 0,
+        "overdue": 0,
+        "court": 0,
+        "badDebt": 0,
+    }
+    panel_summary_totals = {
+        "all": 0.0,
+        "paid": 0.0,
+        "query": 0.0,
+        "overdue": 0.0,
+        "court": 0.0,
+        "badDebt": 0.0,
+    }
     for note in customer_note_rows:
         notes_by_customer.setdefault(note["customer_id"], []).append(note)
     for note in note_rows:
@@ -13302,6 +13340,26 @@ def panel_payload(user: dict | None = None) -> dict:
         overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
         invoice["late_payment"] = _late_payment_breakdown(float(invoice["amount_due"]), overdue_days)
         invoice["overdue_days"] = overdue_days
+        category = _invoice_panel_category(invoice)
+        invoice["panel_category"] = category
+        amount_due_value = _float(invoice.get("amount_due"))
+        panel_summary_counts["all"] += 1
+        panel_summary_totals["all"] += amount_due_value
+        if category == "paid":
+            panel_summary_counts["paid"] += 1
+            panel_summary_totals["paid"] += _float(invoice.get("total"))
+        elif category == "query":
+            panel_summary_counts["query"] += 1
+            panel_summary_totals["query"] += amount_due_value
+        elif category == "overdue":
+            panel_summary_counts["overdue"] += 1
+            panel_summary_totals["overdue"] += amount_due_value
+        elif category == "court":
+            panel_summary_counts["court"] += 1
+            panel_summary_totals["court"] += amount_due_value
+        elif category == "bad-debt":
+            panel_summary_counts["badDebt"] += 1
+            panel_summary_totals["badDebt"] += amount_due_value
         invoices_by_customer.setdefault(invoice["customer_id"], []).append(invoice)
 
     for customer_row in customer_rows:
@@ -13380,6 +13438,17 @@ def panel_payload(user: dict | None = None) -> dict:
                 sum((invoice.get("late_payment") or {}).get("interest", 0) for customer in customers for invoice in customer["invoices"]),
                 2,
             ),
+        },
+        "panelSummary": {
+            "counts": panel_summary_counts,
+            "totals": {
+                "all": round(panel_summary_totals["all"], 2),
+                "paid": round(panel_summary_totals["paid"], 2),
+                "query": round(panel_summary_totals["query"], 2),
+                "overdue": round(panel_summary_totals["overdue"], 2),
+                "court": round(panel_summary_totals["court"], 2),
+                "badDebt": round(panel_summary_totals["badDebt"], 2),
+            },
         },
         "customers": customers,
         "cacheStatus": cache_status,

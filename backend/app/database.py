@@ -355,6 +355,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     promised_date DATE,
     promise_status TEXT,
     control_status TEXT NOT NULL DEFAULT 'new',
+    panel_category TEXT NOT NULL DEFAULT 'outstanding',
     last_chased_at TIMESTAMPTZ,
     notes_summary TEXT,
     late_payment_charge_raised_at TIMESTAMPTZ,
@@ -383,6 +384,70 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_write_off_at TIMESTAMPTZ;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_id TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_number TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_amount NUMERIC(14, 2);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS panel_category TEXT NOT NULL DEFAULT 'outstanding';
+CREATE INDEX IF NOT EXISTS invoices_panel_category_idx ON invoices (panel_category);
+
+CREATE OR REPLACE FUNCTION derive_invoice_panel_category(
+    _control_status TEXT,
+    _status TEXT,
+    _amount_due NUMERIC,
+    _due_date DATE
+) RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    control_text TEXT := lower(COALESCE(_control_status, _status, ''));
+BEGIN
+    IF COALESCE(_amount_due, 0) <= 0 OR control_text LIKE '%paid%' THEN
+        RETURN 'paid';
+    END IF;
+    IF control_text LIKE '%bad debt%' OR control_text LIKE '%bad-debt%' OR control_text LIKE '%bad_debt%' THEN
+        RETURN 'bad-debt';
+    END IF;
+    IF control_text LIKE '%court%' OR control_text LIKE '%legal%' THEN
+        RETURN 'court';
+    END IF;
+    IF control_text LIKE '%query%' OR control_text LIKE '%queried%' OR control_text LIKE '%dispute%' OR control_text LIKE '%disputed%' THEN
+        RETURN 'query';
+    END IF;
+    IF COALESCE(_amount_due, 0) > 0 AND _due_date IS NOT NULL AND _due_date < CURRENT_DATE THEN
+        RETURN 'overdue';
+    END IF;
+    RETURN 'outstanding';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION invoices_panel_category_before_write()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.panel_category := derive_invoice_panel_category(
+        NEW.control_status,
+        NEW.status,
+        NEW.amount_due,
+        COALESCE(NEW.due_date, NEW.invoice_date)
+    );
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS invoices_panel_category_before_write ON invoices;
+CREATE TRIGGER invoices_panel_category_before_write
+BEFORE INSERT OR UPDATE OF control_status, status, amount_due, due_date, invoice_date
+ON invoices
+FOR EACH ROW
+EXECUTE FUNCTION invoices_panel_category_before_write();
+
+UPDATE invoices
+SET panel_category = derive_invoice_panel_category(
+    control_status,
+    status,
+    amount_due,
+    COALESCE(due_date, invoice_date)
+)
+WHERE panel_category IS NULL
+   OR panel_category = '';
 
 CREATE TABLE IF NOT EXISTS vat_return_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

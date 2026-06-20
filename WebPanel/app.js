@@ -6,6 +6,10 @@ const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
     organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
     dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
+    panelSummary: {
+        counts: { all: 0, paid: 0, query: 0, overdue: 0, court: 0, badDebt: 0 },
+        totals: { all: 0, paid: 0, query: 0, overdue: 0, court: 0, badDebt: 0 }
+    },
     customers: [],
     audit: [],
     selectedInvoice: null
@@ -26,6 +30,7 @@ let clientFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+let searchRenderFrame = null;
 let clientProfileBaseline = null;
 let clientProfileDraft = null;
 let clientProfileClientId = null;
@@ -87,6 +92,7 @@ function normaliseState(payload) {
     return {
         organisation: payload.organisation || emptyData.organisation,
         dashboard: payload.dashboard || emptyData.dashboard,
+        panelSummary: payload.panelSummary || emptyData.panelSummary,
         customers: Array.isArray(payload.customers) ? payload.customers : [],
         audit: Array.isArray(payload.audit) ? payload.audit : [],
         selectedInvoice: payload.selectedInvoice || null
@@ -180,6 +186,7 @@ function replaceState(next) {
     const storedMatches = loadClientMatches();
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
+    state.panelSummary = next.panelSummary || emptyData.panelSummary;
     state.customers = next.customers.map((customer) => ({
         ...normaliseCustomerIntegrations(customer),
         clientNotes: customer.clientNotes || localClientNotes.get(customer.id) || []
@@ -364,6 +371,10 @@ function findInvoiceById(invoiceId) {
 }
 
 function invoiceCategory(invoice) {
+    const cachedCategory = String(invoice?.category || "").trim().toLowerCase();
+    if (["paid", "outstanding", "query", "overdue", "court", "bad-debt"].includes(cachedCategory)) {
+        return cachedCategory;
+    }
     const control = `${invoice.controlStatus || invoice.status || ""}`.toLowerCase();
     const amountDue = Number(invoice.amountDue || 0);
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
@@ -598,9 +609,11 @@ function managerValues() {
     return [...new Set(state.customers.map((customer) => customer.manager || "Unassigned"))];
 }
 
-function filteredInvoices() {
-    return allInvoices().filter((invoice) => {
-        const matchesFilter = selectedFilter === "all" || invoiceCategory(invoice) === selectedFilter;
+function filteredInvoices(invoices = allInvoices()) {
+    const searchTermLower = searchTerm.trim().toLowerCase();
+    return invoices.filter((invoice) => {
+        const category = invoiceCategory(invoice);
+        const matchesFilter = selectedFilter === "all" || category === selectedFilter;
         const blob = [
             invoice.customerName,
             invoice.customerContact,
@@ -610,8 +623,8 @@ function filteredInvoices() {
             invoice.status,
             invoice.controlStatus
         ].join(" ").toLowerCase();
-        const matchesSearch = blob.includes(searchTerm.toLowerCase());
-        const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(invoiceCategory(invoice));
+        const matchesSearch = blob.includes(searchTermLower);
+        const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(category);
         const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
         return matchesFilter && matchesSearch && matchesClient;
     }).sort(compareInvoices);
@@ -645,24 +658,50 @@ function formatCompactCurrency(value) {
     return `${sign}${formatCurrency(absolute).replace(".00", "")}`;
 }
 
-function renderSummaryCounts() {
-    const invoices = allInvoices();
+function renderSummaryCounts(invoices = allInvoices()) {
+    const panelSummary = state.panelSummary || {};
+    const summaryCounts = panelSummary.counts || {};
+    const summaryTotals = panelSummary.totals || {};
+    const hasPrecomputedSummary = typeof summaryCounts.all === "number" && typeof summaryTotals.all === "number";
     const counts = {
-        all: invoices.length,
-        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
-        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").length,
-        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
-        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
-        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").length,
+        all: hasPrecomputedSummary ? Number(summaryCounts.all || 0) : invoices.length,
+        paid: hasPrecomputedSummary ? Number(summaryCounts.paid || 0) : 0,
+        query: hasPrecomputedSummary ? Number(summaryCounts.query || 0) : 0,
+        overdue: hasPrecomputedSummary ? Number(summaryCounts.overdue || 0) : 0,
+        court: hasPrecomputedSummary ? Number(summaryCounts.court || 0) : 0,
+        badDebt: hasPrecomputedSummary ? Number(summaryCounts.badDebt || 0) : 0,
     };
     const totals = {
-        all: invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
-        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        all: hasPrecomputedSummary ? Number(summaryTotals.all || 0) : 0,
+        paid: hasPrecomputedSummary ? Number(summaryTotals.paid || 0) : 0,
+        query: hasPrecomputedSummary ? Number(summaryTotals.query || 0) : 0,
+        overdue: hasPrecomputedSummary ? Number(summaryTotals.overdue || 0) : 0,
+        court: hasPrecomputedSummary ? Number(summaryTotals.court || 0) : 0,
+        badDebt: hasPrecomputedSummary ? Number(summaryTotals.badDebt || 0) : 0,
     };
+    if (!hasPrecomputedSummary) {
+        invoices.forEach((invoice) => {
+            const category = invoiceCategory(invoice);
+            const amountDue = Number(invoice.amountDue || 0);
+            totals.all += amountDue;
+            if (category === "paid") {
+                counts.paid += 1;
+                totals.paid += Number(invoice.total || 0);
+            } else if (category === "query") {
+                counts.query += 1;
+                totals.query += amountDue;
+            } else if (category === "overdue") {
+                counts.overdue += 1;
+                totals.overdue += amountDue;
+            } else if (category === "court") {
+                counts.court += 1;
+                totals.court += amountDue;
+            } else if (category === "bad-debt") {
+                counts.badDebt += 1;
+                totals.badDebt += amountDue;
+            }
+        });
+    }
     document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
     document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
     document.getElementById("countQuery").textContent = counts.query.toLocaleString("en-GB");
@@ -691,13 +730,13 @@ function renderToolbarControls() {
     });
 }
 
-function renderInvoiceTable() {
+function renderInvoiceTable(invoices = allInvoices()) {
     const tbody = document.getElementById("invoiceTableBody");
-    const invoices = filteredInvoices();
-    const pages = Math.max(1, Math.ceil(invoices.length / pageSize));
+    const filtered = filteredInvoices(invoices);
+    const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
     currentPage = Math.min(currentPage, pages);
     const start = (currentPage - 1) * pageSize;
-    const paged = invoices.slice(start, start + pageSize);
+    const paged = filtered.slice(start, start + pageSize);
     tbody.innerHTML = "";
     if (!paged.length) {
         const row = document.createElement("tr");
@@ -734,7 +773,7 @@ function renderInvoiceTable() {
             tbody.appendChild(row);
         });
     }
-    renderPagination(invoices.length, pages, start, paged.length);
+    renderPagination(filtered.length, pages, start, paged.length);
 }
 
 function renderPagination(totalResults, totalPages, start, count) {
@@ -999,12 +1038,23 @@ function isXeroConnected() {
 }
 
 function renderAll() {
+    const invoices = allInvoices();
     renderChrome();
-    renderSummaryCounts();
+    renderSummaryCounts(invoices);
     renderToolbarControls();
-    renderInvoiceTable();
+    renderInvoiceTable(invoices);
     renderClientScreen();
     renderSettingsScreen();
+}
+
+function scheduleLedgerTableRender() {
+    if (searchRenderFrame !== null) {
+        window.cancelAnimationFrame(searchRenderFrame);
+    }
+    searchRenderFrame = window.requestAnimationFrame(() => {
+        searchRenderFrame = null;
+        renderInvoiceTable();
+    });
 }
 
 function wireFilters() {
@@ -1018,7 +1068,7 @@ function wireFilters() {
     document.getElementById("ledgerSearch").addEventListener("input", (event) => {
         searchTerm = event.target.value;
         currentPage = 1;
-        renderInvoiceTable();
+        scheduleLedgerTableRender();
     });
     document.getElementById("sortButton").addEventListener("click", () => toggleToolbarMenu("sortMenu", "sortButton"));
     document.getElementById("filterButton").addEventListener("click", () => toggleToolbarMenu("filterMenu", "filterButton"));
@@ -1214,6 +1264,7 @@ function wireForms() {
             match.invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
         });
         document.getElementById("bulkStatusNote").value = "";
+        state.panelSummary = null;
         persistState();
         renderAll();
         try {
