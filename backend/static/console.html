@@ -37233,6 +37233,7 @@
                                         </ul>
                                         <div class="gmail-connection-actions">
                                             <a class="ghost-button action-link" id="connectGmailButton" href="/auth/gmail/start">Connect Gmail</a>
+                                            <button class="ghost-button" id="disconnectGmailButton" type="button">Disconnect Gmail</button>
                                             <button class="ghost-button" id="openMeReportEmailSettingsButton" type="button">Open ME email settings</button>
                                         </div>
                                     </div>
@@ -47719,6 +47720,7 @@
                         meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
                         meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
+                        gmailDisconnect: config.endpoints?.gmailDisconnect || "/api/gmail/disconnect",
                         codeBreakerWorkspaceSnapshot: config.endpoints?.codeBreakerWorkspaceSnapshot || "/api/code-breaker/workspace-snapshot",
                         microAnalyzerClients: config.endpoints?.microAnalyzerClients || "/api/micro-analyzer/clients",
                         vault: config.endpoints?.vault || "/api/vault",
@@ -83548,11 +83550,17 @@
                                 : "Gmail is connected but ME Report is still set to SMTP. Switch provider in ME email settings to use Gmail.";
                 }
                 const gmailLink = document.getElementById("connectGmailButton");
+                const gmailDisconnectButton = document.getElementById("disconnectGmailButton");
                 if (gmailLink) {
                     gmailLink.href = endpointURL("/auth/gmail/start?redirect_to=/");
                     gmailLink.textContent = gmail.connected ? "Reconnect Gmail" : "Connect Gmail";
                     gmailLink.classList.toggle("is-disabled", !gmail.configured);
                     gmailLink.setAttribute("aria-disabled", String(!gmail.configured));
+                }
+                if (gmailDisconnectButton) {
+                    gmailDisconnectButton.hidden = !gmail.connected;
+                    gmailDisconnectButton.disabled = !gmail.connected;
+                    gmailDisconnectButton.textContent = gmail.connected ? "Disconnect Gmail" : "Disconnect Gmail";
                 }
             }
 
@@ -116026,6 +116034,23 @@
                     if (connectGmailButton.getAttribute("aria-disabled") === "true") {
                         event.preventDefault();
                         showToast("Add Gmail OAuth credentials before connecting Gmail", "error");
+                    }
+                });
+                const disconnectGmailButton = document.getElementById("disconnectGmailButton");
+                if (disconnectGmailButton) disconnectGmailButton.addEventListener("click", async () => {
+                    const confirmed = window.confirm("Disconnect this Gmail mailbox and forget saved tokens? You can reconnect as a different account.");
+                    if (!confirmed) return;
+                    disconnectGmailButton.disabled = true;
+                    try {
+                        await requestJSON(api.endpoints.gmailDisconnect, {
+                            method: "POST"
+                        });
+                        showToast("Gmail disconnected. You can now connect using a different mailbox.", "success");
+                        await loadMeReport(true);
+                    } catch (error) {
+                        showToast(resolveErrorMessage(error, "Could not disconnect Gmail."), "error");
+                    } finally {
+                        disconnectGmailButton.disabled = false;
                     }
                 });
                 const openMeReportEmailSettingsButton = document.getElementById("openMeReportEmailSettingsButton");

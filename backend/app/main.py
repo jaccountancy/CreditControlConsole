@@ -111,6 +111,7 @@ from .services import (
     customer_detail,
     customer_xero_transactions,
     dashboard_payload,
+    disconnect_gmail_connection,
     disconnect_xero,
     delete_bank_statement_client,
     delete_bank_statement_upload,
@@ -4982,6 +4983,11 @@ async def api_sync_submitted_employee_forms(request: Request, user: dict = Depen
 async def api_update_me_report_settings(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **update_me_report_settings(user, payload)}
+
+
+@app.post("/api/gmail/disconnect")
+async def api_disconnect_gmail(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **disconnect_gmail_connection(user)}
 
 
 @app.post("/api/me-report/bulk-submissions")

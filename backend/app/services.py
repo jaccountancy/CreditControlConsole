@@ -15312,8 +15312,17 @@ def _gmail_oauth_secret_value(value: str | None) -> str:
 
 
 def _gmail_env_alias_value(*keys: str) -> str:
+    normalised_lookup: dict[str, str] = {}
+    for env_key, env_value in os.environ.items():
+        normalised_key = "".join(character for character in str(env_key).upper() if character.isalnum())
+        if normalised_key and normalised_key not in normalised_lookup:
+            normalised_lookup[normalised_key] = str(env_value or "")
     for key in keys:
         candidate = _gmail_oauth_secret_value(os.getenv(key))
+        if candidate:
+            return candidate
+        normalised_key = "".join(character for character in str(key).upper() if character.isalnum())
+        candidate = _gmail_oauth_secret_value(normalised_lookup.get(normalised_key))
         if candidate:
             return candidate
     return ""
@@ -15457,6 +15466,38 @@ def store_gmail_connection(user: dict, token_payload: dict, profile: dict) -> di
         connection.commit()
     record_audit_event("gmail_connection", str(row["id"]), "gmail.connected", {"gmail_email": gmail_email}, user["id"])
     return row
+
+
+def disconnect_gmail_connection(user: dict) -> dict:
+    removed = False
+    previous_email = ""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM gmail_connections
+                WHERE user_id = %s
+                RETURNING gmail_email
+                """,
+                (user["id"],),
+            )
+            deleted = cursor.fetchone()
+        connection.commit()
+    if deleted:
+        removed = True
+        previous_email = str(deleted.get("gmail_email") or "").strip()
+    record_audit_event(
+        "gmail_connection",
+        str(user["id"]),
+        "gmail.disconnected",
+        {"removed": removed, "previous_email": previous_email},
+        user["id"],
+    )
+    return {
+        "removed": removed,
+        "previousEmail": previous_email,
+        "settings": _serialize_me_report_settings(_me_report_settings_row(user)),
+    }
 
 
 def gmail_connection_for_user(user: dict | str) -> dict | None:
