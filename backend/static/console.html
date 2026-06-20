@@ -25560,6 +25560,100 @@
                     grid-column: 1 / -1;
                 }
             }
+            .background-task-stack {
+                position: fixed;
+                right: max(12px, env(safe-area-inset-right));
+                bottom: max(124px, calc(env(safe-area-inset-bottom) + 88px));
+                z-index: 102;
+                display: grid;
+                gap: 10px;
+                width: min(360px, calc(100vw - 24px));
+            }
+            .background-task-card {
+                background: linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.95));
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                border-radius: 16px;
+                box-shadow: 0 18px 34px rgba(15, 34, 71, 0.16);
+                padding: 10px 12px;
+                display: grid;
+                gap: 8px;
+            }
+            .background-task-card.is-failed {
+                border-color: rgba(255, 83, 83, 0.34);
+            }
+            .background-task-card.is-completed {
+                border-color: rgba(39, 176, 95, 0.32);
+            }
+            .background-task-head {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                align-items: baseline;
+            }
+            .background-task-title {
+                font-size: 0.86rem;
+                font-weight: 900;
+                color: #162b4d;
+            }
+            .background-task-status {
+                font-size: 0.7rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: #35598d;
+            }
+            .background-task-message {
+                font-size: 0.82rem;
+                font-weight: 740;
+                color: #27416d;
+                line-height: 1.32;
+            }
+            .background-task-meta {
+                font-size: 0.72rem;
+                font-weight: 800;
+                color: #5f789f;
+            }
+            .background-task-progress {
+                width: 100%;
+                height: 6px;
+                border-radius: 999px;
+                background: rgba(58, 98, 164, 0.14);
+                overflow: hidden;
+            }
+            .background-task-progress > span {
+                display: block;
+                height: 100%;
+                background: linear-gradient(90deg, #1d67f2, #27b05f);
+                width: 0%;
+                transition: width 0.2s ease;
+            }
+            .background-task-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+            }
+            .background-task-action {
+                border: 1px solid rgba(42, 74, 122, 0.22);
+                background: rgba(255, 255, 255, 0.88);
+                color: #224271;
+                border-radius: 999px;
+                padding: 4px 10px;
+                font-size: 0.74rem;
+                font-weight: 800;
+                cursor: pointer;
+            }
+            .background-task-action.is-cancel {
+                border-color: rgba(255, 83, 83, 0.34);
+                color: #9a2731;
+            }
+            @media (max-width: 640px) {
+                .background-task-stack {
+                    left: 10px;
+                    right: 10px;
+                    bottom: max(126px, calc(env(safe-area-inset-bottom) + 92px));
+                    width: auto;
+                }
+            }
             .sync-progress-overlay {
                 position: fixed;
                 inset: 0;
@@ -45584,6 +45678,7 @@
                 </section>
 
                 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
+                <div class="background-task-stack" id="backgroundTaskStack" aria-live="polite" aria-atomic="false"></div>
 
                 <script>
             const STORAGE_KEY = "hymn-credit-control-ledger";
@@ -46327,6 +46422,7 @@
             let xeroRateLimitTimer = null;
             let activeSyncRunId = null;
             let latestSyncRun = null;
+            const backgroundTasks = new Map();
             let lastBrowserSyncLog = null;
             let lastPanelErrorSignature = "";
             let topbarNoticeTimer = null;
@@ -47247,7 +47343,9 @@
                         session: config.endpoints?.session || "/api/panel/session",
                         sync: config.endpoints?.sync || "/api/panel/sync",
                         syncStatus: config.endpoints?.syncStatus || "/api/panel/sync/:syncId",
+                        syncCancel: config.endpoints?.syncCancel || "/api/panel/sync/:syncId/cancel",
                         operationStatus: config.endpoints?.operationStatus || "/api/operations/:operationId",
+                        operationCancel: config.endpoints?.operationCancel || "/api/operations/:operationId/cancel",
                         developerLogs: config.endpoints?.developerLogs || "/api/developer/logs",
                         developerLogsClear: config.endpoints?.developerLogsClear || "/api/developer/logs/clear",
                         settingsUsage: config.endpoints?.settingsUsage || "/api/settings/usage",
@@ -47328,6 +47426,7 @@
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
+                        ignitionSyncCancel: config.endpoints?.ignitionSyncCancel || "/api/ignition/sync/:syncId/cancel",
                         ignitionConnect: config.endpoints?.ignitionConnect || "/api/ignition/connect?redirect_to=:redirectTo",
                         ignitionLogin: config.endpoints?.ignitionLogin || "/auth/ignition/start",
                         ignitionRenewals: config.endpoints?.ignitionRenewals || "/api/ignition/renewals",
@@ -81439,6 +81538,18 @@
                         summary: run.summary || `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${completedDatasets.toLocaleString("en-GB")} datasets · ${progress}% complete`
                     };
                 }
+                if (run?.id) {
+                    upsertBackgroundTask({
+                        id: run.id,
+                        kind: "ignition-sync",
+                        title: "Ignition sync",
+                        status: run.status || "running",
+                        message: run.currentStep || run.summary || "Syncing Ignition data...",
+                        progress,
+                        startedAt: run.startedAt || run.createdAt || "",
+                        isActive: run.isActive !== false && !["completed", "failed"].includes(String(run.status || "").toLowerCase()),
+                    });
+                }
                 renderSidebarSupportBubble();
                 renderIgnitionScreen();
             }
@@ -81450,6 +81561,18 @@
                 activeIgnitionSyncRunId = syncRun?.id || activeIgnitionSyncRunId;
                 ignitionSyncStartedAt = syncRunTimestamp(syncRun) || Date.now();
                 showSyncStatusToast("Ignition sync started.", "info");
+                if (syncRun?.id) {
+                    upsertBackgroundTask({
+                        id: syncRun.id,
+                        kind: "ignition-sync",
+                        title: "Ignition sync",
+                        status: syncRun.status || "running",
+                        message: syncRun.currentStep || syncRun.summary || "Ignition sync started.",
+                        progress: Number(syncRun.progress || 4),
+                        startedAt: syncRun.startedAt || syncRun.createdAt || new Date().toISOString(),
+                        isActive: true,
+                    });
+                }
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner?.dataset.syncContext === "ignition") {
                     inlineBanner.hidden = true;
@@ -81485,6 +81608,18 @@
             }
 
             function stopIgnitionSyncFeedback({ keepInlineBanner = false } = {}) {
+                if (latestIgnitionSyncRun?.id && ["completed", "failed"].includes(String(latestIgnitionSyncRun?.status || "").toLowerCase())) {
+                    upsertBackgroundTask({
+                        id: latestIgnitionSyncRun.id,
+                        kind: "ignition-sync",
+                        title: "Ignition sync",
+                        status: latestIgnitionSyncRun.status,
+                        message: latestIgnitionSyncRun.summary || latestIgnitionSyncRun.errorMessage || "Ignition sync finished.",
+                        progress: 100,
+                        startedAt: latestIgnitionSyncRun.startedAt || latestIgnitionSyncRun.createdAt || "",
+                        isActive: false,
+                    });
+                }
                 isIgnitionSyncing = false;
                 activeIgnitionSyncRunId = null;
                 if (!keepInlineBanner) latestIgnitionSyncRun = null;
@@ -81530,6 +81665,18 @@
                     }
                     if (syncRun?.status === "completed" || payload?.status === "completed") return payload;
                     if (syncRun?.status === "failed" || payload?.status === "failed") {
+                        if (syncRun?.id) {
+                            upsertBackgroundTask({
+                                id: syncRun.id,
+                                kind: "ignition-sync",
+                                title: "Ignition sync",
+                                status: syncRun.status || "failed",
+                                message: syncRun.errorMessage || syncRun.summary || "Ignition sync stopped.",
+                                progress: 100,
+                                startedAt: syncRun.startedAt || syncRun.createdAt || "",
+                                isActive: false,
+                            });
+                        }
                         throw new Error(syncRun?.errorMessage || "Ignition sync failed. Please try again.");
                     }
                 }
@@ -109003,6 +109150,121 @@
                 if (target) window.setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
             }
 
+            function backgroundTaskStatusLabel(status = "") {
+                const key = String(status || "").toLowerCase();
+                if (key === "completed") return "Completed";
+                if (key === "failed") return "Stopped";
+                if (key === "queued") return "Queued";
+                return "Running";
+            }
+
+            function backgroundTaskElapsedLabel(startedAt) {
+                const parsed = Date.parse(String(startedAt || ""));
+                if (!Number.isFinite(parsed)) return "";
+                const elapsed = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+                return `Elapsed ${formatSyncDuration(elapsed)}`;
+            }
+
+            function removeBackgroundTask(taskId = "") {
+                if (!taskId) return;
+                backgroundTasks.delete(taskId);
+                const stack = document.getElementById("backgroundTaskStack");
+                const card = stack?.querySelector(`[data-task-id="${CSS.escape(String(taskId))}"]`);
+                if (card) card.remove();
+            }
+
+            async function cancelBackgroundTask(task = {}) {
+                const id = String(task.id || "").trim();
+                const kind = String(task.kind || "").trim();
+                if (!id || !kind) return;
+                const cancelEndpoint = kind === "xero-sync"
+                    ? api.endpoints.syncCancel
+                    : kind === "ignition-sync"
+                        ? api.endpoints.ignitionSyncCancel
+                        : api.endpoints.operationCancel;
+                const routeParams = kind === "operation" ? { operationId: id } : { syncId: id };
+                try {
+                    await requestJSON(cancelEndpoint, { method: "POST", body: JSON.stringify({}) }, routeParams);
+                    showToast("Background task cancelled.", "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to cancel background task.", "error");
+                }
+            }
+
+            function upsertBackgroundTask(task = {}) {
+                const id = String(task.id || "").trim();
+                if (!id) return;
+                const mergedTask = {
+                    id,
+                    kind: String(task.kind || "task"),
+                    title: String(task.title || "Background task"),
+                    status: String(task.status || "running"),
+                    message: String(task.message || ""),
+                    progress: Math.min(100, Math.max(0, Number(task.progress || 0))),
+                    startedAt: String(task.startedAt || ""),
+                    isActive: task.isActive !== false && !["completed", "failed"].includes(String(task.status || "").toLowerCase()),
+                };
+                backgroundTasks.set(id, mergedTask);
+                const stack = document.getElementById("backgroundTaskStack");
+                if (!stack) return;
+                let card = stack.querySelector(`[data-task-id="${CSS.escape(id)}"]`);
+                if (!card) {
+                    card = document.createElement("div");
+                    card.className = "background-task-card";
+                    card.dataset.taskId = id;
+                    card.innerHTML = `
+                        <div class="background-task-head">
+                            <span class="background-task-title"></span>
+                            <span class="background-task-status"></span>
+                        </div>
+                        <div class="background-task-message"></div>
+                        <div class="background-task-progress"><span></span></div>
+                        <div class="background-task-meta"></div>
+                        <div class="background-task-actions"></div>
+                    `;
+                    stack.appendChild(card);
+                }
+                card.classList.toggle("is-completed", mergedTask.status.toLowerCase() === "completed");
+                card.classList.toggle("is-failed", mergedTask.status.toLowerCase() === "failed");
+                const title = card.querySelector(".background-task-title");
+                if (title) title.textContent = mergedTask.title;
+                const status = card.querySelector(".background-task-status");
+                if (status) status.textContent = backgroundTaskStatusLabel(mergedTask.status);
+                const message = card.querySelector(".background-task-message");
+                if (message) message.textContent = mergedTask.message || "Working in the background.";
+                const progress = card.querySelector(".background-task-progress > span");
+                if (progress) progress.style.width = `${mergedTask.progress}%`;
+                const meta = card.querySelector(".background-task-meta");
+                if (meta) meta.textContent = backgroundTaskElapsedLabel(mergedTask.startedAt);
+                const actions = card.querySelector(".background-task-actions");
+                if (actions) {
+                    actions.innerHTML = "";
+                    if (mergedTask.isActive) {
+                        const cancelButton = document.createElement("button");
+                        cancelButton.type = "button";
+                        cancelButton.className = "background-task-action is-cancel";
+                        cancelButton.textContent = "Cancel";
+                        cancelButton.addEventListener("click", () => void cancelBackgroundTask(mergedTask));
+                        actions.appendChild(cancelButton);
+                    } else {
+                        const dismissButton = document.createElement("button");
+                        dismissButton.type = "button";
+                        dismissButton.className = "background-task-action";
+                        dismissButton.textContent = "Dismiss";
+                        dismissButton.addEventListener("click", () => removeBackgroundTask(id));
+                        actions.appendChild(dismissButton);
+                    }
+                }
+                if (!mergedTask.isActive) {
+                    window.setTimeout(() => {
+                        const latest = backgroundTasks.get(id);
+                        if (latest && (latest.status || "").toLowerCase() === (mergedTask.status || "").toLowerCase()) {
+                            removeBackgroundTask(id);
+                        }
+                    }, 12000);
+                }
+            }
+
             function dismissToastElement(toast, { immediate = false } = {}) {
                 if (!toast) return;
                 if (immediate) {
@@ -111811,6 +112073,18 @@
                     }
                     inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${etaText}`;
                 }
+                if (latestSyncRun?.id) {
+                    upsertBackgroundTask({
+                        id: latestSyncRun.id,
+                        kind: "xero-sync",
+                        title: "Xero sync",
+                        status: latestSyncRun.status || "running",
+                        message: latestSyncRun.currentStep || latestSyncRun.summary || "Syncing...",
+                        progress: progressPct,
+                        startedAt: latestSyncRun.startedAt || latestSyncRun.createdAt || "",
+                        isActive: latestSyncRun.isActive !== false && !["completed", "failed"].includes(String(latestSyncRun.status || "").toLowerCase()),
+                    });
+                }
 
                 renderSidebarSupportBubble();
                 renderSyncSettings();
@@ -111843,6 +112117,18 @@
                     const countLabel = total ? `${processed.toLocaleString("en-GB")}/${total.toLocaleString("en-GB")} invoices` : "Preparing invoices";
                     inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${countLabel} · ${progress}% complete`;
                 }
+                if (operationRun?.id) {
+                    upsertBackgroundTask({
+                        id: operationRun.id,
+                        kind: "operation",
+                        title: operationRun.label || "Xero operation",
+                        status: operationRun.status || "running",
+                        message: operationRun.currentStep || operationRun.summary || "Processing operation...",
+                        progress,
+                        startedAt: operationRun.startedAt || operationRun.createdAt || "",
+                        isActive: operationRun.isActive !== false && !["completed", "failed"].includes(String(operationRun.status || "").toLowerCase()),
+                    });
+                }
                 renderSidebarSupportBubble();
             }
 
@@ -111854,6 +112140,18 @@
                 operationStartedAt = operationRunTimestamp(operationRun);
                 const operationLabel = String(operationRun?.label || "Xero operation").trim();
                 showSyncStatusToast(`${operationLabel} started.`, "info");
+                if (operationRun?.id) {
+                    upsertBackgroundTask({
+                        id: operationRun.id,
+                        kind: "operation",
+                        title: operationLabel,
+                        status: operationRun.status || "running",
+                        message: operationRun.currentStep || operationRun.summary || `${operationLabel} started.`,
+                        progress: Number(operationRun.progress || 4),
+                        startedAt: operationRun.startedAt || operationRun.createdAt || new Date().toISOString(),
+                        isActive: true,
+                    });
+                }
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
@@ -111870,6 +112168,18 @@
             }
 
             function stopOperationFeedback({ keepInlineBanner = false } = {}) {
+                if (latestOperationRun?.id && ["completed", "failed"].includes(String(latestOperationRun?.status || "").toLowerCase())) {
+                    upsertBackgroundTask({
+                        id: latestOperationRun.id,
+                        kind: "operation",
+                        title: latestOperationRun.label || "Xero operation",
+                        status: latestOperationRun.status,
+                        message: latestOperationRun.summary || latestOperationRun.errorMessage || "Operation finished.",
+                        progress: 100,
+                        startedAt: latestOperationRun.startedAt || latestOperationRun.createdAt || "",
+                        isActive: false,
+                    });
+                }
                 isOperationRunning = false;
                 activeOperationRunId = null;
                 latestOperationRun = null;
@@ -111917,6 +112227,18 @@
                     }
                     if (operationRun?.status === "completed" || payload?.status === "completed") return payload;
                     if (operationRun?.status === "failed" || payload?.status === "failed") {
+                        if (operationRun?.id) {
+                            upsertBackgroundTask({
+                                id: operationRun.id,
+                                kind: "operation",
+                                title: operationRun.label || "Xero operation",
+                                status: operationRun.status || "failed",
+                                message: operationRun.errorMessage || operationRun.summary || "Operation stopped.",
+                                progress: 100,
+                                startedAt: operationRun.startedAt || operationRun.createdAt || "",
+                                isActive: false,
+                            });
+                        }
                         throw new Error(operationRun?.errorMessage || "Xero operation failed. Please try again.");
                     }
                 }
@@ -112031,6 +112353,18 @@
                 hasAnnouncedSyncStall = false;
                 syncStartedAt = syncRunTimestamp(syncRun) || Date.now();
                 showSyncStatusToast("Xero sync started. Progress updates will appear in this popup stream.", "info");
+                if (syncRun?.id) {
+                    upsertBackgroundTask({
+                        id: syncRun.id,
+                        kind: "xero-sync",
+                        title: "Xero sync",
+                        status: syncRun.status || "running",
+                        message: syncRun.currentStep || syncRun.summary || "Xero sync started.",
+                        progress: Number(syncRun.progress || 4),
+                        startedAt: syncRun.startedAt || syncRun.createdAt || new Date().toISOString(),
+                        isActive: true,
+                    });
+                }
                 const overlay = document.getElementById("syncProgressOverlay");
                 if (overlay) overlay.hidden = true;
                 const inlineBanner = document.getElementById("syncInlineBanner");
@@ -112070,6 +112404,18 @@
 
             function stopSyncFeedback({ keepInlineBanner = false } = {}) {
                 const rateLimit = activeXeroRateLimit();
+                if (latestSyncRun?.id && ["completed", "failed"].includes(String(latestSyncRun?.status || "").toLowerCase())) {
+                    upsertBackgroundTask({
+                        id: latestSyncRun.id,
+                        kind: "xero-sync",
+                        title: "Xero sync",
+                        status: latestSyncRun.status,
+                        message: latestSyncRun.summary || latestSyncRun.errorMessage || "Xero sync finished.",
+                        progress: 100,
+                        startedAt: latestSyncRun.startedAt || latestSyncRun.createdAt || "",
+                        isActive: false,
+                    });
+                }
                 isSyncing = false;
                 activeSyncRunId = null;
                 if (!rateLimit) latestSyncRun = null;
@@ -112163,6 +112509,18 @@
                     }
                     if (syncRun?.status === "completed" || payload?.status === "completed") return payload;
                     if (syncRun?.status === "failed" || payload?.status === "failed") {
+                        if (syncRun?.id) {
+                            upsertBackgroundTask({
+                                id: syncRun.id,
+                                kind: "xero-sync",
+                                title: "Xero sync",
+                                status: syncRun.status || "failed",
+                                message: syncRun.errorMessage || syncRun.summary || "Xero sync stopped.",
+                                progress: 100,
+                                startedAt: syncRun.startedAt || syncRun.createdAt || "",
+                                isActive: false,
+                            });
+                        }
                         const details = {
                             rateLimitUntil: syncRun?.rateLimitUntil || "",
                             rate_limit_until: syncRun?.rateLimitUntil || "",

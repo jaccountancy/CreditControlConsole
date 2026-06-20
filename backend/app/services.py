@@ -138,6 +138,10 @@ JUKSIB_DEFAULT_SUPPLIER_ADDRESS = {
 JUKSIB_IMPORT_HISTORY_NOTE = "This Invoice was imported the Xero Ledger using Jenius AI."
 JUKSIB_EXPENSES_VAT_TAX_TYPE = "INPUT2"
 JUKSIB_NO_VAT_TAX_TYPE = "NONE"
+
+
+class BackgroundRunCancelledError(Exception):
+    pass
 JUKSIB_MATCH_RESPONSE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -9912,6 +9916,44 @@ def get_sync_run(user: dict, sync_run_id: str) -> dict:
     return row
 
 
+def _sync_run_abort_reason(sync_run_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status, summary, error_message FROM sync_runs WHERE id = %s", (sync_run_id,))
+            row = cursor.fetchone() or {}
+        connection.commit()
+    status_value = str(row.get("status") or "").lower()
+    if status_value in ACTIVE_SYNC_STATUSES:
+        return ""
+    return str(row.get("error_message") or row.get("summary") or "Xero sync stopped.") or "Xero sync stopped."
+
+
+def cancel_sync_run(user: dict, sync_run_id: str) -> dict:
+    sync_run = get_sync_run(user, sync_run_id)
+    if str(sync_run.get("status") or "").lower() not in ACTIVE_SYNC_STATUSES:
+        return sync_run
+    cancelled = _update_sync_run(
+        sync_run_id,
+        status="failed",
+        current_step="Sync cancelled",
+        summary="Xero sync was cancelled by user.",
+        error_message="Xero sync cancelled by user.",
+        failed_count=max(1, int(sync_run.get("failed_count") or 0)),
+        completed_at=utcnow(),
+    )
+    try:
+        record_audit_event(
+            "sync_run",
+            str(sync_run_id),
+            "sync.cancelled",
+            {"summary": "Xero sync cancelled by user."},
+            user["id"],
+        )
+    except Exception:
+        logger.exception("Unable to record sync cancellation audit event")
+    return cancelled or sync_run
+
+
 def serialize_sync_run(sync_run: dict) -> dict:
     progress = 0
     if sync_run.get("status") == "completed":
@@ -10021,6 +10063,45 @@ def get_operation_run(user: dict, operation_run_id: str) -> dict:
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation run not found.")
     return row
+
+
+def _operation_run_abort_reason(operation_run_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status, summary, error_message FROM operation_runs WHERE id = %s", (operation_run_id,))
+            row = cursor.fetchone() or {}
+        connection.commit()
+    status_value = str(row.get("status") or "").lower()
+    if status_value in ACTIVE_SYNC_STATUSES:
+        return ""
+    return str(row.get("error_message") or row.get("summary") or "Operation stopped.") or "Operation stopped."
+
+
+def cancel_operation_run(user: dict, operation_run_id: str) -> dict:
+    operation_run = get_operation_run(user, operation_run_id)
+    if str(operation_run.get("status") or "").lower() not in ACTIVE_SYNC_STATUSES:
+        return operation_run
+    label = OPERATION_LABELS.get(operation_run.get("operation_type"), "Xero operation")
+    cancelled = _update_operation_run(
+        operation_run_id,
+        status="failed",
+        current_step=f"{label} cancelled",
+        summary=f"{label} was cancelled by user.",
+        error_message=f"{label} cancelled by user.",
+        failed_count=max(1, int(operation_run.get("failed_count") or 0)),
+        completed_at=utcnow(),
+    )
+    try:
+        record_audit_event(
+            "operation_run",
+            str(operation_run_id),
+            "operation.cancelled",
+            {"summary": f"{label} cancelled by user."},
+            user["id"],
+        )
+    except Exception:
+        logger.exception("Unable to record operation cancellation audit event")
+    return cancelled
 
 
 def serialize_operation_run(operation_run: dict) -> dict:
@@ -10135,8 +10216,14 @@ async def run_invoice_operation_job(
         if str(item.get("invoiceId") or "").strip()
     }
 
+    def ensure_operation_active() -> None:
+        abort_reason = _operation_run_abort_reason(operation_run_id)
+        if abort_reason:
+            raise BackgroundRunCancelledError(abort_reason)
+
     try:
         for invoice_id in clean_invoice_ids:
+            ensure_operation_active()
             invoice_label = _invoice_operation_label(invoice_id)
             action_text = "Raising late payment charge" if operation_type == "late_payment_charges" else "Raising and allocating bad debt credit note"
             _update_operation_run(
@@ -10180,6 +10267,7 @@ async def run_invoice_operation_job(
                 ),
             )
 
+        ensure_operation_active()
         result_payload = {"created": created, "skipped": [*skipped, *failed]}
         _update_operation_run(
             operation_run_id,
@@ -10192,6 +10280,8 @@ async def run_invoice_operation_job(
             ),
             result=json.dumps(result_payload, default=_json_default),
         )
+    except BackgroundRunCancelledError:
+        return
     except Exception as exc:
         _update_operation_run(
             operation_run_id,
@@ -11042,9 +11132,16 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             user["id"],
         )
 
+    def ensure_sync_active() -> None:
+        abort_reason = _sync_run_abort_reason(sync_run_id)
+        if abort_reason:
+            raise BackgroundRunCancelledError(abort_reason)
+
     try:
+        ensure_sync_active()
         def rate_limit_progress(label: str):
             def progress(page: int, total_records: int, delay_seconds: int, retry_number: int) -> None:
+                ensure_sync_active()
                 _update_sync_run(
                     sync_run_id,
                     current_step="Waiting for Xero rate limit",
@@ -11057,6 +11154,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             return progress
 
         def contact_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step=contact_fetch_step,
@@ -11065,6 +11163,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         def outstanding_invoice_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step=invoice_fetch_step,
@@ -11074,6 +11173,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         def paid_invoice_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step="Fetching paid invoices from Xero",
@@ -11082,6 +11182,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         def payment_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step="Fetching payments from Xero",
@@ -11101,6 +11202,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         def credit_note_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step="Fetching credit notes from Xero",
@@ -11108,6 +11210,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         def overpayment_progress(_, total_records: int, __) -> None:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step="Fetching overpayments from Xero",
@@ -11373,6 +11476,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 },
             )
         else:
+            ensure_sync_active()
             _update_sync_run(
                 sync_run_id,
                 current_step=contact_fetch_step,
@@ -11448,6 +11552,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     imported_contacts = 0
 
                     for raw_contact in contacts:
+                        ensure_sync_active()
                         _upsert_xero_customer(cursor, raw_contact, connection_row["tenant_id"], now)
                         imported_contacts += 1
                         if imported_contacts % 100 == 0:
@@ -11483,6 +11588,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         nonlocal synced_invoices
                         imported_batch = 0
                         for raw_invoice in raw_invoices:
+                            ensure_sync_active()
                             invoice = normalise_invoice(raw_invoice)
                             if not invoice["xero_contact_id"]:
                                 continue
@@ -11660,10 +11766,13 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             {"summary": outstanding_ready["summary"]},
             user["id"],
         )
+        ensure_sync_active()
         payments_synced = await sync_payments_step()
+        ensure_sync_active()
         credit_sources_synced = await sync_credit_sources_step()
 
         if is_incremental_sync and not needs_paid_backfill:
+            ensure_sync_active()
             completed = _update_sync_run(
                 sync_run_id,
                 status="completed",
@@ -11753,6 +11862,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 invoices_synced=synced_invoices,
             )
         else:
+            ensure_sync_active()
             start_page = int((paid_checkpoint or {}).get("page_number") or 0) + 1
             already_seen = int((paid_checkpoint or {}).get("records_seen") or 0)
             already_synced = int((paid_checkpoint or {}).get("records_stored") or 0)
@@ -11795,6 +11905,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 contact_records: int,
                 invoice_records: int,
             ) -> None:
+                ensure_sync_active()
                 _update_sync_run(
                     sync_run_id,
                     current_step="Backfilling paid invoices",
@@ -11814,6 +11925,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 invoice_records: int,
             ) -> None:
                 nonlocal last_paid_page, last_paid_seen
+                ensure_sync_active()
                 last_paid_page = page_number
                 last_paid_seen = total_records
                 _upsert_sync_checkpoint(
@@ -11873,6 +11985,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             )
 
         total_contacts_synced = len(contacts) + paid_contacts_synced
+        ensure_sync_active()
         completion_summary = (
             f"Incremental sync complete: refreshed {total_contacts_synced} customer contacts, "
             f"{outstanding_synced} changed invoices, and backfilled {paid_synced} paid invoices. "
@@ -11897,6 +12010,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
 
         record_audit_event("sync_run", str(completed["id"]), "sync.completed", {"summary": completed["summary"]}, user["id"])
         return completed
+    except BackgroundRunCancelledError:
+        return get_sync_run(user, sync_run_id)
     except Exception as exc:
         message = _sync_error_message(exc)
         failure_fields = {
@@ -30431,6 +30546,45 @@ def get_ignition_sync_run(user: dict, sync_run_id: str) -> dict:
     return row
 
 
+def _ignition_sync_run_abort_reason(sync_run_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status, summary, error_message FROM ignition_sync_runs WHERE id = %s", (sync_run_id,))
+            row = cursor.fetchone() or {}
+        connection.commit()
+    status_value = str(row.get("status") or "").lower()
+    if status_value in ACTIVE_SYNC_STATUSES:
+        return ""
+    return str(row.get("error_message") or row.get("summary") or "Ignition sync stopped.") or "Ignition sync stopped."
+
+
+def cancel_ignition_sync_run(user: dict, sync_run_id: str) -> dict:
+    sync_run = get_ignition_sync_run(user, sync_run_id)
+    if str(sync_run.get("status") or "").lower() not in ACTIVE_SYNC_STATUSES:
+        return sync_run
+    cancelled = _update_ignition_sync_run(
+        sync_run_id,
+        status="failed",
+        current_step="Ignition sync cancelled",
+        summary="Ignition sync was cancelled by user.",
+        error_message="Ignition sync cancelled by user.",
+        failed_count=max(1, int(sync_run.get("failed_count") or 0)),
+        heartbeat_at=utcnow(),
+        completed_at=utcnow(),
+    )
+    try:
+        record_audit_event(
+            "ignition_sync_run",
+            str(sync_run_id),
+            "ignition.sync.cancelled",
+            {"summary": "Ignition sync cancelled by user."},
+            user["id"],
+        )
+    except Exception:
+        logger.exception("Unable to record ignition sync cancellation audit event")
+    return cancelled or sync_run
+
+
 def active_ignition_sync_run_for_user(user: dict | None) -> dict | None:
     if not user or not user.get("id"):
         return None
@@ -34974,6 +35128,11 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
     )
     practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
 
+    def ensure_ignition_sync_active() -> None:
+        abort_reason = _ignition_sync_run_abort_reason(sync_run_id)
+        if abort_reason:
+            raise BackgroundRunCancelledError(abort_reason)
+
     last_heartbeat_at = run_started_at
 
     async def _ingest_dataset(
@@ -34987,6 +35146,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         dataset_processed = 0
         dataset_meta: dict = {}
         async for batch, meta in iter_ignition_collection(connection, endpoint_path, modified_since=modified_since_value):
+            ensure_ignition_sync_active()
             dataset_meta = meta or {}
             heartbeat_now = utcnow()
             heartbeat_due = (heartbeat_now - last_heartbeat_at).total_seconds() >= IGNITION_SYNC_HEARTBEAT_INTERVAL_SECONDS
@@ -35012,128 +35172,133 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
             dataset_processed += processed_batch
         return dataset_fetched, dataset_processed, dataset_meta
 
-    for dataset, endpoint in IGNITION_DATASETS:
-        dataset_label = dataset.replace("_", " ")
-        fetch_modified_since = modified_since if is_incremental_sync else None
-        _update_ignition_sync_run(
-            sync_run_id,
-            current_step=f"Checking changed {dataset_label}" if fetch_modified_since else f"Importing {dataset_label}",
-            summary=(
-                f"Fetching changed {dataset_label} from Ignition Reporting API."
-                if fetch_modified_since
-                else f"Fetching {dataset_label} from Ignition Reporting API."
-            ),
-            heartbeat_at=utcnow(),
-            datasets_synced=dataset_counts,
-            fetched_count=total_fetched,
-            processed_count=total_processed,
-        )
-        try:
-            dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, fetch_modified_since)
-        except HTTPException as exc:
-            provider_status = _ignition_provider_status(exc)
-            if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
-                message = (
-                    f"Ignition rejected the incremental updated_since filter for {dataset_label}. "
-                    "A full Reporting API sync was not run."
-                )
-                record_audit_event(
-                    "ignition_sync_run",
-                    str(sync_run_id),
-                    "ignition.sync.incremental_filter_required",
-                    {
-                        "dataset": dataset,
-                        "provider_status": provider_status,
-                        "modified_since": modified_since.isoformat(),
-                        "message": message,
-                    },
-                    user["id"],
-                )
-                if dataset == "proposals":
-                    if _ignition_dataset_has_cache(user["id"], dataset):
-                        dataset_counts[dataset] = 0
-                        record_audit_event(
-                            "ignition_sync_run",
-                            str(sync_run_id),
-                            "ignition.proposals.cached",
-                            {
-                                "dataset": dataset,
-                                "provider_status": provider_status,
-                                "modified_since": modified_since.isoformat(),
-                                "message": "Incremental proposal filtering rejected; reused cached proposals already stored in the database.",
-                            },
-                            user["id"],
-                        )
+    try:
+        for dataset, endpoint in IGNITION_DATASETS:
+            ensure_ignition_sync_active()
+            dataset_label = dataset.replace("_", " ")
+            fetch_modified_since = modified_since if is_incremental_sync else None
+            _update_ignition_sync_run(
+                sync_run_id,
+                current_step=f"Checking changed {dataset_label}" if fetch_modified_since else f"Importing {dataset_label}",
+                summary=(
+                    f"Fetching changed {dataset_label} from Ignition Reporting API."
+                    if fetch_modified_since
+                    else f"Fetching {dataset_label} from Ignition Reporting API."
+                ),
+                heartbeat_at=utcnow(),
+                datasets_synced=dataset_counts,
+                fetched_count=total_fetched,
+                processed_count=total_processed,
+            )
+            try:
+                dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, fetch_modified_since)
+            except HTTPException as exc:
+                provider_status = _ignition_provider_status(exc)
+                if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
+                    message = (
+                        f"Ignition rejected the incremental updated_since filter for {dataset_label}. "
+                        "A full Reporting API sync was not run."
+                    )
+                    record_audit_event(
+                        "ignition_sync_run",
+                        str(sync_run_id),
+                        "ignition.sync.incremental_filter_required",
+                        {
+                            "dataset": dataset,
+                            "provider_status": provider_status,
+                            "modified_since": modified_since.isoformat(),
+                            "message": message,
+                        },
+                        user["id"],
+                    )
+                    if dataset == "proposals":
+                        if _ignition_dataset_has_cache(user["id"], dataset):
+                            dataset_counts[dataset] = 0
+                            record_audit_event(
+                                "ignition_sync_run",
+                                str(sync_run_id),
+                                "ignition.proposals.cached",
+                                {
+                                    "dataset": dataset,
+                                    "provider_status": provider_status,
+                                    "modified_since": modified_since.isoformat(),
+                                    "message": "Incremental proposal filtering rejected; reused cached proposals already stored in the database.",
+                                },
+                                user["id"],
+                            )
+                            _update_ignition_sync_run(
+                                sync_run_id,
+                                current_step="Using cached proposals",
+                                summary="Ignition rejected changed-only proposal filtering; using cached proposals already stored in the database to avoid a full proposals resync.",
+                                heartbeat_at=utcnow(),
+                                datasets_synced=dataset_counts,
+                                fetched_count=total_fetched,
+                                processed_count=total_processed,
+                            )
+                            continue
+                        full_refresh_datasets.add(dataset)
                         _update_ignition_sync_run(
                             sync_run_id,
-                            current_step="Using cached proposals",
-                            summary="Ignition rejected changed-only proposal filtering; using cached proposals already stored in the database to avoid a full proposals resync.",
+                            current_step="Refreshing proposals",
+                            summary="Ignition rejected changed-only proposal filtering; refreshing proposals so local proposal data stays current.",
+                            heartbeat_at=utcnow(),
+                            datasets_synced=dataset_counts,
+                            fetched_count=total_fetched,
+                            processed_count=total_processed,
+                        )
+                        dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, None)
+                        fetch_modified_since = None
+                    elif dataset in OPTIONAL_IGNITION_DATASETS:
+                        dataset_counts[dataset] = 0
+                        _update_ignition_sync_run(
+                            sync_run_id,
+                            summary=f"Skipped optional {dataset_label}; Ignition rejected incremental filtering for that endpoint.",
                             heartbeat_at=utcnow(),
                             datasets_synced=dataset_counts,
                             fetched_count=total_fetched,
                             processed_count=total_processed,
                         )
                         continue
-                    full_refresh_datasets.add(dataset)
-                    _update_ignition_sync_run(
-                        sync_run_id,
-                        current_step="Refreshing proposals",
-                        summary="Ignition rejected changed-only proposal filtering; refreshing proposals so local proposal data stays current.",
-                        heartbeat_at=utcnow(),
-                        datasets_synced=dataset_counts,
-                        fetched_count=total_fetched,
-                        processed_count=total_processed,
-                    )
-                    dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, None)
-                    fetch_modified_since = None
-                elif dataset in OPTIONAL_IGNITION_DATASETS:
+                    else:
+                        return _update_ignition_sync_run(
+                            sync_run_id,
+                            status="failed",
+                            current_step="Incremental Ignition sync unavailable",
+                            summary=message,
+                            error_message=message,
+                            failed_count=1,
+                            heartbeat_at=utcnow(),
+                            completed_at=utcnow(),
+                            datasets_synced=dataset_counts,
+                            fetched_count=total_fetched,
+                            processed_count=total_processed,
+                        )
+                elif dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
                     dataset_counts[dataset] = 0
-                    _update_ignition_sync_run(
-                        sync_run_id,
-                        summary=f"Skipped optional {dataset_label}; Ignition rejected incremental filtering for that endpoint.",
-                        heartbeat_at=utcnow(),
-                        datasets_synced=dataset_counts,
-                        fetched_count=total_fetched,
-                        processed_count=total_processed,
+                    record_audit_event(
+                        "ignition_sync_run",
+                        str(sync_run_id),
+                        f"ignition.{dataset}.skipped",
+                        {
+                            "dataset": dataset,
+                            "provider_status": provider_status,
+                            "message": "Optional Ignition Deals dataset is unavailable for this practice.",
+                        },
+                        user["id"],
                     )
                     continue
                 else:
-                    return _update_ignition_sync_run(
-                        sync_run_id,
-                        status="failed",
-                        current_step="Incremental Ignition sync unavailable",
-                        summary=message,
-                        error_message=message,
-                        failed_count=1,
-                        heartbeat_at=utcnow(),
-                        completed_at=utcnow(),
-                        datasets_synced=dataset_counts,
-                        fetched_count=total_fetched,
-                        processed_count=total_processed,
-                    )
-            elif dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
-                dataset_counts[dataset] = 0
-                record_audit_event(
-                    "ignition_sync_run",
-                    str(sync_run_id),
-                    f"ignition.{dataset}.skipped",
-                    {
-                        "dataset": dataset,
-                        "provider_status": provider_status,
-                        "message": "Optional Ignition Deals dataset is unavailable for this practice.",
-                    },
-                    user["id"],
-                )
-                continue
-            else:
-                raise exc
-        practice_meta = (meta or {}).get("practice") or {}
-        if practice_meta.get("id") or practice_meta.get("name"):
-            practice = {"id": str(practice_meta.get("id") or practice.get("id") or ""), "name": practice_meta.get("name") or practice.get("name") or ""}
-        dataset_counts[dataset] = processed
-        total_fetched += dataset_fetched
-        total_processed += processed
-        record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
+                    raise exc
+            practice_meta = (meta or {}).get("practice") or {}
+            if practice_meta.get("id") or practice_meta.get("name"):
+                practice = {"id": str(practice_meta.get("id") or practice.get("id") or ""), "name": practice_meta.get("name") or practice.get("name") or ""}
+            dataset_counts[dataset] = processed
+            total_fetched += dataset_fetched
+            total_processed += processed
+            record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
+        ensure_ignition_sync_active()
+    except BackgroundRunCancelledError:
+        return _update_ignition_sync_run(sync_run_id)
     if is_incremental_sync:
         summary = f"Ignition incremental sync complete: imported {total_processed} changed records across {len(dataset_counts)} reporting datasets."
         if full_refresh_datasets:

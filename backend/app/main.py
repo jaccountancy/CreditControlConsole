@@ -186,6 +186,9 @@ from .services import (
     call_stats_generate_ai_report,
     call_stats_ai_reports_history,
     call_stats_suggest_filter_presets,
+    cancel_ignition_sync_run,
+    cancel_operation_run,
+    cancel_sync_run,
     bank_statement_upload_source_file,
     get_sync_run,
     me_report_payload,
@@ -293,7 +296,6 @@ from .services import (
     juksib_revert_batch_to_draft,
     juksib_publish_batch,
     juksib_source_invoice_pdf as juksib_source_invoice_pdf_bytes,
-    start_juksib_automation_worker,
     update_juksib_automation_settings,
     vault_analyze_files,
     vault_assign_files_to_client,
@@ -573,7 +575,6 @@ def startup() -> None:
     ensure_schema()
     install_sync_signal_handlers()
     start_companies_house_auto_sync_worker()
-    start_juksib_automation_worker()
 
 
 def template_context(request: Request, **extra):
@@ -3191,6 +3192,12 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
     return payload
 
 
+@app.post("/api/panel/sync/{sync_run_id}/cancel")
+def api_panel_sync_cancel(sync_run_id: str, user: dict = Depends(require_panel_user)):
+    sync_run = cancel_sync_run(user, sync_run_id)
+    return {"status": "ok", "syncRun": serialize_sync_run(sync_run)}
+
+
 @app.get("/api/developer/logs")
 def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
     try:
@@ -4127,6 +4134,12 @@ def api_operation_status(operation_run_id: str, user: dict = Depends(require_pan
     return payload
 
 
+@app.post("/api/operations/{operation_run_id}/cancel")
+def api_operation_cancel(operation_run_id: str, user: dict = Depends(require_panel_user)):
+    operation_run = cancel_operation_run(user, operation_run_id)
+    return {"status": "ok", "operationRun": serialize_operation_run(operation_run)}
+
+
 @app.get("/api/jashflow")
 def api_jashflow(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "jashflow": jashflow_payload(user)}
@@ -4199,6 +4212,12 @@ def api_ignition_sync(user: dict = Depends(require_panel_user)):
 def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
     sync_run = get_ignition_sync_run(user, sync_run_id)
     return {"status": sync_run["status"], "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
+
+
+@app.post("/api/ignition/sync/{sync_run_id}/cancel")
+def api_ignition_sync_cancel(sync_run_id: str, user: dict = Depends(require_panel_user)):
+    sync_run = cancel_ignition_sync_run(user, sync_run_id)
+    return {"status": "ok", "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
 
 
 @app.get("/api/ignition/renewals")
