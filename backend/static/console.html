@@ -46939,7 +46939,13 @@
             }
 
             function enhanceConsoleButtons(root = document) {
-                root.querySelectorAll("button").forEach((button) => {
+                const context = root && (root.nodeType === Node.ELEMENT_NODE || root.nodeType === Node.DOCUMENT_NODE)
+                    ? root
+                    : document;
+                const buttons = context.matches?.("button")
+                    ? [context]
+                    : context.querySelectorAll("button");
+                buttons.forEach((button) => {
                     if (!shouldEnhanceButtonIcon(button)) return;
                     const iconName = inferredButtonIcon(button);
                     if (!iconName) return;
@@ -46953,24 +46959,31 @@
             }
 
             function wireButtonIconEnhancements() {
+                const pendingRoots = new Set();
                 let queued = false;
                 const run = () => {
                     queued = false;
-                    enhanceConsoleButtons();
+                    if (!pendingRoots.size) pendingRoots.add(document);
+                    const roots = [...pendingRoots];
+                    pendingRoots.clear();
+                    roots.forEach((root) => enhanceConsoleButtons(root));
                 };
-                const queue = () => {
+                const queue = (root = document) => {
+                    pendingRoots.add(root || document);
                     if (queued) return;
                     queued = true;
                     requestAnimationFrame(run);
                 };
                 const observer = new MutationObserver((mutations) => {
-                    const hasButtonChanges = mutations.some((mutation) => [...mutation.addedNodes].some((node) => {
-                        return node.nodeType === Node.ELEMENT_NODE && (node.matches?.("button") || node.querySelector?.("button"));
-                    }));
-                    if (hasButtonChanges) queue();
+                    mutations.forEach((mutation) => {
+                        mutation.addedNodes.forEach((node) => {
+                            if (node.nodeType !== Node.ELEMENT_NODE) return;
+                            if (node.matches?.("button") || node.querySelector?.("button")) queue(node);
+                        });
+                    });
                 });
                 observer.observe(document.body, { childList: true, subtree: true });
-                queue();
+                queue(document);
             }
 
             function normaliseAPI(config) {
@@ -108159,7 +108172,6 @@
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderNlacListScreen", () => renderNlacListScreen()],
                     ["renderClientScreen", () => renderClientScreen()],
-                    ["enhanceConsoleButtons", () => enhanceConsoleButtons()],
                     ["persistState", () => persistState()],
                 ];
                 renderSteps.forEach(([label, run]) => {
