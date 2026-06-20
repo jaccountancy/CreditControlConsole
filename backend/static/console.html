@@ -26929,6 +26929,26 @@
             .ch-table tbody tr { cursor: pointer; }
             .ch-table tbody tr:hover { background: var(--blue-soft); }
             .ch-table tbody tr.is-selected { background: var(--blue-soft); }
+            .submitted-employee-matched-client { font-weight: 700; color: var(--ink); }
+            .submitted-employee-note-cell { min-width: 120px; }
+            .submitted-employee-note-toggle {
+                width: 24px;
+                height: 24px;
+                border-radius: 999px;
+                border: 1px solid var(--line);
+                background: var(--surface-soft);
+                color: var(--blue);
+                font-weight: 800;
+                line-height: 1;
+                cursor: pointer;
+                padding: 0;
+            }
+            .submitted-employee-note-toggle[aria-expanded="true"] {
+                background: var(--blue-soft);
+                border-color: color-mix(in srgb, var(--blue) 35%, white);
+            }
+            .submitted-employee-note-body { margin-top: 8px; max-width: 460px; }
+            .submitted-employee-note-body small { color: var(--muted); line-height: 1.45; display: block; white-space: normal; }
             #codeBreakerWorkspaceTableBody tr {
                 border-left: 4px solid transparent;
                 transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
@@ -43952,7 +43972,7 @@
                                             <th>Select</th>
                                             <th>Received</th>
                                             <th>Employee</th>
-                                            <th>Email</th>
+                                            <th>Matched client</th>
                                             <th>From</th>
                                             <th>Preview</th>
                                             <th>Xero status</th>
@@ -46180,6 +46200,8 @@
             let submittedEmployeeFormsWindowStartIso = "";
             let submittedEmployeeFormsLastSyncDiagnostics = null;
             let submittedEmployeeFormsPreviewRowId = "";
+            const submittedEmployeeFormsExpandedNotesStorageKey = `${STORAGE_KEY}:submitted-employee-forms-expanded-notes:v1`;
+            let submittedEmployeeFormsExpandedNoteRowIds = loadSubmittedEmployeeFormsExpandedNoteRowIds();
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -57241,6 +57263,38 @@
                 wizardSyncButton.textContent = payrollHeadcountWizardState.syncing ? "Syncing..." : "Run payroll sync";
             }
 
+            function loadSubmittedEmployeeFormsExpandedNoteRowIds() {
+                try {
+                    const raw = localStorage.getItem(submittedEmployeeFormsExpandedNotesStorageKey);
+                    if (!raw) return new Set();
+                    const parsed = JSON.parse(raw);
+                    if (!Array.isArray(parsed)) return new Set();
+                    return new Set(parsed.map((value) => String(value || "").trim()).filter(Boolean));
+                } catch {
+                    return new Set();
+                }
+            }
+
+            function persistSubmittedEmployeeFormsExpandedNoteRowIds() {
+                try {
+                    localStorage.setItem(
+                        submittedEmployeeFormsExpandedNotesStorageKey,
+                        JSON.stringify([...submittedEmployeeFormsExpandedNoteRowIds])
+                    );
+                } catch {
+                    // Ignore storage failures.
+                }
+            }
+
+            function submittedEmployeeFormsMatchedClientName(row) {
+                const direct = String(row?.xeroTenantName || "").trim();
+                if (direct) return direct;
+                const note = String(row?.xeroNote || "").trim();
+                const match = note.match(/matched employer '.*?' to ([^.]+)\./i);
+                if (match && match[1]) return String(match[1]).trim();
+                return "";
+            }
+
             function renderSubmittedEmployeeFormsScreen() {
                 const summary = document.getElementById("submittedEmployeeFormsSummary");
                 const tableBody = document.getElementById("submittedEmployeeFormsTableBody");
@@ -57389,7 +57443,7 @@
                     const selected = rowId ? submittedEmployeeFormsSelectedRowIds.has(rowId) : false;
                     const receivedAt = formatDateTime(row?.receivedAt || row?.createdAt || "");
                     const employeeName = String(row?.employeeFullName || "").trim() || "Employee name not parsed";
-                    const employeeEmail = String(row?.employeeEmail || "").trim() || "--";
+                    const matchedClient = submittedEmployeeFormsMatchedClientName(row);
                     const employerName = String(row?.employerName || "").trim();
                     const sender = String(row?.fromName || "").trim() || String(row?.fromEmail || "").trim() || "--";
                     const fromDisplay = employerName || sender;
@@ -57400,17 +57454,31 @@
                     const xeroStatusLabel = xeroStatus
                         ? xeroStatus.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
                         : "Pending";
-                    const note = String(row?.xeroNote || "").trim() || "--";
+                    const note = String(row?.xeroNote || "").trim();
+                    const noteExpanded = rowId ? submittedEmployeeFormsExpandedNoteRowIds.has(rowId) : false;
                     return `
                         <tr>
                             <td><input type="checkbox" data-submitted-employee-form-select="${escapeHTML(rowId)}" ${selected ? "checked" : ""} ${submittedEmployeeFormsWizardStep <= 1 ? "disabled" : ""}></td>
                             <td>${escapeHTML(receivedAt || "--")}</td>
                             <td><strong>${escapeHTML(employeeName)}</strong></td>
-                            <td>${escapeHTML(employeeEmail)}</td>
+                            <td><span class="submitted-employee-matched-client">${escapeHTML(matchedClient || "--")}</span></td>
                             <td>${escapeHTML(fromDisplay)}${fromSubline ? `<br><small>${escapeHTML(fromSubline)}</small>` : ""}</td>
                             <td><button class="ghost-button" type="button" data-submitted-employee-form-preview="${escapeHTML(rowId)}">Preview</button></td>
                             <td><span class="status-pill">${escapeHTML(xeroStatusLabel)}</span></td>
-                            <td><small>${escapeHTML(note)}</small></td>
+                            <td class="submitted-employee-note-cell">
+                                ${note
+                                    ? `<button
+                                            class="submitted-employee-note-toggle"
+                                            type="button"
+                                            data-submitted-employee-form-note-toggle="${escapeHTML(rowId)}"
+                                            aria-expanded="${noteExpanded ? "true" : "false"}"
+                                            aria-label="Show match reasoning"
+                                        >?</button>
+                                        <div class="submitted-employee-note-body" data-submitted-employee-form-note-body="${escapeHTML(rowId)}" ${noteExpanded ? "" : "hidden"}>
+                                            <small>${escapeHTML(note)}</small>
+                                        </div>`
+                                    : `<small>--</small>`}
+                            </td>
                         </tr>
                     `;
                 }).join("");
@@ -57430,6 +57498,20 @@
                         if (!rowId) return;
                         submittedEmployeeFormsPreviewRowId = rowId;
                         renderSubmittedEmployeeFormsPreviewModal(allRows);
+                    });
+                });
+                tableBody.querySelectorAll("[data-submitted-employee-form-note-toggle]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const rowId = String(button.dataset.submittedEmployeeFormNoteToggle || "").trim();
+                        if (!rowId) return;
+                        const body = tableBody.querySelector(`[data-submitted-employee-form-note-body="${rowId}"]`);
+                        if (!body) return;
+                        const nextExpanded = body.hidden;
+                        body.hidden = !nextExpanded;
+                        button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+                        if (nextExpanded) submittedEmployeeFormsExpandedNoteRowIds.add(rowId);
+                        else submittedEmployeeFormsExpandedNoteRowIds.delete(rowId);
+                        persistSubmittedEmployeeFormsExpandedNoteRowIds();
                     });
                 });
                 renderSubmittedEmployeeFormsPreviewModal(allRows);

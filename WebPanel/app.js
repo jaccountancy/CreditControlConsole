@@ -181,6 +181,7 @@ function loadHmrcWizardState() {
                 oauthConfigured: false,
                 detail: null,
                 lastPulledAt: "",
+                gatewayPullStatus: "",
                 vatDataSnapshot: null
             };
         }
@@ -210,6 +211,7 @@ function loadHmrcWizardState() {
             oauthConfigured: parsed?.oauthConfigured === true,
             detail: parsed?.detail && typeof parsed.detail === "object" ? parsed.detail : null,
             lastPulledAt: String(parsed?.lastPulledAt || ""),
+            gatewayPullStatus: String(parsed?.gatewayPullStatus || ""),
             vatDataSnapshot: parsed?.vatDataSnapshot && typeof parsed.vatDataSnapshot === "object" ? parsed.vatDataSnapshot : null
         };
     } catch {
@@ -238,9 +240,35 @@ function loadHmrcWizardState() {
             oauthConfigured: false,
             detail: null,
             lastPulledAt: "",
+            gatewayPullStatus: "",
             vatDataSnapshot: null
         };
     }
+}
+
+function buildHmrcGatewayPullSummary(detail, errorMessage = "") {
+    const successful = [];
+    const failed = [];
+
+    if (hmrcWizardState.oauthConnected) successful.push("Step 2 HMRC account connection confirmed");
+    else failed.push("Step 2 HMRC account is not connected");
+
+    if (errorMessage) {
+        failed.push(errorMessage);
+    } else {
+        if (detail?.gatewayClientId) successful.push(`Gateway record ${detail.gatewayClientId} loaded`);
+        else failed.push("Gateway record was not returned");
+        if (detail?.clientName) successful.push("Client name loaded");
+        else failed.push("Client name missing");
+        if (detail?.status) successful.push("Gateway status loaded");
+        else failed.push("Gateway status missing");
+        if (detail?.hmrcSubmissionReference) successful.push("Submission reference loaded");
+        else failed.push("Submission reference missing");
+    }
+
+    const successText = successful.length ? successful.join("; ") : "None";
+    const failedText = failed.length ? failed.join("; ") : "None";
+    return `Successful: ${successText}. Failed: ${failedText}.`;
 }
 
 function persistHmrcWizardState() {
@@ -1348,6 +1376,105 @@ function currentHmrc64FormState() {
     };
 }
 
+function hmrc64SelectedServices(form) {
+    const services = [];
+    if (form.includeSa) services.push({ flag: "includeSa", label: "SA" });
+    if (form.includeCt) services.push({ flag: "includeCt", label: "CT" });
+    if (form.includePaye) services.push({ flag: "includePaye", label: "PAYE" });
+    return services;
+}
+
+function hmrc64StatusForOutcomeText(statusValue) {
+    const value = String(statusValue || "").toLowerCase();
+    if (value === "awaiting_code" || value === "submitted" || value === "code_received") return "awaiting code";
+    if (value === "authorised") return "authorised";
+    if (value === "draft") return "draft";
+    return value || "unknown";
+}
+
+function hmrc64MatchesClient(row, form) {
+    const rowClientId = String(row?.clientId || "").trim();
+    const rowClientName = String(row?.clientName || "").trim().toLowerCase();
+    const formClientId = String(form?.clientId || "").trim();
+    const formClientName = String(form?.clientName || "").trim().toLowerCase();
+    if (formClientId && rowClientId && rowClientId === formClientId) return true;
+    return Boolean(formClientName) && rowClientName === formClientName;
+}
+
+function hmrc64FormatServiceOutcomeSummary(outcomes) {
+    const successful = outcomes.filter((item) => item.outcome === "successful").map((item) => item.message);
+    const skipped = outcomes.filter((item) => item.outcome === "skipped").map((item) => item.message);
+    const failed = outcomes.filter((item) => item.outcome === "failed").map((item) => item.message);
+    return [
+        `Successful: ${successful.length ? successful.join("; ") : "None"}.`,
+        `Skipped: ${skipped.length ? skipped.join("; ") : "None"}.`,
+        `Failed: ${failed.length ? failed.join("; ") : "None"}.`
+    ].join(" ");
+}
+
+async function recoverExistingHmrc64Requests(form) {
+    await refreshHmrc64Tracker();
+    const selectedServices = hmrc64SelectedServices(form);
+    const clientRequests = (Array.isArray(hmrcWizardState.hmrc64Requests) ? hmrcWizardState.hmrc64Requests : [])
+        .filter((row) => hmrc64MatchesClient(row, form));
+    const outcomes = [];
+
+    for (const service of selectedServices) {
+        const matchingRequest = clientRequests.find((row) => row?.[service.flag] === true);
+        if (!matchingRequest?.id) {
+            outcomes.push({
+                outcome: "failed",
+                message: `${service.label} has no existing request to continue with`
+            });
+            continue;
+        }
+        const statusValue = String(matchingRequest.status || "").toLowerCase();
+        if (statusValue === "draft") {
+            try {
+                await requestJSON(
+                    api.endpoints.hmrc64Submit,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({ submissionChannel: "online" })
+                    },
+                    { requestId: matchingRequest.id }
+                );
+                outcomes.push({
+                    outcome: "successful",
+                    message: `${service.label} submitted using existing draft request ${matchingRequest.id}`
+                });
+            } catch (error) {
+                outcomes.push({
+                    outcome: "failed",
+                    message: `${service.label} draft ${matchingRequest.id} submit failed (${error?.message || "unknown error"})`
+                });
+            }
+            continue;
+        }
+        if (["submitted", "awaiting_code", "code_received"].includes(statusValue)) {
+            outcomes.push({
+                outcome: "skipped",
+                message: `${service.label} already ${hmrc64StatusForOutcomeText(statusValue)} on request ${matchingRequest.id}`
+            });
+            continue;
+        }
+        if (statusValue === "authorised") {
+            outcomes.push({
+                outcome: "skipped",
+                message: `${service.label} already authorised on request ${matchingRequest.id}`
+            });
+            continue;
+        }
+        outcomes.push({
+            outcome: "skipped",
+            message: `${service.label} already created on request ${matchingRequest.id} (status ${hmrc64StatusForOutcomeText(statusValue)})`
+        });
+    }
+
+    await refreshHmrc64Tracker();
+    return outcomes;
+}
+
 function hmrcWizardRedirectTarget() {
     const url = new URL(window.location.href);
     url.searchParams.set("hmrcWizard", "1");
@@ -1436,9 +1563,14 @@ function renderHmrcSettingsScreen() {
     else oauthStatusText.value = hmrcWizardState.oauthConnected ? "Connected to HMRC agent services account." : "Not connected.";
 
     const detail = hmrcWizardState.detail;
-    pullStatusText.value = hmrcWizardState.lastPulledAt
-        ? `Last pull completed ${new Date(hmrcWizardState.lastPulledAt).toLocaleString("en-GB")}.`
-        : "No VAT gateway pull run yet.";
+    if (hmrcWizardState.gatewayPullStatus) {
+        const timestamp = hmrcWizardState.lastPulledAt
+            ? ` Last pull completed ${new Date(hmrcWizardState.lastPulledAt).toLocaleString("en-GB")}.`
+            : "";
+        pullStatusText.value = `${hmrcWizardState.gatewayPullStatus}${timestamp}`;
+    } else {
+        pullStatusText.value = "No VAT gateway pull run yet.";
+    }
     meta.textContent = detail?.gatewayClientId ? `Gateway client ${detail.gatewayClientId} linked` : "No HMRC record linked yet";
     clientName.textContent = detail?.clientName || "--";
     clientStatus.textContent = detail?.status || "--";
@@ -1854,6 +1986,7 @@ function wireForms() {
             const detail = await fetchHmrcGatewayClientDetail(hmrcWizardState.gatewayClientId);
             hmrcWizardState.detail = detail;
             hmrcWizardState.lastPulledAt = new Date().toISOString();
+            hmrcWizardState.gatewayPullStatus = buildHmrcGatewayPullSummary(detail);
             persistHmrcWizardState();
             state.customers.forEach((customer) => {
                 if (!customer?.vatGatewayClientId) return;
@@ -1866,6 +1999,12 @@ function wireForms() {
             renderAll();
         } catch (error) {
             console.error("Unable to pull HMRC gateway details", error);
+            hmrcWizardState.gatewayPullStatus = buildHmrcGatewayPullSummary(
+                null,
+                `HMRC VAT gateway pull failed (${error?.message || "unknown error"})`
+            );
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
             window.alert("HMRC VAT gateway details could not be pulled. Check the client ID and authorisation status.");
         }
     });
@@ -2044,7 +2183,25 @@ function wireForms() {
             renderHmrcSettingsScreen();
         } catch (error) {
             console.error("Unable to send HMRC 64-8 authorisation", error);
-            hmrcWizardState.hmrc64WizardStatus = "Failed to submit 64-8 authorisation.";
+            const message = String(error?.message || "");
+            const likelyDuplicate = /already|exists|duplicate/i.test(message);
+            if (likelyDuplicate) {
+                try {
+                    const outcomes = await recoverExistingHmrc64Requests(form);
+                    hmrcWizardState.hmrc64WizardStatus = `Existing request detected. ${hmrc64FormatServiceOutcomeSummary(outcomes)}`;
+                    persistHmrcWizardState();
+                    renderHmrcSettingsScreen();
+                    return;
+                } catch (recoveryError) {
+                    console.error("Unable to recover existing HMRC 64-8 request flow", recoveryError);
+                    hmrcWizardState.hmrc64WizardStatus = `Existing request recovery failed (${recoveryError?.message || "unknown error"}).`;
+                    persistHmrcWizardState();
+                    renderHmrcSettingsScreen();
+                    window.alert("64-8 request already exists, but recovery failed. Refresh tracker and retry.");
+                    return;
+                }
+            }
+            hmrcWizardState.hmrc64WizardStatus = `Failed to submit 64-8 authorisation (${message || "unknown error"}).`;
             persistHmrcWizardState();
             renderHmrcSettingsScreen();
             window.alert("64-8 submission failed. Check required SA/CT/PAYE fields.");
