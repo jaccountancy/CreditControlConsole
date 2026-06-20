@@ -1760,6 +1760,8 @@ CREATE TABLE IF NOT EXISTS submitted_employee_forms (
     employee_first_name TEXT NOT NULL DEFAULT '',
     employee_last_name TEXT NOT NULL DEFAULT '',
     employee_email TEXT NOT NULL DEFAULT '',
+    employer_name TEXT NOT NULL DEFAULT '',
+    extracted_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
     snippet TEXT NOT NULL DEFAULT '',
     raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     xero_tenant_id TEXT NOT NULL DEFAULT '',
@@ -1782,6 +1784,8 @@ ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_full_name
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_first_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_last_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS extracted_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS snippet TEXT NOT NULL DEFAULT '';
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_tenant_id TEXT NOT NULL DEFAULT '';

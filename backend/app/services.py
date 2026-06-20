@@ -15784,6 +15784,74 @@ async def company_calendar_payload(user: dict, days_ahead: int = 14, max_events:
 
 SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX = "New Employee Details:"
 SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
+SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "employeeFullName": {"type": "string"},
+        "employeeFirstName": {"type": "string"},
+        "employeeLastName": {"type": "string"},
+        "employeeEmail": {"type": "string"},
+        "employerName": {"type": "string"},
+        "employeePhone": {"type": "string"},
+        "dateOfBirth": {"type": "string"},
+        "nationalInsuranceNumber": {"type": "string"},
+        "startDate": {"type": "string"},
+        "jobTitle": {"type": "string"},
+        "department": {"type": "string"},
+        "payrollNumber": {"type": "string"},
+        "taxCode": {"type": "string"},
+        "employmentType": {"type": "string"},
+        "hoursPerWeek": {"type": "string"},
+        "salary": {"type": "string"},
+        "addressLine1": {"type": "string"},
+        "addressLine2": {"type": "string"},
+        "city": {"type": "string"},
+        "postcode": {"type": "string"},
+        "country": {"type": "string"},
+        "bankAccountName": {"type": "string"},
+        "bankAccountNumber": {"type": "string"},
+        "bankSortCode": {"type": "string"},
+        "missingOrUnclear": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "employeeFullName",
+        "employeeFirstName",
+        "employeeLastName",
+        "employeeEmail",
+        "employerName",
+        "employeePhone",
+        "dateOfBirth",
+        "nationalInsuranceNumber",
+        "startDate",
+        "jobTitle",
+        "department",
+        "payrollNumber",
+        "taxCode",
+        "employmentType",
+        "hoursPerWeek",
+        "salary",
+        "addressLine1",
+        "addressLine2",
+        "city",
+        "postcode",
+        "country",
+        "bankAccountName",
+        "bankAccountNumber",
+        "bankSortCode",
+        "missingOrUnclear",
+    ],
+    "additionalProperties": False,
+}
+SUBMITTED_EMPLOYEE_FORMS_AI_MATCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tenantId": {"type": "string"},
+        "confidence": {"type": "integer"},
+        "reason": {"type": "string"},
+    },
+    "required": ["tenantId", "confidence", "reason"],
+    "additionalProperties": False,
+}
 
 
 def _gmail_decode_header_value(value: str) -> str:
@@ -15971,6 +16039,62 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         _next_line_after_label(["Email", "Employee Email", "Email Address"])
         or _find(r"(?:employee\s*email|email\s*address|email)\s*[:\-]\s*([^\s,;]+@[^\s,;]+)")
     )
+    employer_name = (
+        _next_line_after_label(["Employer", "Employer Name", "Company", "Company Name", "Business Name"])
+        or _find(r"(?:employer(?:\s*name)?|company(?:\s*name)?|business(?:\s*name)?)\s*[:\-]\s*([^\n,;]+)")
+    )
+    employee_phone = (
+        _next_line_after_label(["Phone", "Telephone", "Mobile", "Contact Number", "Phone Number"])
+        or _find(r"(?:phone|telephone|mobile|contact\s*number|phone\s*number)\s*[:\-]\s*([^\n,;]+)")
+    )
+    date_of_birth = (
+        _next_line_after_label(["Date of Birth", "DOB", "Birth Date"])
+        or _find(r"(?:date\s*of\s*birth|dob|birth\s*date)\s*[:\-]\s*([^\n,;]+)")
+    )
+    ni_number = (
+        _next_line_after_label(["National Insurance Number", "National Insurance", "NI Number", "NINO"])
+        or _find(r"(?:national\s*insurance(?:\s*number)?|ni\s*number|nino)\s*[:\-]\s*([A-Za-z0-9 ]{8,})")
+    )
+    start_date = (
+        _next_line_after_label(["Start Date", "Employment Start Date"])
+        or _find(r"(?:start\s*date|employment\s*start\s*date)\s*[:\-]\s*([^\n,;]+)")
+    )
+    job_title = (
+        _next_line_after_label(["Job Title", "Role", "Position"])
+        or _find(r"(?:job\s*title|role|position)\s*[:\-]\s*([^\n,;]+)")
+    )
+    department = (
+        _next_line_after_label(["Department", "Team"])
+        or _find(r"(?:department|team)\s*[:\-]\s*([^\n,;]+)")
+    )
+    payroll_number = (
+        _next_line_after_label(["Payroll Number", "Employee Number", "Staff Number"])
+        or _find(r"(?:payroll\s*number|employee\s*number|staff\s*number)\s*[:\-]\s*([^\n,;]+)")
+    )
+    tax_code = (
+        _next_line_after_label(["Tax Code"])
+        or _find(r"(?:tax\s*code)\s*[:\-]\s*([^\n,;]+)")
+    )
+    employment_type = (
+        _next_line_after_label(["Employment Type", "Contract Type"])
+        or _find(r"(?:employment\s*type|contract\s*type)\s*[:\-]\s*([^\n,;]+)")
+    )
+    hours_per_week = (
+        _next_line_after_label(["Hours", "Hours Per Week"])
+        or _find(r"(?:hours(?:\s*per\s*week)?)\s*[:\-]\s*([^\n,;]+)")
+    )
+    salary = (
+        _next_line_after_label(["Salary", "Pay", "Annual Salary"])
+        or _find(r"(?:salary|pay|annual\s*salary)\s*[:\-]\s*([^\n,;]+)")
+    )
+    address_line_1 = _next_line_after_label(["Address", "Address Line 1"]) or _find(r"(?:address(?:\s*line\s*1)?)\s*[:\-]\s*([^\n]+)")
+    address_line_2 = _next_line_after_label(["Address Line 2"]) or _find(r"(?:address\s*line\s*2)\s*[:\-]\s*([^\n,;]+)")
+    city = _next_line_after_label(["City", "Town"]) or _find(r"(?:city|town)\s*[:\-]\s*([^\n,;]+)")
+    postcode = _next_line_after_label(["Postcode", "Postal Code"]) or _find(r"(?:postcode|postal\s*code)\s*[:\-]\s*([^\n,;]+)")
+    country = _next_line_after_label(["Country"]) or _find(r"(?:country)\s*[:\-]\s*([^\n,;]+)")
+    bank_account_name = _next_line_after_label(["Account Name", "Bank Account Name"]) or _find(r"(?:bank\s*account\s*name|account\s*name)\s*[:\-]\s*([^\n,;]+)")
+    bank_account_number = _next_line_after_label(["Account Number", "Bank Account Number"]) or _find(r"(?:bank\s*account\s*number|account\s*number)\s*[:\-]\s*([A-Za-z0-9 ]+)")
+    bank_sort_code = _next_line_after_label(["Sort Code", "Bank Sort Code"]) or _find(r"(?:sort\s*code|bank\s*sort\s*code)\s*[:\-]\s*([A-Za-z0-9\- ]+)")
     if not email_value:
         free_email = re.search(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", combined, flags=re.IGNORECASE)
         email_value = str(free_email.group(0) or "").strip() if free_email else ""
@@ -15996,7 +16120,119 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         "employeeFirstName": first_name[:80],
         "employeeLastName": last_name[:120],
         "employeeEmail": email_value.lower()[:160],
+        "employerName": re.sub(r"\s+", " ", str(employer_name or "")).strip()[:180],
+        "employeePhone": re.sub(r"\s+", " ", str(employee_phone or "")).strip()[:80],
+        "dateOfBirth": re.sub(r"\s+", " ", str(date_of_birth or "")).strip()[:32],
+        "nationalInsuranceNumber": re.sub(r"\s+", "", str(ni_number or "")).strip().upper()[:20],
+        "startDate": re.sub(r"\s+", " ", str(start_date or "")).strip()[:32],
+        "jobTitle": re.sub(r"\s+", " ", str(job_title or "")).strip()[:120],
+        "department": re.sub(r"\s+", " ", str(department or "")).strip()[:120],
+        "payrollNumber": re.sub(r"\s+", " ", str(payroll_number or "")).strip()[:64],
+        "taxCode": re.sub(r"\s+", " ", str(tax_code or "")).strip()[:64],
+        "employmentType": re.sub(r"\s+", " ", str(employment_type or "")).strip()[:64],
+        "hoursPerWeek": re.sub(r"\s+", " ", str(hours_per_week or "")).strip()[:40],
+        "salary": re.sub(r"\s+", " ", str(salary or "")).strip()[:64],
+        "addressLine1": re.sub(r"\s+", " ", str(address_line_1 or "")).strip()[:160],
+        "addressLine2": re.sub(r"\s+", " ", str(address_line_2 or "")).strip()[:160],
+        "city": re.sub(r"\s+", " ", str(city or "")).strip()[:120],
+        "postcode": re.sub(r"\s+", " ", str(postcode or "")).strip()[:32],
+        "country": re.sub(r"\s+", " ", str(country or "")).strip()[:80],
+        "bankAccountName": re.sub(r"\s+", " ", str(bank_account_name or "")).strip()[:120],
+        "bankAccountNumber": re.sub(r"\s+", "", str(bank_account_number or "")).strip()[:34],
+        "bankSortCode": re.sub(r"[^0-9A-Za-z\-]", "", str(bank_sort_code or "")).strip()[:20],
     }
+
+
+def _submitted_employee_forms_ai_request_text(subject: str, snippet: str, body_text: str) -> str:
+    return (
+        "Extract employee onboarding form fields from this email content. "
+        "Use only explicit values present in the text. Return empty strings where unknown.\n\n"
+        f"Subject:\n{subject}\n\n"
+        f"Gmail snippet:\n{snippet}\n\n"
+        f"Body text:\n{body_text[:12000]}"
+    )
+
+
+async def _submitted_employee_forms_extract_with_openai(
+    subject: str,
+    snippet: str,
+    body_text: str,
+    *,
+    user_id: str | None = None,
+) -> dict:
+    if not str(get_settings().openai_api_key or "").strip():
+        return {}
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": _submitted_employee_forms_ai_request_text(subject, snippet, body_text),
+                    }
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "submitted_employee_form_extraction",
+                "schema": SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 2400,
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "submitted employee form extraction",
+            timeout_seconds=30,
+            user_id=user_id,
+            feature="submitted-employee-forms",
+            page="submitted-employee-forms",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for submitted employee form extraction.")
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        logger.exception("submitted_employee_forms_openai_extraction_failed")
+        return {}
+
+
+def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity: dict) -> dict:
+    merged: dict[str, str] = {}
+    for key in SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA.get("required", []):
+        ai_value = re.sub(r"\s+", " ", str((ai_identity or {}).get(key) or "")).strip()
+        local_value = re.sub(r"\s+", " ", str((local_identity or {}).get(key) or "")).strip()
+        merged[key] = ai_value or local_value
+    if not merged.get("employeeFullName"):
+        merged["employeeFullName"] = " ".join(
+            part for part in [merged.get("employeeFirstName", ""), merged.get("employeeLastName", "")] if part
+        ).strip()
+    if not merged.get("employeeFirstName") and merged.get("employeeFullName"):
+        parts = [part for part in re.split(r"\s+", merged["employeeFullName"]) if part]
+        if parts:
+            merged["employeeFirstName"] = parts[0]
+        if len(parts) >= 2 and not merged.get("employeeLastName"):
+            merged["employeeLastName"] = " ".join(parts[1:])
+    merged["employeeEmail"] = str(merged.get("employeeEmail") or "").lower()
+    merged["nationalInsuranceNumber"] = re.sub(r"\s+", "", str(merged.get("nationalInsuranceNumber") or "")).upper()
+    for field_name in ("dateOfBirth", "startDate"):
+        value = str(merged.get(field_name) or "").strip()
+        normalised = value
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y"):
+            try:
+                normalised = datetime.strptime(value, fmt).date().isoformat()
+                break
+            except Exception:
+                continue
+        merged[field_name] = normalised
+    missing = (ai_identity or {}).get("missingOrUnclear")
+    merged["missingOrUnclear"] = [
+        str(item).strip() for item in (missing if isinstance(missing, list) else []) if str(item).strip()
+    ]
+    return merged
 
 
 def _xero_payroll_employee_identity(row: dict) -> tuple[str, str, str]:
@@ -16034,6 +16270,18 @@ def _submitted_employee_forms_summary(rows: list[dict]) -> dict:
 
 
 def _submitted_employee_forms_rows_payload(rows: list[dict]) -> list[dict]:
+    def _extracted_fields_payload(row: dict) -> dict:
+        value = row.get("extracted_fields")
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, dict) else {}
+            except ValueError:
+                return {}
+        return {}
+
     return [
         {
             "id": str(row.get("id") or ""),
@@ -16047,6 +16295,8 @@ def _submitted_employee_forms_rows_payload(rows: list[dict]) -> list[dict]:
             "employeeFirstName": str(row.get("employee_first_name") or ""),
             "employeeLastName": str(row.get("employee_last_name") or ""),
             "employeeEmail": str(row.get("employee_email") or ""),
+            "employerName": str(row.get("employer_name") or ""),
+            "extractedFields": _extracted_fields_payload(row),
             "snippet": str(row.get("snippet") or ""),
             "xeroTenantId": str(row.get("xero_tenant_id") or ""),
             "xeroTenantName": str(row.get("xero_tenant_name") or ""),
@@ -16300,6 +16550,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
         diagnostics["messageIdsCollected"] = len(message_ids)
 
         semaphore = asyncio.Semaphore(8)
+        extraction_semaphore = asyncio.Semaphore(3)
 
         async def _fetch_message(message_id: str) -> dict | None:
             async with semaphore:
@@ -16324,7 +16575,15 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             from_name, from_email = _parse_email_contact(from_header)
             body_text = _gmail_message_body_text(payload)
             snippet = str(payload.get("snippet") or "").strip()
-            identity = _extract_employee_identity(subject, snippet, body_text)
+            local_identity = _extract_employee_identity(subject, snippet, body_text)
+            async with extraction_semaphore:
+                ai_identity = await _submitted_employee_forms_extract_with_openai(
+                    subject,
+                    snippet,
+                    body_text,
+                    user_id=str(user.get("id") or ""),
+                )
+            identity = _submitted_employee_forms_merged_identity(local_identity, ai_identity)
             return {
                 "gmailMessageId": str(payload.get("id") or message_id).strip(),
                 "gmailThreadId": str(payload.get("threadId") or "").strip(),
@@ -16336,6 +16595,8 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 "employeeFirstName": str(identity.get("employeeFirstName") or ""),
                 "employeeLastName": str(identity.get("employeeLastName") or ""),
                 "employeeEmail": str(identity.get("employeeEmail") or ""),
+                "employerName": str(identity.get("employerName") or ""),
+                "extractedFields": identity,
                 "snippet": snippet[:3000],
                 "rawPayload": payload,
             }
@@ -16391,12 +16652,14 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 employee_first_name,
                                 employee_last_name,
                                 employee_email,
+                                employer_name,
+                                extracted_fields,
                                 snippet,
                                 raw_payload,
                                 created_at,
                                 updated_at
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s)
                             ON CONFLICT (user_id, gmail_message_id)
                             DO UPDATE
                             SET gmail_thread_id = EXCLUDED.gmail_thread_id,
@@ -16408,6 +16671,8 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 employee_first_name = EXCLUDED.employee_first_name,
                                 employee_last_name = EXCLUDED.employee_last_name,
                                 employee_email = EXCLUDED.employee_email,
+                                employer_name = EXCLUDED.employer_name,
+                                extracted_fields = EXCLUDED.extracted_fields,
                                 snippet = EXCLUDED.snippet,
                                 raw_payload = EXCLUDED.raw_payload,
                                 updated_at = EXCLUDED.updated_at
@@ -16424,6 +16689,8 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 str(row.get("employeeFirstName") or ""),
                                 str(row.get("employeeLastName") or ""),
                                 str(row.get("employeeEmail") or ""),
+                                str(row.get("employerName") or ""),
+                                json.dumps(row.get("extractedFields") if isinstance(row.get("extractedFields"), dict) else {}, default=_json_default),
                                 str(row.get("snippet") or ""),
                                 json.dumps(row.get("rawPayload") if isinstance(row.get("rawPayload"), dict) else {}, default=_json_default),
                                 utcnow(),
@@ -16472,6 +16739,205 @@ def _submitted_forms_target_connection(user: dict, tenant_id: str | None = None)
     if clean_tenant_id:
         return xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
     return get_xero_connection_for_user(user["id"])
+
+
+def _submitted_forms_employer_name(form_row: dict) -> str:
+    employer_name = re.sub(r"\s+", " ", str(form_row.get("employer_name") or "")).strip()
+    if employer_name:
+        return employer_name
+    extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
+    employer_name = re.sub(r"\s+", " ", str(extracted_fields.get("employerName") or "")).strip()
+    if employer_name:
+        return employer_name
+    raw_payload = form_row.get("raw_payload") if isinstance(form_row.get("raw_payload"), dict) else {}
+    if raw_payload:
+        body_text = _gmail_message_body_text(raw_payload)
+        identity = _extract_employee_identity(
+            str(form_row.get("subject") or ""),
+            str(form_row.get("snippet") or ""),
+            body_text,
+        )
+        employer_name = re.sub(r"\s+", " ", str(identity.get("employerName") or "")).strip()
+        if employer_name:
+            return employer_name
+    return re.sub(r"\s+", " ", str(form_row.get("from_name") or "")).strip()
+
+
+def _submitted_forms_workspace_catalog(user: dict) -> list[dict]:
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    source_rows = list_xero_connections_for_user(str(user.get("id") or ""), include_fallback=False)
+    connection_rows = []
+    for row in source_rows:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
+            continue
+        tenant_type = str(row.get("tenant_type") or "").strip().upper()
+        if tenant_type not in ("", "ORGANISATION", "ORGANIZATION"):
+            continue
+        connection_rows.append(row)
+    if not connection_rows:
+        return []
+    connection_rows = sorted(
+        connection_rows,
+        key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name),
+        reverse=True,
+    )
+    tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connection_rows if str(row.get("tenant_id") or "").strip()]
+    customer_names_by_tenant: dict[str, set[str]] = {}
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT tenant_id, name
+                    FROM customers
+                    WHERE tenant_id = ANY(%s)
+                    """,
+                    (tenant_ids,),
+                )
+                rows = cursor.fetchall() or []
+            connection.commit()
+        for row in rows:
+            tenant_id = str(row.get("tenant_id") or "").strip()
+            if not tenant_id:
+                continue
+            name_key = _bm_tasks_normalise_name_key(str(row.get("name") or ""))
+            if not name_key:
+                continue
+            customer_names_by_tenant.setdefault(tenant_id, set()).add(name_key)
+    except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+        ensure_schema()
+    catalog: list[dict] = []
+    for row in connection_rows:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        tenant_name = str(row.get("tenant_name") or tenant_id).strip()
+        tenant_key = _bm_tasks_normalise_name_key(tenant_name)
+        name_keys = set(customer_names_by_tenant.get(tenant_id) or set())
+        if tenant_key:
+            name_keys.add(tenant_key)
+        catalog.append(
+            {
+                "connection": row,
+                "tenantId": tenant_id,
+                "tenantName": tenant_name,
+                "tenantKey": tenant_key,
+                "nameKeys": name_keys,
+            }
+        )
+    return catalog
+
+
+def _submitted_forms_match_workspace_by_employer(employer_name: str, workspace_catalog: list[dict]) -> dict | None:
+    employer_key = _bm_tasks_normalise_name_key(employer_name)
+    if not employer_key:
+        return None
+    for workspace in workspace_catalog:
+        if employer_key in (workspace.get("nameKeys") or set()):
+            return workspace
+    if len(employer_key) < 4:
+        return None
+    for workspace in workspace_catalog:
+        tenant_key = str(workspace.get("tenantKey") or "")
+        if tenant_key and (employer_key in tenant_key or tenant_key in employer_key):
+            return workspace
+        for name_key in workspace.get("nameKeys") or set():
+            if employer_key in name_key or name_key in employer_key:
+                return workspace
+    return None
+
+
+async def _submitted_forms_match_workspace_with_openai(
+    form_row: dict,
+    employer_name: str,
+    workspace_catalog: list[dict],
+    *,
+    user_id: str | None = None,
+) -> tuple[dict | None, str, int]:
+    if not workspace_catalog:
+        return None, "", 0
+    if len(workspace_catalog) == 1:
+        return workspace_catalog[0], "Single connected workspace.", 100
+    if not str(get_settings().openai_api_key or "").strip():
+        return None, "", 0
+    subject = str(form_row.get("subject") or "").strip()
+    sender_name = str(form_row.get("from_name") or "").strip()
+    sender_email = str(form_row.get("from_email") or "").strip().lower()
+    employee_name = " ".join(
+        part
+        for part in [
+            str(form_row.get("employee_first_name") or "").strip(),
+            str(form_row.get("employee_last_name") or "").strip(),
+        ]
+        if part
+    ).strip() or str(form_row.get("employee_full_name") or "").strip()
+    employee_email = str(form_row.get("employee_email") or "").strip().lower()
+    snippet = str(form_row.get("snippet") or "").strip()
+    candidates = []
+    for workspace in workspace_catalog:
+        candidate_keys = sorted(list(workspace.get("nameKeys") or set()))
+        candidates.append(
+            {
+                "tenantId": str(workspace.get("tenantId") or "").strip(),
+                "tenantName": str(workspace.get("tenantName") or "").strip(),
+                "nameHints": candidate_keys[:20],
+            }
+        )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Choose the best Xero client workspace for this employee form. "
+                            "Use employer clues first, then sender and subject context. "
+                            "Return tenantId only from candidates; empty tenantId if uncertain.\n\n"
+                            f"Employer: {employer_name}\n"
+                            f"Employee: {employee_name}\n"
+                            f"Employee email: {employee_email}\n"
+                            f"Sender name: {sender_name}\n"
+                            f"Sender email: {sender_email}\n"
+                            f"Subject: {subject}\n"
+                            f"Snippet: {snippet[:1000]}\n\n"
+                            f"Candidates JSON:\n{json.dumps(candidates, default=_json_default)}"
+                        ),
+                    }
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "submitted_employee_form_workspace_match",
+                "schema": SUBMITTED_EMPLOYEE_FORMS_AI_MATCH_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 600,
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "submitted employee form workspace matching",
+            timeout_seconds=20,
+            user_id=user_id,
+            feature="submitted-employee-forms",
+            page="submitted-employee-forms",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for submitted employee form workspace matching.")
+        if not isinstance(parsed, dict):
+            return None, "", 0
+        tenant_id = str(parsed.get("tenantId") or "").strip()
+        confidence = int(parsed.get("confidence") or 0)
+        reason = str(parsed.get("reason") or "").strip()
+        if not tenant_id:
+            return None, reason, confidence
+        workspace = next((item for item in workspace_catalog if str(item.get("tenantId") or "").strip() == tenant_id), None)
+        return workspace, reason, confidence
+    except Exception:
+        logger.exception("submitted_employee_forms_openai_workspace_match_failed")
+        return None, "", 0
 
 
 def _submitted_employee_forms_query_rows_by_ids(user_id: str, row_ids: list[str]) -> list[dict]:
@@ -16524,6 +16990,10 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
     }
     if email_value:
         employee_row["Email"] = email_value[:160]
+    extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
+    date_of_birth = str(extracted_fields.get("dateOfBirth") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_of_birth):
+        employee_row["DateOfBirth"] = date_of_birth
     return {"Employees": [employee_row]}
 
 
@@ -16611,26 +17081,22 @@ async def sync_submitted_employee_forms(
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No selected submitted employee forms were found.")
 
-    connection_row = _submitted_forms_target_connection(user, tenant_id)
-    clean_tenant_id = str(connection_row.get("tenant_id") or "").strip()
-    clean_tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
-
-    employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
-    existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
-    existing_by_email: dict[str, str] = {}
-    existing_by_name: dict[str, str] = {}
-    for employee in existing_employees:
-        employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
-        if employee_email and employee_email not in existing_by_email:
-            existing_by_email[employee_email] = employee_id
-        if employee_name and employee_name not in existing_by_name:
-            existing_by_name[employee_name] = employee_id
+    manual_connection = _submitted_forms_target_connection(user, tenant_id) if str(tenant_id or "").strip() else None
+    workspace_catalog = _submitted_forms_workspace_catalog(user) if manual_connection is None else []
+    if manual_connection is None and not workspace_catalog:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No connected Xero organisation workspaces are available for Step 2.",
+        )
 
     processed = 0
     created = 0
     existing = 0
     failed = 0
     needs_review = 0
+    last_tenant_id = ""
+    last_tenant_name = ""
+    employee_index_by_tenant: dict[str, dict] = {}
 
     for row in rows:
         row_id = str(row.get("id") or "").strip()
@@ -16647,6 +17113,75 @@ async def sync_submitted_employee_forms(
         if not employee_name:
             employee_name = str(row.get("employee_full_name") or "").strip().lower()
 
+        employer_name = _submitted_forms_employer_name(row)
+        target_workspace = None
+        ai_match_reason = ""
+        ai_match_confidence = 0
+        if manual_connection is not None:
+            target_workspace = {
+                "connection": manual_connection,
+                "tenantId": str(manual_connection.get("tenant_id") or "").strip(),
+                "tenantName": str(manual_connection.get("tenant_name") or manual_connection.get("tenant_id") or "").strip(),
+            }
+        else:
+            target_workspace = _submitted_forms_match_workspace_by_employer(employer_name, workspace_catalog)
+            ai_workspace, ai_reason, ai_confidence = await _submitted_forms_match_workspace_with_openai(
+                row,
+                employer_name,
+                workspace_catalog,
+                user_id=user_id,
+            )
+            if ai_workspace:
+                target_workspace = ai_workspace
+                ai_match_reason = ai_reason
+                ai_match_confidence = ai_confidence
+        if not target_workspace:
+            needs_review += 1
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id="",
+                tenant_name="",
+                xero_status="needs-review",
+                xero_note=(
+                    f"No Xero-connected client workspace matched employer '{employer_name}'."
+                    if employer_name
+                    else "Employer name missing on submitted form; unable to match a client workspace."
+                ),
+            )
+            continue
+        connection_row = target_workspace.get("connection") or {}
+        clean_tenant_id = str(target_workspace.get("tenantId") or connection_row.get("tenant_id") or "").strip()
+        clean_tenant_name = str(target_workspace.get("tenantName") or connection_row.get("tenant_name") or clean_tenant_id).strip()
+        if not clean_tenant_id:
+            needs_review += 1
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id="",
+                tenant_name="",
+                xero_status="needs-review",
+                xero_note=f"Matched employer '{employer_name or 'unknown'}' but workspace tenant ID is unavailable.",
+            )
+            continue
+        last_tenant_id = clean_tenant_id
+        last_tenant_name = clean_tenant_name
+        if clean_tenant_id not in employee_index_by_tenant:
+            employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+            existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
+            existing_by_email: dict[str, str] = {}
+            existing_by_name: dict[str, str] = {}
+            for employee in existing_employees:
+                employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
+                if employee_email and employee_email not in existing_by_email:
+                    existing_by_email[employee_email] = employee_id
+                if employee_name and employee_name not in existing_by_name:
+                    existing_by_name[employee_name] = employee_id
+            employee_index_by_tenant[clean_tenant_id] = {
+                "byEmail": existing_by_email,
+                "byName": existing_by_name,
+            }
+        tenant_employee_index = employee_index_by_tenant.get(clean_tenant_id) or {}
+        existing_by_email = tenant_employee_index.get("byEmail") or {}
+        existing_by_name = tenant_employee_index.get("byName") or {}
         existing_employee_id = ""
         if employee_email:
             existing_employee_id = existing_by_email.get(employee_email) or ""
@@ -16661,7 +17196,11 @@ async def sync_submitted_employee_forms(
                 tenant_name=clean_tenant_name,
                 xero_employee_id=existing_employee_id,
                 xero_status="exists",
-                xero_note="Complete: employee already exists in Xero Payroll.",
+                xero_note=(
+                    f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
+                    f"Employee already exists in Xero Payroll."
+                    f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
+                ),
             )
             continue
 
@@ -16671,7 +17210,11 @@ async def sync_submitted_employee_forms(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_status="pending",
-                xero_note="Employee not found in Xero Payroll.",
+                xero_note=(
+                    f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
+                    "Employee not found in Xero Payroll."
+                    f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
+                ),
             )
             continue
 
@@ -16700,7 +17243,11 @@ async def sync_submitted_employee_forms(
                 tenant_name=clean_tenant_name,
                 xero_employee_id=created_employee_id,
                 xero_status="created",
-                xero_note=f"Complete: employee created in Xero Payroll{f' ({created_status})' if created_status else ''}.",
+                xero_note=(
+                    f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
+                    f"Employee created in Xero Payroll{f' ({created_status})' if created_status else ''}."
+                    f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
+                ),
             )
         except Exception as exc:
             failed += 1
@@ -16721,8 +17268,8 @@ async def sync_submitted_employee_forms(
         "existing": existing,
         "failed": failed,
         "needsReview": needs_review,
-        "tenantId": clean_tenant_id,
-        "tenantName": clean_tenant_name,
+        "tenantId": last_tenant_id,
+        "tenantName": last_tenant_name,
         "gmail": {},
         "selectedCount": len(selected_ids),
     }
