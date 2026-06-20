@@ -31,6 +31,12 @@ let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
 let searchRenderFrame = null;
+let invoiceStateVersion = 0;
+let decoratedInvoicesCache = null;
+let decoratedInvoicesCacheVersion = -1;
+let filteredInvoicesCache = null;
+let filteredInvoicesCacheKey = "";
+let tableRenderSignature = "";
 let clientProfileBaseline = null;
 let clientProfileDraft = null;
 let clientProfileClientId = null;
@@ -39,7 +45,6 @@ let persistStateTimer = null;
 let persistClientMatchesTimer = null;
 let searchDebounceTimer = null;
 const PERSIST_DEBOUNCE_MS = 180;
-const SEARCH_DEBOUNCE_MS = 90;
 const currencyFormatter = new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "GBP",
@@ -62,6 +67,15 @@ const confirmationState = {
     bulkJobId: "",
     bulkJobPollTimer: null,
 };
+
+function invalidateInvoiceCaches() {
+    invoiceStateVersion += 1;
+    decoratedInvoicesCache = null;
+    decoratedInvoicesCacheVersion = -1;
+    filteredInvoicesCache = null;
+    filteredInvoicesCacheKey = "";
+    tableRenderSignature = "";
+}
 
 function installNonBlockingBrowserDialogOverrides() {
     if (window.__nonBlockingDialogsInstalled) return;
@@ -178,6 +192,7 @@ function clearSensitiveState() {
     activeView = "ledger";
     currentPage = 1;
     searchTerm = "";
+    invalidateInvoiceCaches();
     clearSensitiveStorage();
 }
 
@@ -225,6 +240,7 @@ function replaceState(next) {
     })).map((customer) => applyStoredMatch(customer, storedMatches[customer.id] || localMatches.get(customer.id)));
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
+    invalidateInvoiceCaches();
     const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
     const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
     selectedInvoiceId = invoice?.id || null;
@@ -390,7 +406,12 @@ function decorateInvoice(customer, invoice) {
 }
 
 function allInvoices() {
-    return state.customers.flatMap((customer) => (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)));
+    if (decoratedInvoicesCache && decoratedInvoicesCacheVersion === invoiceStateVersion) {
+        return decoratedInvoicesCache;
+    }
+    decoratedInvoicesCache = state.customers.flatMap((customer) => (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)));
+    decoratedInvoicesCacheVersion = invoiceStateVersion;
+    return decoratedInvoicesCache;
 }
 
 function findCustomerById(customerId) {
@@ -654,7 +675,12 @@ function managerValues() {
 
 function filteredInvoices(invoices = allInvoices()) {
     const searchTermLower = searchTerm.trim().toLowerCase();
-    return invoices.filter((invoice) => {
+    const canUseCache = invoices === allInvoices();
+    const cacheKey = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTermLower}`;
+    if (canUseCache && filteredInvoicesCache && filteredInvoicesCacheKey === cacheKey) {
+        return filteredInvoicesCache;
+    }
+    const result = invoices.filter((invoice) => {
         const category = invoice.category || invoiceCategory(invoice);
         const matchesFilter = selectedFilter === "all" || category === selectedFilter;
         const matchesSearch = (invoice.searchableText || "").includes(searchTermLower);
@@ -662,6 +688,11 @@ function filteredInvoices(invoices = allInvoices()) {
         const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
         return matchesFilter && matchesSearch && matchesClient;
     }).sort(compareInvoices);
+    if (canUseCache) {
+        filteredInvoicesCache = result;
+        filteredInvoicesCacheKey = cacheKey;
+    }
+    return result;
 }
 
 function compareInvoices(a, b) {
@@ -771,38 +802,43 @@ function renderInvoiceTable(invoices = allInvoices()) {
     currentPage = Math.min(currentPage, pages);
     const start = (currentPage - 1) * pageSize;
     const paged = filtered.slice(start, start + pageSize);
-    tbody.innerHTML = "";
-    if (!paged.length) {
-        const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
-        tbody.appendChild(row);
-    } else {
-        const fragment = document.createDocumentFragment();
-        paged.forEach((invoice) => {
-            const category = invoice.category || invoiceCategory(invoice);
-            const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
-            const paidDateLabel = category === "paid"
-                ? paidHoverText.replace(/^Paid on\s*/i, "")
-                : category === "overdue"
-                    ? "Payment overdue"
-                    : formatDate(invoice.promisedDate || invoice.dueDate);
+    const pageInvoiceIds = paged.map((invoice) => invoice.id || "").join("|");
+    const signature = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTerm.trim().toLowerCase()}|${currentPage}|${selectedInvoiceId || ""}|${filtered.length}|${pageInvoiceIds}`;
+    if (signature !== tableRenderSignature) {
+        tbody.innerHTML = "";
+        if (!paged.length) {
             const row = document.createElement("tr");
-            row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
-            row.dataset.invoiceId = invoice.id || "";
-            row.dataset.customerId = invoice.customerId || "";
-            row.innerHTML = `
-                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
-                <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
-                <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
-                <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
-                <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
-                <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
-                <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
-                <td><button class="row-menu" type="button">⋮</button></td>
-            `;
-            fragment.appendChild(row);
-        });
-        tbody.appendChild(fragment);
+            row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+            tbody.appendChild(row);
+        } else {
+            const fragment = document.createDocumentFragment();
+            paged.forEach((invoice) => {
+                const category = invoice.category || invoiceCategory(invoice);
+                const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
+                const paidDateLabel = category === "paid"
+                    ? paidHoverText.replace(/^Paid on\s*/i, "")
+                    : category === "overdue"
+                        ? "Payment overdue"
+                        : formatDate(invoice.promisedDate || invoice.dueDate);
+                const row = document.createElement("tr");
+                row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
+                row.dataset.invoiceId = invoice.id || "";
+                row.dataset.customerId = invoice.customerId || "";
+                row.innerHTML = `
+                    <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                    <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
+                    <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
+                    <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
+                    <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
+                    <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
+                    <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
+                    <td><button class="row-menu" type="button">⋮</button></td>
+                `;
+                fragment.appendChild(row);
+            });
+            tbody.appendChild(fragment);
+        }
+        tableRenderSignature = signature;
     }
     renderPagination(filtered.length, pages, start, paged.length);
 }
@@ -936,6 +972,7 @@ function renderSettingsScreen() {
             customer.ignitionClientId = ignitionInput?.value.trim() || "";
             customer.xeroConnected = Boolean(customer.xeroOrganisationId);
             customer.ignitionConnected = Boolean(customer.ignitionClientId);
+            invalidateInvoiceCaches();
             persistState();
             persistClientMatches();
             renderAll();
@@ -1109,17 +1146,15 @@ function flushPendingPersistence() {
 function scheduleLedgerTableRender() {
     if (searchDebounceTimer !== null) {
         window.clearTimeout(searchDebounceTimer);
-    }
-    searchDebounceTimer = window.setTimeout(() => {
         searchDebounceTimer = null;
-        if (searchRenderFrame !== null) {
-            window.cancelAnimationFrame(searchRenderFrame);
-        }
-        searchRenderFrame = window.requestAnimationFrame(() => {
-            searchRenderFrame = null;
-            renderInvoiceTable();
-        });
-    }, SEARCH_DEBOUNCE_MS);
+    }
+    if (searchRenderFrame !== null) {
+        window.cancelAnimationFrame(searchRenderFrame);
+    }
+    searchRenderFrame = window.requestAnimationFrame(() => {
+        searchRenderFrame = null;
+        renderInvoiceTable();
+    });
 }
 
 function wireFilters() {
@@ -1317,6 +1352,7 @@ function wireForms() {
         if (!match || !body) return;
         match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
         document.getElementById("invoiceNoteInput").value = "";
+        invalidateInvoiceCaches();
         persistState();
         renderAll();
         try {
@@ -1348,6 +1384,7 @@ function wireForms() {
         });
         document.getElementById("bulkStatusNote").value = "";
         state.panelSummary = null;
+        invalidateInvoiceCaches();
         persistState();
         renderAll();
         try {

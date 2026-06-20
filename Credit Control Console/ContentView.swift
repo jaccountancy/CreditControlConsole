@@ -68,15 +68,27 @@ struct ContentView: View {
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
 
-                            List(SidebarDestination.allCases, selection: $selectedDestination) { destination in
-                                Label(destination.rawValue, systemImage: destination.iconName)
-                                    .font(.headline)
-                                    .tag(destination)
-                                    .padding(.vertical, 6)
-                                    .foregroundStyle(.white)
-                                    .listRowBackground(Color.white.opacity(0.12))
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(SidebarDestination.allCases) { destination in
+                                    Button {
+                                        selectedDestination = destination
+                                    } label: {
+                                        Label(destination.rawValue, systemImage: destination.iconName)
+                                            .font(.headline)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 10)
+                                            .foregroundStyle(.white)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(selectedDestination == destination ? Color.white.opacity(0.24) : Color.white.opacity(0.12))
+                                    )
+                                }
+                                Spacer(minLength: 0)
                             }
-                            .scrollContentBackground(.hidden)
+                            .padding(.horizontal, 10)
                         }
                     }
                     .navigationTitle("Jenius Tools")
