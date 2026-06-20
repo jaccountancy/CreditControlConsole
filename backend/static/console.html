@@ -9162,6 +9162,12 @@
                 gap: 6px;
                 min-width: 0;
             }
+            .insights-hero-primary-actions {
+                display: grid;
+                gap: 8px;
+                margin-top: 8px;
+                width: min(300px, 100%);
+            }
             .insights-top-global-card .insights-hero-title {
                 margin: 0;
                 color: #1e3455;
@@ -9406,7 +9412,7 @@
             .insights-hero-greeting-actions {
                 position: relative;
                 flex: 0 0 auto;
-                margin-left: auto;
+                margin-left: 0;
             }
             #insightsQuickAccessDock {
                 position: relative;
@@ -11450,6 +11456,9 @@
                     margin-top: 8px;
                     padding: 0;
                     font-size: 0.9rem;
+                }
+                .insights-hero-primary-actions {
+                    width: 100%;
                 }
                 #insightsQuickAccessDock {
                     position: static;
@@ -35702,6 +35711,23 @@
                                     <span class="insights-hero-chip" id="insightsHeroChip">Jenius AI · Live</span>
                                     <h2 class="insights-live-greeting insights-hero-title" id="insightsLiveGreeting">Loading local time...</h2>
                                     <p class="detail-meta" id="insightsMeta">Your live command centre — debtor book, cash collection, Xero sync health and workflow actions, all in one place.</p>
+                                    <div class="insights-hero-primary-actions">
+                                        <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
+                                            <span id="refreshInsightsButtonLabel">Refresh</span>
+                                        </button>
+                                        <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
+                                            <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access ▾</button>
+                                            <div class="insights-quick-access-menu" id="insightsQuickAccessMenu" hidden>
+                                                <header class="insights-quick-access-menu-head">
+                                                    <strong>Quick Access</strong>
+                                                    <small>Jump into key workflows</small>
+                                                </header>
+                                                <div class="insights-quick-access-menu-body" id="insightsQuickAccessMenuBody">
+                                                    <p class="insights-quick-access-empty">Quick actions are loading...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="detail-actions">
@@ -35709,21 +35735,6 @@
                                     <span class="insights-hero-day" id="insightsLiveDay">--</span>
                                     <span class="insights-hero-date" id="insightsLiveDate">--</span>
                                     <span class="insights-hero-time" id="insightsLiveTime">--</span>
-                                </div>
-                                <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
-                                    <span id="refreshInsightsButtonLabel">Refresh</span>
-                                </button>
-                                <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
-                                    <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access ▾</button>
-                                    <div class="insights-quick-access-menu" id="insightsQuickAccessMenu" hidden>
-                                        <header class="insights-quick-access-menu-head">
-                                            <strong>Quick Access</strong>
-                                            <small>Jump into key workflows</small>
-                                        </header>
-                                        <div class="insights-quick-access-menu-body" id="insightsQuickAccessMenuBody">
-                                            <p class="insights-quick-access-empty">Quick actions are loading...</p>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                             <div class="insights-hero-xero-host" id="insightsHeroXeroStatus" hidden></div>
@@ -45412,6 +45423,7 @@
             const emptyData = {
                 organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
                 dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
+                panelSummary: { counts: {}, totals: {} },
                 customers: [],
                 audit: [],
                 selectedInvoice: null,
@@ -46150,6 +46162,8 @@
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
             let statePersistenceDisabled = false;
+            let persistStateTimer = null;
+            let lastPersistedUIStateJSON = "";
             let factoryResetRevealClicks = 0;
             let denseMode = persistedUIState.version >= 3 ? persistedUIState.denseMode !== false : true;
             let quickNoteInvoiceId = null;
@@ -46238,6 +46252,11 @@
             let xeroLockMismatchFixState = {};
             let xeroLockMismatchSearchTerm = "";
             let xeroLockMismatchStatusFilter = "all";
+            let ledgerDataRevision = 0;
+            let filteredInvoicesCache = { key: "", rows: [] };
+            let filteredClientGroupsCache = { key: "", groups: [] };
+            let ledgerSummaryCache = { key: "", summary: null };
+            let ledgerDatasetCache = { key: "", invoices: [] };
             let xeroLockMismatchVisibleTenantIds = [];
             let xeroLockFixProgressTenantIds = [];
             let xeroLockFixCurrentTenantId = "";
@@ -47221,6 +47240,7 @@
                 return {
                     organisation: payload.organisation || emptyData.organisation,
                     dashboard: payload.dashboard || emptyData.dashboard,
+                    panelSummary: payload.panelSummary || emptyData.panelSummary,
                     customers: Array.isArray(payload.customers) ? payload.customers : [],
                     audit: Array.isArray(payload.audit) ? payload.audit : [],
                     selectedInvoice: payload.selectedInvoice || null,
@@ -48763,10 +48783,36 @@
                 localStorage.setItem(LETTER_TEMPLATES_KEY, JSON.stringify(letterTemplates));
             }
 
+            function schedulePersistState(delay = 320) {
+                if (statePersistenceDisabled) return;
+                if (persistStateTimer) window.clearTimeout(persistStateTimer);
+                persistStateTimer = window.setTimeout(() => {
+                    persistStateTimer = null;
+                    persistState();
+                }, Math.max(80, Number(delay) || 320));
+            }
+
+            function ledgerSourceKey() {
+                const customers = Array.isArray(state.customers) ? state.customers : [];
+                let invoiceCount = 0;
+                customers.forEach((customer) => {
+                    invoiceCount += (customer?.invoices || []).length;
+                });
+                return `${ledgerDataRevision}:${customers.length}:${invoiceCount}`;
+            }
+
+            function markLedgerDataDirty() {
+                ledgerDataRevision += 1;
+                filteredInvoicesCache.key = "";
+                filteredClientGroupsCache.key = "";
+                ledgerSummaryCache.key = "";
+                ledgerDatasetCache.key = "";
+            }
+
             function persistState() {
                 if (statePersistenceDisabled) return;
                 try {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    const payload = JSON.stringify({
                         version: 4,
                         activeView,
                         activeNavSection,
@@ -48797,7 +48843,10 @@
                         codeBreakerWorkspaceSearch,
                         codeBreakerWorkspaceFilter,
                         codeBreakerWorkspaceSort
-                    }));
+                    });
+                    if (payload === lastPersistedUIStateJSON) return;
+                    localStorage.setItem(STORAGE_KEY, payload);
+                    lastPersistedUIStateJSON = payload;
                 } catch (error) {
                     console.warn("Unable to persist console UI state in browser storage", error);
                     statePersistenceDisabled = true;
@@ -48815,6 +48864,7 @@
                 const localInvoiceExtras = new Map(allInvoices().map((invoice) => [invoice.id, { attachments: invoice.attachments || [], promises: invoice.promises || [] }]));
                 state.organisation = next.organisation;
                 state.dashboard = next.dashboard;
+                state.panelSummary = next.panelSummary || state.panelSummary || { counts: {}, totals: {} };
                 state.customers = next.customers.map((customer) => ({
                     ...customer,
                     clientNotes: customer.clientNotes?.length ? customer.clientNotes : localClientNotes.get(customer.id) || [],
@@ -48835,6 +48885,7 @@
                 selectedClientId = invoice?.customerId || selectedClientId;
                 const validInvoiceIds = new Set(allInvoices().map((item) => item.id));
                 selectedInvoiceIds = new Set([...selectedInvoiceIds].filter((invoiceId) => validInvoiceIds.has(invoiceId)));
+                markLedgerDataDirty();
                 persistState();
             }
 
@@ -49675,6 +49726,35 @@
 
             function allInvoices() {
                 return state.customers.flatMap((customer) => (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)));
+            }
+
+            function buildInvoiceSearchBlob(invoice) {
+                return [
+                    invoice.customerName,
+                    invoice.customerContact,
+                    invoice.invoiceNumber,
+                    invoice.description,
+                    invoiceLineSummary(invoice),
+                    invoice.notesSummary,
+                    invoice.status,
+                    invoice.controlStatus
+                ].join(" ").toLowerCase();
+            }
+
+            function getLedgerInvoicesDataset() {
+                const sourceKey = ledgerSourceKey();
+                if (ledgerDatasetCache.key === sourceKey) return ledgerDatasetCache.invoices;
+                const rows = allInvoices().map((invoice) => {
+                    const category = invoiceCategory(invoice);
+                    return {
+                        ...invoice,
+                        __category: category,
+                        __searchBlob: buildInvoiceSearchBlob(invoice),
+                        __needsAction: ["outstanding", "query", "overdue", "notice", "court", "bad-debt"].includes(category),
+                    };
+                });
+                ledgerDatasetCache = { key: sourceKey, invoices: rows };
+                return rows;
             }
 
             function findCustomerById(customerId) {
@@ -50747,21 +50827,13 @@
             }
 
             function filteredInvoices() {
-                return allInvoices().filter((invoice) => {
-                    const matchesFilter = selectedFilter === "all" || invoiceCategory(invoice) === selectedFilter;
-                    const blob = [
-                        invoice.customerName,
-                        invoice.customerContact,
-                        invoice.invoiceNumber,
-                        invoice.description,
-                        invoiceLineSummary(invoice),
-                        invoice.notesSummary,
-                        invoice.status,
-                        invoice.controlStatus
-                    ].join(" ").toLowerCase();
-                    const matchesSearch = blob.includes(searchTerm.toLowerCase());
-                    const needsAction = ["outstanding", "query", "overdue", "notice", "court", "bad-debt"].includes(invoiceCategory(invoice));
-                    const matchesClient = clientFilter === "action" ? needsAction : clientFilter === "current" ? !needsAction : true;
+                const searchNeedle = String(searchTerm || "").toLowerCase();
+                const cacheKey = `${ledgerSourceKey()}:${selectedFilter}:${clientFilter}:${sortMode}:${searchNeedle}`;
+                if (filteredInvoicesCache.key === cacheKey) return filteredInvoicesCache.rows;
+                const rows = getLedgerInvoicesDataset().filter((invoice) => {
+                    const matchesFilter = selectedFilter === "all" || invoice.__category === selectedFilter;
+                    const matchesSearch = invoice.__searchBlob.includes(searchNeedle);
+                    const matchesClient = clientFilter === "action" ? invoice.__needsAction : clientFilter === "current" ? !invoice.__needsAction : true;
                     const amountDue = Number(invoice.amountDue || 0);
                     const matchesAmount =
                         clientFilter === "over500" ? amountDue > 500 :
@@ -50770,11 +50842,14 @@
                         true;
                     return matchesFilter && matchesSearch && matchesClient && matchesAmount;
                 }).sort(compareInvoices);
+                filteredInvoicesCache = { key: cacheKey, rows };
+                return rows;
             }
 
             function invoicePriorityValue(invoice) {
                 const categoryPriority = { overdue: 0, notice: 1, "payment-plan": 2, court: 3, query: 4, outstanding: 5, "bad-debt": 6, paid: 7 };
-                return categoryPriority[invoiceCategory(invoice)] ?? 9;
+                const category = invoice?.__category || invoiceCategory(invoice);
+                return categoryPriority[category] ?? 9;
             }
 
             function clientCreditSources(client) {
@@ -50849,6 +50924,8 @@
             }
 
             function filteredClientGroups() {
+                const cacheKey = `${ledgerSourceKey()}:${selectedFilter}:${clientFilter}:${sortMode}:${String(searchTerm || "").toLowerCase()}:${activeNavSection}`;
+                if (filteredClientGroupsCache.key === cacheKey) return filteredClientGroupsCache.groups;
                 const grouped = new Map();
                 filteredInvoices().forEach((invoice) => {
                     const key = invoice.customerId || invoice.customerName || "unknown-client";
@@ -50871,10 +50948,10 @@
                         });
                     });
                 }
-                return [...grouped.values()].map((group) => {
+                const groups = [...grouped.values()].map((group) => {
                     const invoices = group.invoices.sort(compareInvoices);
-                    const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
-                    const overdueInvoices = invoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0 || invoiceCategory(invoice) === "overdue");
+                    const openInvoices = invoices.filter((invoice) => (invoice.__category || invoiceCategory(invoice)) !== "paid");
+                    const overdueInvoices = invoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0 || (invoice.__category || invoiceCategory(invoice)) === "overdue");
                     const accountBalance = Number(group.client?.totalDue || 0);
                     const fallbackInvoice = fallbackClientInvoice(group.client, accountBalance);
                     const priorityInvoice = invoices.reduce((best, invoice) => {
@@ -50907,6 +50984,8 @@
                         oldestDueSort: dateSortValue((balanceOnlyGroup ? fallbackInvoice : oldestOpenInvoice || invoices[0] || {}).dueDate),
                     };
                 }).sort(compareClientGroups);
+                filteredClientGroupsCache = { key: cacheKey, groups };
+                return groups;
             }
 
             function compareClientGroups(a, b) {
@@ -50946,25 +51025,46 @@
             }
 
             function dashboardTotals() {
-                const invoices = allInvoices();
-                const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
-                const paidInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "paid");
-                const overdueInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "overdue");
+                const invoices = getLedgerInvoicesDataset();
+                const aggregates = invoices.reduce((acc, invoice) => {
+                    const category = invoice.__category || invoiceCategory(invoice);
+                    if (category !== "paid") {
+                        acc.openCount += 1;
+                        acc.localOutstandingTotal += Number(invoice.amountDue || 0);
+                    }
+                    if (category === "paid") {
+                        acc.paidCount += 1;
+                    }
+                    if (category === "overdue") {
+                        acc.overdueCount += 1;
+                        acc.overdueValue += Number(invoice.amountDue || 0);
+                    }
+                    acc.totalInvoiced += Number(invoice.total || (Number(invoice.amountDue || 0) + Number(invoice.amountPaid || 0)) || 0);
+                    acc.paidValue += invoicePaidAmount(invoice);
+                    return acc;
+                }, {
+                    openCount: 0,
+                    paidCount: 0,
+                    overdueCount: 0,
+                    overdueValue: 0,
+                    totalInvoiced: 0,
+                    paidValue: 0,
+                    localOutstandingTotal: 0,
+                });
                 const lateChargeStats = latePaymentChargeReviewStats();
                 const notices = sevenDayNoticeSummaries();
                 const receivablesTotal = Number(state.dashboard?.totalReceivables);
                 const openInvoiceCount = Number(state.dashboard?.openInvoices);
-                const localOutstandingTotal = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
                 return {
                     invoiceCount: invoices.length,
-                    totalInvoiced: invoices.reduce((sum, invoice) => sum + Number(invoice.total || (Number(invoice.amountDue || 0) + Number(invoice.amountPaid || 0)) || 0), 0),
-                    openCount: Number.isFinite(openInvoiceCount) && openInvoiceCount > 0 ? openInvoiceCount : openInvoices.length,
-                    totalOutstanding: Number.isFinite(receivablesTotal) ? receivablesTotal : localOutstandingTotal,
-                    localOutstandingTotal,
-                    paidCount: paidInvoices.length,
-                    paidValue: invoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0),
-                    overdueCount: overdueInvoices.length,
-                    overdueValue: overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+                    totalInvoiced: aggregates.totalInvoiced,
+                    openCount: Number.isFinite(openInvoiceCount) && openInvoiceCount > 0 ? openInvoiceCount : aggregates.openCount,
+                    totalOutstanding: Number.isFinite(receivablesTotal) ? receivablesTotal : aggregates.localOutstandingTotal,
+                    localOutstandingTotal: aggregates.localOutstandingTotal,
+                    paidCount: aggregates.paidCount,
+                    paidValue: aggregates.paidValue,
+                    overdueCount: aggregates.overdueCount,
+                    overdueValue: aggregates.overdueValue,
                     clientsNeedingAction: notices.length,
                     lateChargeCount: lateChargeStats.eligibleCount,
                     lateChargeAmount: lateChargeStats.eligibleAmount,
@@ -51532,6 +51632,69 @@
                 scheduleClientRegisterSidebarFit();
             }
 
+            function syncBackgroundTimersForActiveView() {
+                if (activeView !== "pi-clearing-account") {
+                    if (piClearingLivePollTimer) {
+                        window.clearInterval(piClearingLivePollTimer);
+                        piClearingLivePollTimer = null;
+                    }
+                    if (piClearingWorkflowStageTimer) {
+                        window.clearInterval(piClearingWorkflowStageTimer);
+                        piClearingWorkflowStageTimer = null;
+                    }
+                }
+                if (activeView !== "me-report") {
+                    if (meReportProgressTimer) {
+                        window.clearInterval(meReportProgressTimer);
+                        meReportProgressTimer = null;
+                    }
+                    if (meReportProcessingUiTimer) {
+                        window.clearInterval(meReportProcessingUiTimer);
+                        meReportProcessingUiTimer = null;
+                    }
+                    if (meReportBulkQueuePollTimer) {
+                        window.clearInterval(meReportBulkQueuePollTimer);
+                        meReportBulkQueuePollTimer = null;
+                    }
+                }
+                if (activeView !== "ignition") {
+                    if (ignitionSyncProgressTimer) {
+                        window.clearInterval(ignitionSyncProgressTimer);
+                        ignitionSyncProgressTimer = null;
+                    }
+                    if (ignitionRenewalStartLoadingTimer) {
+                        window.clearInterval(ignitionRenewalStartLoadingTimer);
+                        ignitionRenewalStartLoadingTimer = null;
+                    }
+                    if (ignitionRenewalsProgressTimer) {
+                        window.clearInterval(ignitionRenewalsProgressTimer);
+                        ignitionRenewalsProgressTimer = null;
+                    }
+                }
+                if (activeView !== "bank-statements") {
+                    if (bankStatementPollingTimer) {
+                        window.clearInterval(bankStatementPollingTimer);
+                        bankStatementPollingTimer = null;
+                    }
+                    if (bankStatementUploadTimer) {
+                        window.clearInterval(bankStatementUploadTimer);
+                        bankStatementUploadTimer = null;
+                    }
+                }
+                if (activeView !== "supplier-reconciliation" && supplierReconciliationUploadTimer) {
+                    window.clearInterval(supplierReconciliationUploadTimer);
+                    supplierReconciliationUploadTimer = null;
+                }
+                if (activeView !== "contact-archive" && contactArchiveState?.reviewFeedbackTimer) {
+                    window.clearInterval(contactArchiveState.reviewFeedbackTimer);
+                    contactArchiveState.reviewFeedbackTimer = null;
+                }
+                if (activeView !== "juk-invoices" && jukWizardActivityIntervalId) {
+                    window.clearInterval(jukWizardActivityIntervalId);
+                    jukWizardActivityIntervalId = 0;
+                }
+            }
+
             function syncActiveViewShell() {
                 setElementVisible(document.getElementById("ledgerView"), activeView === "ledger");
                 setElementVisible(document.getElementById("clientScreen"), activeView === "client");
@@ -51648,6 +51811,7 @@
                     button.setAttribute("aria-current", active ? "page" : "false");
                 });
                 syncCreditControlGroupState(activeNav);
+                syncBackgroundTimersForActiveView();
                 recordActiveViewActivity();
             }
 
@@ -61526,6 +61690,7 @@
                 const managerName = window.prompt("Assign this client to manager", client.manager || "");
                 if (!managerName) return;
                 client.manager = managerName;
+                markLedgerDataDirty();
                 persistState();
                 renderAll();
                 showToast("Client owner updated", "success");
@@ -62640,25 +62805,58 @@
             }
 
             function renderSummaryCounts() {
-                const invoices = allInvoices();
-                const counts = {
-                    all: invoices.length,
-                    paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
-                    query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").length,
-                    overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
-                    notice: invoices.filter((invoice) => invoiceCategory(invoice) === "notice").length,
-                    paymentPlan: invoices.filter((invoice) => invoiceCategory(invoice) === "payment-plan").length,
-                    court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
-                    badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").length,
-                };
-                const totals = {
-                    all: invoices.reduce((sum, invoice) => sum + invoiceAmountBreakdown(invoice).totalAmount, 0),
-                    paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
-                    query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-                    overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-                    court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-                    badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + writeOffAmount(invoice), 0),
-                };
+                const summaryKey = ledgerSourceKey();
+                let summary = ledgerSummaryCache.key === summaryKey ? ledgerSummaryCache.summary : null;
+                if (!summary) {
+                    const invoices = getLedgerInvoicesDataset();
+                    summary = invoices.reduce((acc, invoice) => {
+                        const category = invoice.__category || invoiceCategory(invoice);
+                        acc.counts.all += 1;
+                        acc.totals.all += invoiceAmountBreakdown(invoice).totalAmount;
+                        if (category === "paid") {
+                            acc.counts.paid += 1;
+                            acc.totals.paid += Number(invoice.total || 0);
+                        } else if (category === "query") {
+                            acc.counts.query += 1;
+                            acc.totals.query += Number(invoice.amountDue || 0);
+                        } else if (category === "overdue") {
+                            acc.counts.overdue += 1;
+                            acc.totals.overdue += Number(invoice.amountDue || 0);
+                        } else if (category === "notice") {
+                            acc.counts.notice += 1;
+                        } else if (category === "payment-plan") {
+                            acc.counts.paymentPlan += 1;
+                        } else if (category === "court") {
+                            acc.counts.court += 1;
+                            acc.totals.court += Number(invoice.amountDue || 0);
+                        } else if (category === "bad-debt") {
+                            acc.counts.badDebt += 1;
+                            acc.totals.badDebt += writeOffAmount(invoice);
+                        }
+                        return acc;
+                    }, {
+                        counts: { all: 0, paid: 0, query: 0, overdue: 0, notice: 0, paymentPlan: 0, court: 0, badDebt: 0 },
+                        totals: { all: 0, paid: 0, query: 0, overdue: 0, court: 0, badDebt: 0 },
+                    });
+                    const backendSummary = state.panelSummary || {};
+                    const backendCounts = backendSummary.counts || {};
+                    const backendTotals = backendSummary.totals || {};
+                    if (Number.isFinite(Number(backendCounts.all))) summary.counts.all = Number(backendCounts.all);
+                    if (Number.isFinite(Number(backendCounts.paid))) summary.counts.paid = Number(backendCounts.paid);
+                    if (Number.isFinite(Number(backendCounts.query))) summary.counts.query = Number(backendCounts.query);
+                    if (Number.isFinite(Number(backendCounts.overdue))) summary.counts.overdue = Number(backendCounts.overdue);
+                    if (Number.isFinite(Number(backendCounts.court))) summary.counts.court = Number(backendCounts.court);
+                    if (Number.isFinite(Number(backendCounts.badDebt))) summary.counts.badDebt = Number(backendCounts.badDebt);
+                    if (Number.isFinite(Number(backendTotals.all))) summary.totals.all = Number(backendTotals.all);
+                    if (Number.isFinite(Number(backendTotals.paid))) summary.totals.paid = Number(backendTotals.paid);
+                    if (Number.isFinite(Number(backendTotals.query))) summary.totals.query = Number(backendTotals.query);
+                    if (Number.isFinite(Number(backendTotals.overdue))) summary.totals.overdue = Number(backendTotals.overdue);
+                    if (Number.isFinite(Number(backendTotals.court))) summary.totals.court = Number(backendTotals.court);
+                    if (Number.isFinite(Number(backendTotals.badDebt))) summary.totals.badDebt = Number(backendTotals.badDebt);
+                    ledgerSummaryCache = { key: summaryKey, summary };
+                }
+                const counts = summary.counts;
+                const totals = summary.totals;
                 document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
                 document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
                 document.getElementById("countQuery").textContent = counts.query.toLocaleString("en-GB");
@@ -62797,6 +62995,7 @@
                 if (!match || !body) return;
                 match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
                 match.invoice.notesSummary = body.slice(0, 200);
+                markLedgerDataDirty();
                 closeQuickNotePanel();
                 persistState();
                 renderAll();
@@ -108106,6 +108305,73 @@
             }
 
             function renderAll() {
+                const settingsSteps = new Set([
+                    "renderSyncSettings",
+                    "renderSettingsNavigation",
+                    "renderDatabaseMetrics",
+                    "renderPendingXeroActions",
+                    "renderSettingsUsage",
+                    "renderProductReleasesDeployments",
+                    "renderPostingSettings",
+                    "renderFactoryResetGuard",
+                    "renderLetterTemplateSettings",
+                    "renderMeReportEmailSettings",
+                ]);
+                const activeViewSteps = {
+                    insights: new Set(["renderDashboardHero", "renderInsightsScreen"]),
+                    notifications: new Set(["renderNotificationsScreen"]),
+                    ledger: new Set(["renderDashboardHero", "renderSummaryCounts", "renderToolbarControls", "renderInvoiceTable", "renderBulkActionToolbar", "applyColumnVisibility"]),
+                    client: new Set(["renderDashboardHero", "renderClientScreen"]),
+                    "late-charges": new Set(["renderLateChargesScreen"]),
+                    "bad-debt": new Set(["renderBadDebtScreen"]),
+                    "contact-archive": new Set(["renderContactArchiveScreen"]),
+                    "risk-assessments": new Set(["renderRiskAssessmentsScreen"]),
+                    "confirmation-statements": new Set(["renderConfirmationStatementsScreen"]),
+                    "company-secretarial": new Set(["renderCompanySecretarialScreen"]),
+                    "company-secreterial": new Set(["renderCompanySecretarialScreen"]),
+                    "new-formations": new Set(["renderNewFormationsScreen"]),
+                    "outstanding-esigns": new Set(["renderESignScreens", "wireESignScreens"]),
+                    "create-esig-request": new Set(["renderESignScreens", "wireESignScreens"]),
+                    "completed-esigns": new Set(["renderESignScreens", "wireESignScreens"]),
+                    "hmrc-64-8s": new Set(["renderHmrc648Screen"]),
+                    "aml-verification": new Set(["renderAmlVerificationScreen"]),
+                    "xero-lock-date": new Set(["renderXeroLockDateScreen"]),
+                    jashflow: new Set(["renderJashflowScreen"]),
+                    "bank-statements": new Set(["renderBankStatementsScreen", "renderBankAccountPanel", "renderBankStatementUploadPanel", "renderBankSa100EntryPanel"]),
+                    "supplier-reconciliation": new Set(["renderSupplierReconciliationScreen", "renderSupplierReconciliationStatementPage"]),
+                    "supplier-reconciliation-statement-page": new Set(["renderSupplierReconciliationScreen", "renderSupplierReconciliationStatementPage"]),
+                    ignition: new Set(["renderIgnitionScreen"]),
+                    "supplier-payments": new Set(["renderSupplierPaymentsScreen"]),
+                    "me-report": new Set(["renderMeReportScreen"]),
+                    "juk-invoices": new Set(["renderJukInvoicesScreen"]),
+                    "sa100-prep": new Set(["renderSa100PrepScreen"]),
+                    "ye-prep": new Set(["renderYePrepScreen"]),
+                    "vat-return-prepare": new Set(["renderVatReturnPrepareScreen"]),
+                    "practice-packs": new Set(["renderPracticePackScreen"]),
+                    "xero-subs-review": new Set(["renderXeroSubsReviewScreen"]),
+                    "juk-equity": new Set(["renderJukEquityScreen"]),
+                    "task-list": new Set(["renderTaskTrackerScreen"]),
+                    tasks: new Set(["renderTaskTrackerScreen"]),
+                    "task-bookkeeping-workflow": new Set(["renderTaskTrackerScreen"]),
+                    "task-approvals-bouncebacks": new Set(["renderTaskTrackerScreen"]),
+                    "task-completed": new Set(["renderTaskTrackerScreen"]),
+                    "code-breaker": new Set(["renderCodeBreakerScreen"]),
+                    "micro-analyzer": new Set(["renderMicroAnalyzerScreen"]),
+                    "payroll-headcount": new Set(["renderPayrollHeadcountScreen"]),
+                    "client-call-stats": new Set(["renderClientCallStatsScreen"]),
+                    "pi-clearing-account": new Set(["renderPiClearingAccountScreen"]),
+                    "identity-verification": new Set(["renderIdentityVerificationScreen"]),
+                    vault: new Set(["renderVaultScreen"]),
+                    "nlac-list": new Set(["renderNlacListScreen"]),
+                    settings: new Set(),
+                };
+                const alwaysRunSteps = new Set(["syncActiveViewShell", "renderChrome"]);
+                const viewStepSet = activeViewSteps[activeView] || new Set();
+                const shouldRunStep = (label) => {
+                    if (alwaysRunSteps.has(label)) return true;
+                    if (activeView === "settings" && settingsSteps.has(label)) return true;
+                    return viewStepSet.has(label);
+                };
                 const renderSteps = [
                     ["syncActiveViewShell", () => syncActiveViewShell()],
                     ["renderChrome", () => renderChrome()],
@@ -108172,9 +108438,9 @@
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderNlacListScreen", () => renderNlacListScreen()],
                     ["renderClientScreen", () => renderClientScreen()],
-                    ["persistState", () => persistState()],
                 ];
                 renderSteps.forEach(([label, run]) => {
+                    if (!shouldRunStep(label)) return;
                     try {
                         run();
                     } catch (error) {
@@ -108182,6 +108448,7 @@
                         reportRenderFailure(label, error);
                     }
                 });
+                schedulePersistState();
             }
 
             function wireFilters() {
