@@ -22909,6 +22909,39 @@
                 padding-left: 24px;
                 padding-right: 24px;
             }
+            .operation-review-panel.is-task-detail-sidebar {
+                place-items: stretch end;
+                padding: 0;
+                background: rgba(15, 24, 38, 0.52);
+            }
+            .operation-review-panel.is-task-detail-sidebar .operation-review-card {
+                width: min(960px, 100vw);
+                height: 100vh;
+                max-height: 100vh;
+                margin: 0;
+                border-radius: 0;
+                border-top: 0;
+                border-right: 0;
+                border-bottom: 0;
+                border-left: 1px solid var(--line);
+                box-shadow: -24px 0 70px rgba(30, 47, 77, 0.22);
+                animation: task-detail-sidebar-enter 180ms ease-out;
+            }
+            .operation-review-panel.is-task-detail-sidebar .operation-review-body {
+                padding: 20px 24px;
+            }
+            .operation-review-panel.is-task-detail-sidebar .operation-review-summary,
+            .operation-review-panel.is-task-detail-sidebar .operation-review-head {
+                padding-left: 24px;
+                padding-right: 24px;
+            }
+            .operation-review-panel.is-task-detail-sidebar .operation-review-actions {
+                display: none;
+            }
+            @keyframes task-detail-sidebar-enter {
+                from { transform: translateX(34px); opacity: 0.82; }
+                to { transform: translateX(0); opacity: 1; }
+            }
             .operation-review-panel.is-cs01-preflight {
                 padding: 20px;
                 place-items: start center;
@@ -64703,6 +64736,7 @@
                 operationReviewPanelVariantClass = String(config.panelClass || "").trim();
                 if (operationReviewPanelVariantClass) panel.classList.add(operationReviewPanelVariantClass);
                 actions.classList.remove("has-cs01-nav");
+                actions.hidden = false;
                 actions.querySelectorAll(".ch-review-footer-nav").forEach((node) => node.remove());
                 if (card) {
                     card.scrollTop = 0;
@@ -120534,11 +120568,13 @@
                     title: `${titleClient} · ${titleTask}`,
                     subtitle: "Review task progress notes and status change history.",
                     confirmLabel: "Close",
+                    panelClass: "is-task-detail-sidebar",
                     columns: [],
                     rows: [{}],
-                    onRender: ({ body, summary, confirmButton, cancelButton }) => {
+                    onRender: ({ body, summary, confirmButton, cancelButton, actions }) => {
                         if (cancelButton) cancelButton.hidden = true;
-                        if (confirmButton) confirmButton.textContent = "Close";
+                        if (confirmButton) confirmButton.hidden = true;
+                        if (actions) actions.hidden = true;
                         renderModalBody(body, summary);
                     },
                 });
@@ -120854,6 +120890,186 @@
                 menu.style.top = `${top}px`;
             }
 
+            function bmTaskAllRowsWithOverrides() {
+                return (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+            }
+
+            function bmTaskFindRowById(rowId, rows = null) {
+                const id = String(rowId || "").trim();
+                if (!id) return null;
+                const sourceRows = Array.isArray(rows) ? rows : bmTaskAllRowsWithOverrides();
+                return sourceRows.find((row) => bmTaskIdentitySafe(row) === id) || null;
+            }
+
+            function bmTaskVisibleRowsForBody(body) {
+                if (!(body instanceof HTMLElement)) return [];
+                const allRows = bmTaskAllRowsWithOverrides();
+                return [...body.querySelectorAll("tr[data-task-row-id]")]
+                    .map((node) => bmTaskFindRowById(node.getAttribute("data-task-row-id"), allRows))
+                    .filter(Boolean);
+            }
+
+            function wireTaskSubpageInteractions(body) {
+                if (!(body instanceof HTMLElement) || body.dataset.taskInteractionsWired === "true") return;
+                body.dataset.taskInteractionsWired = "true";
+
+                body.addEventListener("change", (event) => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLInputElement)) return;
+                    const rowId = String(target.getAttribute("data-task-select") || "");
+                    if (!rowId) return;
+                    if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
+                    if (target.checked) companiesHouseSettings.bmTasksSelection.add(rowId);
+                    else companiesHouseSettings.bmTasksSelection.delete(rowId);
+                    renderTaskSelectionMeta(bmTaskVisibleRowsForBody(body));
+                });
+
+                body.addEventListener("click", async (event) => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLElement)) return;
+
+                    const timelineButton = target.closest("[data-task-open-client-timeline]");
+                    if (timelineButton instanceof HTMLElement) {
+                        event.stopPropagation();
+                        const clientKey = String(timelineButton.getAttribute("data-task-open-client-timeline") || "");
+                        const clientName = String(timelineButton.getAttribute("data-task-open-client-name") || "");
+                        if (!clientKey) return;
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const clientRows = allRows.filter((row) => bmTaskClientTimelineKey(row) === clientKey);
+                        openTaskClientTimeline(clientKey, clientName, clientRows);
+                        return;
+                    }
+
+                    const statusOptionButton = target.closest("[data-task-status-option]");
+                    if (statusOptionButton instanceof HTMLButtonElement) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rowId = String(statusOptionButton.getAttribute("data-task-status-option") || "");
+                        const nextStatus = String(statusOptionButton.getAttribute("data-task-status-value") || "").trim();
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const match = bmTaskFindRowById(rowId, allRows);
+                        if (!match || !nextStatus) return;
+                        updateBmTaskStatus(match, nextStatus, "", {
+                            autoNote: `Status set to ${bmTaskStatusLabel(nextStatus)} from task table.`,
+                        });
+                        const statusWrap = statusOptionButton.closest("[data-task-status-menu-wrap]");
+                        if (statusWrap instanceof HTMLDetailsElement) statusWrap.open = false;
+                        showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
+                        renderTaskSubpages();
+                        return;
+                    }
+
+                    const managerOptionButton = target.closest("[data-task-manager-option]");
+                    if (managerOptionButton instanceof HTMLButtonElement) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rowId = String(managerOptionButton.getAttribute("data-task-manager-option") || "");
+                        const nextManager = String(managerOptionButton.getAttribute("data-task-manager-value") || "").trim();
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const match = bmTaskFindRowById(rowId, allRows);
+                        if (!match || !nextManager) return;
+                        updateBmTaskAssignee(match, nextManager, {
+                            autoNote: `Client manager set to ${nextManager} from task table.`,
+                        });
+                        const managerWrap = managerOptionButton.closest("[data-task-manager-menu-wrap]");
+                        if (managerWrap instanceof HTMLDetailsElement) managerWrap.open = false;
+                        showToast(`Task reassigned to ${nextManager}.`, "success");
+                        renderTaskSubpages();
+                        return;
+                    }
+
+                    const completeButton = target.closest("[data-task-mark-completed]");
+                    if (completeButton instanceof HTMLButtonElement) {
+                        event.stopPropagation();
+                        const mode = String(body.dataset.taskMode || "list");
+                        const rowId = String(completeButton.getAttribute("data-task-mark-completed") || "");
+                        const actionKind = String(completeButton.getAttribute("data-task-action-kind") || "complete").trim().toLowerCase();
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const match = bmTaskFindRowById(rowId, allRows);
+                        if (!match) return;
+                        if (actionKind === "start_vat") {
+                            await handleVatTaskStartFlow(match);
+                            return;
+                        }
+                        if (actionKind === "start_bookkeeping") {
+                            await handleBookkeepingTaskStartFlow(match, allRows);
+                            return;
+                        }
+                        if (actionKind === "restore") {
+                            updateBmTaskStatus(match, "open", "", {
+                                autoNote: "Task restored to outstanding from completed tasks.",
+                            });
+                            resetBmTaskStateForRestore(match);
+                            showToast("Task restored to outstanding.", "success");
+                            renderTaskSubpages();
+                            return;
+                        }
+                        if (actionKind === "open_vat_queue") {
+                            openVatReturnPrepareScreen();
+                            showToast("Select the matching Xero workspace before starting VAT prep for this task.", "info");
+                            return;
+                        }
+                        if (actionKind === "open_bookkeeping_queue") {
+                            try {
+                                await loadXeroLockDateOverview(false);
+                            } catch {}
+                            const matched = await autoMatchBookkeepingTaskXeroWorkspace(match, allRows);
+                            if (!matched) {
+                                showToast("No confident Xero workspace match found automatically. Add workspace mapping data and try again.", "error");
+                                return;
+                            }
+                            const refreshedRows = bmTaskAllRowsWithOverrides();
+                            const refreshed = bmTaskFindRowById(rowId, refreshedRows) || match;
+                            await handleBookkeepingTaskStartFlow(refreshed, refreshedRows);
+                            showToast("Xero workspace matched and bookkeeping workflow started.", "success");
+                            return;
+                        }
+                        if (actionKind === "awaiting_review") return;
+                        const rowNode = completeButton.closest("tr");
+                        const applyCompletion = () => {
+                            try {
+                                updateBmTaskStatus(match, "completed", "", {
+                                    autoNote: "Task marked completed from task list.",
+                                });
+                                if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
+                                    resetTaskBookkeepingWorkflowPanel();
+                                }
+                                if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
+                                    companiesHouseSettings.bmTasksSelection.delete(rowId);
+                                }
+                                showToast("Task completed. Review it in Completed Tasks.", "success");
+                            } catch (error) {
+                                console.error("Unable to complete task", error);
+                                showToast(error?.message || "Unable to complete task.", "error");
+                            } finally {
+                                renderTaskSubpages();
+                            }
+                        };
+                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing") && !rowNode.classList.contains("task-row-collapsing")) {
+                            rowNode.classList.add("task-row-completing");
+                            completeButton.classList.add("is-completing");
+                            const icon = completeButton.querySelector(".task-complete-icon");
+                            if (icon) icon.textContent = "✓";
+                            completeButton.disabled = true;
+                            animateTaskRowCollapse(rowNode, applyCompletion);
+                            return;
+                        }
+                        applyCompletion();
+                        return;
+                    }
+
+                    const rowNode = target.closest("[data-task-open-detail]");
+                    if (rowNode instanceof HTMLElement) {
+                        if (target.closest("button,select,input,a,textarea,label,summary,details")) return;
+                        const rowId = String(rowNode.getAttribute("data-task-open-detail") || "");
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const match = bmTaskFindRowById(rowId, allRows);
+                        if (!match) return;
+                        openBmTaskDetailModal(match, allRows);
+                    }
+                });
+            }
+
             function renderTaskSubpageTable(mode, bodyId, metaId) {
                 const body = document.getElementById(bodyId);
                 const meta = document.getElementById(metaId);
@@ -121079,168 +121295,8 @@
                     }
                 }
 
-                body.querySelectorAll("[data-task-select]").forEach((input) => {
-                    input.addEventListener("change", (event) => {
-                        const rowId = String(event?.target?.getAttribute("data-task-select") || "");
-                        if (!rowId) return;
-                        if (!companiesHouseSettings.bmTasksSelection) companiesHouseSettings.bmTasksSelection = new Set();
-                        if (event.target.checked) companiesHouseSettings.bmTasksSelection.add(rowId);
-                        else companiesHouseSettings.bmTasksSelection.delete(rowId);
-                        renderTaskSelectionMeta(rows);
-                    });
-                });
-                body.querySelectorAll("[data-task-open-client-timeline]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                        const clientKey = String(button.getAttribute("data-task-open-client-timeline") || "");
-                        const clientName = String(button.getAttribute("data-task-open-client-name") || "");
-                        if (!clientKey) return;
-                        const clientRows = allRows.filter((row) => bmTaskClientTimelineKey(row) === clientKey);
-                        openTaskClientTimeline(clientKey, clientName, clientRows);
-                    });
-                });
-                body.querySelectorAll("[data-task-manager-trigger]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
-                body.querySelectorAll("[data-task-manager-menu]").forEach((menu) => {
-                    menu.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
-                body.querySelectorAll("[data-task-status-trigger]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
-                body.querySelectorAll("[data-task-status-menu]").forEach((menu) => {
-                    menu.addEventListener("click", (event) => {
-                        event.stopPropagation();
-                    });
-                });
-                body.querySelectorAll("[data-task-status-option]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const rowId = String(button.getAttribute("data-task-status-option") || "");
-                        const nextStatus = String(button.getAttribute("data-task-status-value") || "").trim();
-                        const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
-                        if (!match || !nextStatus) return;
-                        updateBmTaskStatus(match, nextStatus, "", {
-                            autoNote: `Status set to ${bmTaskStatusLabel(nextStatus)} from task table.`,
-                        });
-                        const statusWrap = button.closest("[data-task-status-menu-wrap]");
-                        if (statusWrap instanceof HTMLDetailsElement) statusWrap.open = false;
-                        showToast(`Task status updated to ${bmTaskStatusLabel(nextStatus)}.`, "success");
-                        renderTaskSubpages();
-                    });
-                });
-                body.querySelectorAll("[data-task-manager-option]").forEach((button) => {
-                    button.addEventListener("click", (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const rowId = String(button.getAttribute("data-task-manager-option") || "");
-                        const nextManager = String(button.getAttribute("data-task-manager-value") || "").trim();
-                        const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
-                        if (!match || !nextManager) return;
-                        updateBmTaskAssignee(match, nextManager, {
-                            autoNote: `Client manager set to ${nextManager} from task table.`,
-                        });
-                        const managerWrap = button.closest("[data-task-manager-menu-wrap]");
-                        if (managerWrap instanceof HTMLDetailsElement) managerWrap.open = false;
-                        showToast(`Task reassigned to ${nextManager}.`, "success");
-                        renderTaskSubpages();
-                    });
-                });
-                body.querySelectorAll("[data-task-mark-completed]").forEach((button) => {
-                    button.addEventListener("click", async (event) => {
-                        event.stopPropagation();
-                        const rowId = String(button.getAttribute("data-task-mark-completed") || "");
-                        const actionKind = String(button.getAttribute("data-task-action-kind") || "complete").trim().toLowerCase();
-                        const match = allRows.find((row) => bmTaskIdentitySafe(row) === rowId);
-                        if (!match) return;
-                        if (actionKind === "start_vat") {
-                            await handleVatTaskStartFlow(match);
-                            return;
-                        }
-                        if (actionKind === "start_bookkeeping") {
-                            await handleBookkeepingTaskStartFlow(match, allRows);
-                            return;
-                        }
-                        if (actionKind === "restore") {
-                            updateBmTaskStatus(match, "open", "", {
-                                autoNote: "Task restored to outstanding from completed tasks.",
-                            });
-                            resetBmTaskStateForRestore(match);
-                            showToast("Task restored to outstanding.", "success");
-                            renderTaskSubpages();
-                            return;
-                        }
-                        if (actionKind === "open_vat_queue") {
-                            openVatReturnPrepareScreen();
-                            showToast("Select the matching Xero workspace before starting VAT prep for this task.", "info");
-                            return;
-                        }
-                        if (actionKind === "open_bookkeeping_queue") {
-                            try {
-                                await loadXeroLockDateOverview(false);
-                            } catch {}
-                            const matched = await autoMatchBookkeepingTaskXeroWorkspace(match, allRows);
-                            if (!matched) {
-                                showToast("No confident Xero workspace match found automatically. Add workspace mapping data and try again.", "error");
-                                return;
-                            }
-                            const refreshedRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item));
-                            const refreshed = refreshedRows.find((item) => bmTaskIdentitySafe(item) === rowId) || match;
-                            await handleBookkeepingTaskStartFlow(refreshed, refreshedRows);
-                            showToast("Xero workspace matched and bookkeeping workflow started.", "success");
-                            return;
-                        }
-                        if (actionKind === "awaiting_review") return;
-                        const rowNode = button.closest("tr");
-                        const applyCompletion = () => {
-                            try {
-                                updateBmTaskStatus(match, "completed", "", {
-                                    autoNote: "Task marked completed from task list.",
-                                });
-                                if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
-                                    resetTaskBookkeepingWorkflowPanel();
-                                }
-                                if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
-                                    companiesHouseSettings.bmTasksSelection.delete(rowId);
-                                }
-                                showToast("Task completed. Review it in Completed Tasks.", "success");
-                            } catch (error) {
-                                console.error("Unable to complete task", error);
-                                showToast(error?.message || "Unable to complete task.", "error");
-                            } finally {
-                                renderTaskSubpages();
-                            }
-                        };
-                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing") && !rowNode.classList.contains("task-row-collapsing")) {
-                            rowNode.classList.add("task-row-completing");
-                            button.classList.add("is-completing");
-                            const icon = button.querySelector(".task-complete-icon");
-                            if (icon) icon.textContent = "✓";
-                            button.disabled = true;
-                            animateTaskRowCollapse(rowNode, applyCompletion);
-                            return;
-                        }
-                        applyCompletion();
-                    });
-                });
-                body.querySelectorAll("[data-task-open-detail]").forEach((rowNode) => {
-                    rowNode.addEventListener("click", (event) => {
-                        const target = event.target;
-                        if (!(target instanceof HTMLElement)) return;
-                        if (target.closest("button,select,input,a,textarea,label")) return;
-                        const rowId = String(rowNode.getAttribute("data-task-open-detail") || "");
-                        const match = allRows.find((item) => bmTaskIdentitySafe(item) === rowId);
-                        if (!match) return;
-                        openBmTaskDetailModal(match, allRows);
-                    });
-                });
+                body.dataset.taskMode = mode;
+                wireTaskSubpageInteractions(body);
 
                 const table = body.closest("table");
                 if (table) {
@@ -121273,10 +121329,18 @@
                 }
                 taskBookkeepingEnsureSlaReminderNotifications(allRows);
                 renderTaskListToolbarControls();
-                renderTaskSubpageTable("list", "taskListTableBody", "taskListMeta");
-                renderTaskSubpageTable("approvals", "taskApprovalsTableBody", "taskApprovalsMeta");
-                renderTaskSubpageTable("completed", "taskCompletedTableBody", "taskCompletedMeta");
-                renderTaskBookkeepingWorkflowPanel(allRows);
+                const viewKey = String(activeView || "").trim().toLowerCase();
+                const isTaskListView = viewKey === "task-list" || viewKey === "tasks";
+                if (isTaskListView) {
+                    renderTaskSubpageTable("list", "taskListTableBody", "taskListMeta");
+                } else if (viewKey === "task-approvals-bouncebacks") {
+                    renderTaskSubpageTable("approvals", "taskApprovalsTableBody", "taskApprovalsMeta");
+                } else if (viewKey === "task-completed") {
+                    renderTaskSubpageTable("completed", "taskCompletedTableBody", "taskCompletedMeta");
+                }
+                if (viewKey === "task-bookkeeping-workflow") {
+                    renderTaskBookkeepingWorkflowPanel(allRows);
+                }
             }
 
             function renderTaskListToolbarControls() {
