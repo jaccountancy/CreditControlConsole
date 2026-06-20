@@ -28297,6 +28297,15 @@
                 box-shadow: 0 8px 18px rgba(34, 101, 233, 0.33);
                 border-color: #124bb3;
             }
+            .task-complete-button.is-review-start {
+                border-color: #6f4bd4;
+                background: linear-gradient(180deg, #9a79ff, #7d56ee);
+            }
+            .task-complete-button.is-review-start:hover,
+            .task-complete-button.is-review-start:focus-visible {
+                box-shadow: 0 8px 18px rgba(125, 86, 238, 0.34);
+                border-color: #5d38c3;
+            }
             .task-complete-button.is-awaiting {
                 border-color: #8fa7c7;
                 background: linear-gradient(180deg, #dbe7f7, #cad9ef);
@@ -38856,6 +38865,7 @@
                                             </div>
                                             <span class="ch-client-id-badge" id="chRegisterClientPageClientIdBadge">CLIENT ID --</span>
                                             <button class="primary-button" type="button" id="chRegisterClientPageUploadFilesButton" hidden>Upload files</button>
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageEngagementLettersQuickFetchButton">Get engagement letters</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPagePopulateCodesButton" hidden>Populate missing company auth codes</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPageReloadDirectoryButton" hidden>Reload directory</button>
                                         </div>
@@ -40246,7 +40256,7 @@
 
                     <section class="late-charges-screen detail-card" id="taskListScreen" hidden>
                         <section class="detail-panel">
-                            <div class="detail-hero">
+                            <div class="detail-hero" id="taskListHeroCard">
                                 <div>
                                     <p class="eyebrow">Tasks</p>
                                     <h3>Task List</h3>
@@ -40686,9 +40696,19 @@
                                             </section>
                                             <div class="task-bookkeeping-workflow-footer">
                                                 <p class="detail-meta" id="taskBookkeepingWorkflowProgressMeta">Complete checks, select reviewer, then submit.</p>
+                                                <div class="task-bookkeeping-workflow-card" id="taskBookkeepingReviewCommentWrap" hidden>
+                                                    <label class="detail-meta" for="taskBookkeepingReviewSectionCommentInput" id="taskBookkeepingReviewSectionCommentLabel">Reviewer comment for this section</label>
+                                                    <textarea id="taskBookkeepingReviewSectionCommentInput" rows="3" placeholder="Add your reviewer comments for this section..."></textarea>
+                                                </div>
+                                                <div class="task-bookkeeping-workflow-card" id="taskBookkeepingReviewDecisionWrap" hidden>
+                                                    <label class="detail-meta" for="taskBookkeepingReviewDecisionCommentInput">Final review decision comments</label>
+                                                    <textarea id="taskBookkeepingReviewDecisionCommentInput" rows="3" placeholder="Approval summary or bounceback instructions..."></textarea>
+                                                </div>
                                                 <div class="detail-actions">
                                                     <button class="ghost-button" type="button" id="taskBookkeepingWorkflowSaveDraftButton">Save draft</button>
                                                     <button class="primary-button" type="button" id="taskBookkeepingWorkflowSubmitButton">Submit task for review</button>
+                                                    <button class="primary-button" type="button" id="taskBookkeepingWorkflowApproveButton" hidden>Approve workflow</button>
+                                                    <button class="ghost-button" type="button" id="taskBookkeepingWorkflowBouncebackButton" hidden>Bounceback</button>
                                                 </div>
                                             </div>
                                         </section>
@@ -52271,6 +52291,8 @@
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
                 const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
                 if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
+                const taskListHeroCard = document.getElementById("taskListHeroCard");
+                if (taskListHeroCard) taskListHeroCard.hidden = activeView === "task-list" || activeView === "tasks";
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
@@ -94305,6 +94327,8 @@
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
                 const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
                 if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
+                const taskListHeroCard = document.getElementById("taskListHeroCard");
+                if (taskListHeroCard) taskListHeroCard.hidden = activeView === "task-list" || activeView === "tasks";
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 renderPiClearingTopbarSummary();
@@ -116105,6 +116129,9 @@
                     stage: "data_pull",
                     reviewer: "",
                     notes: "",
+                    reviewMode: false,
+                    reviewSectionComments: {},
+                    reviewDecisionComment: "",
                     confidence: {},
                     blockerOverride: {
                         enabled: false,
@@ -117281,6 +117308,9 @@
                     stage: "data_pull",
                     reviewer: "",
                     notes: "",
+                    reviewMode: false,
+                    reviewSectionComments: {},
+                    reviewDecisionComment: "",
                     confidence: {},
                     blockerOverride: {
                         enabled: false,
@@ -119044,6 +119074,14 @@
 
             function taskBookkeepingStageCanAdvance(stageId = "", workflow = {}, reviewState = {}) {
                 const feedback = workflow.feedback || {};
+                const reviewMode = !!workflow?.reviewMode;
+                if (reviewMode) {
+                    if (stageId === "submit") return true;
+                    const sectionComments = workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object"
+                        ? workflow.reviewSectionComments
+                        : {};
+                    return String(sectionComments[stageId] || "").trim().length >= 3;
+                }
                 const hasValidOverride = !!workflow?.blockerOverride?.enabled
                     && String(workflow?.blockerOverride?.approvedBy || "").trim().length > 0
                     && String(workflow?.blockerOverride?.reason || "").trim().length >= 10;
@@ -119226,6 +119264,9 @@
                         stage: String(workflow?.stage || "data_pull"),
                         reviewer: String(workflow?.reviewer || ""),
                         notes: String(workflow?.notes || ""),
+                        reviewMode: !!workflow?.reviewMode,
+                        reviewSectionComments: workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object" ? { ...workflow.reviewSectionComments } : {},
+                        reviewDecisionComment: String(workflow?.reviewDecisionComment || ""),
                         feedback: workflow?.feedback && typeof workflow.feedback === "object" ? { ...workflow.feedback } : {},
                         blockerOverride: workflow?.blockerOverride && typeof workflow.blockerOverride === "object" ? { ...workflow.blockerOverride } : {},
                         confidence: workflow?.confidence && typeof workflow.confidence === "object" ? { ...workflow.confidence } : {},
@@ -119248,6 +119289,12 @@
                     stage: String(draft.stage || workflow.stage || "data_pull"),
                     reviewer: String(draft.reviewer || workflow.reviewer || ""),
                     notes: String(draft.notes || workflow.notes || ""),
+                    reviewMode: draft.reviewMode === undefined ? !!workflow.reviewMode : !!draft.reviewMode,
+                    reviewSectionComments: {
+                        ...(workflow.reviewSectionComments && typeof workflow.reviewSectionComments === "object" ? workflow.reviewSectionComments : {}),
+                        ...(draft.reviewSectionComments && typeof draft.reviewSectionComments === "object" ? draft.reviewSectionComments : {}),
+                    },
+                    reviewDecisionComment: String(draft.reviewDecisionComment || workflow.reviewDecisionComment || ""),
                     feedback: {
                         ...(workflow.feedback || {}),
                         ...(draft.feedback && typeof draft.feedback === "object" ? draft.feedback : {}),
@@ -119338,11 +119385,22 @@
                     && String(hydratedWorkflow?.blockerOverride?.reason || "").trim().length >= 10;
                 const validationPass = validationChecks.every((item) => !!item.pass);
                 const canSubmit = allPriorStagesPass && (blockingCount === 0 || hasValidOverride) && validationPass;
+                const reviewMode = !!hydratedWorkflow?.reviewMode;
+                const reviewComments = hydratedWorkflow?.reviewSectionComments && typeof hydratedWorkflow.reviewSectionComments === "object"
+                    ? hydratedWorkflow.reviewSectionComments
+                    : {};
 
                 const title = document.getElementById("taskBookkeepingWorkflowTitle");
                 const meta = document.getElementById("taskBookkeepingWorkflowMeta");
                 const progressMeta = document.getElementById("taskBookkeepingWorkflowProgressMeta");
                 const submitButton = document.getElementById("taskBookkeepingWorkflowSubmitButton");
+                const approveButton = document.getElementById("taskBookkeepingWorkflowApproveButton");
+                const bouncebackButton = document.getElementById("taskBookkeepingWorkflowBouncebackButton");
+                const reviewCommentWrap = document.getElementById("taskBookkeepingReviewCommentWrap");
+                const reviewCommentLabel = document.getElementById("taskBookkeepingReviewSectionCommentLabel");
+                const reviewCommentInput = document.getElementById("taskBookkeepingReviewSectionCommentInput");
+                const reviewDecisionWrap = document.getElementById("taskBookkeepingReviewDecisionWrap");
+                const reviewDecisionInput = document.getElementById("taskBookkeepingReviewDecisionCommentInput");
                 const backButton = document.getElementById("taskBookkeepingWorkflowBackButton");
                 const nextButton = document.getElementById("taskBookkeepingWorkflowNextButton");
                 const reviewerButtons = document.getElementById("taskBookkeepingReviewerButtons");
@@ -119398,9 +119456,17 @@
                 if (title) title.textContent = `${bmTaskClientDisplayName(row?.clientName)} · ${bmTaskDisplayName(row)}`;
                 if (meta) meta.textContent = `Ref ${String(hydratedWorkflow.reference || "—")} · Period end ${bmTaskEffectivePeriodEndISO(row) || "—"} · Due ${bmTaskEffectiveDeadlineISO(row) || "—"}`;
                 if (progressMeta) {
-                    progressMeta.textContent = canSubmit
-                        ? "All workflow stages complete. Ready to submit for review."
-                        : `Stage ${stageIndex + 1}/${stages.length} · ${checksCompleted}/4 quality checks ticked${blockingCount ? ` · ${blockingCount} blocker${blockingCount === 1 ? "" : "s"}` : ""}${hasValidOverride ? " (override active)" : ""}.`;
+                    if (reviewMode) {
+                        const stageCommentsComplete = stages
+                            .filter((stage) => stage.id !== "submit")
+                            .filter((stage) => String(reviewComments[stage.id] || "").trim().length >= 3)
+                            .length;
+                        progressMeta.textContent = `Review mode · Stage ${stageIndex + 1}/${stages.length} · ${stageCommentsComplete}/${Math.max(0, stages.length - 1)} section comments recorded.`;
+                    } else {
+                        progressMeta.textContent = canSubmit
+                            ? "All workflow stages complete. Ready to submit for review."
+                            : `Stage ${stageIndex + 1}/${stages.length} · ${checksCompleted}/4 quality checks ticked${blockingCount ? ` · ${blockingCount} blocker${blockingCount === 1 ? "" : "s"}` : ""}${hasValidOverride ? " (override active)" : ""}.`;
+                    }
                 }
                 if (topbarFlowTrack) {
                     if (topbarFlow) topbarFlow.hidden = false;
@@ -119461,33 +119527,63 @@
                     nextButton.style.opacity = (!canAdvanceToNext && isReviewSubmitStep) ? "0.6" : "";
                 }
                 if (submitButton) {
-                    submitButton.hidden = resolvedStage !== "submit";
+                    submitButton.hidden = reviewMode || resolvedStage !== "submit";
                     submitButton.disabled = !canSubmit;
                 }
-                if (reviewerButtons) {
-                    reviewerButtons.innerHTML = managerPool.map((name) => {
-                        const isActive = String(hydratedWorkflow.reviewer || "") === name;
-                        const initials = bmTaskAssigneeInitials(name);
-                        const hue = bmTaskAssigneeHue(name);
-                        return `
-                            <button class="task-bookkeeping-reviewer-button ${isActive ? "is-active" : ""}" type="button" data-task-bookkeeping-reviewer-option="${escapeHTML(name)}">
-                                <span class="task-manager-chip" style="--task-manager-hue:${escapeHTML(String(hue))};">${escapeHTML(initials)}</span>
-                                <strong>${escapeHTML(name)}</strong>
-                                <small>${isActive ? "Selected reviewer" : "Select as reviewer"}</small>
-                            </button>
-                        `;
-                    }).join("");
-                    reviewerButtons.querySelectorAll("[data-task-bookkeeping-reviewer-option]").forEach((button) => {
-                        button.addEventListener("click", () => {
-                            companiesHouseSettings.bmTaskBookkeepingWorkflow = {
-                                ...hydratedWorkflow,
-                                reviewer: String(button.getAttribute("data-task-bookkeeping-reviewer-option") || "").trim(),
-                            };
-                            renderTaskSubpages();
-                        });
-                    });
+                if (approveButton) {
+                    approveButton.hidden = !reviewMode || resolvedStage !== "submit";
+                    approveButton.disabled = !reviewMode;
                 }
-                if (notesInput && notesInput.value !== String(hydratedWorkflow.notes || "")) notesInput.value = String(hydratedWorkflow.notes || "");
+                if (bouncebackButton) {
+                    bouncebackButton.hidden = !reviewMode || resolvedStage !== "submit";
+                    bouncebackButton.disabled = !reviewMode;
+                }
+                const saveDraftButton = document.getElementById("taskBookkeepingWorkflowSaveDraftButton");
+                if (saveDraftButton) saveDraftButton.hidden = reviewMode;
+                if (reviewCommentWrap) reviewCommentWrap.hidden = !reviewMode || resolvedStage === "submit";
+                if (reviewDecisionWrap) reviewDecisionWrap.hidden = !reviewMode || resolvedStage !== "submit";
+                if (reviewerButtons) {
+                    if (reviewMode) {
+                        reviewerButtons.innerHTML = `<p class="detail-meta">Assigned reviewer: ${escapeHTML(String(hydratedWorkflow.reviewer || "Unassigned"))}</p>`;
+                    } else {
+                        reviewerButtons.innerHTML = managerPool.map((name) => {
+                            const isActive = String(hydratedWorkflow.reviewer || "") === name;
+                            const initials = bmTaskAssigneeInitials(name);
+                            const hue = bmTaskAssigneeHue(name);
+                            return `
+                                <button class="task-bookkeeping-reviewer-button ${isActive ? "is-active" : ""}" type="button" data-task-bookkeeping-reviewer-option="${escapeHTML(name)}">
+                                    <span class="task-manager-chip" style="--task-manager-hue:${escapeHTML(String(hue))};">${escapeHTML(initials)}</span>
+                                    <strong>${escapeHTML(name)}</strong>
+                                    <small>${isActive ? "Selected reviewer" : "Select as reviewer"}</small>
+                                </button>
+                            `;
+                        }).join("");
+                        reviewerButtons.querySelectorAll("[data-task-bookkeeping-reviewer-option]").forEach((button) => {
+                            button.addEventListener("click", () => {
+                                companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                                    ...hydratedWorkflow,
+                                    reviewer: String(button.getAttribute("data-task-bookkeeping-reviewer-option") || "").trim(),
+                                };
+                                renderTaskSubpages();
+                            });
+                        });
+                    }
+                }
+                if (notesInput) {
+                    if (notesInput.value !== String(hydratedWorkflow.notes || "")) notesInput.value = String(hydratedWorkflow.notes || "");
+                    notesInput.readOnly = reviewMode;
+                }
+                if (reviewCommentLabel) {
+                    const activeStage = stages[stageIndex] || { title: "Section" };
+                    reviewCommentLabel.textContent = `Reviewer comment for ${activeStage.title}`;
+                }
+                if (reviewCommentInput) {
+                    const existingComment = String(reviewComments[resolvedStage] || "");
+                    if (reviewCommentInput.value !== existingComment) reviewCommentInput.value = existingComment;
+                }
+                if (reviewDecisionInput && reviewDecisionInput.value !== String(hydratedWorkflow.reviewDecisionComment || "")) {
+                    reviewDecisionInput.value = String(hydratedWorkflow.reviewDecisionComment || "");
+                }
                 if (missingNotesInput && missingNotesInput.value !== String(feedback.missingNotes || "")) missingNotesInput.value = String(feedback.missingNotes || "");
                 if (capitalAllowancesInput && capitalAllowancesInput.value !== String(feedback.capitalAllowances || "")) capitalAllowancesInput.value = String(feedback.capitalAllowances || "");
                 if (broughtForwardLossesInput && broughtForwardLossesInput.value !== String(feedback.broughtForwardLosses || "")) broughtForwardLossesInput.value = String(feedback.broughtForwardLosses || "");
@@ -120153,12 +120249,13 @@
                 });
             }
 
-            function openTaskBookkeepingWorkflowPanel(row = {}, allRows = []) {
+            function openTaskBookkeepingWorkflowPanel(row = {}, allRows = [], options = {}) {
                 const rowId = bmTaskIdentitySafe(row);
                 if (!rowId) return;
                 const currentOverride = companiesHouseSettings.bmTaskOverridesByKey?.[rowId] || {};
                 const hasDraft = !!(currentOverride?.workflowDraft && typeof currentOverride.workflowDraft === "object");
                 const existingReference = String(currentOverride?.workflowReference || row?.workflowReference || "").trim();
+                const reviewMode = !!options?.reviewMode;
                 const nextBookkeepingReference = () => {
                     const seen = new Set();
                     const push = (value) => {
@@ -120184,6 +120281,11 @@
                     stage: "data_pull",
                     reviewer: defaultReviewer,
                     notes: "",
+                    reviewMode,
+                    reviewSectionComments: currentOverride?.workflowReviewSectionComments && typeof currentOverride.workflowReviewSectionComments === "object"
+                        ? { ...currentOverride.workflowReviewSectionComments }
+                        : {},
+                    reviewDecisionComment: String(currentOverride?.workflowReviewDecisionComment || ""),
                     confidence: {},
                     blockerOverride: {
                         enabled: false,
@@ -120204,16 +120306,35 @@
                     },
                 };
                 const hydratedFromDraft = taskBookkeepingHydrateWorkflowFromDraft(companiesHouseSettings.bmTaskBookkeepingWorkflow, bmTaskRowWithOverrides(row));
-                companiesHouseSettings.bmTaskBookkeepingWorkflow = hydratedFromDraft;
-                setBmTaskOverrideState(rowId, { workflowState: "in_progress", workflowReference });
-                updateBmTaskStatus(row, "in_review", "", {
-                    autoNote: hasDraft
-                        ? `Monthly bookkeeping workflow resumed from draft (${workflowReference}).`
-                        : `Monthly bookkeeping workflow started from task list (${workflowReference}).`,
-                });
+                companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                    ...hydratedFromDraft,
+                    reviewMode,
+                };
+                if (reviewMode) {
+                    setBmTaskOverrideState(rowId, {
+                        workflowState: "in_review",
+                        workflowReference,
+                        workflowReviewOpenedAt: new Date().toISOString(),
+                    });
+                    updateBmTaskStatus(row, String(row?.status || "awaiting_approval"), "", {
+                        autoNote: `Reviewer opened bookkeeping workflow${workflowReference ? ` (${workflowReference})` : ""}.`,
+                    });
+                } else {
+                    setBmTaskOverrideState(rowId, { workflowState: "in_progress", workflowReference });
+                    updateBmTaskStatus(row, "in_review", "", {
+                        autoNote: hasDraft
+                            ? `Monthly bookkeeping workflow resumed from draft (${workflowReference}).`
+                            : `Monthly bookkeeping workflow started from task list (${workflowReference}).`,
+                    });
+                }
                 renderTaskSubpages();
                 window.scrollTo({ top: 0, behavior: "smooth" });
-                showToast("Bookkeeping workflow opened. Complete checks and submit for review.", "info");
+                showToast(
+                    reviewMode
+                        ? "Review mode opened. Add section comments and choose Approve or Bounceback."
+                        : "Bookkeeping workflow opened. Complete checks and submit for review.",
+                    "info"
+                );
             }
 
             function taskBookkeepingCreateReviewerSlaNotification(row = {}, reviewerName = "", workflowReference = "") {
@@ -120274,6 +120395,10 @@
 
             async function submitTaskBookkeepingWorkflow(allRows = []) {
                 const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                if (workflow?.reviewMode) {
+                    showToast("Use Approve workflow or Bounceback in review mode.", "info");
+                    return;
+                }
                 const row = taskBookkeepingWorkflowCurrentRow(allRows);
                 if (!row) {
                     showToast("Bookkeeping workflow task was not found.", "error");
@@ -120367,6 +120492,109 @@
                     reviewerIsDean
                         ? `Task submitted to ${assignedReviewer} and moved to Awaiting Dean's approval.`
                         : `Task submitted for review to ${assignedReviewer}.`,
+                    "success"
+                );
+            }
+
+            async function resolveTaskBookkeepingReviewDecision(decision = "", allRows = []) {
+                const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                if (!workflow?.reviewMode) {
+                    showToast("Review mode is not active for this workflow.", "error");
+                    return;
+                }
+                const row = taskBookkeepingWorkflowCurrentRow(allRows);
+                if (!row) {
+                    showToast("Bookkeeping workflow task was not found.", "error");
+                    resetTaskBookkeepingWorkflowPanel();
+                    renderTaskSubpages();
+                    return;
+                }
+                const reviewState = taskBookkeepingReviewState(row, workflow);
+                const stages = taskBookkeepingWizardStagesForState(reviewState);
+                const reviewStages = stages.filter((stage) => stage.id !== "submit");
+                const reviewComments = workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object"
+                    ? workflow.reviewSectionComments
+                    : {};
+                const missingStage = reviewStages.find((stage) => String(reviewComments[stage.id] || "").trim().length < 3);
+                if (missingStage) {
+                    showToast(`Add a reviewer comment for ${missingStage.title.toLowerCase()} before deciding.`, "info");
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        stage: missingStage.id,
+                    };
+                    renderTaskSubpages();
+                    return;
+                }
+                const normalisedDecision = String(decision || "").trim().toLowerCase();
+                if (!["approve", "bounceback"].includes(normalisedDecision)) {
+                    showToast("Select a valid review decision.", "error");
+                    return;
+                }
+                const decisionComment = String(workflow.reviewDecisionComment || "").trim();
+                if (normalisedDecision === "bounceback" && decisionComment.length < 5) {
+                    showToast("Bounceback requires a reviewer comment with clear fix instructions.", "error");
+                    return;
+                }
+                const rowId = bmTaskIdentitySafe(row);
+                const workflowReference = String(workflow.reference || row?.workflowReference || "").trim();
+                const nowIso = new Date().toISOString();
+                const sectionCommentMap = reviewStages.reduce((acc, stage) => {
+                    acc[stage.id] = String(reviewComments[stage.id] || "").trim();
+                    return acc;
+                }, {});
+                setBmTaskOverrideState(rowId, {
+                    workflowState: normalisedDecision === "approve" ? "approved" : "bounceback",
+                    workflowReference,
+                    workflowDraftSavedAt: "",
+                    workflowDraft: null,
+                    workflowReviewDecision: normalisedDecision,
+                    workflowReviewDecisionAt: nowIso,
+                    workflowReviewDecisionBy: bmTaskCurrentActorName(),
+                    workflowReviewDecisionComment: decisionComment,
+                    workflowReviewSectionComments: sectionCommentMap,
+                });
+                const targetStatus = normalisedDecision === "approve" ? "completed" : "query";
+                updateBmTaskStatus(row, targetStatus, decisionComment, {
+                    autoNote: normalisedDecision === "approve"
+                        ? `Bookkeeping workflow approved by reviewer${workflowReference ? ` (${workflowReference})` : ""}.`
+                        : `Bookkeeping workflow bounced back by reviewer${workflowReference ? ` (${workflowReference})` : ""}.`,
+                });
+                const clientKey = bmTaskClientTimelineKey(row);
+                reviewStages.forEach((stage) => {
+                    const comment = String(sectionCommentMap[stage.id] || "").trim();
+                    if (!comment) return;
+                    appendBmTaskTimeline(clientKey, {
+                        title: bmTaskDisplayName(row),
+                        body: `Review comment · ${stage.title}: ${comment}`,
+                        stamp: nowIso,
+                    });
+                    appendBmTaskHistory(rowId, {
+                        type: "review_section_comment",
+                        title: `Review comment · ${stage.title}`,
+                        detail: comment,
+                        status: targetStatus,
+                        actor: bmTaskCurrentActorName(),
+                        stamp: nowIso,
+                    });
+                });
+                if (decisionComment) {
+                    appendBmTaskHistory(rowId, {
+                        type: "review_decision",
+                        title: normalisedDecision === "approve" ? "Workflow approved" : "Workflow bounced back",
+                        detail: decisionComment,
+                        status: targetStatus,
+                        actor: bmTaskCurrentActorName(),
+                        stamp: nowIso,
+                    });
+                }
+                saveBmTaskLocalState();
+                resetTaskBookkeepingWorkflowPanel();
+                renderTaskSubpages();
+                openTaskApprovalsBouncebacksScreen();
+                showToast(
+                    normalisedDecision === "approve"
+                        ? "Workflow approved and task marked completed."
+                        : "Workflow bounced back and returned to query status.",
                     "success"
                 );
             }
@@ -121042,6 +121270,10 @@
                             await handleBookkeepingTaskStartFlow(match, allRows);
                             return;
                         }
+                        if (actionKind === "start_review") {
+                            openTaskBookkeepingWorkflowPanel(match, allRows, { reviewMode: true });
+                            return;
+                        }
                         if (actionKind === "restore") {
                             updateBmTaskStatus(match, "open", "", {
                                 autoNote: "Task restored to outstanding from completed tasks.",
@@ -121252,18 +121484,23 @@
                         }
                     } else if (!isCompleted && workflowType === "bookkeeping") {
                         if (["awaiting_approval", "awaiting_dean_approval"].includes(String(row?.status || "").trim().toLowerCase()) || workflowState === "submitted_for_review") {
-                            actionKind = "complete";
-                            actionLabel = "Complete review";
-                            actionClass = "";
+                            actionKind = "start_review";
+                            actionLabel = "Start Review";
+                            actionClass = "is-review-start";
                             actionDisabled = false;
-                            actionIcon = "✓";
+                            actionIcon = "▶";
                         } else if (workflowState === "ready_to_complete") {
                             actionKind = "complete";
                             actionLabel = "Complete";
                             actionIcon = "✓";
                         } else if (workflowState === "draft_saved" || !!workflowDraftSavedAt) {
                             actionKind = "start_bookkeeping";
-                            actionLabel = "Resume";
+                            actionLabel = "Continue";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
+                        } else if (workflowState === "in_progress") {
+                            actionKind = "start_bookkeeping";
+                            actionLabel = "Continue";
                             actionClass = "is-start";
                             actionIcon = "▶";
                         } else {
@@ -125542,11 +125779,17 @@
                 const summary = document.getElementById("chRegisterClientPageEngagementLettersMeta");
                 const body = document.getElementById("chRegisterClientPageEngagementLettersBody");
                 const fetchButton = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
+                const quickFetchButton = document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton");
                 if (!summary || !body) return;
                 if (fetchButton) {
                     const pageState = companiesHouseSettings.authRegisterClientPage || {};
                     fetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
                     fetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
+                }
+                if (quickFetchButton) {
+                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                    quickFetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
+                    quickFetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
                 }
 
                 if (!payload) {
@@ -125605,13 +125848,27 @@
                     return;
                 }
                 const button = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
+                const quickButton = document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton");
                 if (button) {
                     button.disabled = true;
                     button.textContent = "Syncing Ignition...";
                 }
+                if (quickButton) {
+                    quickButton.disabled = true;
+                    quickButton.textContent = "Syncing Ignition...";
+                }
                 try {
-                    await runIgnitionSync();
-                    await refreshClientRegisterClientPage();
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
+                    const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                    if (latestState.open && String(latestState.rowId || "").trim() === rowId) {
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...latestState,
+                            loading: false,
+                            loadingToastShown: false,
+                            payload,
+                        };
+                        renderClientRegisterClientPage();
+                    }
                     setClientRegisterClientPageTab("engagement-letters");
                     showToast("Engagement letters refreshed from Ignition.", "success");
                 } catch (error) {
@@ -125620,6 +125877,10 @@
                     if (button) {
                         button.disabled = false;
                         button.textContent = "Get engagement letters";
+                    }
+                    if (quickButton) {
+                        quickButton.disabled = false;
+                        quickButton.textContent = "Get engagement letters";
                     }
                 }
             }
@@ -128345,6 +128606,10 @@
                     event?.preventDefault?.();
                     void refreshClientRegisterEngagementLetters();
                 });
+                document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton")?.addEventListener("click", (event) => {
+                    event?.preventDefault?.();
+                    void refreshClientRegisterEngagementLetters();
+                });
                 document.getElementById("chRegisterClientPageEngagementLetterModalCloseButton")?.addEventListener("click", closeClientRegisterEngagementLetterModal);
                 document.getElementById("chRegisterClientPageEngagementLetterModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "chRegisterClientPageEngagementLetterModal") closeClientRegisterEngagementLetterModal();
@@ -128766,6 +129031,14 @@
                     const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                     await submitTaskBookkeepingWorkflow(allRows);
                 });
+                document.getElementById("taskBookkeepingWorkflowApproveButton")?.addEventListener("click", async () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    await resolveTaskBookkeepingReviewDecision("approve", allRows);
+                });
+                document.getElementById("taskBookkeepingWorkflowBouncebackButton")?.addEventListener("click", async () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    await resolveTaskBookkeepingReviewDecision("bounceback", allRows);
+                });
                 document.getElementById("taskBookkeepingWorkflowBackButton")?.addEventListener("click", () => {
                     const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
                     const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
@@ -128809,9 +129082,32 @@
                     renderTaskSubpages();
                 });
                 document.getElementById("taskBookkeepingNotesInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    if (workflow?.reviewMode) return;
                     companiesHouseSettings.bmTaskBookkeepingWorkflow = {
-                        ...(companiesHouseSettings.bmTaskBookkeepingWorkflow || {}),
+                        ...workflow,
                         notes: String(event?.target?.value || ""),
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingReviewSectionCommentInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    const stage = String(workflow?.stage || "").trim();
+                    if (!stage || stage === "submit") return;
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        reviewSectionComments: {
+                            ...(workflow.reviewSectionComments && typeof workflow.reviewSectionComments === "object" ? workflow.reviewSectionComments : {}),
+                            [stage]: String(event?.target?.value || ""),
+                        },
+                    };
+                    renderTaskSubpages();
+                });
+                document.getElementById("taskBookkeepingReviewDecisionCommentInput")?.addEventListener("input", (event) => {
+                    const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                    companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                        ...workflow,
+                        reviewDecisionComment: String(event?.target?.value || ""),
                     };
                     renderTaskSubpages();
                 });
