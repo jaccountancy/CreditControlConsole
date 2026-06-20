@@ -15720,6 +15720,16 @@ SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX = "New Employee Details:"
 SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
 
 
+def _submitted_employee_forms_subject_matches(subject: str) -> bool:
+    text = str(subject or "").strip().lower()
+    return bool(re.match(r"^new\s+employee\s+details\s*:", text))
+
+
+def _submitted_employee_forms_subject_suffix(subject: str) -> str:
+    text = str(subject or "").strip()
+    return re.sub(r"^new\s+employee\s+details\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+
+
 def _gmail_read_scope_granted(scope_value: str | None) -> bool:
     scopes = set(_gmail_scopes_value(scope_value).split())
     return bool(
@@ -15785,7 +15795,10 @@ def _gmail_message_body_text(message_payload: dict) -> str:
     joined = "\n".join(texts)
     if "<" in joined and ">" in joined:
         joined = re.sub(r"<[^>]+>", " ", joined)
-    return re.sub(r"\s+", " ", joined).strip()
+    joined = joined.replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
+    joined = re.sub(r"[ \t]+", " ", joined)
+    joined = re.sub(r"\n{3,}", "\n\n", joined)
+    return joined.strip()
 
 
 def _parse_email_contact(value: str) -> tuple[str, str]:
@@ -15823,21 +15836,47 @@ def _gmail_received_at(message_payload: dict) -> datetime | None:
 
 def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> dict:
     combined = "\n".join([str(subject or ""), str(snippet or ""), str(body_text or "")]).strip()
+    lines = [line.strip() for line in str(body_text or "").splitlines() if line and line.strip()]
+
+    def _next_line_after_label(label_candidates: list[str]) -> str:
+        lowered_lines = [line.lower() for line in lines]
+        labels = [label.lower().strip() for label in label_candidates if label]
+        for index, lowered in enumerate(lowered_lines):
+            if lowered in labels:
+                if index + 1 < len(lines):
+                    return str(lines[index + 1] or "").strip()
+        return ""
 
     def _find(pattern: str) -> str:
         match = re.search(pattern, combined, flags=re.IGNORECASE)
         return str(match.group(1) or "").strip() if match else ""
 
-    full_name = _find(r"(?:employee\s*name|full\s*name)\s*[:\-]\s*([^\n,;]+)")
-    first_name = _find(r"(?:first\s*name)\s*[:\-]\s*([^\n,;]+)")
-    last_name = _find(r"(?:last\s*name|surname)\s*[:\-]\s*([^\n,;]+)")
-    email_value = _find(r"(?:employee\s*email|email\s*address|email)\s*[:\-]\s*([^\s,;]+@[^\s,;]+)")
+    full_name = (
+        _next_line_after_label(["Name", "Employee Name", "Full Name"])
+        or _find(r"(?:employee\s*name|full\s*name)\s*[:\-]\s*([^\n,;]+)")
+    )
+    first_name = (
+        _next_line_after_label(["First Name"])
+        or _find(r"(?:first\s*name)\s*[:\-]\s*([^\n,;]+)")
+    )
+    last_name = (
+        _next_line_after_label(["Last Name", "Surname"])
+        or _find(r"(?:last\s*name|surname)\s*[:\-]\s*([^\n,;]+)")
+    )
+    email_value = (
+        _next_line_after_label(["Email", "Employee Email", "Email Address"])
+        or _find(r"(?:employee\s*email|email\s*address|email)\s*[:\-]\s*([^\s,;]+@[^\s,;]+)")
+    )
     if not email_value:
         free_email = re.search(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", combined, flags=re.IGNORECASE)
         email_value = str(free_email.group(0) or "").strip() if free_email else ""
 
-    if not full_name and str(subject or "").lower().startswith(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX.lower()):
-        full_name = str(subject or "")[len(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX):].strip().strip("-: ")
+    if not full_name and _submitted_employee_forms_subject_matches(subject):
+        full_name = _submitted_employee_forms_subject_suffix(subject).strip().strip("-: ")
+
+    full_name = re.sub(r"\s+", " ", str(full_name or "")).strip()
+    first_name = re.sub(r"\s+", " ", str(first_name or "")).strip()
+    last_name = re.sub(r"\s+", " ", str(last_name or "")).strip()
 
     if full_name and (not first_name or not last_name):
         parts = [part for part in re.split(r"\s+", full_name) if part]
@@ -15929,7 +15968,7 @@ def _submitted_employee_forms_query_rows(user_id: str) -> list[dict]:
                         FROM submitted_employee_forms
                         WHERE user_id = %s
                         ORDER BY COALESCE(received_at, created_at) DESC, created_at DESC
-                        LIMIT 800
+                        LIMIT 5000
                         """,
                         (user_id,),
                     )
@@ -16011,7 +16050,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     headers = {"Authorization": f"Bearer {connection_row.get('access_token') or ''}"}
     safe_lookback_days = max(1, min(int(lookback_days or 28), 180))
     after_date = (utcnow() - timedelta(days=safe_lookback_days)).date()
-    query = f'subject:"{SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX}" after:{after_date.strftime("%Y/%m/%d")}'
+    query = f'subject:"New Employee Details" after:{after_date.strftime("%Y/%m/%d")}'
 
     async with httpx.AsyncClient(timeout=30) as client:
         list_response = await client.get(
@@ -16058,7 +16097,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             if not isinstance(payload, dict):
                 return None
             subject = _gmail_header_value(payload, "Subject")
-            if not subject.lower().startswith(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX.lower()):
+            if not _submitted_employee_forms_subject_matches(subject):
                 return None
             from_header = _gmail_header_value(payload, "From")
             from_name, from_email = _parse_email_contact(from_header)

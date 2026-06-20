@@ -43880,6 +43880,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="submittedEmployeeFormsRefreshButton" type="button">Refresh page</button>
+                                    <a class="ghost-button action-link" id="submittedEmployeeFormsReconnectButton" href="/auth/gmail/start?redirect_to=/">Reconnect Gmail</a>
                                     <label class="new-formations-inline-checkbox" title="Create missing employees in Xero Payroll">
                                         <input id="submittedEmployeeFormsAutoCreateToggle" type="checkbox" checked>
                                         <span>Auto create in Xero</span>
@@ -49366,16 +49367,20 @@
                     submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
                     const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
                     if (mode === "fetch") {
-                        submittedEmployeeFormsWizardStep = 2;
+                        const imported = Number(syncMeta.imported || 0);
+                        const gmailStatus = String((syncMeta?.gmail || {}).status || submittedEmployeeFormsData?.gmail?.status || "").trim().toLowerCase();
+                        const canAdvance = imported > 0 && gmailStatus === "connected";
+                        submittedEmployeeFormsWizardStep = canAdvance ? 2 : 1;
                         submittedEmployeeFormsSelectedRowIds.clear();
                         const lookbackDays = Number(syncMeta.lookbackDays || 28);
                         const now = new Date();
                         const windowStart = new Date(now.getTime() - (Math.max(1, lookbackDays) * 24 * 60 * 60 * 1000));
                         submittedEmployeeFormsWindowStartIso = windowStart.toISOString();
-                        const imported = Number(syncMeta.imported || 0);
                         showToast(
-                            `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled from the last 4 weeks.`,
-                            "success"
+                            canAdvance
+                                ? `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled from the last 4 weeks.`
+                                : `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled. Reconnect Gmail read access or check subject format if expected rows are missing.`,
+                            canAdvance ? "success" : "warning"
                         );
                     } else {
                         const created = Number(syncMeta.created || 0);
@@ -57141,12 +57146,13 @@
                 const summary = document.getElementById("submittedEmployeeFormsSummary");
                 const tableBody = document.getElementById("submittedEmployeeFormsTableBody");
                 const refreshButton = document.getElementById("submittedEmployeeFormsRefreshButton");
+                const reconnectButton = document.getElementById("submittedEmployeeFormsReconnectButton");
                 const syncButton = document.getElementById("submittedEmployeeFormsSyncButton");
                 const autoCreateToggle = document.getElementById("submittedEmployeeFormsAutoCreateToggle");
                 const wizardMeta = document.getElementById("submittedEmployeeFormsWizardMeta");
                 const selectAllButton = document.getElementById("submittedEmployeeFormsSelectAllButton");
                 const clearSelectionButton = document.getElementById("submittedEmployeeFormsClearSelectionButton");
-                if (!summary || !tableBody || !refreshButton || !syncButton || !autoCreateToggle || !wizardMeta || !selectAllButton || !clearSelectionButton) return;
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !autoCreateToggle || !wizardMeta || !selectAllButton || !clearSelectionButton) return;
 
                 if (refreshButton.dataset.submittedEmployeeFormsWired !== "true") {
                     refreshButton.dataset.submittedEmployeeFormsWired = "true";
@@ -57192,8 +57198,12 @@
                 }
                 autoCreateToggle.checked = submittedEmployeeFormsAutoCreate;
 
+                const gmail = submittedEmployeeFormsData?.gmail || {};
+                const gmailNeedsReconnect = Boolean(gmail?.needsReconnect) || ["not_connected", "reauth_required"].includes(String(gmail?.status || "").trim().toLowerCase());
+                reconnectButton.href = endpointURL("/auth/gmail/start?redirect_to=/#credit-control-submitted-employee-forms");
+                reconnectButton.hidden = !gmailNeedsReconnect;
                 refreshButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
-                syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
+                syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || (submittedEmployeeFormsWizardStep <= 1 && gmailNeedsReconnect);
                 if (submittedEmployeeFormsSyncing) {
                     syncButton.textContent = "Processing...";
                 } else if (submittedEmployeeFormsWizardStep <= 1) {
@@ -57214,7 +57224,6 @@
                     return;
                 }
 
-                const gmail = submittedEmployeeFormsData?.gmail || {};
                 const allRows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
                 const windowStartMs = submittedEmployeeFormsWindowStartIso ? Date.parse(submittedEmployeeFormsWindowStartIso) : Number.NaN;
                 const rows = Number.isFinite(windowStartMs)
