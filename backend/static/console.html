@@ -9661,6 +9661,17 @@
                 white-space: nowrap;
                 flex: 0 0 auto;
             }
+            .insights-home-action-intro #insightsQuickAccessDock {
+                min-width: 200px;
+                max-width: 260px;
+                width: 100%;
+                flex: 0 1 240px;
+            }
+            .insights-home-action-intro #insightsQuickAccessDock .insights-quick-access-toggle {
+                min-height: 38px;
+                font-size: 0.76rem;
+                padding: 7px 12px;
+            }
             .insights-home-action-row {
                 display: flex;
                 flex-wrap: nowrap;
@@ -10150,6 +10161,10 @@
                 display: flex;
                 flex-wrap: wrap;
                 gap: 6px;
+                justify-content: flex-start;
+            }
+            .insights-xero-hero-actions.is-dual {
+                justify-content: space-between;
             }
             .insights-xero-hero-button {
                 border: 1px solid rgba(63, 94, 157, 0.32);
@@ -10161,12 +10176,33 @@
                 font-weight: 700;
                 letter-spacing: 0.01em;
             }
+            .insights-xero-hero-button.is-primary {
+                border-color: rgba(29, 103, 242, 0.52);
+                background: linear-gradient(135deg, #1d67f2, #3b83ff);
+                color: #ffffff;
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.22);
+            }
             .insights-xero-hero-button:hover,
             .insights-xero-hero-button:focus-visible {
                 outline: none;
                 border-color: rgba(39, 92, 182, 0.5);
                 background: #f0f6ff;
                 color: #143874;
+            }
+            .insights-xero-hero-button.is-primary:hover,
+            .insights-xero-hero-button.is-primary:focus-visible {
+                border-color: rgba(29, 103, 242, 0.7);
+                background: linear-gradient(135deg, #1a5dd9, #3377f2);
+                color: #ffffff;
+            }
+            .insights-xero-hero-alert {
+                margin: 2px 0 0;
+                font-size: 0.74rem;
+                line-height: 1.25;
+                font-weight: 760;
+            }
+            .insights-xero-hero-alert.is-warning {
+                color: #a55d00;
             }
             .insights-loading-stage {
                 position: relative;
@@ -35898,23 +35934,6 @@
                                     <span class="insights-hero-chip" id="insightsHeroChip">Jenius AI · Live</span>
                                     <h2 class="insights-live-greeting insights-hero-title" id="insightsLiveGreeting">Loading local time...</h2>
                                     <p class="detail-meta" id="insightsMeta">Your live command centre — debtor book, cash collection, Xero sync health and workflow actions, all in one place.</p>
-                                    <div class="insights-hero-primary-actions">
-                                        <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
-                                            <span id="refreshInsightsButtonLabel">Refresh</span>
-                                        </button>
-                                        <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
-                                            <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access ▾</button>
-                                            <div class="insights-quick-access-menu" id="insightsQuickAccessMenu" hidden>
-                                                <header class="insights-quick-access-menu-head">
-                                                    <strong>Quick Access</strong>
-                                                    <small>Jump into key workflows</small>
-                                                </header>
-                                                <div class="insights-quick-access-menu-body" id="insightsQuickAccessMenuBody">
-                                                    <p class="insights-quick-access-empty">Quick actions are loading...</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                             <div class="detail-actions">
@@ -62144,6 +62163,12 @@
                 event?.stopPropagation?.();
                 event?.stopImmediatePropagation?.();
                 if (!section) return false;
+                const currentSection = activeNavForView();
+                const isClientDetailOpen = section === "clients" && activeView === "client";
+                if (!options?.force && section === currentSection && !isClientDetailOpen) {
+                    syncCreditControlGroupState(section);
+                    return false;
+                }
                 sidebarNotificationsMiniMode = false;
                 sidebarSearchMiniMode = false;
                 document.querySelector(".app-sidebar")?.classList.remove("is-settings-menu-exposed");
@@ -62394,16 +62419,8 @@
             }
 
             function wireSidebarNavigation() {
-                document.querySelectorAll("[data-app-nav]").forEach((button) => {
-                    if (button.dataset.sidebarNavWired === "true") return;
-                    button.dataset.sidebarNavWired = "true";
-                    const navigate = (event) => handleAppNavigation(button.dataset.appNav, event);
-                    button.addEventListener("pointerup", navigate, { capture: true });
-                    button.addEventListener("mouseup", navigate, { capture: true });
-                    button.addEventListener("touchend", navigate, { capture: true });
-                    button.addEventListener("click", navigate, { capture: true });
-                    button.onclick = navigate;
-                });
+                // Navigation clicks are centrally delegated in wireCriticalNavigation().
+                // Avoid per-button handlers to keep sidebar interactions lightweight.
                 if (!sidebarHashNavigationWired) {
                     sidebarHashNavigationWired = true;
                     window.addEventListener("hashchange", handleAppNavHashChange);
@@ -95353,7 +95370,18 @@
                                 <h3>Today's Priorities for ${escapeHTML(userName)}</h3>
                                 <p>Focus where action is needed now, then jump into the workflow in one click.</p>
                             </div>
-                            <span class="insights-home-action-intro-badge" aria-hidden="true">Command Centre</span>
+                            <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
+                                <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access ▾</button>
+                                <div class="insights-quick-access-menu" id="insightsQuickAccessMenu" hidden>
+                                    <header class="insights-quick-access-menu-head">
+                                        <strong>Quick Access</strong>
+                                        <small>Jump into key workflows</small>
+                                    </header>
+                                    <div class="insights-quick-access-menu-body" id="insightsQuickAccessMenuBody">
+                                        <p class="insights-quick-access-empty">Quick actions are loading...</p>
+                                    </div>
+                                </div>
+                            </div>
                         </header>
                         <div class="insights-home-xero-status" id="insightsHomeXeroStatus">
                             ${xeroOverviewMarkup}
@@ -95492,15 +95520,14 @@
                         detail: syncRunning
                             ? (syncRunLiveDetail(run) || "Sync is currently running in the background.")
                             : syncDetail,
+                        warning: syncStale ? "Warning: full sync is overdue (older than 24 hours)." : "",
                         tone: syncFailed ? "error" : (syncStale ? "warn" : "good"),
                         icon: syncRunning ? "refresh" : (syncFailed ? "notice" : "check-circle"),
                         actions: syncFailed
-                            ? [{ key: "xero-sync-now", label: "Retry sync" }, { key: "xero-show-warning", label: "View issue" }]
+                            ? [{ key: "xero-show-warning", label: "View issue" }, { key: "xero-sync-now", label: "Full Sync", emphasis: "primary" }]
                             : syncRunning
                                 ? [{ key: "xero-open-import", label: "Open sync panel" }]
-                                : syncStale
-                                    ? [{ key: "xero-sync-now", label: "Run full sync" }]
-                                    : [{ key: "xero-open-import", label: "Import settings" }],
+                                : [{ key: "xero-open-import", label: "Import settings" }, { key: "xero-sync-now", label: "Full Sync", emphasis: "primary" }],
                     },
                     {
                         title: "Sync Health",
@@ -95531,9 +95558,10 @@
                                 </div>
                                 <strong class="insights-xero-hero-value">${escapeHTML(card.value || "--")}</strong>
                                 <p class="insights-xero-hero-detail">${escapeHTML(card.detail || "")}</p>
-                                <div class="insights-xero-hero-actions">
+                                ${card.warning ? `<p class="insights-xero-hero-alert is-warning">${escapeHTML(card.warning)}</p>` : ""}
+                                <div class="insights-xero-hero-actions${(Array.isArray(card.actions) ? card.actions.length : 0) > 1 ? " is-dual" : ""}">
                                     ${(Array.isArray(card.actions) ? card.actions : []).map((action) => (
-                                        `<button type="button" class="insights-xero-hero-button" data-insights-action="${escapeHTML(action.key || "")}">${escapeHTML(action.label || "Open")}</button>`
+                                        `<button type="button" class="insights-xero-hero-button${action.emphasis === "primary" ? " is-primary" : ""}" data-insights-action="${escapeHTML(action.key || "")}">${escapeHTML(action.label || "Open")}</button>`
                                     )).join("")}
                                 </div>
                             </article>
