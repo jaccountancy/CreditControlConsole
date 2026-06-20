@@ -76,7 +76,6 @@ from .companies_house import (
     sync_xero_lock_date_company_records,
     save_auth_register_client_page,
     submission_reconciliation_report,
-    start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
     test_companies_house_connection,
     upload_auth_code_register_csv,
@@ -574,7 +573,6 @@ def _run_async_job(coroutine_factory, *args, **kwargs) -> None:
 def startup() -> None:
     ensure_schema()
     install_sync_signal_handlers()
-    start_companies_house_auto_sync_worker()
 
 
 def template_context(request: Request, **extra):

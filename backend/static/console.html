@@ -47307,31 +47307,17 @@
             }
 
             function wireButtonIconEnhancements() {
-                const pendingRoots = new Set();
+                if (window.__queueButtonIconEnhancement) return;
                 let queued = false;
-                const run = () => {
-                    queued = false;
-                    if (!pendingRoots.size) pendingRoots.add(document);
-                    const roots = [...pendingRoots];
-                    pendingRoots.clear();
-                    roots.forEach((root) => enhanceConsoleButtons(root));
-                };
-                const queue = (root = document) => {
-                    pendingRoots.add(root || document);
+                window.__queueButtonIconEnhancement = (root = document) => {
                     if (queued) return;
                     queued = true;
-                    requestAnimationFrame(run);
-                };
-                const observer = new MutationObserver((mutations) => {
-                    mutations.forEach((mutation) => {
-                        mutation.addedNodes.forEach((node) => {
-                            if (node.nodeType !== Node.ELEMENT_NODE) return;
-                            if (node.matches?.("button") || node.querySelector?.("button")) queue(node);
-                        });
+                    requestAnimationFrame(() => {
+                        queued = false;
+                        enhanceConsoleButtons(root || document);
                     });
-                });
-                observer.observe(document.body, { childList: true, subtree: true });
-                queue(document);
+                };
+                window.__queueButtonIconEnhancement(document);
             }
 
             function normaliseAPI(config) {
@@ -63387,7 +63373,7 @@
                     const payload = await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
                     if (payload?.panel) replaceState(normaliseState(payload.panel));
                     else await hydrateFromAPI();
-                    renderAll();
+                    renderViewOnly();
                     showToast(payload?.xeroNoteSynced ? "Invoice note saved and added to Xero contact and invoice" : "Invoice note saved locally", payload?.xeroNoteSynced ? "success" : "info");
                 } catch (error) {
                     console.error("Unable to sync quick note", error);
@@ -63434,7 +63420,7 @@
                     activeView = "client";
                     activeClientSection = clientSections.has(section) ? section : "invoices";
                     syncActiveViewShell();
-                    renderAll();
+                    renderViewOnly();
                     scrollConsoleToTop();
                     return;
                 }
@@ -64837,7 +64823,7 @@
                         showToast("Allocation pushed through to Xero and contact note added", "success");
                     }
                     closeAllocationPanel();
-                    renderAll();
+                    renderViewOnly();
                 } catch (error) {
                     console.error("Unable to allocate credit", error);
                     if (error instanceof AuthRequiredError) {
@@ -65091,7 +65077,7 @@
                     if (results.some((result) => result.status === "rejected")) throw new Error("One or more invoice notes failed to sync");
                     await hydrateFromAPI();
                     selectedClientInvoiceIds.clear();
-                    renderAll();
+                    renderViewOnly();
                     showToast("Invoice notes synced", "success");
                 } catch (error) {
                     console.error("Unable to sync selected invoice notes", error);
@@ -73958,7 +73944,7 @@
                     document.getElementById("supplierReconciliationStatementPageBackButton")?.addEventListener("click", () => {
                         activeView = "supplier-reconciliation";
                         supplierReconciliationStatementPageStatementId = "";
-                        renderAll();
+                        renderViewOnly();
                     });
                     return;
                 }
@@ -74071,7 +74057,7 @@
                 document.getElementById("supplierReconciliationStatementPageBackButton")?.addEventListener("click", () => {
                     activeView = "supplier-reconciliation";
                     supplierReconciliationStatementPageStatementId = "";
-                    renderAll();
+                    renderViewOnly();
                 });
                 document.getElementById("supplierReconciliationStatementPageReportButton")?.addEventListener("click", () => {
                     downloadSupplierReconciliationReport(result);
@@ -81716,7 +81702,7 @@
                     if (!completedPayload) return;
                     if (completedPayload.ignition) ignitionData = normaliseIgnitionPayload(completedPayload);
                     else await loadIgnition(true);
-                    renderAll();
+                    renderViewOnly();
                     showToast(completedPayload.ignitionSyncRun?.summary || "Ignition sync complete", "success", { label: "View logs", onClick: openDeveloperLog });
                     keepFailureBanner = true;
                 } catch (error) {
@@ -81752,7 +81738,7 @@
                     if (!completedPayload) return;
                     if (completedPayload.ignition) ignitionData = normaliseIgnitionPayload(completedPayload);
                     else await loadIgnition(true);
-                    renderAll();
+                    renderViewOnly();
                     showToast(completedPayload.ignitionSyncRun?.summary || "Ignition sync complete", "success", { label: "View logs", onClick: openDeveloperLog });
                     keepFailureBanner = true;
                 } catch (error) {
@@ -90580,7 +90566,7 @@
                     if (completedPayload.meReport) meReportData = normaliseMeReportPayload(completedPayload);
                     else await loadMeReport(true);
                     selectedMeReportClientId = client.id;
-                    renderAll();
+                    renderViewOnly();
                     const completedRun = completedPayload.meReportSyncRun || syncRun;
                     showTopbarNotice("ME Report calculation complete", completedRun.summary || "Month-end review calculated.", "success");
                     showToast(completedRun.summary || "ME Report calculation complete", "success");
@@ -90616,7 +90602,7 @@
                     if (!completedPayload) return;
                     if (completedPayload.meReport) meReportData = normaliseMeReportPayload(completedPayload);
                     else await loadMeReport(true);
-                    renderAll();
+                    renderViewOnly();
                     showTopbarNotice("ME Report calculation complete", completedPayload.meReportSyncRun?.summary || "Month-end review calculated.", "success");
                     keepFailureBanner = true;
                 } catch (error) {
@@ -91919,7 +91905,7 @@
                     try {
                         await queuePendingXeroAction("bad_debt_write_offs", invoiceIds);
                         selectedBadDebtInvoiceIds.clear();
-                        renderAll();
+                        renderViewOnly();
                         showTopbarNotice("Bad debt write-offs queued", "Saved to the Xero outbox. Push them from Settings after the API limit resets.", "success");
                         showToast("Bad debt write-offs queued for later Xero sync", "success");
                     } catch (error) {
@@ -108748,8 +108734,9 @@
                 }
             }
 
-            function renderAll() {
+            function renderAll(mode = "full") {
                 const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
+                const renderMode = String(mode || "full").toLowerCase() === "view" ? "view" : "full";
                 const settingsSteps = new Set([
                     "renderSyncSettings",
                     "renderSettingsNavigation",
@@ -108814,6 +108801,7 @@
                 const viewStepSet = activeViewSteps[activeView] || new Set();
                 const shouldRunStep = (label) => {
                     if (alwaysRunSteps.has(label)) return true;
+                    if (renderMode === "view") return viewStepSet.has(label);
                     if (activeView === "settings" && settingsSteps.has(label)) return true;
                     return viewStepSet.has(label);
                 };
@@ -108901,6 +108889,13 @@
                 });
                 if (PERF_PROFILE_ENABLED) trackPerf("renderAll.total", performance.now() - startedAt);
                 schedulePersistState();
+                if (typeof window.__queueButtonIconEnhancement === "function") {
+                    window.__queueButtonIconEnhancement(document);
+                }
+            }
+
+            function renderViewOnly() {
+                renderAll("view");
             }
 
             function wireFilters() {
@@ -112259,7 +112254,7 @@
                     if (!completedPayload) return null;
                     if (completedPayload.panel) replaceState(normaliseState(completedPayload.panel));
                     else await hydrateFromAPI();
-                    renderAll();
+                    renderViewOnly();
                     const completedRun = completedPayload.operationRun || operationRun;
                     showTopbarNotice(completedRun.label || "Xero operation", completedRun.summary || "Operation complete", "success");
                     showToast(completionToast(completedPayload), "success", { label: "View logs", onClick: openDeveloperLog });
@@ -112504,7 +112499,7 @@
                         } else {
                             await hydrateFromAPI();
                         }
-                        renderAll();
+                        renderViewOnly();
                         showToast("Outstanding invoices are ready. Paid invoice history is still backfilling.", "success");
                     }
                     if (syncRun?.status === "completed" || payload?.status === "completed") return payload;
