@@ -43884,14 +43884,20 @@
                                         <input id="submittedEmployeeFormsAutoCreateToggle" type="checkbox" checked>
                                         <span>Auto create in Xero</span>
                                     </label>
-                                    <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Sync Gmail and Xero</button>
+                                    <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Start wizard</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="submittedEmployeeFormsSummary">Submitted employee forms workspace is ready.</p>
+                            <div class="detail-actions">
+                                <p class="detail-meta" id="submittedEmployeeFormsWizardMeta">Step 1 of 2: Sync the last four weeks of matching emails.</p>
+                                <button class="ghost-button" id="submittedEmployeeFormsSelectAllButton" type="button">Select all</button>
+                                <button class="ghost-button" id="submittedEmployeeFormsClearSelectionButton" type="button">Clear selection</button>
+                            </div>
                             <section class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Submitted employee forms">
                                     <thead>
                                         <tr>
+                                            <th>Select</th>
                                             <th>Received</th>
                                             <th>Employee</th>
                                             <th>Email</th>
@@ -46092,6 +46098,9 @@
             let submittedEmployeeFormsLoading = false;
             let submittedEmployeeFormsSyncing = false;
             let submittedEmployeeFormsAutoCreate = true;
+            let submittedEmployeeFormsWizardStep = 1;
+            let submittedEmployeeFormsSelectedRowIds = new Set();
+            let submittedEmployeeFormsWindowStartIso = "";
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -49343,21 +49352,43 @@
                 submittedEmployeeFormsSyncing = true;
                 renderSubmittedEmployeeFormsScreen();
                 try {
+                    const mode = String(options?.mode || (submittedEmployeeFormsWizardStep <= 1 ? "fetch" : "process")).trim().toLowerCase();
+                    const selectedFormIds = [...submittedEmployeeFormsSelectedRowIds];
                     const payload = await requestJSON(api.endpoints.submittedEmployeeFormsSync, {
                         method: "POST",
                         body: JSON.stringify({
+                            mode,
+                            lookbackDays: 28,
+                            selectedFormIds,
                             createMissing: options?.createMissing !== false,
                         }),
                     });
                     submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
                     const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
-                    const created = Number(syncMeta.created || 0);
-                    const existing = Number(syncMeta.existing || 0);
-                    const failed = Number(syncMeta.failed || 0);
-                    showToast(
-                        `Submitted employee forms synced. ${created.toLocaleString("en-GB")} created, ${existing.toLocaleString("en-GB")} existing, ${failed.toLocaleString("en-GB")} failed.`,
-                        failed ? "warning" : "success"
-                    );
+                    if (mode === "fetch") {
+                        submittedEmployeeFormsWizardStep = 2;
+                        submittedEmployeeFormsSelectedRowIds.clear();
+                        const lookbackDays = Number(syncMeta.lookbackDays || 28);
+                        const now = new Date();
+                        const windowStart = new Date(now.getTime() - (Math.max(1, lookbackDays) * 24 * 60 * 60 * 1000));
+                        submittedEmployeeFormsWindowStartIso = windowStart.toISOString();
+                        const imported = Number(syncMeta.imported || 0);
+                        showToast(
+                            `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled from the last 4 weeks.`,
+                            "success"
+                        );
+                    } else {
+                        const created = Number(syncMeta.created || 0);
+                        const existing = Number(syncMeta.existing || 0);
+                        const failed = Number(syncMeta.failed || 0);
+                        showToast(
+                            `Step 2 complete. ${created.toLocaleString("en-GB")} created, ${existing.toLocaleString("en-GB")} already in Xero, ${failed.toLocaleString("en-GB")} failed.`,
+                            failed ? "warning" : "success"
+                        );
+                        submittedEmployeeFormsSelectedRowIds.clear();
+                        submittedEmployeeFormsWizardStep = 1;
+                        submittedEmployeeFormsWindowStartIso = "";
+                    }
                 } catch (error) {
                     console.error("Unable to sync submitted employee forms", error);
                     showToast(error?.message || "Unable to sync submitted employee forms.", "error");
@@ -57112,7 +57143,10 @@
                 const refreshButton = document.getElementById("submittedEmployeeFormsRefreshButton");
                 const syncButton = document.getElementById("submittedEmployeeFormsSyncButton");
                 const autoCreateToggle = document.getElementById("submittedEmployeeFormsAutoCreateToggle");
-                if (!summary || !tableBody || !refreshButton || !syncButton || !autoCreateToggle) return;
+                const wizardMeta = document.getElementById("submittedEmployeeFormsWizardMeta");
+                const selectAllButton = document.getElementById("submittedEmployeeFormsSelectAllButton");
+                const clearSelectionButton = document.getElementById("submittedEmployeeFormsClearSelectionButton");
+                if (!summary || !tableBody || !refreshButton || !syncButton || !autoCreateToggle || !wizardMeta || !selectAllButton || !clearSelectionButton) return;
 
                 if (refreshButton.dataset.submittedEmployeeFormsWired !== "true") {
                     refreshButton.dataset.submittedEmployeeFormsWired = "true";
@@ -57124,7 +57158,15 @@
                 if (syncButton.dataset.submittedEmployeeFormsWired !== "true") {
                     syncButton.dataset.submittedEmployeeFormsWired = "true";
                     syncButton.addEventListener("click", async () => {
-                        await syncSubmittedEmployeeForms({ createMissing: submittedEmployeeFormsAutoCreate });
+                        if (submittedEmployeeFormsWizardStep <= 1) {
+                            await syncSubmittedEmployeeForms({ mode: "fetch", createMissing: submittedEmployeeFormsAutoCreate });
+                            return;
+                        }
+                        if (!submittedEmployeeFormsSelectedRowIds.size) {
+                            showToast("Select at least one email row for Step 2.", "info");
+                            return;
+                        }
+                        await syncSubmittedEmployeeForms({ mode: "process", createMissing: submittedEmployeeFormsAutoCreate });
                     });
                 }
                 if (autoCreateToggle.dataset.submittedEmployeeFormsWired !== "true") {
@@ -57133,35 +57175,85 @@
                         submittedEmployeeFormsAutoCreate = Boolean(autoCreateToggle.checked);
                     });
                 }
+                if (selectAllButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    selectAllButton.dataset.submittedEmployeeFormsWired = "true";
+                    selectAllButton.addEventListener("click", () => {
+                        const rows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                        submittedEmployeeFormsSelectedRowIds = new Set(rows.map((row) => String(row?.id || "").trim()).filter(Boolean));
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                }
+                if (clearSelectionButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    clearSelectionButton.dataset.submittedEmployeeFormsWired = "true";
+                    clearSelectionButton.addEventListener("click", () => {
+                        submittedEmployeeFormsSelectedRowIds.clear();
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                }
                 autoCreateToggle.checked = submittedEmployeeFormsAutoCreate;
 
                 refreshButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
                 syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
-                syncButton.textContent = submittedEmployeeFormsSyncing ? "Syncing..." : "Sync Gmail and Xero";
+                if (submittedEmployeeFormsSyncing) {
+                    syncButton.textContent = "Processing...";
+                } else if (submittedEmployeeFormsWizardStep <= 1) {
+                    syncButton.textContent = "Start Step 1: Sync last 4 weeks";
+                } else {
+                    syncButton.textContent = `Run Step 2: Process selected (${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")})`;
+                }
+                autoCreateToggle.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || submittedEmployeeFormsWizardStep <= 1;
+                selectAllButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
+                clearSelectionButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || !submittedEmployeeFormsSelectedRowIds.size;
 
                 if (submittedEmployeeFormsLoading) {
                     summary.textContent = "Loading submitted employee forms.";
-                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
+                    wizardMeta.textContent = submittedEmployeeFormsWizardStep <= 1
+                        ? "Step 1 of 2: Sync the last four weeks of matching emails."
+                        : "Step 2 of 2: Select rows and process against connected Xero Payroll.";
+                    tableBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
                     return;
                 }
 
                 const gmail = submittedEmployeeFormsData?.gmail || {};
-                const rows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                const allRows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                const windowStartMs = submittedEmployeeFormsWindowStartIso ? Date.parse(submittedEmployeeFormsWindowStartIso) : Number.NaN;
+                const rows = Number.isFinite(windowStartMs)
+                    ? allRows.filter((row) => {
+                        const receivedMs = Date.parse(String(row?.receivedAt || row?.createdAt || ""));
+                        return Number.isFinite(receivedMs) && receivedMs >= windowStartMs;
+                    })
+                    : allRows;
+                const validRowIds = new Set(rows.map((row) => String(row?.id || "").trim()).filter(Boolean));
+                submittedEmployeeFormsSelectedRowIds = new Set([...submittedEmployeeFormsSelectedRowIds].filter((rowId) => validRowIds.has(rowId)));
                 const summaryData = submittedEmployeeFormsData?.summary || {};
-                const total = Number(summaryData.total || rows.length || 0);
-                const created = Number(summaryData.created || 0);
-                const existing = Number(summaryData.exists || 0);
-                const failed = Number(summaryData.failed || 0);
-                const pending = Number(summaryData.pending || 0);
-                const needsReview = Number(summaryData.needsReview || 0);
+                const sourceRowsForSummary = rows.length === allRows.length ? allRows : rows;
+                const summaryFromRows = {
+                    total: sourceRowsForSummary.length,
+                    created: sourceRowsForSummary.filter((row) => String(row?.xeroStatus || "").trim().toLowerCase() === "created").length,
+                    exists: sourceRowsForSummary.filter((row) => String(row?.xeroStatus || "").trim().toLowerCase() === "exists").length,
+                    failed: sourceRowsForSummary.filter((row) => String(row?.xeroStatus || "").trim().toLowerCase() === "failed").length,
+                    pending: sourceRowsForSummary.filter((row) => ["", "pending"].includes(String(row?.xeroStatus || "").trim().toLowerCase())).length,
+                    needsReview: sourceRowsForSummary.filter((row) => String(row?.xeroStatus || "").trim().toLowerCase() === "needs-review").length,
+                };
+                const total = Number(rows.length === allRows.length ? (summaryData.total || rows.length || 0) : summaryFromRows.total);
+                const created = Number(rows.length === allRows.length ? (summaryData.created || 0) : summaryFromRows.created);
+                const existing = Number(rows.length === allRows.length ? (summaryData.exists || 0) : summaryFromRows.exists);
+                const failed = Number(rows.length === allRows.length ? (summaryData.failed || 0) : summaryFromRows.failed);
+                const pending = Number(rows.length === allRows.length ? (summaryData.pending || 0) : summaryFromRows.pending);
+                const needsReview = Number(rows.length === allRows.length ? (summaryData.needsReview || 0) : summaryFromRows.needsReview);
                 summary.textContent = `${gmail?.message || ""} ${total.toLocaleString("en-GB")} email${total === 1 ? "" : "s"} tracked · ${created.toLocaleString("en-GB")} created · ${existing.toLocaleString("en-GB")} existing · ${pending.toLocaleString("en-GB")} pending · ${needsReview.toLocaleString("en-GB")} need review · ${failed.toLocaleString("en-GB")} failed.`;
+                wizardMeta.textContent = submittedEmployeeFormsWizardStep <= 1
+                    ? "Step 1 of 2: Sync the last four weeks of matching emails."
+                    : `Step 2 of 2: Select email forms to process against connected Xero Payroll. ${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")} selected.`;
 
                 if (!rows.length) {
-                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run sync to pull emails where the subject starts with New Employee Details:.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run Step 1 to pull emails where the subject starts with New Employee Details:.</p></div></td></tr>';
                     return;
                 }
 
                 tableBody.innerHTML = rows.map((row) => {
+                    const rowId = String(row?.id || "").trim();
+                    const selected = rowId ? submittedEmployeeFormsSelectedRowIds.has(rowId) : false;
                     const receivedAt = formatDateTime(row?.receivedAt || row?.createdAt || "");
                     const employeeName = String(row?.employeeFullName || "").trim() || "Employee name not parsed";
                     const employeeEmail = String(row?.employeeEmail || "").trim() || "--";
@@ -57173,6 +57265,7 @@
                     const note = String(row?.xeroNote || "").trim() || "--";
                     return `
                         <tr>
+                            <td><input type="checkbox" data-submitted-employee-form-select="${escapeHTML(rowId)}" ${selected ? "checked" : ""} ${submittedEmployeeFormsWizardStep <= 1 ? "disabled" : ""}></td>
                             <td>${escapeHTML(receivedAt || "--")}</td>
                             <td><strong>${escapeHTML(employeeName)}</strong><br><small>${escapeHTML(String(row?.subject || "").trim() || "--")}</small></td>
                             <td>${escapeHTML(employeeEmail)}</td>
@@ -57182,6 +57275,16 @@
                         </tr>
                     `;
                 }).join("");
+
+                tableBody.querySelectorAll("[data-submitted-employee-form-select]").forEach((input) => {
+                    input.addEventListener("change", () => {
+                        const rowId = String(input.dataset.submittedEmployeeFormSelect || "").trim();
+                        if (!rowId) return;
+                        if (input.checked) submittedEmployeeFormsSelectedRowIds.add(rowId);
+                        else submittedEmployeeFormsSelectedRowIds.delete(rowId);
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                });
             }
 
             function closePayrollHeadcountWorkspacePickerModal() {

@@ -4952,9 +4952,30 @@ def api_submitted_employee_forms(user: dict = Depends(require_panel_user)):
 @app.post("/api/submitted-employee-forms/sync")
 async def api_sync_submitted_employee_forms(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    mode = str((payload or {}).get("mode") or "process").strip().lower() if isinstance(payload, dict) else "process"
     tenant_id = str((payload or {}).get("tenantId") or "").strip() if isinstance(payload, dict) else ""
     create_missing = bool((payload or {}).get("createMissing", True)) if isinstance(payload, dict) else True
-    return {"status": "ok", **await sync_submitted_employee_forms(user, tenant_id=tenant_id or None, create_missing=create_missing)}
+    if isinstance(payload, dict):
+        try:
+            lookback_days = int((payload or {}).get("lookbackDays") or 28)
+        except (TypeError, ValueError):
+            lookback_days = 28
+    else:
+        lookback_days = 28
+    selected_form_ids = (payload or {}).get("selectedFormIds") if isinstance(payload, dict) else []
+    if not isinstance(selected_form_ids, list):
+        selected_form_ids = []
+    return {
+        "status": "ok",
+        **await sync_submitted_employee_forms(
+            user,
+            tenant_id=tenant_id or None,
+            create_missing=create_missing,
+            mode=mode,
+            selected_form_ids=selected_form_ids,
+            lookback_days=lookback_days,
+        ),
+    }
 
 
 @app.post("/api/me-report/settings")

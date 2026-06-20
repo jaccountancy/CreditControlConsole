@@ -15975,7 +15975,7 @@ def submitted_employee_forms_payload(user: dict) -> dict:
     }
 
 
-async def _gmail_fetch_submitted_employee_messages(user: dict) -> tuple[list[dict], dict]:
+async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: int = 28) -> tuple[list[dict], dict]:
     response_meta = {
         "status": "not_connected",
         "message": "Connect Gmail to read submitted employee forms.",
@@ -16009,7 +16009,9 @@ async def _gmail_fetch_submitted_employee_messages(user: dict) -> tuple[list[dic
         return [], response_meta
 
     headers = {"Authorization": f"Bearer {connection_row.get('access_token') or ''}"}
-    query = f'subject:"{SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX}"'
+    safe_lookback_days = max(1, min(int(lookback_days or 28), 180))
+    after_date = (utcnow() - timedelta(days=safe_lookback_days)).date()
+    query = f'subject:"{SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX}" after:{after_date.strftime("%Y/%m/%d")}'
 
     async with httpx.AsyncClient(timeout=30) as client:
         list_response = await client.get(
@@ -16083,7 +16085,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict) -> tuple[list[dic
     response_meta.update(
         {
             "status": "connected",
-            "message": "Submitted employee forms fetched from Gmail.",
+            "message": f"Submitted employee forms fetched from Gmail for the last {safe_lookback_days} days.",
             "needsReconnect": False,
         }
     )
@@ -16196,6 +16198,35 @@ def _submitted_forms_target_connection(user: dict, tenant_id: str | None = None)
     return get_xero_connection_for_user(user["id"])
 
 
+def _submitted_employee_forms_query_rows_by_ids(user_id: str, row_ids: list[str]) -> list[dict]:
+    ids = [str(row_id or "").strip() for row_id in row_ids if str(row_id or "").strip()]
+    if not ids:
+        return []
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM submitted_employee_forms
+                        WHERE user_id = %s
+                          AND id = ANY(%s)
+                        ORDER BY COALESCE(received_at, created_at) DESC, created_at DESC
+                        """,
+                        (user_id, ids),
+                    )
+                    rows = cursor.fetchall() or []
+                connection.commit()
+            return rows
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
 def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
     first_name = str(form_row.get("employee_first_name") or "").strip()
     last_name = str(form_row.get("employee_last_name") or "").strip()
@@ -16264,27 +16295,45 @@ def _update_submitted_employee_form_xero_status(
             schema_repaired = True
 
 
-async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None, create_missing: bool = True) -> dict:
+async def sync_submitted_employee_forms(
+    user: dict,
+    tenant_id: str | None = None,
+    create_missing: bool = True,
+    mode: str = "process",
+    selected_form_ids: list[str] | None = None,
+    lookback_days: int = 28,
+) -> dict:
     user_id = str(user.get("id") or "")
-    gmail_rows, gmail_meta = await _gmail_fetch_submitted_employee_messages(user)
-    imported_count = _upsert_submitted_employee_forms(user_id, gmail_rows)
+    clean_mode = str(mode or "process").strip().lower()
+    if clean_mode not in {"fetch", "process"}:
+        clean_mode = "process"
 
-    rows = _submitted_employee_forms_query_rows(user_id)
-    if not rows:
-        return {
-            **submitted_employee_forms_payload(user),
-            "sync": {
-                "imported": imported_count,
-                "processed": 0,
-                "created": 0,
-                "existing": 0,
-                "failed": 0,
-                "needsReview": 0,
-                "tenantId": "",
-                "tenantName": "",
-                "gmail": gmail_meta,
-            },
+    if clean_mode == "fetch":
+        gmail_rows, gmail_meta = await _gmail_fetch_submitted_employee_messages(user, lookback_days=lookback_days)
+        imported_count = _upsert_submitted_employee_forms(user_id, gmail_rows)
+        payload = submitted_employee_forms_payload(user)
+        payload["sync"] = {
+            "mode": "fetch",
+            "imported": imported_count,
+            "processed": 0,
+            "created": 0,
+            "existing": 0,
+            "failed": 0,
+            "needsReview": 0,
+            "tenantId": "",
+            "tenantName": "",
+            "gmail": gmail_meta,
+            "lookbackDays": max(1, min(int(lookback_days or 28), 180)),
         }
+        return payload
+
+    selected_ids = [str(row_id or "").strip() for row_id in (selected_form_ids or []) if str(row_id or "").strip()]
+    if not selected_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one submitted employee form for Step 2.")
+
+    rows = _submitted_employee_forms_query_rows_by_ids(user_id, selected_ids)
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No selected submitted employee forms were found.")
 
     connection_row = _submitted_forms_target_connection(user, tenant_id)
     clean_tenant_id = str(connection_row.get("tenant_id") or "").strip()
@@ -16336,7 +16385,7 @@ async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None
                 tenant_name=clean_tenant_name,
                 xero_employee_id=existing_employee_id,
                 xero_status="exists",
-                xero_note="Employee already exists in Xero Payroll.",
+                xero_note="Complete: employee already exists in Xero Payroll.",
             )
             continue
 
@@ -16375,7 +16424,7 @@ async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None
                 tenant_name=clean_tenant_name,
                 xero_employee_id=created_employee_id,
                 xero_status="created",
-                xero_note=f"Employee created in Xero Payroll{f' ({created_status})' if created_status else ''}.",
+                xero_note=f"Complete: employee created in Xero Payroll{f' ({created_status})' if created_status else ''}.",
             )
         except Exception as exc:
             failed += 1
@@ -16389,7 +16438,8 @@ async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None
 
     payload = submitted_employee_forms_payload(user)
     payload["sync"] = {
-        "imported": imported_count,
+        "mode": "process",
+        "imported": 0,
         "processed": processed,
         "created": created,
         "existing": existing,
@@ -16397,7 +16447,8 @@ async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None
         "needsReview": needs_review,
         "tenantId": clean_tenant_id,
         "tenantName": clean_tenant_name,
-        "gmail": gmail_meta,
+        "gmail": {},
+        "selectedCount": len(selected_ids),
     }
     return payload
 
