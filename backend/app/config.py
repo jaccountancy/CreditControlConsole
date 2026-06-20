@@ -80,7 +80,12 @@ class Settings(BaseSettings):
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = None
     gmail_redirect_uri: str | None = None
-    gmail_scopes: str = "openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.readonly"
+    gmail_scopes: str = (
+        "openid email "
+        "https://www.googleapis.com/auth/gmail.send "
+        "https://www.googleapis.com/auth/gmail.readonly "
+        "https://www.googleapis.com/auth/calendar.readonly"
+    )
     companies_house_environment: str = "sandbox"
     companies_house_api_key: str | None = None
     companies_house_presenter_id: str | None = None

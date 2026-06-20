@@ -15287,15 +15287,28 @@ def _me_report_contact_for_user(user: dict, xero_contact_id: str, tenant_id: str
 
 
 def gmail_oauth_configured() -> bool:
-    placeholders = {"", "replace-me", "changeme", "change-me", "your-client-id", "your-client-secret"}
     client_id = _gmail_client_id_value()
     client_secret = _gmail_client_secret_value()
-    return client_id.lower() not in placeholders and client_secret.lower() not in placeholders
+    return bool(client_id and client_secret)
+
+
+def _gmail_oauth_is_placeholder(value: str) -> bool:
+    normalized = str(value or "").strip().strip("\"'").lower()
+    placeholders = {
+        "",
+        "replace-me",
+        "changeme",
+        "change-me",
+        "your-client-id",
+        "your-client-secret",
+    }
+    return normalized in placeholders
 
 
 def _gmail_oauth_secret_value(value: str | None) -> str:
     # Railway/env vars are sometimes pasted with wrapping quotes.
-    return str(value or "").strip().strip("\"'")
+    cleaned = str(value or "").strip().strip("\"'")
+    return "" if _gmail_oauth_is_placeholder(cleaned) else cleaned
 
 
 def _gmail_env_alias_value(*keys: str) -> str:
