@@ -182,6 +182,7 @@ from .services import (
     call_stats_unmatched_numbers,
     call_stats_apply_number_action,
     call_stats_client_logs_payload,
+    call_stats_client_search_payload,
     call_stats_generate_ai_report,
     call_stats_ai_reports_history,
     call_stats_suggest_filter_presets,
@@ -4759,6 +4760,16 @@ def api_client_call_stats_client_logs(
         "search": search,
     }
     return {"status": "ok", "clientCallLogs": call_stats_client_logs_payload(user, client_id, filters)}
+
+
+@app.post("/api/client-call-stats/clients/{client_id}/search")
+def api_client_call_stats_client_search(
+    client_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    require_panel_write_user(user, "search and update client call records")
+    result = call_stats_client_search_payload(user, client_id)
+    return {"status": "ok", **result}
 
 
 @app.post("/api/client-call-stats/ai-report")

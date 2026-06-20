@@ -30258,6 +30258,47 @@
             .ch-register-client-page-panel select {
                 width: 100%;
             }
+            #chRegisterClientPageCallStatsCards {
+                display: flex;
+                flex-wrap: nowrap;
+                align-items: stretch;
+                gap: 8px;
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding: 2px 1px 6px;
+                margin-bottom: 8px;
+                scrollbar-width: thin;
+            }
+            #chRegisterClientPageCallStatsCards .ch-callstats-mini-card {
+                flex: 0 0 auto;
+                min-width: 148px;
+                max-width: 188px;
+                border: 1px solid rgba(91, 116, 160, 0.2);
+                border-radius: 12px;
+                background: #fbfdff;
+                padding: 8px 10px;
+                display: grid;
+                gap: 4px;
+            }
+            #chRegisterClientPageCallStatsCards .ch-callstats-mini-card .metric-label {
+                margin: 0;
+                font-size: 0.68rem;
+                font-weight: 850;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: #5f7398;
+                line-height: 1.15;
+            }
+            #chRegisterClientPageCallStatsCards .ch-callstats-mini-card .metric-value {
+                margin: 0;
+                font-size: 1.02rem;
+                font-weight: 900;
+                color: #1e3359;
+                line-height: 1.1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
             .ch-register-juk-invoice-actions {
                 margin: 2px 0 2px;
                 align-items: center;
@@ -39387,6 +39428,7 @@
                                                 <p class="detail-meta">Matched call activity for this client from imported call logs.</p>
                                             </div>
                                             <div class="detail-actions">
+                                                <button class="ghost-button" type="button" id="chRegisterClientPageCallStatsSearchButton">Search call records</button>
                                                 <button class="ghost-button" type="button" id="chRegisterClientPageCallStatsRefreshButton">Refresh call stats</button>
                                             </div>
                                         </div>
@@ -47517,6 +47559,7 @@
                         clientCallStatsUnmatched: config.endpoints?.clientCallStatsUnmatched || "/api/client-call-stats/unmatched",
                         clientCallStatsUnmatchedAction: config.endpoints?.clientCallStatsUnmatchedAction || "/api/client-call-stats/unmatched/action",
                         clientCallStatsClientLogs: config.endpoints?.clientCallStatsClientLogs || "/api/client-call-stats/clients/:clientId",
+                        clientCallStatsClientSearch: config.endpoints?.clientCallStatsClientSearch || "/api/client-call-stats/clients/:clientId/search",
                         clientCallStatsAiReport: config.endpoints?.clientCallStatsAiReport || "/api/client-call-stats/ai-report",
                         clientCallStatsAiReports: config.endpoints?.clientCallStatsAiReports || "/api/client-call-stats/ai-reports",
                         clientCallStatsFilterPresetSuggestions: config.endpoints?.clientCallStatsFilterPresetSuggestions || "/api/client-call-stats/filter-presets/suggest",
@@ -123778,6 +123821,71 @@
                 }
             }
 
+            async function searchClientRegisterClientPageCallStats() {
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const rowId = String(pageState?.rowId || "").trim();
+                if (!rowId || !pageState.open) return;
+                const row = clientPagePayload()?.row || {};
+                const clientId = clientRegisterCallStatsClientIdForRow(row);
+                const current = pageState?.callStats || {};
+                if (!clientId) {
+                    showToast("No client ID available for call-stat searching.", "error");
+                    return;
+                }
+                if (current.loading) return;
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...pageState,
+                    callStats: {
+                        loading: true,
+                        clientId,
+                        payload: current.payload || null,
+                        error: "",
+                        loadedAt: current.loadedAt || "",
+                    },
+                };
+                renderClientRegisterClientPage();
+                try {
+                    const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId });
+                    const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
+                    if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
+                    const nextPayload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
+                    const canonicalised = Number(response?.canonicalisedCount || nextPayload?.canonicalisedCount || 0);
+                    const rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : 0;
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...nextPageState,
+                        callStats: {
+                            loading: false,
+                            clientId: String(response?.clientId || clientId || "").trim(),
+                            payload: nextPayload,
+                            error: "",
+                            loadedAt: new Date().toISOString(),
+                        },
+                    };
+                    renderClientRegisterClientPage();
+                    showToast(
+                        canonicalised > 0
+                            ? `Search complete: ${rowCount.toLocaleString("en-GB")} call row${rowCount === 1 ? "" : "s"} loaded, ${canonicalised.toLocaleString("en-GB")} record${canonicalised === 1 ? "" : "s"} updated to this client.`
+                            : `Search complete: ${rowCount.toLocaleString("en-GB")} call row${rowCount === 1 ? "" : "s"} loaded.`,
+                        "success"
+                    );
+                } catch (error) {
+                    const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
+                    if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...nextPageState,
+                        callStats: {
+                            loading: false,
+                            clientId,
+                            payload: current.payload || null,
+                            error: String(error?.message || "Unable to search client call records."),
+                            loadedAt: current.loadedAt || "",
+                        },
+                    };
+                    renderClientRegisterClientPage();
+                    showToast(error?.message || "Unable to search client call records.", "error");
+                }
+            }
+
             function renderClientRegisterClientPageCallStats() {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const row = clientPagePayload()?.row || {};
@@ -123791,7 +123899,9 @@
                 const cardsNode = document.getElementById("chRegisterClientPageCallStatsCards");
                 const bodyNode = document.getElementById("chRegisterClientPageCallStatsBody");
                 const refreshButton = document.getElementById("chRegisterClientPageCallStatsRefreshButton");
+                const searchButton = document.getElementById("chRegisterClientPageCallStatsSearchButton");
                 if (refreshButton) refreshButton.disabled = !!callStats.loading;
+                if (searchButton) searchButton.disabled = !!callStats.loading;
                 if (summaryNode) {
                     if (callStats.loading) {
                         summaryNode.textContent = "Loading matched call stats for this client…";
@@ -123809,12 +123919,12 @@
                 if (cardsNode) {
                     const cards = [
                         ["Calls this month", Number(summary.callsThisMonth || 0)],
-                        ["Practice avg (month)", Number(benchmark?.callsThisMonth?.practiceAverage || 0)],
+                        ["Practice avg", Number(benchmark?.callsThisMonth?.practiceAverage || 0)],
                         ["Last call date", String(summary.lastCallDate || "--")],
                         ["Rows available", rows.length],
                     ];
                     cardsNode.innerHTML = cards.map(([label, value]) => `
-                        <article class="metric-card">
+                        <article class="metric-card ch-callstats-mini-card">
                             <p class="metric-label">${escapeHTML(String(label || ""))}</p>
                             <p class="metric-value">${escapeHTML(typeof value === "number" ? value.toLocaleString("en-GB") : String(value || "--"))}</p>
                         </article>
@@ -128215,6 +128325,9 @@
                 document.getElementById("chRegisterClientPageEngagementLetterOpenExternalButton")?.addEventListener("click", openClientRegisterEngagementLetterExternal);
                 document.getElementById("chRegisterClientPageCallStatsRefreshButton")?.addEventListener("click", () => {
                     loadClientRegisterClientPageCallStats({ force: true, silent: false });
+                });
+                document.getElementById("chRegisterClientPageCallStatsSearchButton")?.addEventListener("click", () => {
+                    void searchClientRegisterClientPageCallStats();
                 });
                 document.getElementById("chRegisterClientPageOpenAddNoteModalButton")?.addEventListener("click", openClientRegisterClientPageAddNoteModal);
                 document.getElementById("chRegisterClientPageAddNoteModalCloseButton")?.addEventListener("click", closeClientRegisterClientPageAddNoteModal);

@@ -6686,7 +6686,7 @@ def _auth_register_ignition_engagement_letters(
     }
 
 
-def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict:
+def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ignition_letters: bool = True) -> dict:
     safe_row_id = str(row_id or "").strip()
     if not safe_row_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
@@ -6787,54 +6787,57 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
                 if isinstance(cached_companies_house.get("ignitionMatch"), dict)
                 else {}
             )
-            try:
-                synced_letters, sync_meta = _auth_register_ignition_engagement_letters(
-                    cursor,
-                    row,
-                    user_id,
-                    _coerce_text(cached_ignition_match.get("clientId") or cached_ignition_match.get("client_id"), 120),
-                )
-            except Exception:
-                logger.exception("Unable to sync Ignition engagement letters for client-page row %s", safe_row_id)
-                synced_letters, sync_meta = [], {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
-            ignition_engagement_letters = synced_letters if synced_letters else list(cached_letters)
-            ignition_engagement_sync = sync_meta if synced_letters else dict(cached_sync)
-            if (
-                json.dumps(ignition_engagement_letters, sort_keys=True) != json.dumps(cached_letters, sort_keys=True)
-                or json.dumps(ignition_engagement_sync, sort_keys=True) != json.dumps(cached_sync, sort_keys=True)
-            ):
-                next_companies_house = dict(cached_companies_house)
-                next_companies_house["ignitionEngagementLetters"] = ignition_engagement_letters
-                next_companies_house["ignitionEngagementLetterSync"] = ignition_engagement_sync
+            ignition_engagement_letters = list(cached_letters)
+            ignition_engagement_sync = dict(cached_sync)
+            if sync_ignition_letters:
                 try:
-                    cursor.execute(
-                        """
-                        INSERT INTO ch_auth_register_client_profiles (
-                            register_row_id,
-                            companies_house,
-                            updated_by_user_id,
-                            created_by_user_id,
-                            updated_at
-                        )
-                        VALUES (%s, %s::jsonb, %s, %s, NOW())
-                        ON CONFLICT (register_row_id) DO UPDATE
-                        SET companies_house = EXCLUDED.companies_house,
-                            updated_by_user_id = EXCLUDED.updated_by_user_id,
-                            updated_at = NOW()
-                        """,
-                        (
-                            safe_row_id,
-                            json.dumps(next_companies_house),
-                            user_id or None,
-                            user_id or None,
-                        ),
+                    synced_letters, sync_meta = _auth_register_ignition_engagement_letters(
+                        cursor,
+                        row,
+                        user_id,
+                        _coerce_text(cached_ignition_match.get("clientId") or cached_ignition_match.get("client_id"), 120),
                     )
                 except Exception:
-                    logger.exception(
-                        "Unable to persist Ignition engagement letters cache for client-page row %s",
-                        safe_row_id,
-                    )
-                row["companies_house"] = next_companies_house
+                    logger.exception("Unable to sync Ignition engagement letters for client-page row %s", safe_row_id)
+                    synced_letters, sync_meta = [], {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
+                ignition_engagement_letters = synced_letters if synced_letters else list(cached_letters)
+                ignition_engagement_sync = sync_meta if synced_letters else dict(cached_sync)
+                if (
+                    json.dumps(ignition_engagement_letters, sort_keys=True) != json.dumps(cached_letters, sort_keys=True)
+                    or json.dumps(ignition_engagement_sync, sort_keys=True) != json.dumps(cached_sync, sort_keys=True)
+                ):
+                    next_companies_house = dict(cached_companies_house)
+                    next_companies_house["ignitionEngagementLetters"] = ignition_engagement_letters
+                    next_companies_house["ignitionEngagementLetterSync"] = ignition_engagement_sync
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT INTO ch_auth_register_client_profiles (
+                                register_row_id,
+                                companies_house,
+                                updated_by_user_id,
+                                created_by_user_id,
+                                updated_at
+                            )
+                            VALUES (%s, %s::jsonb, %s, %s, NOW())
+                            ON CONFLICT (register_row_id) DO UPDATE
+                            SET companies_house = EXCLUDED.companies_house,
+                                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                                updated_at = NOW()
+                            """,
+                            (
+                                safe_row_id,
+                                json.dumps(next_companies_house),
+                                user_id or None,
+                                user_id or None,
+                            ),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Unable to persist Ignition engagement letters cache for client-page row %s",
+                            safe_row_id,
+                        )
+                    row["companies_house"] = next_companies_house
         connection.commit()
 
     try:
@@ -7223,7 +7226,7 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 ),
             )
         connection.commit()
-    return get_auth_register_client_page(safe_row_id, user)
+    return get_auth_register_client_page(safe_row_id, user, sync_ignition_letters=False)
 
 
 def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:

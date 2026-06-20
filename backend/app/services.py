@@ -3904,96 +3904,151 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
     clean_client_id = str(client_id or "").strip()
     if not clean_client_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client id is required.")
-    scoped_filters = dict(filters or {})
-    scoped_filters["clientId"] = clean_client_id
-    rows = _call_stats_fetch_rows(user, scoped_filters, row_limit=10000)
-    if not rows:
-        alias_ids = {clean_client_id.lower()}
-        alias_names: set[str] = set()
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT client_id, client_name
-                    FROM ch_auth_code_register
-                    WHERE LOWER(COALESCE(client_id, '')) = LOWER(%s)
-                       OR id::text = %s
-                       OR LOWER(COALESCE(client_name, '')) = LOWER(%s)
-                    ORDER BY updated_at DESC
-                    LIMIT 5
-                    """,
-                    (clean_client_id, clean_client_id, clean_client_id),
-                )
-                register_rows = cursor.fetchall() or []
-                cursor.execute(
-                    """
-                    SELECT id::text AS customer_id, name
-                    FROM customers
-                    WHERE id::text = %s
-                       OR LOWER(COALESCE(name, '')) = LOWER(%s)
-                    LIMIT 5
-                    """,
-                    (clean_client_id, clean_client_id),
-                )
-                customer_rows = cursor.fetchall() or []
-            connection.commit()
-        for row in register_rows:
-            next_id = str(row.get("client_id") or "").strip().lower()
-            next_name = str(row.get("client_name") or "").strip().lower()
-            if next_id:
-                alias_ids.add(next_id)
-            if next_name:
-                alias_names.add(next_name)
-        for row in customer_rows:
-            next_id = str(row.get("customer_id") or "").strip().lower()
-            next_name = str(row.get("name") or "").strip().lower()
-            if next_id:
-                alias_ids.add(next_id)
-            if next_name:
-                alias_names.add(next_name)
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id,
-                           import_file_id,
-                           call_datetime,
-                           call_date,
-                           call_time,
-                           direction,
-                           duration_seconds,
-                           outcome,
-                           from_number,
-                           to_number,
-                           external_number,
-                           internal_extension,
-                           staff_member,
-                           client_id,
-                           client_name,
-                           client_manager,
-                           match_source,
-                           matched_status,
-                           number_tag,
-                           cost_amount,
-                           created_at
-                    FROM call_records_processed
-                    WHERE (user_id = %s OR user_id IS NULL)
-                      AND matched_status = 'matched'
-                      AND (
-                        LOWER(COALESCE(client_id, '')) = ANY(%s)
-                        OR LOWER(COALESCE(client_name, '')) = ANY(%s)
-                      )
-                    ORDER BY call_datetime DESC, id DESC
-                    LIMIT 10000
-                    """,
-                    (
-                        user["id"],
-                        list(alias_ids) or [clean_client_id.lower()],
-                        list(alias_names) or [clean_client_id.lower()],
-                    ),
-                )
-                rows = cursor.fetchall() or []
-            connection.commit()
+    canonicalised_count = 0
+    alias_ids = {clean_client_id.lower()}
+    alias_names: set[str] = set()
+    canonical_client_id = clean_client_id
+    canonical_client_name = ""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id::text AS register_row_id,
+                       client_id,
+                       client_name,
+                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name
+                FROM ch_auth_code_register
+                WHERE LOWER(COALESCE(client_id, '')) = LOWER(%s)
+                   OR id::text = %s
+                   OR LOWER(COALESCE(client_name, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(company_name, '')) = LOWER(%s)
+                ORDER BY updated_at DESC
+                LIMIT 10
+                """,
+                (clean_client_id, clean_client_id, clean_client_id, clean_client_id),
+            )
+            register_rows = cursor.fetchall() or []
+            for row in register_rows:
+                row_id = str(row.get("register_row_id") or "").strip().lower()
+                row_client_id = str(row.get("client_id") or "").strip().lower()
+                row_client_name = str(row.get("client_name") or "").strip().lower()
+                row_display_name = str(row.get("display_name") or "").strip().lower()
+                if row_id:
+                    alias_ids.add(row_id)
+                if row_client_id:
+                    alias_ids.add(row_client_id)
+                if row_client_name:
+                    alias_names.add(row_client_name)
+                if row_display_name:
+                    alias_names.add(row_display_name)
+            latest_row = register_rows[0] if register_rows else {}
+            if latest_row:
+                latest_client_id = str(latest_row.get("client_id") or "").strip()
+                latest_display_name = str(latest_row.get("display_name") or "").strip()
+                if latest_client_id:
+                    canonical_client_id = latest_client_id
+                if latest_display_name:
+                    canonical_client_name = latest_display_name
+            cursor.execute(
+                """
+                SELECT id::text AS customer_id, name
+                FROM customers
+                WHERE id::text = %s
+                   OR LOWER(COALESCE(name, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(name, '')) = ANY(%s)
+                LIMIT 20
+                """,
+                (clean_client_id, clean_client_id, list(alias_names) or [clean_client_id.lower()]),
+            )
+            customer_rows = cursor.fetchall() or []
+            for row in customer_rows:
+                next_id = str(row.get("customer_id") or "").strip().lower()
+                next_name = str(row.get("name") or "").strip().lower()
+                if next_id:
+                    alias_ids.add(next_id)
+                if next_name:
+                    alias_names.add(next_name)
+            cursor.execute(
+                """
+                SELECT id,
+                       import_file_id,
+                       call_datetime,
+                       call_date,
+                       call_time,
+                       direction,
+                       duration_seconds,
+                       outcome,
+                       from_number,
+                       to_number,
+                       external_number,
+                       internal_extension,
+                       staff_member,
+                       client_id,
+                       client_name,
+                       client_manager,
+                       match_source,
+                       matched_status,
+                       number_tag,
+                       cost_amount,
+                       created_at
+                FROM call_records_processed
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND matched_status = 'matched'
+                  AND (
+                    LOWER(COALESCE(client_id, '')) = ANY(%s)
+                    OR LOWER(COALESCE(client_name, '')) = ANY(%s)
+                  )
+                ORDER BY call_datetime DESC, id DESC
+                LIMIT 10000
+                """,
+                (
+                    user["id"],
+                    list(alias_ids) or [clean_client_id.lower()],
+                    list(alias_names) or [clean_client_id.lower()],
+                ),
+            )
+            rows = cursor.fetchall() or []
+            row_ids_to_canonicalise: list[str] = []
+            if canonical_client_id and rows:
+                canonical_lower = canonical_client_id.lower()
+                canonical_name_lower = canonical_client_name.lower() if canonical_client_name else ""
+                for row in rows:
+                    row_client_id = str(row.get("client_id") or "").strip().lower()
+                    row_client_name = str(row.get("client_name") or "").strip().lower()
+                    if row_client_id == canonical_lower and (not canonical_name_lower or row_client_name == canonical_name_lower):
+                        continue
+                    row_id = str(row.get("id") or "").strip()
+                    if row_id:
+                        row_ids_to_canonicalise.append(row_id)
+                if row_ids_to_canonicalise:
+                    canonicalised_count = len(row_ids_to_canonicalise)
+                    cursor.execute(
+                        """
+                        UPDATE call_records_processed
+                        SET client_id = %s,
+                            client_name = COALESCE(NULLIF(%s, ''), client_name),
+                            match_source = CASE
+                                WHEN COALESCE(match_source, '') = '' THEN 'client_record_canonicalised'
+                                ELSE match_source
+                            END,
+                            updated_at = %s
+                        WHERE id::text = ANY(%s)
+                        """,
+                        (
+                            canonical_client_id,
+                            canonical_client_name,
+                            utcnow(),
+                            row_ids_to_canonicalise,
+                        ),
+                    )
+                    for row in rows:
+                        row_id = str(row.get("id") or "").strip()
+                        if row_id not in row_ids_to_canonicalise:
+                            continue
+                        row["client_id"] = canonical_client_id
+                        if canonical_client_name:
+                            row["client_name"] = canonical_client_name
+        connection.commit()
     summary = _call_stats_practice_summary(rows)
     month_start = _month_start()
     last_month_start = _add_months(month_start, 0) - timedelta(days=1)
@@ -4030,7 +4085,8 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
     practice_avg_inbound = round((int(benchmark_row.get("inbound_calls") or 0) / active_clients), 2)
     practice_avg_outbound = round((int(benchmark_row.get("outbound_calls") or 0) / active_clients), 2)
     return {
-        "clientId": clean_client_id,
+        "clientId": canonical_client_id or clean_client_id,
+        "canonicalisedCount": canonicalised_count,
         "summary": {
             **summary,
             "callsThisMonth": calls_this_month,
@@ -4057,6 +4113,15 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
             }
             for row in rows[:2000]
         ],
+    }
+
+
+def call_stats_client_search_payload(user: dict, client_id: str) -> dict:
+    logs = call_stats_client_logs_payload(user, client_id, {})
+    return {
+        "clientId": str(logs.get("clientId") or client_id or "").strip(),
+        "canonicalisedCount": int(logs.get("canonicalisedCount") or 0),
+        "clientCallLogs": logs,
     }
 
 
