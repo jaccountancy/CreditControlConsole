@@ -239,6 +239,8 @@ from .services import (
     sync_run_has_working_data,
     send_me_report_email,
     send_ignition_renewals_email,
+    submitted_employee_forms_payload,
+    sync_submitted_employee_forms,
     sync_payroll_headcount_with_ignition,
     sync_payroll_headcount_workspace,
     juk_equity_payload,
@@ -4940,6 +4942,19 @@ async def api_sync_payroll_headcount_workspace(tenant_id: str, user: dict = Depe
 async def api_sync_payroll_headcount_ignition(request: Request, user: dict = Depends(require_panel_user)):
     await request.body()
     return {"status": "ok", **sync_payroll_headcount_with_ignition(user)}
+
+
+@app.get("/api/submitted-employee-forms")
+def api_submitted_employee_forms(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **submitted_employee_forms_payload(user)}
+
+
+@app.post("/api/submitted-employee-forms/sync")
+async def api_sync_submitted_employee_forms(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    tenant_id = str((payload or {}).get("tenantId") or "").strip() if isinstance(payload, dict) else ""
+    create_missing = bool((payload or {}).get("createMissing", True)) if isinstance(payload, dict) else True
+    return {"status": "ok", **await sync_submitted_employee_forms(user, tenant_id=tenant_id or None, create_missing=create_missing)}
 
 
 @app.post("/api/me-report/settings")

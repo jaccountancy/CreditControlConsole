@@ -25,7 +25,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode, urljoin
 from uuid import UUID, uuid4
@@ -15154,6 +15154,8 @@ GMAIL_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+GMAIL_MESSAGES_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+GMAIL_MESSAGE_DETAIL_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
 GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
 GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
@@ -15712,6 +15714,692 @@ async def company_calendar_payload(user: dict, days_ahead: int = 14, max_events:
         }
     )
     return response
+
+
+SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX = "New Employee Details:"
+SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
+
+
+def _gmail_read_scope_granted(scope_value: str | None) -> bool:
+    scopes = set(_gmail_scopes_value(scope_value).split())
+    return bool(
+        {
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://mail.google.com/",
+        }.intersection(scopes)
+    )
+
+
+def _gmail_header_value(message_payload: dict, header_name: str) -> str:
+    payload = message_payload.get("payload") if isinstance(message_payload.get("payload"), dict) else {}
+    headers = payload.get("headers") if isinstance(payload.get("headers"), list) else []
+    target = str(header_name or "").strip().lower()
+    for header in headers:
+        if not isinstance(header, dict):
+            continue
+        name = str(header.get("name") or "").strip().lower()
+        if name == target:
+            return str(header.get("value") or "").strip()
+    return ""
+
+
+def _gmail_decode_body_data(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    padding = "=" * ((4 - (len(raw) % 4)) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(f"{raw}{padding}".encode("utf-8"))
+    except Exception:
+        return ""
+    try:
+        return decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return decoded.decode("latin-1")
+        except UnicodeDecodeError:
+            return ""
+
+
+def _gmail_message_body_text(message_payload: dict) -> str:
+    payload = message_payload.get("payload") if isinstance(message_payload.get("payload"), dict) else {}
+
+    def _walk_parts(part: dict) -> list[str]:
+        if not isinstance(part, dict):
+            return []
+        outputs: list[str] = []
+        mime_type = str(part.get("mimeType") or "").strip().lower()
+        body = part.get("body") if isinstance(part.get("body"), dict) else {}
+        data = _gmail_decode_body_data(body.get("data") or "")
+        if data and mime_type in {"text/plain", "text/html", ""}:
+            outputs.append(data)
+        children = part.get("parts") if isinstance(part.get("parts"), list) else []
+        for child in children:
+            outputs.extend(_walk_parts(child if isinstance(child, dict) else {}))
+        return outputs
+
+    texts = _walk_parts(payload)
+    if not texts:
+        return ""
+    joined = "\n".join(texts)
+    if "<" in joined and ">" in joined:
+        joined = re.sub(r"<[^>]+>", " ", joined)
+    return re.sub(r"\s+", " ", joined).strip()
+
+
+def _parse_email_contact(value: str) -> tuple[str, str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return "", ""
+    match = re.search(r"<([^>]+)>", raw)
+    if match:
+        email_value = str(match.group(1) or "").strip().lower()
+        name_value = raw.replace(match.group(0), "").strip().strip('"')
+        return name_value, email_value
+    if "@" in raw and " " not in raw:
+        return "", raw.lower()
+    return raw.strip('"'), ""
+
+
+def _gmail_received_at(message_payload: dict) -> datetime | None:
+    internal_ms = str(message_payload.get("internalDate") or "").strip()
+    if internal_ms.isdigit():
+        try:
+            return datetime.fromtimestamp(int(internal_ms) / 1000, tz=timezone.utc)
+        except Exception:
+            pass
+    date_header = _gmail_header_value(message_payload, "Date")
+    if not date_header:
+        return None
+    try:
+        parsed = parsedate_to_datetime(date_header)
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> dict:
+    combined = "\n".join([str(subject or ""), str(snippet or ""), str(body_text or "")]).strip()
+
+    def _find(pattern: str) -> str:
+        match = re.search(pattern, combined, flags=re.IGNORECASE)
+        return str(match.group(1) or "").strip() if match else ""
+
+    full_name = _find(r"(?:employee\s*name|full\s*name)\s*[:\-]\s*([^\n,;]+)")
+    first_name = _find(r"(?:first\s*name)\s*[:\-]\s*([^\n,;]+)")
+    last_name = _find(r"(?:last\s*name|surname)\s*[:\-]\s*([^\n,;]+)")
+    email_value = _find(r"(?:employee\s*email|email\s*address|email)\s*[:\-]\s*([^\s,;]+@[^\s,;]+)")
+    if not email_value:
+        free_email = re.search(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", combined, flags=re.IGNORECASE)
+        email_value = str(free_email.group(0) or "").strip() if free_email else ""
+
+    if not full_name and str(subject or "").lower().startswith(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX.lower()):
+        full_name = str(subject or "")[len(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX):].strip().strip("-: ")
+
+    if full_name and (not first_name or not last_name):
+        parts = [part for part in re.split(r"\s+", full_name) if part]
+        if parts and not first_name:
+            first_name = parts[0]
+        if len(parts) >= 2 and not last_name:
+            last_name = " ".join(parts[1:])
+    if not full_name and (first_name or last_name):
+        full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+
+    return {
+        "employeeFullName": full_name[:160],
+        "employeeFirstName": first_name[:80],
+        "employeeLastName": last_name[:120],
+        "employeeEmail": email_value.lower()[:160],
+    }
+
+
+def _xero_payroll_employee_identity(row: dict) -> tuple[str, str, str]:
+    employee_id = str(
+        row.get("EmployeeID")
+        or row.get("employeeID")
+        or row.get("EmployeeId")
+        or row.get("employeeId")
+        or ""
+    ).strip()
+    email_value = str(row.get("Email") or row.get("email") or "").strip().lower()
+    first = str(row.get("FirstName") or row.get("firstName") or "").strip()
+    last = str(row.get("LastName") or row.get("lastName") or "").strip()
+    full_name = " ".join(part for part in [first, last] if part).strip().lower()
+    if not full_name:
+        full_name = str(row.get("Name") or row.get("name") or "").strip().lower()
+    return employee_id, email_value, full_name
+
+
+def _submitted_employee_forms_summary(rows: list[dict]) -> dict:
+    total = len(rows)
+    created = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "created")
+    exists = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "exists")
+    pending = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() in {"", "pending"})
+    failed = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "failed")
+    review = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "needs-review")
+    return {
+        "total": total,
+        "created": created,
+        "exists": exists,
+        "pending": pending,
+        "failed": failed,
+        "needsReview": review,
+    }
+
+
+def _submitted_employee_forms_rows_payload(rows: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": str(row.get("id") or ""),
+            "gmailMessageId": str(row.get("gmail_message_id") or ""),
+            "gmailThreadId": str(row.get("gmail_thread_id") or ""),
+            "subject": str(row.get("subject") or ""),
+            "receivedAt": _iso(row.get("received_at")) or "",
+            "fromName": str(row.get("from_name") or ""),
+            "fromEmail": str(row.get("from_email") or ""),
+            "employeeFullName": str(row.get("employee_full_name") or ""),
+            "employeeFirstName": str(row.get("employee_first_name") or ""),
+            "employeeLastName": str(row.get("employee_last_name") or ""),
+            "employeeEmail": str(row.get("employee_email") or ""),
+            "snippet": str(row.get("snippet") or ""),
+            "xeroTenantId": str(row.get("xero_tenant_id") or ""),
+            "xeroTenantName": str(row.get("xero_tenant_name") or ""),
+            "xeroEmployeeId": str(row.get("xero_employee_id") or ""),
+            "xeroStatus": str(row.get("xero_status") or "pending"),
+            "xeroNote": str(row.get("xero_note") or ""),
+            "createdAt": _iso(row.get("created_at")) or "",
+            "updatedAt": _iso(row.get("updated_at")) or "",
+        }
+        for row in rows
+    ]
+
+
+def _submitted_employee_forms_query_rows(user_id: str) -> list[dict]:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM submitted_employee_forms
+                        WHERE user_id = %s
+                        ORDER BY COALESCE(received_at, created_at) DESC, created_at DESC
+                        LIMIT 800
+                        """,
+                        (user_id,),
+                    )
+                    rows = cursor.fetchall() or []
+                connection.commit()
+            return rows
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def submitted_employee_forms_payload(user: dict) -> dict:
+    connection_row = gmail_connection_for_user(user)
+    gmail_status = "not_connected"
+    gmail_message = "Connect Gmail to read submitted employee forms."
+    needs_reconnect = False
+    gmail_email = ""
+    if connection_row:
+        gmail_email = str(connection_row.get("gmail_email") or "")
+        if _gmail_read_scope_granted(connection_row.get("scope")):
+            gmail_status = "connected"
+            gmail_message = "Gmail is connected and ready to read submitted employee forms."
+        else:
+            gmail_status = "reauth_required"
+            gmail_message = "Reconnect Gmail and include read access to load submitted employee forms."
+            needs_reconnect = True
+
+    rows = _submitted_employee_forms_query_rows(str(user.get("id") or ""))
+    return {
+        "submittedEmployeeForms": {
+            "gmail": {
+                "status": gmail_status,
+                "message": gmail_message,
+                "needsReconnect": needs_reconnect,
+                "gmailEmail": gmail_email,
+            },
+            "rows": _submitted_employee_forms_rows_payload(rows),
+            "summary": _submitted_employee_forms_summary(rows),
+            "subjectPrefix": SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX,
+        }
+    }
+
+
+async def _gmail_fetch_submitted_employee_messages(user: dict) -> tuple[list[dict], dict]:
+    response_meta = {
+        "status": "not_connected",
+        "message": "Connect Gmail to read submitted employee forms.",
+        "needsReconnect": False,
+        "gmailEmail": "",
+    }
+    connection_row = gmail_connection_for_user(user)
+    if not connection_row:
+        return [], response_meta
+
+    response_meta["gmailEmail"] = str(connection_row.get("gmail_email") or "")
+    try:
+        connection_row = await refresh_gmail_connection(connection_row)
+    except HTTPException as exc:
+        response_meta.update(
+            {
+                "status": "reauth_required",
+                "message": str(exc.detail or "Reconnect Gmail to refresh access."),
+                "needsReconnect": True,
+            }
+        )
+        return [], response_meta
+    if not _gmail_read_scope_granted(connection_row.get("scope")):
+        response_meta.update(
+            {
+                "status": "reauth_required",
+                "message": "Reconnect Gmail and grant read access to fetch submitted employee forms.",
+                "needsReconnect": True,
+            }
+        )
+        return [], response_meta
+
+    headers = {"Authorization": f"Bearer {connection_row.get('access_token') or ''}"}
+    query = f'subject:"{SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX}"'
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        list_response = await client.get(
+            GMAIL_MESSAGES_LIST_URL,
+            headers=headers,
+            params={
+                "q": query,
+                "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH,
+            },
+        )
+        if list_response.is_error:
+            detail = list_response.text[:300]
+            if list_response.status_code in (401, 403):
+                response_meta.update(
+                    {
+                        "status": "reauth_required",
+                        "message": "Gmail denied message read access. Reconnect Gmail with read scope.",
+                        "needsReconnect": True,
+                    }
+                )
+                return [], response_meta
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Gmail message search failed ({list_response.status_code}): {detail or 'Unknown error'}",
+            )
+        list_payload = list_response.json() if list_response.content else {}
+        message_rows = list_payload.get("messages") if isinstance(list_payload, dict) else []
+        if not isinstance(message_rows, list):
+            message_rows = []
+        message_ids = [str(row.get("id") or "").strip() for row in message_rows if isinstance(row, dict) and row.get("id")]
+
+        semaphore = asyncio.Semaphore(8)
+
+        async def _fetch_message(message_id: str) -> dict | None:
+            async with semaphore:
+                message_response = await client.get(
+                    GMAIL_MESSAGE_DETAIL_URL.format(message_id=quote(message_id, safe="")),
+                    headers=headers,
+                    params={"format": "full"},
+                )
+            if message_response.is_error:
+                return None
+            payload = message_response.json() if message_response.content else {}
+            if not isinstance(payload, dict):
+                return None
+            subject = _gmail_header_value(payload, "Subject")
+            if not subject.lower().startswith(SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX.lower()):
+                return None
+            from_header = _gmail_header_value(payload, "From")
+            from_name, from_email = _parse_email_contact(from_header)
+            body_text = _gmail_message_body_text(payload)
+            snippet = str(payload.get("snippet") or "").strip()
+            identity = _extract_employee_identity(subject, snippet, body_text)
+            return {
+                "gmailMessageId": str(payload.get("id") or message_id).strip(),
+                "gmailThreadId": str(payload.get("threadId") or "").strip(),
+                "subject": subject[:240],
+                "receivedAt": _gmail_received_at(payload),
+                "fromName": from_name[:160],
+                "fromEmail": from_email[:160],
+                "employeeFullName": str(identity.get("employeeFullName") or ""),
+                "employeeFirstName": str(identity.get("employeeFirstName") or ""),
+                "employeeLastName": str(identity.get("employeeLastName") or ""),
+                "employeeEmail": str(identity.get("employeeEmail") or ""),
+                "snippet": snippet[:3000],
+                "rawPayload": payload,
+            }
+
+        fetched = await asyncio.gather(*[_fetch_message(message_id) for message_id in message_ids])
+    rows = [row for row in fetched if isinstance(row, dict) and row.get("gmailMessageId")]
+    response_meta.update(
+        {
+            "status": "connected",
+            "message": "Submitted employee forms fetched from Gmail.",
+            "needsReconnect": False,
+        }
+    )
+    return rows, response_meta
+
+
+def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    for row in rows:
+                        cursor.execute(
+                            """
+                            INSERT INTO submitted_employee_forms (
+                                user_id,
+                                gmail_message_id,
+                                gmail_thread_id,
+                                subject,
+                                received_at,
+                                from_name,
+                                from_email,
+                                employee_full_name,
+                                employee_first_name,
+                                employee_last_name,
+                                employee_email,
+                                snippet,
+                                raw_payload,
+                                created_at,
+                                updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                            ON CONFLICT (user_id, gmail_message_id)
+                            DO UPDATE
+                            SET gmail_thread_id = EXCLUDED.gmail_thread_id,
+                                subject = EXCLUDED.subject,
+                                received_at = EXCLUDED.received_at,
+                                from_name = EXCLUDED.from_name,
+                                from_email = EXCLUDED.from_email,
+                                employee_full_name = EXCLUDED.employee_full_name,
+                                employee_first_name = EXCLUDED.employee_first_name,
+                                employee_last_name = EXCLUDED.employee_last_name,
+                                employee_email = EXCLUDED.employee_email,
+                                snippet = EXCLUDED.snippet,
+                                raw_payload = EXCLUDED.raw_payload,
+                                updated_at = EXCLUDED.updated_at
+                            """,
+                            (
+                                user_id,
+                                str(row.get("gmailMessageId") or ""),
+                                str(row.get("gmailThreadId") or ""),
+                                str(row.get("subject") or ""),
+                                row.get("receivedAt"),
+                                str(row.get("fromName") or ""),
+                                str(row.get("fromEmail") or ""),
+                                str(row.get("employeeFullName") or ""),
+                                str(row.get("employeeFirstName") or ""),
+                                str(row.get("employeeLastName") or ""),
+                                str(row.get("employeeEmail") or ""),
+                                str(row.get("snippet") or ""),
+                                json.dumps(row.get("rawPayload") if isinstance(row.get("rawPayload"), dict) else {}, default=_json_default),
+                                utcnow(),
+                                utcnow(),
+                            ),
+                        )
+                connection.commit()
+            return len(rows)
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> tuple[str, str]:
+    refreshed_connection = await refresh_connection(str(connection_row.get("id") or ""))
+    headers = {
+        "Authorization": f"Bearer {refreshed_connection.get('access_token') or ''}",
+        "xero-tenant-id": str(refreshed_connection.get("tenant_id") or ""),
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post(XERO_PAYROLL_EMPLOYEES_URL, headers=headers, json=payload)
+    if response.is_error:
+        detail = response.text[:400]
+        if response.status_code in (401, 403):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Xero Payroll access denied. Reconnect Xero with payroll scopes before creating employees.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Xero Payroll employee creation failed ({response.status_code}): {detail or 'Unknown error'}",
+        )
+    response_payload = response.json() if response.content else {}
+    employees = _payroll_headcount_rows(response_payload if isinstance(response_payload, dict) else {}, "Employees", "Employee")
+    first_row = employees[0] if employees else {}
+    employee_id, _, _ = _xero_payroll_employee_identity(first_row if isinstance(first_row, dict) else {})
+    return employee_id, str((first_row or {}).get("Status") or "").strip()
+
+
+def _submitted_forms_target_connection(user: dict, tenant_id: str | None = None) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if clean_tenant_id:
+        return xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+    return get_xero_connection_for_user(user["id"])
+
+
+def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
+    first_name = str(form_row.get("employee_first_name") or "").strip()
+    last_name = str(form_row.get("employee_last_name") or "").strip()
+    full_name = str(form_row.get("employee_full_name") or "").strip()
+    if not first_name and full_name:
+        parts = [part for part in re.split(r"\s+", full_name) if part]
+        if parts:
+            first_name = parts[0]
+        if len(parts) >= 2:
+            last_name = " ".join(parts[1:])
+    if not first_name:
+        first_name = "Unknown"
+    if not last_name:
+        last_name = "Employee"
+    email_value = str(form_row.get("employee_email") or "").strip().lower()
+    employee_row = {
+        "FirstName": first_name[:100],
+        "LastName": last_name[:100],
+    }
+    if email_value:
+        employee_row["Email"] = email_value[:160]
+    return {"Employees": [employee_row]}
+
+
+def _update_submitted_employee_form_xero_status(
+    row_id: str,
+    *,
+    tenant_id: str,
+    tenant_name: str,
+    xero_employee_id: str = "",
+    xero_status: str = "pending",
+    xero_note: str = "",
+) -> None:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE submitted_employee_forms
+                        SET xero_tenant_id = %s,
+                            xero_tenant_name = %s,
+                            xero_employee_id = %s,
+                            xero_status = %s,
+                            xero_note = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            tenant_id,
+                            tenant_name,
+                            xero_employee_id,
+                            xero_status,
+                            xero_note,
+                            utcnow(),
+                            row_id,
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+async def sync_submitted_employee_forms(user: dict, tenant_id: str | None = None, create_missing: bool = True) -> dict:
+    user_id = str(user.get("id") or "")
+    gmail_rows, gmail_meta = await _gmail_fetch_submitted_employee_messages(user)
+    imported_count = _upsert_submitted_employee_forms(user_id, gmail_rows)
+
+    rows = _submitted_employee_forms_query_rows(user_id)
+    if not rows:
+        return {
+            **submitted_employee_forms_payload(user),
+            "sync": {
+                "imported": imported_count,
+                "processed": 0,
+                "created": 0,
+                "existing": 0,
+                "failed": 0,
+                "needsReview": 0,
+                "tenantId": "",
+                "tenantName": "",
+                "gmail": gmail_meta,
+            },
+        }
+
+    connection_row = _submitted_forms_target_connection(user, tenant_id)
+    clean_tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    clean_tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
+
+    employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+    existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
+    existing_by_email: dict[str, str] = {}
+    existing_by_name: dict[str, str] = {}
+    for employee in existing_employees:
+        employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
+        if employee_email and employee_email not in existing_by_email:
+            existing_by_email[employee_email] = employee_id
+        if employee_name and employee_name not in existing_by_name:
+            existing_by_name[employee_name] = employee_id
+
+    processed = 0
+    created = 0
+    existing = 0
+    failed = 0
+    needs_review = 0
+
+    for row in rows:
+        row_id = str(row.get("id") or "").strip()
+        if not row_id:
+            continue
+        processed += 1
+        employee_email = str(row.get("employee_email") or "").strip().lower()
+        employee_name = " ".join(
+            part for part in [
+                str(row.get("employee_first_name") or "").strip(),
+                str(row.get("employee_last_name") or "").strip(),
+            ] if part
+        ).strip().lower()
+        if not employee_name:
+            employee_name = str(row.get("employee_full_name") or "").strip().lower()
+
+        existing_employee_id = ""
+        if employee_email:
+            existing_employee_id = existing_by_email.get(employee_email) or ""
+        if not existing_employee_id and employee_name:
+            existing_employee_id = existing_by_name.get(employee_name) or ""
+
+        if existing_employee_id:
+            existing += 1
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_employee_id=existing_employee_id,
+                xero_status="exists",
+                xero_note="Employee already exists in Xero Payroll.",
+            )
+            continue
+
+        if not create_missing:
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_status="pending",
+                xero_note="Employee not found in Xero Payroll.",
+            )
+            continue
+
+        if not employee_email and not employee_name:
+            needs_review += 1
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_status="needs-review",
+                xero_note="Employee details missing from submitted form email.",
+            )
+            continue
+
+        create_payload = _submitted_forms_employee_create_payload(row)
+        try:
+            created_employee_id, created_status = await _xero_payroll_create_employee(connection_row, create_payload)
+            created += 1
+            if employee_email and created_employee_id:
+                existing_by_email[employee_email] = created_employee_id
+            if employee_name and created_employee_id:
+                existing_by_name[employee_name] = created_employee_id
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_employee_id=created_employee_id,
+                xero_status="created",
+                xero_note=f"Employee created in Xero Payroll{f' ({created_status})' if created_status else ''}.",
+            )
+        except Exception as exc:
+            failed += 1
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_status="failed",
+                xero_note=_sync_error_message(exc),
+            )
+
+    payload = submitted_employee_forms_payload(user)
+    payload["sync"] = {
+        "imported": imported_count,
+        "processed": processed,
+        "created": created,
+        "existing": existing,
+        "failed": failed,
+        "needsReview": needs_review,
+        "tenantId": clean_tenant_id,
+        "tenantName": clean_tenant_name,
+        "gmail": gmail_meta,
+    }
+    return payload
 
 
 def _serialize_me_report_settings(row: dict | None) -> dict:

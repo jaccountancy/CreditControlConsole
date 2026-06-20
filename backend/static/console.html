@@ -35631,6 +35631,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M12 16V5"></path><path d="M18 16v-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Payroll Headcount</strong><span>Workforce trend review</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-submitted-employee-forms" data-app-nav="submitted-employee-forms">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6h16v12H4z"></path><path d="M4 9h16"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Submitted Employee Forms</strong><span>Gmail to Xero Payroll</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-client-call-stats" data-app-nav="client-call-stats">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 20h14"></path><path d="M7 16h3"></path><path d="M11 12h3"></path><path d="M15 8h2"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Client Call Stats</strong><span>Call activity and outcomes</span></span>
@@ -43866,6 +43870,42 @@
                         </section>
                     </div>
 
+                    <section class="late-charges-screen detail-card" id="submittedEmployeeFormsScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>Submitted Employee Forms</h3>
+                                    <p class="detail-meta">Fetch employee submissions from Gmail and check/create each employee in Xero Payroll.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="submittedEmployeeFormsRefreshButton" type="button">Refresh page</button>
+                                    <label class="new-formations-inline-checkbox" title="Create missing employees in Xero Payroll">
+                                        <input id="submittedEmployeeFormsAutoCreateToggle" type="checkbox" checked>
+                                        <span>Auto create in Xero</span>
+                                    </label>
+                                    <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Sync Gmail and Xero</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="submittedEmployeeFormsSummary">Submitted employee forms workspace is ready.</p>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Submitted employee forms">
+                                    <thead>
+                                        <tr>
+                                            <th>Received</th>
+                                            <th>Employee</th>
+                                            <th>Email</th>
+                                            <th>From</th>
+                                            <th>Xero status</th>
+                                            <th>Note</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="submittedEmployeeFormsTableBody"></tbody>
+                                </table>
+                            </section>
+                        </section>
+                    </section>
+
                     <section class="late-charges-screen detail-card" id="clientCallStatsScreen" hidden>
                         <section class="detail-panel">
                             <div class="detail-hero">
@@ -46043,6 +46083,15 @@
             let payrollHeadcountWizardState = { open: false, tenantId: "", syncing: false, message: "", error: "" };
             let payrollHeadcountWorkspacePickerOpen = false;
             let payrollHeadcountWorkspacePickerTenantIds = [];
+            let submittedEmployeeFormsData = {
+                rows: [],
+                summary: { total: 0, created: 0, exists: 0, pending: 0, failed: 0, needsReview: 0 },
+                gmail: { status: "not_connected", message: "Connect Gmail to read submitted employee forms.", needsReconnect: false, gmailEmail: "" },
+                subjectPrefix: "New Employee Details:",
+            };
+            let submittedEmployeeFormsLoading = false;
+            let submittedEmployeeFormsSyncing = false;
+            let submittedEmployeeFormsAutoCreate = true;
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -46480,6 +46529,7 @@
                 "code-breaker": "Equity Montior",
                 "micro-analyzer": "VAT on Unregistered",
                 "payroll-headcount": "Payroll Headcount",
+                "submitted-employee-forms": "Submitted Employee Forms",
                 "client-call-stats": "Client Call Stats",
                 "pi-clearing-account": "PI Clearing Account",
                 vault: "Vault",
@@ -46529,6 +46579,7 @@
                 "code-breaker": "Detect post-submission deltas between filed data and live Xero changes, then generate adjustment guidance.",
                 "micro-analyzer": "Identify Ignition Micro/Starter clients and clear VAT coding from matched Xero transactions.",
                 "payroll-headcount": "Track payroll headcount changes and highlight movement trends.",
+                "submitted-employee-forms": "Load employee form emails from Gmail, then verify and create missing records in Xero Payroll.",
                 "client-call-stats": "Review client call volumes, outcomes, and follow-up coverage.",
                 "pi-clearing-account": "Open the PI Clearing Account dedicated workspace.",
                 vault: "Upload, preview, and search files with AI-driven naming, folders, dedupe, and activity tracking.",
@@ -47594,6 +47645,8 @@
                         payrollHeadcountWorkspaces: config.endpoints?.payrollHeadcountWorkspaces || "/api/payroll-headcount/workspaces",
                         payrollHeadcountWorkspaceSync: config.endpoints?.payrollHeadcountWorkspaceSync || "/api/payroll-headcount/workspaces/:tenantId/sync",
                         payrollHeadcountIgnitionSync: config.endpoints?.payrollHeadcountIgnitionSync || "/api/payroll-headcount/ignition-sync",
+                        submittedEmployeeForms: config.endpoints?.submittedEmployeeForms || "/api/submitted-employee-forms",
+                        submittedEmployeeFormsSync: config.endpoints?.submittedEmployeeFormsSync || "/api/submitted-employee-forms/sync",
                         payrollTenantOverview: config.endpoints?.payrollTenantOverview || "/api/payroll/tenants/:tenantId/overview",
                         clientCallStats: config.endpoints?.clientCallStats || "/api/client-call-stats",
                         clientCallStatsImportPreview: config.endpoints?.clientCallStatsImportPreview || "/api/client-call-stats/import/preview",
@@ -49235,6 +49288,82 @@
                     if (activeView === "payroll-headcount") {
                         renderPayrollHeadcountScreen();
                     }
+                }
+            }
+
+            function normaliseSubmittedEmployeeFormsPayload(payload = {}) {
+                const source = payload?.submittedEmployeeForms && typeof payload.submittedEmployeeForms === "object"
+                    ? payload.submittedEmployeeForms
+                    : payload;
+                const rows = Array.isArray(source?.rows) ? source.rows : [];
+                const summary = source?.summary && typeof source.summary === "object" ? source.summary : {};
+                const gmail = source?.gmail && typeof source.gmail === "object" ? source.gmail : {};
+                return {
+                    rows,
+                    summary: {
+                        total: Number(summary.total || rows.length || 0),
+                        created: Number(summary.created || 0),
+                        exists: Number(summary.exists || 0),
+                        pending: Number(summary.pending || 0),
+                        failed: Number(summary.failed || 0),
+                        needsReview: Number(summary.needsReview || 0),
+                    },
+                    gmail: {
+                        status: String(gmail.status || "not_connected"),
+                        message: String(gmail.message || "Connect Gmail to read submitted employee forms."),
+                        needsReconnect: Boolean(gmail.needsReconnect),
+                        gmailEmail: String(gmail.gmailEmail || ""),
+                    },
+                    subjectPrefix: String(source?.subjectPrefix || "New Employee Details:"),
+                };
+            }
+
+            async function loadSubmittedEmployeeForms(force = false) {
+                if (submittedEmployeeFormsLoading && !force) return;
+                submittedEmployeeFormsLoading = true;
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.submittedEmployeeForms,
+                        { suppressFailurePanel: true, timeoutMs: 20000 }
+                    );
+                    submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
+                } catch (error) {
+                    console.error("Unable to load submitted employee forms", error);
+                    showToast(error?.message || "Unable to load submitted employee forms.", "error");
+                } finally {
+                    submittedEmployeeFormsLoading = false;
+                    if (activeView === "submitted-employee-forms") {
+                        renderSubmittedEmployeeFormsScreen();
+                    }
+                }
+            }
+
+            async function syncSubmittedEmployeeForms(options = {}) {
+                if (submittedEmployeeFormsSyncing) return;
+                submittedEmployeeFormsSyncing = true;
+                renderSubmittedEmployeeFormsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.submittedEmployeeFormsSync, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            createMissing: options?.createMissing !== false,
+                        }),
+                    });
+                    submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
+                    const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
+                    const created = Number(syncMeta.created || 0);
+                    const existing = Number(syncMeta.existing || 0);
+                    const failed = Number(syncMeta.failed || 0);
+                    showToast(
+                        `Submitted employee forms synced. ${created.toLocaleString("en-GB")} created, ${existing.toLocaleString("en-GB")} existing, ${failed.toLocaleString("en-GB")} failed.`,
+                        failed ? "warning" : "success"
+                    );
+                } catch (error) {
+                    console.error("Unable to sync submitted employee forms", error);
+                    showToast(error?.message || "Unable to sync submitted employee forms.", "error");
+                } finally {
+                    submittedEmployeeFormsSyncing = false;
+                    renderSubmittedEmployeeFormsScreen();
                 }
             }
 
@@ -51743,6 +51872,7 @@
                 if (activeView === "xero-subs-review") return "xero-subs-review";
                 if (activeView === "juk-equity") return "juk-equity";
                 if (activeView === "payroll-headcount") return "payroll-headcount";
+                if (activeView === "submitted-employee-forms") return "submitted-employee-forms";
                 if (activeView === "client-call-stats") return "client-call-stats";
                 if (activeView === "pi-clearing-account") return "pi-clearing-account";
                 if (activeView === "settings") return "settings";
@@ -51970,6 +52100,7 @@
                 if (activeView === "code-breaker") return "practice";
                 if (activeView === "micro-analyzer") return "practice";
                 if (activeView === "payroll-headcount") return "practice";
+                if (activeView === "submitted-employee-forms") return "practice";
                 if (activeView === "client-call-stats") return "practice";
                 if (activeView === "pi-clearing-account") return "practice";
                 if (activeView === "vault") return "practice";
@@ -52267,6 +52398,7 @@
                 setElementVisible(document.getElementById("codeBreakerScreen"), activeView === "code-breaker");
                 setElementVisible(document.getElementById("microAnalyzerScreen"), activeView === "micro-analyzer");
                 setElementVisible(document.getElementById("payrollHeadcountScreen"), activeView === "payroll-headcount");
+                setElementVisible(document.getElementById("submittedEmployeeFormsScreen"), activeView === "submitted-employee-forms");
                 setElementVisible(document.getElementById("clientCallStatsScreen"), activeView === "client-call-stats");
                 setElementVisible(document.getElementById("piClearingAccountScreen"), activeView === "pi-clearing-account");
                 setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
@@ -52279,7 +52411,7 @@
                 document.body.classList.toggle("is-insights-view", activeView === "insights");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -52420,6 +52552,16 @@
                 renderAll();
                 loadMeReport();
                 loadPayrollHeadcount();
+                scrollConsoleToTop();
+            }
+
+            function openSubmittedEmployeeFormsScreen() {
+                activeView = "submitted-employee-forms";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadSubmittedEmployeeForms();
                 scrollConsoleToTop();
             }
 
@@ -56962,6 +57104,84 @@
                     : "The system pulls active employees from Xero Payroll and saves this month's snapshot.";
                 wizardSyncButton.disabled = payrollHeadcountWizardState.syncing || !payrollHeadcountWizardState.tenantId;
                 wizardSyncButton.textContent = payrollHeadcountWizardState.syncing ? "Syncing..." : "Run payroll sync";
+            }
+
+            function renderSubmittedEmployeeFormsScreen() {
+                const summary = document.getElementById("submittedEmployeeFormsSummary");
+                const tableBody = document.getElementById("submittedEmployeeFormsTableBody");
+                const refreshButton = document.getElementById("submittedEmployeeFormsRefreshButton");
+                const syncButton = document.getElementById("submittedEmployeeFormsSyncButton");
+                const autoCreateToggle = document.getElementById("submittedEmployeeFormsAutoCreateToggle");
+                if (!summary || !tableBody || !refreshButton || !syncButton || !autoCreateToggle) return;
+
+                if (refreshButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    refreshButton.dataset.submittedEmployeeFormsWired = "true";
+                    refreshButton.addEventListener("click", async () => {
+                        await loadSubmittedEmployeeForms(true);
+                        showToast("Submitted employee forms refreshed.", "success");
+                    });
+                }
+                if (syncButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    syncButton.dataset.submittedEmployeeFormsWired = "true";
+                    syncButton.addEventListener("click", async () => {
+                        await syncSubmittedEmployeeForms({ createMissing: submittedEmployeeFormsAutoCreate });
+                    });
+                }
+                if (autoCreateToggle.dataset.submittedEmployeeFormsWired !== "true") {
+                    autoCreateToggle.dataset.submittedEmployeeFormsWired = "true";
+                    autoCreateToggle.addEventListener("change", () => {
+                        submittedEmployeeFormsAutoCreate = Boolean(autoCreateToggle.checked);
+                    });
+                }
+                autoCreateToggle.checked = submittedEmployeeFormsAutoCreate;
+
+                refreshButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
+                syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
+                syncButton.textContent = submittedEmployeeFormsSyncing ? "Syncing..." : "Sync Gmail and Xero";
+
+                if (submittedEmployeeFormsLoading) {
+                    summary.textContent = "Loading submitted employee forms.";
+                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
+                    return;
+                }
+
+                const gmail = submittedEmployeeFormsData?.gmail || {};
+                const rows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                const summaryData = submittedEmployeeFormsData?.summary || {};
+                const total = Number(summaryData.total || rows.length || 0);
+                const created = Number(summaryData.created || 0);
+                const existing = Number(summaryData.exists || 0);
+                const failed = Number(summaryData.failed || 0);
+                const pending = Number(summaryData.pending || 0);
+                const needsReview = Number(summaryData.needsReview || 0);
+                summary.textContent = `${gmail?.message || ""} ${total.toLocaleString("en-GB")} email${total === 1 ? "" : "s"} tracked · ${created.toLocaleString("en-GB")} created · ${existing.toLocaleString("en-GB")} existing · ${pending.toLocaleString("en-GB")} pending · ${needsReview.toLocaleString("en-GB")} need review · ${failed.toLocaleString("en-GB")} failed.`;
+
+                if (!rows.length) {
+                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run sync to pull emails where the subject starts with New Employee Details:.</p></div></td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = rows.map((row) => {
+                    const receivedAt = formatDateTime(row?.receivedAt || row?.createdAt || "");
+                    const employeeName = String(row?.employeeFullName || "").trim() || "Employee name not parsed";
+                    const employeeEmail = String(row?.employeeEmail || "").trim() || "--";
+                    const sender = String(row?.fromName || "").trim() || String(row?.fromEmail || "").trim() || "--";
+                    const xeroStatus = String(row?.xeroStatus || "pending").trim();
+                    const xeroStatusLabel = xeroStatus
+                        ? xeroStatus.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+                        : "Pending";
+                    const note = String(row?.xeroNote || "").trim() || "--";
+                    return `
+                        <tr>
+                            <td>${escapeHTML(receivedAt || "--")}</td>
+                            <td><strong>${escapeHTML(employeeName)}</strong><br><small>${escapeHTML(String(row?.subject || "").trim() || "--")}</small></td>
+                            <td>${escapeHTML(employeeEmail)}</td>
+                            <td>${escapeHTML(sender)}</td>
+                            <td><span class="status-pill">${escapeHTML(xeroStatusLabel)}</span></td>
+                            <td><small>${escapeHTML(note)}</small></td>
+                        </tr>
+                    `;
+                }).join("");
             }
 
             function closePayrollHeadcountWorkspacePickerModal() {
@@ -62147,6 +62367,7 @@
                 if (section === "xero-subs-review") return openXeroSubsReviewScreen();
                 if (section === "juk-equity") return openJukEquityScreen();
                 if (section === "payroll-headcount") return openPayrollHeadcountScreen();
+                if (section === "submitted-employee-forms") return openSubmittedEmployeeFormsScreen();
                 if (section === "client-call-stats") return openClientCallStatsScreen();
                 if (section === "pi-clearing-account") return openPiClearingAccountScreen();
                 if (section === "settings") return openSettingsScreen("settings-home", "settings");
@@ -62307,6 +62528,7 @@
                 "code-breaker",
                 "micro-analyzer",
                 "payroll-headcount",
+                "submitted-employee-forms",
                 "client-call-stats",
                 "pi-clearing-account",
             ]);
@@ -62490,6 +62712,7 @@
                 "code-breaker": "credit-control-code-breaker",
                 "micro-analyzer": "credit-control-micro-analyzer",
                 "payroll-headcount": "credit-control-payroll-headcount",
+                "submitted-employee-forms": "credit-control-submitted-employee-forms",
                 "client-call-stats": "credit-control-client-call-stats",
                 "pi-clearing-account": "credit-control-pi-clearing-account",
                 vault: "credit-control-vault",
@@ -94235,6 +94458,7 @@
                 else if (activeView === "code-breaker") activeNavSection = "code-breaker";
                 else if (activeView === "micro-analyzer") activeNavSection = "micro-analyzer";
                 else if (activeView === "payroll-headcount") activeNavSection = "payroll-headcount";
+                else if (activeView === "submitted-employee-forms") activeNavSection = "submitted-employee-forms";
                 else if (activeView === "client-call-stats") activeNavSection = "client-call-stats";
                 else if (activeView === "pi-clearing-account") activeNavSection = "pi-clearing-account";
                 else if (activeView === "vault") activeNavSection = "vault";
@@ -108965,6 +109189,7 @@
                     "code-breaker": new Set(["renderCodeBreakerScreen"]),
                     "micro-analyzer": new Set(["renderMicroAnalyzerScreen"]),
                     "payroll-headcount": new Set(["renderPayrollHeadcountScreen"]),
+                    "submitted-employee-forms": new Set(["renderSubmittedEmployeeFormsScreen"]),
                     "client-call-stats": new Set(["renderClientCallStatsScreen"]),
                     "pi-clearing-account": new Set(["renderPiClearingAccountScreen"]),
                     "identity-verification": new Set(["renderIdentityVerificationScreen"]),
@@ -109040,6 +109265,7 @@
                     ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],
                     ["renderMicroAnalyzerScreen", () => renderMicroAnalyzerScreen()],
                     ["renderPayrollHeadcountScreen", () => renderPayrollHeadcountScreen()],
+                    ["renderSubmittedEmployeeFormsScreen", () => renderSubmittedEmployeeFormsScreen()],
                     ["renderClientCallStatsScreen", () => renderClientCallStatsScreen()],
                     ["renderPiClearingAccountScreen", () => renderPiClearingAccountScreen()],
                     ["renderIdentityVerificationScreen", () => renderIdentityVerificationScreen()],

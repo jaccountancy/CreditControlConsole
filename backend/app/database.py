@@ -1747,6 +1747,56 @@ ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFA
 ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE TABLE IF NOT EXISTS submitted_employee_forms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gmail_message_id TEXT NOT NULL,
+    gmail_thread_id TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
+    received_at TIMESTAMPTZ,
+    from_name TEXT NOT NULL DEFAULT '',
+    from_email TEXT NOT NULL DEFAULT '',
+    employee_full_name TEXT NOT NULL DEFAULT '',
+    employee_first_name TEXT NOT NULL DEFAULT '',
+    employee_last_name TEXT NOT NULL DEFAULT '',
+    employee_email TEXT NOT NULL DEFAULT '',
+    snippet TEXT NOT NULL DEFAULT '',
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    xero_tenant_id TEXT NOT NULL DEFAULT '',
+    xero_tenant_name TEXT NOT NULL DEFAULT '',
+    xero_employee_id TEXT NOT NULL DEFAULT '',
+    xero_status TEXT NOT NULL DEFAULT 'pending',
+    xero_note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, gmail_message_id)
+);
+
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS gmail_message_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS gmail_thread_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS subject TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS from_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS from_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_full_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_first_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_last_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS snippet TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_employee_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS xero_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS submitted_employee_forms_user_received_idx
+ON submitted_employee_forms (user_id, received_at DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS submitted_employee_forms_user_tenant_idx
+ON submitted_employee_forms (user_id, xero_tenant_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS me_report_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
