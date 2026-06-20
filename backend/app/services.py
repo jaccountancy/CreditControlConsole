@@ -16116,6 +16116,41 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     ]
 
     async with httpx.AsyncClient(timeout=30) as client:
+        async def _collect_message_ids(params: dict, limit: int = SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, max_pages: int = 4) -> list[str]:
+            collected: list[str] = []
+            page_token = ""
+            pages = 0
+            while pages < max_pages and len(collected) < limit:
+                request_params = dict(params)
+                if page_token:
+                    request_params["pageToken"] = page_token
+                list_response = await client.get(
+                    GMAIL_MESSAGES_LIST_URL,
+                    headers=headers,
+                    params=request_params,
+                )
+                if list_response.is_error:
+                    break
+                list_payload = list_response.json() if list_response.content else {}
+                message_rows = list_payload.get("messages") if isinstance(list_payload, dict) else []
+                if not isinstance(message_rows, list):
+                    message_rows = []
+                for row in message_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    message_id = str(row.get("id") or "").strip()
+                    if not message_id or message_id in seen_ids:
+                        continue
+                    seen_ids.add(message_id)
+                    collected.append(message_id)
+                    if len(collected) >= limit:
+                        break
+                page_token = str(list_payload.get("nextPageToken") or "").strip() if isinstance(list_payload, dict) else ""
+                pages += 1
+                if not page_token:
+                    break
+            return collected
+
         message_ids: list[str] = []
         seen_ids: set[str] = set()
         first_error: HTTPException | None = None
@@ -16162,30 +16197,29 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 break
         if not message_ids:
             # Fallback: scan recent mailbox rows and filter subjects locally.
-            fallback_response = await client.get(
-                GMAIL_MESSAGES_LIST_URL,
-                headers=headers,
-                params={
-                    "q": f"in:anywhere newer_than:{max(1, safe_lookback_days // 7 + 1)}m",
-                    "maxResults": max(SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, 250),
-                    "includeSpamTrash": "true",
-                },
+            message_ids.extend(
+                await _collect_message_ids(
+                    {
+                        "q": f"in:anywhere newer_than:{max(1, safe_lookback_days // 7 + 1)}m",
+                        "maxResults": 250,
+                        "includeSpamTrash": "true",
+                    },
+                    limit=400,
+                    max_pages=4,
+                )
             )
-            if fallback_response.is_success:
-                fallback_payload = fallback_response.json() if fallback_response.content else {}
-                fallback_rows = fallback_payload.get("messages") if isinstance(fallback_payload, dict) else []
-                if not isinstance(fallback_rows, list):
-                    fallback_rows = []
-                for row in fallback_rows:
-                    if not isinstance(row, dict):
-                        continue
-                    message_id = str(row.get("id") or "").strip()
-                    if not message_id or message_id in seen_ids:
-                        continue
-                    seen_ids.add(message_id)
-                    message_ids.append(message_id)
-                    if len(message_ids) >= 400:
-                        break
+        if not message_ids:
+            # Final fallback: no query at all, inspect recent mailbox traffic directly.
+            message_ids.extend(
+                await _collect_message_ids(
+                    {
+                        "maxResults": 250,
+                        "includeSpamTrash": "true",
+                    },
+                    limit=500,
+                    max_pages=5,
+                )
+            )
         if not message_ids and first_error is not None:
             raise first_error
 
@@ -16241,7 +16275,10 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     response_meta.update(
         {
             "status": "connected",
-            "message": f"Submitted employee forms fetched from Gmail for the last {safe_lookback_days} days.",
+            "message": (
+                f"Submitted employee forms fetched from Gmail for the last {safe_lookback_days} days. "
+                f"Searched {len(message_ids)} recent message{'' if len(message_ids) == 1 else 's'}."
+            ),
             "needsReconnect": False,
         }
     )
