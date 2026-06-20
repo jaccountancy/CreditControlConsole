@@ -39669,6 +39669,7 @@
                                         <option value="awaiting_approval">Awaiting approval</option>
                                         <option value="awaiting_dean_approval">Awaiting Dean's approval</option>
                                         <option value="in_review">In review</option>
+                                        <option value="bounceback">Bounceback</option>
                                         <option value="query">Query</option>
                                         <option value="open">Open</option>
                                     </select>
@@ -40321,6 +40322,7 @@
                                                             <option value="awaiting_approval">Awaiting approval</option>
                                                             <option value="awaiting_dean_approval">Awaiting Dean's approval</option>
                                                             <option value="in_review">In review</option>
+                                                            <option value="bounceback">Bounceback</option>
                                                             <option value="query">Query</option>
                                                         </select>
                                                         <select id="taskListDueFilter" aria-label="Filter by due state">
@@ -119380,8 +119382,12 @@
                 const defaultReviewer = allowedReviewerLookup.has(normaliseStatus(candidateReviewer)) ? candidateReviewer : managerPool[0];
                 if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
                 if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
-                const reviewState = taskBookkeepingReviewState(row, workflow);
-                const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
+                const workflowForStageModel = {
+                    ...workflow,
+                    workflowState: String(row?.workflowState || workflow?.workflowState || ""),
+                };
+                const reviewState = taskBookkeepingReviewState(row, workflowForStageModel);
+                const stages = taskBookkeepingWizardStagesForState(reviewState, workflowForStageModel);
                 const stageIndexById = new Map(stages.map((item, index) => [item.id, index]));
                 const resolvedStage = stageIndexById.has(String(workflow.stage || "")) ? String(workflow.stage) : (stages[0]?.id || "data_pull");
                 const summary = reviewState.summary || {};
@@ -119914,6 +119920,33 @@
                         ? ""
                         : reviewState.blockingChecks.map((item) => `<li>${escapeHTML(item.label)}</li>`).join("");
                 }
+                const periodLabel = String(reviewState?.periodConfig?.monthLabel || "this period").trim();
+                const ctEstimate = Number(reviewState?.taxDividend?.estimatedCt || 0);
+                const dlaBalance = Number(reviewState?.taxDividend?.dlaCreditBalance || 0);
+                const dividendCapacity = Number(reviewState?.taxDividend?.dividendCapacity || 0);
+                const clientName = bmTaskClientDisplayName(row?.clientName);
+                const clientEmail = String(row?.clientEmail || row?.matchedRegister?.clientEmail || "").trim();
+                const emailSubject = `Bookkeeping Snapshot for ${periodLabel} · ${clientName}`;
+                const emailBody = [
+                    `Hi ${clientName},`,
+                    "",
+                    `Please find your bookkeeping snapshot for ${periodLabel}.`,
+                    "",
+                    `- Estimated corporation tax: ${formatCurrency(ctEstimate)}`,
+                    `- Director loan account balance: ${formatCurrency(dlaBalance)}`,
+                    `- Dividend availability: ${formatCurrency(dividendCapacity)}`,
+                    "",
+                    "Please let us know if you would like to discuss any of these figures in more detail.",
+                    "",
+                    "Kind regards,",
+                    bmTaskCurrentActorName(),
+                ].join("\n");
+                if (clientEmailSummary) {
+                    clientEmailSummary.textContent = `Send bookkeeping snapshot for ${periodLabel}. CT estimate ${formatCurrency(ctEstimate)} · Director loan account ${formatCurrency(dlaBalance)} · Dividend availability ${formatCurrency(dividendCapacity)}.`;
+                }
+                if (clientEmailToInput && !clientEmailToInput.value) clientEmailToInput.value = clientEmail;
+                if (clientEmailSubjectInput && !clientEmailSubjectInput.value) clientEmailSubjectInput.value = emailSubject;
+                if (clientEmailBodyInput && !clientEmailBodyInput.value) clientEmailBodyInput.value = emailBody;
                 if (confidenceChecksWrap) {
                     const confidence = taskBookkeepingConfidenceScores(reviewState, hydratedWorkflow);
                     hydratedWorkflow.confidence = confidence;
@@ -120305,6 +120338,8 @@
                     return `JUKBK-${String(candidate).padStart(3, "0")}`;
                 };
                 const workflowReference = existingReference || nextBookkeepingReference();
+                const persistedWorkflowState = String(currentOverride?.workflowState || row?.workflowState || "").trim().toLowerCase();
+                const startStage = persistedWorkflowState === "approved_pending_client_email" ? "client_email" : "data_pull";
                 const managerPool = ["Dean", "Amie", "Hannah"];
                 const allowedReviewerLookup = new Set(managerPool.map((name) => normaliseStatus(name)));
                 const candidateReviewer = String(row?.workflowReviewer || row?.assigneeName || bmTaskCurrentActorName()).trim();
@@ -120313,10 +120348,11 @@
                     open: true,
                     rowId,
                     reference: workflowReference,
-                    stage: "data_pull",
+                    stage: startStage,
                     reviewer: defaultReviewer,
                     notes: "",
                     reviewMode,
+                    workflowState: persistedWorkflowState,
                     reviewSectionComments: currentOverride?.workflowReviewSectionComments && typeof currentOverride.workflowReviewSectionComments === "object"
                         ? { ...currentOverride.workflowReviewSectionComments }
                         : {},
@@ -120354,6 +120390,11 @@
                     updateBmTaskStatus(row, String(row?.status || "awaiting_approval"), "", {
                         autoNote: `Reviewer opened bookkeeping workflow${workflowReference ? ` (${workflowReference})` : ""}.`,
                     });
+                } else if (persistedWorkflowState === "approved_pending_client_email") {
+                    setBmTaskOverrideState(rowId, { workflowState: "approved_pending_client_email", workflowReference });
+                    updateBmTaskStatus(row, "in_review", "", {
+                        autoNote: `Approved workflow reopened for client bookkeeping snapshot email${workflowReference ? ` (${workflowReference})` : ""}.`,
+                    });
                 } else {
                     setBmTaskOverrideState(rowId, { workflowState: "in_progress", workflowReference });
                     updateBmTaskStatus(row, "in_review", "", {
@@ -120367,14 +120408,21 @@
                 showToast(
                     reviewMode
                         ? "Review mode opened. Add section comments and choose Approve or Bounceback."
-                        : "Bookkeeping workflow opened. Complete checks and submit for review.",
+                        : persistedWorkflowState === "approved_pending_client_email"
+                            ? "Final stage opened. Send bookkeeping snapshot email to complete task."
+                            : "Bookkeeping workflow opened. Complete checks and submit for review.",
                     "info"
                 );
             }
 
+            function taskBookkeepingFindAssignableUserByName(name = "") {
+                const target = normaliseStatus(name);
+                if (!target) return null;
+                return notificationAssignableUsers().find((user) => normaliseStatus(user?.name || "") === target) || null;
+            }
+
             function taskBookkeepingCreateReviewerSlaNotification(row = {}, reviewerName = "", workflowReference = "") {
-                const assignees = notificationAssignableUsers();
-                const reviewer = assignees.find((user) => normaliseStatus(user?.name || "") === normaliseStatus(reviewerName));
+                const reviewer = taskBookkeepingFindAssignableUserByName(reviewerName);
                 const now = new Date();
                 const due = new Date(now);
                 due.setHours(due.getHours() + 24);
@@ -120391,6 +120439,23 @@
                     assignedToId: reviewer?.id || "",
                     assignedToName: reviewer?.name || reviewerName,
                     dueDate: due.toISOString().slice(0, 10),
+                    emailAlert: false,
+                });
+            }
+
+            function taskBookkeepingCreateBouncebackNotification(row = {}, submitterName = "", reviewerName = "", workflowReference = "", decisionComment = "") {
+                const submitter = taskBookkeepingFindAssignableUserByName(submitterName);
+                const externalRef = `task-bookkeeping-bounceback:${bmTaskIdentitySafe(row)}:${workflowReference}:${Date.now()}`;
+                return createNotificationRecord({
+                    externalRef,
+                    source: "Jenius Assistant",
+                    category: "Task",
+                    priority: "high",
+                    subject: `Bounceback · ${workflowReference || "JUKBK"}`,
+                    content: `${bmTaskClientDisplayName(row?.clientName)} bookkeeping workflow was bounced back by ${reviewerName || "reviewer"}. ${decisionComment || "Please address reviewer comments and resubmit for review."}`,
+                    assignedToId: submitter?.id || "",
+                    assignedToName: submitter?.name || submitterName,
+                    dueDate: "",
                     emailAlert: false,
                 });
             }
@@ -120501,6 +120566,7 @@
                 setBmTaskOverrideState(rowId, {
                     workflowState: reviewerIsDean ? "awaiting_dean_approval" : "submitted_for_review",
                     workflowReviewer: assignedReviewer,
+                    workflowSubmitter: bmTaskCurrentActorName(),
                     workflowReference,
                     workflowSubmittedAt: new Date().toISOString(),
                     workflowDraftSavedAt: "",
@@ -120546,7 +120612,7 @@
                 }
                 const reviewState = taskBookkeepingReviewState(row, workflow);
                 const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
-                const reviewStages = stages.filter((stage) => stage.id !== "submit");
+                const reviewStages = stages.filter((stage) => stage.id !== "submit" && stage.id !== "client_email");
                 const reviewComments = workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object"
                     ? workflow.reviewSectionComments
                     : {};
@@ -120577,22 +120643,34 @@
                     acc[stage.id] = String(reviewComments[stage.id] || "").trim();
                     return acc;
                 }, {});
+                const workflowSubmitter = String(row?.workflowSubmitter || "").trim();
+                const bouncebackAssignee = workflowSubmitter || String(row?.assigneeName || "").trim() || "Unassigned";
+                const targetStatus = normalisedDecision === "approve" ? "in_review" : "bounceback";
                 setBmTaskOverrideState(rowId, {
-                    workflowState: normalisedDecision === "approve" ? "approved" : "bounceback",
+                    workflowState: normalisedDecision === "approve" ? "approved_pending_client_email" : "bounceback",
                     workflowReference,
-                    workflowDraftSavedAt: "",
-                    workflowDraft: null,
+                    workflowDraftSavedAt: normalisedDecision === "approve" ? "" : nowIso,
+                    workflowDraft: normalisedDecision === "approve"
+                        ? null
+                        : {
+                            stage: "data_pull",
+                            reviewer: String(row?.workflowReviewer || ""),
+                            notes: String(workflow?.notes || ""),
+                            feedback: workflow?.feedback && typeof workflow.feedback === "object" ? { ...workflow.feedback } : {},
+                            blockerOverride: workflow?.blockerOverride && typeof workflow.blockerOverride === "object" ? { ...workflow.blockerOverride } : {},
+                            confidence: workflow?.confidence && typeof workflow.confidence === "object" ? { ...workflow.confidence } : {},
+                        },
                     workflowReviewDecision: normalisedDecision,
                     workflowReviewDecisionAt: nowIso,
                     workflowReviewDecisionBy: bmTaskCurrentActorName(),
                     workflowReviewDecisionComment: decisionComment,
                     workflowReviewSectionComments: sectionCommentMap,
+                    assigneeName: normalisedDecision === "bounceback" ? bouncebackAssignee : String(row?.assigneeName || ""),
                 });
-                const targetStatus = normalisedDecision === "approve" ? "completed" : "query";
                 updateBmTaskStatus(row, targetStatus, decisionComment, {
                     autoNote: normalisedDecision === "approve"
-                        ? `Bookkeeping workflow approved by reviewer${workflowReference ? ` (${workflowReference})` : ""}.`
-                        : `Bookkeeping workflow bounced back by reviewer${workflowReference ? ` (${workflowReference})` : ""}.`,
+                        ? `Bookkeeping workflow approved by reviewer${workflowReference ? ` (${workflowReference})` : ""}. Final client snapshot email required.`
+                        : `Bookkeeping workflow bounced back by reviewer${workflowReference ? ` (${workflowReference})` : ""} and reassigned to ${bouncebackAssignee}.`,
                 });
                 const clientKey = bmTaskClientTimelineKey(row);
                 reviewStages.forEach((stage) => {
@@ -120622,16 +120700,93 @@
                         stamp: nowIso,
                     });
                 }
+                if (normalisedDecision === "bounceback") {
+                    if (bouncebackAssignee && normaliseStatus(bouncebackAssignee) !== normaliseStatus(String(row?.assigneeName || ""))) {
+                        appendBmTaskTimeline(clientKey, {
+                            title: bmTaskDisplayName(row),
+                            body: `Bounceback reassigned to ${bouncebackAssignee}.`,
+                            stamp: nowIso,
+                        });
+                        appendBmTaskHistory(rowId, {
+                            type: "assignee",
+                            title: "Task reassigned after bounceback",
+                            detail: `Reassigned to ${bouncebackAssignee}.`,
+                            status: targetStatus,
+                            actor: bmTaskCurrentActorName(),
+                            stamp: nowIso,
+                        });
+                    }
+                    taskBookkeepingCreateBouncebackNotification(
+                        row,
+                        bouncebackAssignee,
+                        bmTaskCurrentActorName(),
+                        workflowReference,
+                        decisionComment
+                    );
+                    saveBmTaskLocalState();
+                    resetTaskBookkeepingWorkflowPanel();
+                    renderTaskSubpages();
+                    openTaskApprovalsBouncebacksScreen();
+                    showToast(`Workflow bounced back to ${bouncebackAssignee}.`, "success");
+                    return;
+                }
+
                 saveBmTaskLocalState();
+                companiesHouseSettings.bmTaskBookkeepingWorkflow = {
+                    ...workflow,
+                    reviewMode: false,
+                    workflowState: "approved_pending_client_email",
+                    stage: "client_email",
+                };
+                renderTaskSubpages();
+                showToast("Workflow approved. Send the client bookkeeping snapshot email to complete the task.", "success");
+            }
+
+            async function sendTaskBookkeepingClientSnapshotEmail(allRows = []) {
+                const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
+                const row = taskBookkeepingWorkflowCurrentRow(allRows);
+                if (!row) {
+                    showToast("Bookkeeping workflow task was not found.", "error");
+                    return;
+                }
+                const toInput = document.getElementById("taskBookkeepingClientEmailToInput");
+                const subjectInput = document.getElementById("taskBookkeepingClientEmailSubjectInput");
+                const bodyInput = document.getElementById("taskBookkeepingClientEmailBodyInput");
+                const toEmail = String(toInput?.value || "").trim();
+                const subject = String(subjectInput?.value || "").trim();
+                const body = String(bodyInput?.value || "").trim();
+                if (!toEmail || !subject || !body) {
+                    showToast("Complete To, Subject, and Covering email before sending.", "error");
+                    return;
+                }
+                const mailto = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                try {
+                    window.location.href = mailto;
+                } catch {}
+                const nowIso = new Date().toISOString();
+                const rowId = bmTaskIdentitySafe(row);
+                setBmTaskOverrideState(rowId, {
+                    workflowState: "client_email_sent",
+                    workflowClientEmailTo: toEmail,
+                    workflowClientEmailSubject: subject,
+                    workflowClientEmailBody: body,
+                    workflowClientEmailSentAt: nowIso,
+                });
+                updateBmTaskStatus(row, "completed", body, {
+                    autoNote: `Bookkeeping snapshot email sent to ${toEmail}.`,
+                });
+                appendBmTaskHistory(rowId, {
+                    type: "client_email",
+                    title: "Client bookkeeping snapshot sent",
+                    detail: `Sent to ${toEmail}. Subject: ${subject}`,
+                    status: "completed",
+                    actor: bmTaskCurrentActorName(),
+                    stamp: nowIso,
+                });
                 resetTaskBookkeepingWorkflowPanel();
                 renderTaskSubpages();
-                openTaskApprovalsBouncebacksScreen();
-                showToast(
-                    normalisedDecision === "approve"
-                        ? "Workflow approved and task marked completed."
-                        : "Workflow bounced back and returned to query status.",
-                    "success"
-                );
+                openTaskCompletedScreen();
+                showToast("Client bookkeeping snapshot email sent and task completed.", "success");
             }
 
             async function taskBookkeepingEnsureMeReportClient(row = {}) {
@@ -121518,7 +121673,8 @@
                             actionIcon = "▶";
                         }
                     } else if (!isCompleted && workflowType === "bookkeeping") {
-                        if (["awaiting_approval", "awaiting_dean_approval"].includes(String(row?.status || "").trim().toLowerCase()) || workflowState === "submitted_for_review") {
+                        const taskStatus = String(row?.status || "").trim().toLowerCase();
+                        if (["awaiting_approval", "awaiting_dean_approval"].includes(taskStatus) || workflowState === "submitted_for_review") {
                             actionKind = "start_review";
                             actionLabel = "Start Review";
                             actionClass = "is-review-start";
@@ -121528,6 +121684,16 @@
                             actionKind = "complete";
                             actionLabel = "Complete";
                             actionIcon = "✓";
+                        } else if (workflowState === "approved_pending_client_email") {
+                            actionKind = "start_bookkeeping";
+                            actionLabel = "Send Snapshot";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
+                        } else if (workflowState === "bounceback" || taskStatus === "bounceback") {
+                            actionKind = "start_bookkeeping";
+                            actionLabel = "Continue";
+                            actionClass = "is-start";
+                            actionIcon = "▶";
                         } else if (workflowState === "draft_saved" || !!workflowDraftSavedAt) {
                             actionKind = "start_bookkeeping";
                             actionLabel = "Continue";
@@ -129063,6 +129229,10 @@
                 document.getElementById("taskBookkeepingWorkflowBouncebackButton")?.addEventListener("click", async () => {
                     const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                     await resolveTaskBookkeepingReviewDecision("bounceback", allRows);
+                });
+                document.getElementById("taskBookkeepingClientEmailSendButton")?.addEventListener("click", async () => {
+                    const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
+                    await sendTaskBookkeepingClientSnapshotEmail(allRows);
                 });
                 document.getElementById("taskBookkeepingWorkflowBackButton")?.addEventListener("click", () => {
                     const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
