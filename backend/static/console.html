@@ -36924,6 +36924,7 @@
                                     <div class="developer-log-tabs" role="tablist" aria-label="Developer log tabs">
                                         <button type="button" data-developer-log-tab="activity" aria-pressed="true">Activity Log</button>
                                         <button type="button" data-developer-log-tab="notifications" aria-pressed="false">Notification History</button>
+                                        <button type="button" data-developer-log-tab="register" aria-pressed="false">Register Build</button>
                                     </div>
                                     <div class="developer-log-filter">
                                         <label for="settingsDeveloperLogDateFilter">
@@ -36950,6 +36951,9 @@
                                 </div>
                                 <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperNotificationHistoryList" hidden>
                                     <div class="empty-state">Notification history will appear here as popups are shown.</div>
+                                </div>
+                                <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperRegisterList" hidden>
+                                    <div class="empty-state">Register build data will appear here after refresh.</div>
                                 </div>
                             </section>
 
@@ -45355,6 +45359,7 @@
                                     <div class="developer-log-tabs" role="tablist" aria-label="Developer log tabs">
                                         <button type="button" data-developer-log-tab="activity" aria-pressed="true">Activity Log</button>
                                         <button type="button" data-developer-log-tab="notifications" aria-pressed="false">Notification History</button>
+                                        <button type="button" data-developer-log-tab="register" aria-pressed="false">Register Build</button>
                                     </div>
                                     <div class="developer-log-filter">
                                         <label for="developerLogDateFilter">
@@ -45386,6 +45391,9 @@
                         </div>
                         <div class="developer-log-list" id="developerNotificationHistoryList" hidden>
                             <div class="empty-state">Notification history will appear here as popups are shown.</div>
+                        </div>
+                        <div class="developer-log-list" id="developerRegisterList" hidden>
+                            <div class="empty-state">Register build data will appear here after refresh.</div>
                         </div>
                     </div>
                 </section>
@@ -46331,6 +46339,7 @@
             let developerLogDateFilter = "";
             let developerLogModeFilter = activeSettingsSection === "developer-log" ? "system" : "all";
             let developerLogSeverityFilter = activeSettingsSection === "developer-log" ? "error" : "all";
+            let developerRegisterData = null;
             let securityUsersData = { summary: {}, users: [] };
             let securityAuditData = { events: [] };
             let securityOverviewData = { overview: {}, recentEvents: [] };
@@ -109710,10 +109719,192 @@
             }
 
             function setDeveloperLogTab(tab = "activity") {
-                const nextTab = tab === "notifications" ? "notifications" : "activity";
+                const nextTab = tab === "notifications" ? "notifications" : tab === "register" ? "register" : "activity";
                 if (developerLogTab === nextTab) return;
                 developerLogTab = nextTab;
                 renderDeveloperLogs();
+            }
+
+            function defaultDeveloperRegisterData() {
+                return {
+                    capturedAt: "",
+                    staffVisibility: "self",
+                    staffSummary: { activeUsers: 0, pendingInvites: 0, suspendedUsers: 0, ownerUsers: 0 },
+                    staff: [],
+                    performance: { days: 7, totalEvents: 0, latestEventAt: "", providers: [], slowEndpoints: [] }
+                };
+            }
+
+            function normaliseDeveloperRegisterData(payload) {
+                if (!payload || typeof payload !== "object") return defaultDeveloperRegisterData();
+                const summary = payload.staffSummary && typeof payload.staffSummary === "object" ? payload.staffSummary : {};
+                const performance = payload.performance && typeof payload.performance === "object" ? payload.performance : {};
+                return {
+                    capturedAt: String(payload.capturedAt || ""),
+                    staffVisibility: String(payload.staffVisibility || "self"),
+                    staffSummary: {
+                        activeUsers: Number(summary.activeUsers || 0),
+                        pendingInvites: Number(summary.pendingInvites || 0),
+                        suspendedUsers: Number(summary.suspendedUsers || 0),
+                        ownerUsers: Number(summary.ownerUsers || 0),
+                    },
+                    staff: Array.isArray(payload.staff) ? payload.staff : [],
+                    performance: {
+                        days: Number(performance.days || 7),
+                        totalEvents: Number(performance.totalEvents || 0),
+                        latestEventAt: String(performance.latestEventAt || ""),
+                        providers: Array.isArray(performance.providers) ? performance.providers : [],
+                        slowEndpoints: Array.isArray(performance.slowEndpoints) ? performance.slowEndpoints : [],
+                    },
+                };
+            }
+
+            function renderDeveloperRegisterList(list, data) {
+                list.innerHTML = "";
+                const register = normaliseDeveloperRegisterData(data);
+                const nav = performance.getEntriesByType("navigation")[0];
+                const browserLoadRows = [
+                    ["DOM interactive", nav ? `${Math.round(nav.domInteractive)}ms` : "--"],
+                    ["DOM complete", nav ? `${Math.round(nav.domComplete)}ms` : "--"],
+                    ["Load event end", nav ? `${Math.round(nav.loadEventEnd)}ms` : "--"],
+                ];
+                const apiDurations = combinedDeveloperLogEntries()
+                    .filter((entry) => String(entry?.eventType || "").toLowerCase().startsWith("api.completed"))
+                    .map((entry) => {
+                        const payload = entry?.payload && typeof entry.payload === "object" ? entry.payload : {};
+                        return {
+                            endpoint: String(payload.endpoint || payload.path || ""),
+                            durationMs: Number(payload.durationMs || 0),
+                        };
+                    })
+                    .filter((row) => row.durationMs > 0)
+                    .sort((a, b) => b.durationMs - a.durationMs)
+                    .slice(0, 8);
+
+                const summary = document.createElement("article");
+                summary.className = "developer-log-entry";
+                const summaryMeta = document.createElement("div");
+                summaryMeta.className = "developer-log-meta";
+                [formatDeveloperLogStamp(register.capturedAt), register.staffVisibility === "all" ? "All staff visibility" : "Self visibility"].forEach((value) => {
+                    if (!value) return;
+                    const span = document.createElement("span");
+                    span.textContent = value;
+                    summaryMeta.appendChild(span);
+                });
+                const summaryTitle = document.createElement("strong");
+                summaryTitle.textContent = "Register Build Snapshot";
+                const summaryBody = document.createElement("p");
+                summaryBody.textContent = `${register.staff.length.toLocaleString("en-GB")} staff records · ${register.performance.totalEvents.toLocaleString("en-GB")} API usage events over ${register.performance.days} day(s).`;
+                summary.append(summaryMeta, summaryTitle, summaryBody);
+                list.appendChild(summary);
+
+                const counts = document.createElement("article");
+                counts.className = "developer-log-entry";
+                const countsTitle = document.createElement("strong");
+                countsTitle.textContent = "Staff Coverage";
+                const countList = document.createElement("ul");
+                countList.className = "developer-log-highlights";
+                [
+                    `Active users: ${register.staffSummary.activeUsers.toLocaleString("en-GB")}`,
+                    `Pending invites: ${register.staffSummary.pendingInvites.toLocaleString("en-GB")}`,
+                    `Suspended users: ${register.staffSummary.suspendedUsers.toLocaleString("en-GB")}`,
+                    `Owner users: ${register.staffSummary.ownerUsers.toLocaleString("en-GB")}`,
+                ].forEach((row) => {
+                    const li = document.createElement("li");
+                    li.textContent = row;
+                    countList.appendChild(li);
+                });
+                counts.append(countsTitle, countList);
+                list.appendChild(counts);
+
+                const staffList = document.createElement("article");
+                staffList.className = "developer-log-entry";
+                const staffTitle = document.createElement("strong");
+                staffTitle.textContent = "Staff Register";
+                staffList.appendChild(staffTitle);
+                if (!register.staff.length) {
+                    const empty = document.createElement("p");
+                    empty.textContent = "No staff rows available for this session.";
+                    staffList.appendChild(empty);
+                } else {
+                    const highlights = document.createElement("ul");
+                    highlights.className = "developer-log-highlights";
+                    register.staff.slice(0, 80).forEach((staffRow) => {
+                        const li = document.createElement("li");
+                        const name = String(staffRow?.fullName || "").trim() || String(staffRow?.email || "User");
+                        const role = String(staffRow?.role || "staff");
+                        const status = String(staffRow?.status || "active");
+                        const sessions = Number(staffRow?.activeSessions || 0);
+                        li.textContent = `${name} · ${role} · ${status} · active sessions: ${sessions}`;
+                        highlights.appendChild(li);
+                    });
+                    staffList.appendChild(highlights);
+                }
+                list.appendChild(staffList);
+
+                const perf = document.createElement("article");
+                perf.className = "developer-log-entry";
+                const perfTitle = document.createElement("strong");
+                perfTitle.textContent = "Backend Load Diagnostics";
+                perf.appendChild(perfTitle);
+                const perfRows = document.createElement("ul");
+                perfRows.className = "developer-log-highlights";
+                register.performance.providers.forEach((providerRow) => {
+                    const provider = String(providerRow?.provider || "provider");
+                    const requests = Number(providerRow?.requests || 0).toLocaleString("en-GB");
+                    const latency = Number(providerRow?.avgLatencyMs || 0).toFixed(1);
+                    const errors = Number(providerRow?.errors || 0).toLocaleString("en-GB");
+                    const li = document.createElement("li");
+                    li.textContent = `${provider}: ${requests} requests · avg latency ${latency}ms · errors ${errors}`;
+                    perfRows.appendChild(li);
+                });
+                if (!perfRows.children.length) {
+                    const li = document.createElement("li");
+                    li.textContent = "No backend usage rows recorded yet.";
+                    perfRows.appendChild(li);
+                }
+                perf.appendChild(perfRows);
+                list.appendChild(perf);
+
+                const slow = document.createElement("article");
+                slow.className = "developer-log-entry";
+                const slowTitle = document.createElement("strong");
+                slowTitle.textContent = "Slow Endpoint Register";
+                slow.appendChild(slowTitle);
+                const slowRows = document.createElement("ul");
+                slowRows.className = "developer-log-highlights";
+                register.performance.slowEndpoints.slice(0, 12).forEach((row) => {
+                    const li = document.createElement("li");
+                    li.textContent = `${String(row?.provider || "api")} ${String(row?.endpoint || "--")} · ${Number(row?.avgLatencyMs || 0).toFixed(1)}ms avg · ${Number(row?.requests || 0).toLocaleString("en-GB")} requests`;
+                    slowRows.appendChild(li);
+                });
+                apiDurations.forEach((row) => {
+                    const li = document.createElement("li");
+                    li.textContent = `Browser activity ${row.endpoint || "--"} · ${Math.round(row.durationMs)}ms`;
+                    slowRows.appendChild(li);
+                });
+                if (!slowRows.children.length) {
+                    const li = document.createElement("li");
+                    li.textContent = "No slow endpoint timings captured yet.";
+                    slowRows.appendChild(li);
+                }
+                slow.appendChild(slowRows);
+                list.appendChild(slow);
+
+                const browser = document.createElement("article");
+                browser.className = "developer-log-entry";
+                const browserTitle = document.createElement("strong");
+                browserTitle.textContent = "Browser Load Timing";
+                browser.appendChild(browserTitle);
+                const browserRows = document.createElement("ul");
+                browserRows.className = "developer-log-highlights";
+                browserLoadRows.forEach(([label, value]) => {
+                    const li = document.createElement("li");
+                    li.textContent = `${label}: ${value}`;
+                    browserRows.appendChild(li);
+                });
+                browser.appendChild(browserRows);
+                list.appendChild(browser);
             }
 
             function renderDeveloperLogs(logs = developerLogEntries) {
@@ -109729,7 +109920,9 @@
                 const severityLabel = developerLogSeverityFilter === "error" ? " error" : developerLogSeverityFilter === "warning" ? " warning" : developerLogSeverityFilter === "info" ? " info" : "";
                 const summaryText = developerLogTab === "notifications"
                     ? `${visibleNotifications.length} notification entr${visibleNotifications.length === 1 ? "y" : "ies"}${suffix} · ${errorCount} error · ${warningCount} warning`
-                    : `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${errorCount} error · ${warningCount} warning`;
+                    : developerLogTab === "register"
+                        ? `Register build snapshot${suffix} · ${systemCount} system log entr${systemCount === 1 ? "y" : "ies"} · ${errorCount} error · ${warningCount} warning`
+                        : `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${errorCount} error · ${warningCount} warning`;
                 document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
                     summary.textContent = summaryText;
                 });
@@ -109740,6 +109933,10 @@
                 document.querySelectorAll("#developerNotificationHistoryList, #settingsDeveloperNotificationHistoryList").forEach((list) => {
                     list.hidden = developerLogTab !== "notifications";
                     renderNotificationHistoryList(list, visibleNotifications);
+                });
+                document.querySelectorAll("#developerRegisterList, #settingsDeveloperRegisterList").forEach((list) => {
+                    list.hidden = developerLogTab !== "register";
+                    renderDeveloperRegisterList(list, developerRegisterData);
                 });
                 syncDeveloperLogDateInputs();
                 syncDeveloperLogModeButtons();
@@ -109755,6 +109952,27 @@
                         entry.message || "",
                         entry.detail || ""
                     ]).filter(Boolean).join("\n")).join("\n\n---\n\n");
+                }
+                if (developerLogTab === "register") {
+                    const register = normaliseDeveloperRegisterData(developerRegisterData);
+                    const lines = [
+                        `[${formatDeveloperLogStamp(register.capturedAt)}] Register Build`,
+                        `Staff visibility: ${register.staffVisibility}`,
+                        `Staff rows: ${register.staff.length}`,
+                        `Active users: ${register.staffSummary.activeUsers}`,
+                        `Pending invites: ${register.staffSummary.pendingInvites}`,
+                        `Suspended users: ${register.staffSummary.suspendedUsers}`,
+                        `Owner users: ${register.staffSummary.ownerUsers}`,
+                        `Usage events (${register.performance.days}d): ${register.performance.totalEvents}`,
+                        `Latest usage event: ${register.performance.latestEventAt || "--"}`,
+                        "",
+                        "Staff register:",
+                        ...register.staff.map((row) => `${row.fullName || row.email || "User"} | ${row.role || "staff"} | ${row.status || "active"} | sessions ${Number(row.activeSessions || 0)}`),
+                        "",
+                        "Slow endpoints:",
+                        ...register.performance.slowEndpoints.map((row) => `${row.provider || "api"} ${row.endpoint || "--"} | ${Number(row.avgLatencyMs || 0).toFixed(1)}ms | ${Number(row.requests || 0)} req`),
+                    ];
+                    return lines.join("\n");
                 }
                 return developerLogVisibleEntries().map((entry) => {
                     const lines = [
@@ -109872,9 +110090,11 @@
                 });
                 try {
                     const payload = await requestJSON(api.endpoints.developerLogs);
+                    developerRegisterData = normaliseDeveloperRegisterData(payload?.register || null);
                     renderDeveloperLogs(mergeBrowserDeveloperLogs(Array.isArray(payload?.logs) ? payload.logs : []));
                 } catch (error) {
                     console.error("Unable to load developer log", error);
+                    developerRegisterData = defaultDeveloperRegisterData();
                     renderDeveloperLogs(mergeBrowserDeveloperLogs([{
                         level: "error",
                         eventType: "developer.log.load.failed",

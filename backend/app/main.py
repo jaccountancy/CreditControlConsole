@@ -1139,6 +1139,83 @@ def _security_users_payload() -> dict:
     }
 
 
+def _developer_register_payload(user: dict) -> dict:
+    role = _normalise_rbac_role(user)
+    can_view_full_staff = role in RBAC_OWNER_ADMIN_ROLES
+    staff_summary = {
+        "activeUsers": 0,
+        "pendingInvites": 0,
+        "suspendedUsers": 0,
+        "ownerUsers": 0,
+    }
+    staff_rows: list[dict] = []
+
+    if can_view_full_staff:
+        security_payload = _security_users_payload()
+        staff_summary = security_payload.get("summary") or staff_summary
+        for row in security_payload.get("users") or []:
+            staff_rows.append(
+                {
+                    "id": str(row.get("id") or ""),
+                    "email": str(row.get("email") or ""),
+                    "fullName": str(row.get("full_name") or ""),
+                    "role": str(row.get("role") or "staff"),
+                    "status": str(row.get("status") or "active"),
+                    "activeSessions": int(row.get("active_sessions") or 0),
+                    "pendingDeviceRequests": int(row.get("pending_device_requests") or 0),
+                    "lastLoginAt": row.get("last_login_at").isoformat() if row.get("last_login_at") else "",
+                    "lastSeenAt": row.get("last_seen_at").isoformat() if row.get("last_seen_at") else "",
+                }
+            )
+    else:
+        staff_rows = [
+            {
+                "id": str(user.get("id") or ""),
+                "email": str(user.get("email") or ""),
+                "fullName": str(user.get("full_name") or user.get("name") or ""),
+                "role": str(user.get("role") or "staff"),
+                "status": str(user.get("status") or "active"),
+                "activeSessions": 1,
+                "pendingDeviceRequests": 0,
+                "lastLoginAt": "",
+                "lastSeenAt": "",
+            }
+        ]
+        staff_summary["activeUsers"] = 1
+
+    usage_payload = usage_overview_payload(user, days=7)
+    top_endpoints = usage_payload.get("topEndpoints") if isinstance(usage_payload.get("topEndpoints"), list) else []
+    endpoint_rows = sorted(
+        [
+            {
+                "provider": str(row.get("provider") or ""),
+                "endpoint": str(row.get("endpoint") or ""),
+                "requests": int(row.get("requests") or 0),
+                "success": int(row.get("success") or 0),
+                "avgLatencyMs": float(row.get("avgLatencyMs") or 0),
+            }
+            for row in top_endpoints
+            if isinstance(row, dict)
+        ],
+        key=lambda row: row["avgLatencyMs"],
+        reverse=True,
+    )[:16]
+
+    return {
+        "capturedAt": datetime.now(timezone.utc).isoformat(),
+        "staffVisibility": "all" if can_view_full_staff else "self",
+        "staffSummary": staff_summary,
+        "staff": staff_rows,
+        "performance": {
+            "days": int((usage_payload.get("range") or {}).get("days") or 7),
+            "totalEvents": int((usage_payload.get("summary") or {}).get("totalEvents") or 0),
+            "latestEventAt": str((usage_payload.get("summary") or {}).get("latestEventAt") or ""),
+            "providers": (usage_payload.get("summary") or {}).get("providers") or [],
+            "slowEndpoints": endpoint_rows,
+        },
+    }
+
+
 def _security_audit_payload(limit: int = 120) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3117,7 +3194,11 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
 @app.get("/api/developer/logs")
 def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
     try:
-        return {"logs": list_developer_logs(user, limit), "runtime": runtime_diagnostics_payload()}
+        return {
+            "logs": list_developer_logs(user, limit),
+            "runtime": runtime_diagnostics_payload(),
+            "register": _developer_register_payload(user),
+        }
     except Exception as exc:
         logger.exception("Unable to load developer logs")
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -3136,6 +3217,13 @@ def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depen
                 }
             ],
             "runtime": runtime_diagnostics_payload(),
+            "register": {
+                "capturedAt": now_iso,
+                "staffVisibility": "self",
+                "staffSummary": {"activeUsers": 0, "pendingInvites": 0, "suspendedUsers": 0, "ownerUsers": 0},
+                "staff": [],
+                "performance": {"days": 7, "totalEvents": 0, "latestEventAt": "", "providers": [], "slowEndpoints": []},
+            },
         }
 
 
