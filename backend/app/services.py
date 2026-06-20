@@ -16107,6 +16107,13 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
         "message": "Connect Gmail to read submitted employee forms.",
         "needsReconnect": False,
         "gmailEmail": "",
+        "diagnostics": {
+            "messageIdsCollected": 0,
+            "messagesInspected": 0,
+            "subjectMatched": 0,
+            "withinWindow": 0,
+            "sampleSubjects": [],
+        },
     }
     connection_row = gmail_connection_for_user(user)
     if not connection_row:
@@ -16185,6 +16192,11 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
         message_ids: list[str] = []
         seen_ids: set[str] = set()
         first_error: HTTPException | None = None
+        diagnostics = response_meta.get("diagnostics") if isinstance(response_meta.get("diagnostics"), dict) else {}
+        sample_subjects: list[str] = []
+
+        def _diag_increment(field: str, amount: int = 1) -> None:
+            diagnostics[field] = int(diagnostics.get(field) or 0) + amount
         for query in query_candidates:
             list_response = await client.get(
                 GMAIL_MESSAGES_LIST_URL,
@@ -16253,6 +16265,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             )
         if not message_ids and first_error is not None:
             raise first_error
+        diagnostics["messageIdsCollected"] = len(message_ids)
 
         semaphore = asyncio.Semaphore(8)
 
@@ -16269,8 +16282,12 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             if not isinstance(payload, dict):
                 return None
             subject = _submitted_employee_forms_normalized_subject(_gmail_header_value(payload, "Subject"))
+            _diag_increment("messagesInspected", 1)
+            if subject and len(sample_subjects) < 20:
+                sample_subjects.append(subject[:180])
             if not _submitted_employee_forms_subject_matches(subject):
                 return None
+            _diag_increment("subjectMatched", 1)
             from_header = _gmail_header_value(payload, "From")
             from_name, from_email = _parse_email_contact(from_header)
             body_text = _gmail_message_body_text(payload)
@@ -16303,6 +16320,8 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             or row.get("receivedAt") >= minimum_received_at
         )
     ]
+    diagnostics["withinWindow"] = len(rows)
+    diagnostics["sampleSubjects"] = sample_subjects
     response_meta.update(
         {
             "status": "connected",
@@ -16311,6 +16330,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 f"Searched {len(message_ids)} recent message{'' if len(message_ids) == 1 else 's'}."
             ),
             "needsReconnect": False,
+            "diagnostics": diagnostics,
         }
     )
     return rows, response_meta

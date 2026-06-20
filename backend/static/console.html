@@ -46154,6 +46154,7 @@
             let submittedEmployeeFormsWizardStep = 1;
             let submittedEmployeeFormsSelectedRowIds = new Set();
             let submittedEmployeeFormsWindowStartIso = "";
+            let submittedEmployeeFormsLastSyncDiagnostics = null;
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -49421,6 +49422,13 @@
                     const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
                     if (mode === "fetch") {
                         const imported = Number(syncMeta.imported || 0);
+                        const gmailMeta = syncMeta?.gmail && typeof syncMeta.gmail === "object" ? syncMeta.gmail : {};
+                        if (submittedEmployeeFormsData?.gmail && gmailMeta?.message) {
+                            submittedEmployeeFormsData.gmail.message = String(gmailMeta.message || submittedEmployeeFormsData.gmail.message || "");
+                        }
+                        submittedEmployeeFormsLastSyncDiagnostics = gmailMeta?.diagnostics && typeof gmailMeta.diagnostics === "object"
+                            ? gmailMeta.diagnostics
+                            : null;
                         const gmailStatus = String((syncMeta?.gmail || {}).status || submittedEmployeeFormsData?.gmail?.status || "").trim().toLowerCase();
                         const canAdvance = imported > 0 && gmailStatus === "connected";
                         submittedEmployeeFormsWizardStep = canAdvance ? 2 : 1;
@@ -57299,7 +57307,17 @@
                     : `Step 2 of 2: Select email forms to process against connected Xero Payroll. ${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")} selected.`;
 
                 if (!rows.length) {
-                    tableBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run Step 1 to pull emails where the subject starts with New Employee Details:.</p></div></td></tr>';
+                    const diagnostics = submittedEmployeeFormsLastSyncDiagnostics && typeof submittedEmployeeFormsLastSyncDiagnostics === "object"
+                        ? submittedEmployeeFormsLastSyncDiagnostics
+                        : null;
+                    const diagnosticsHtml = diagnostics
+                        ? `<p><small>Diagnostics: scanned ${escapeHTML(String(diagnostics.messageIdsCollected || 0))} IDs · inspected ${escapeHTML(String(diagnostics.messagesInspected || 0))} messages · subject matched ${escapeHTML(String(diagnostics.subjectMatched || 0))} · within 4 weeks ${escapeHTML(String(diagnostics.withinWindow || 0))}.</small></p>${
+                            Array.isArray(diagnostics.sampleSubjects) && diagnostics.sampleSubjects.length
+                                ? `<p><small>Sample subjects: ${escapeHTML(diagnostics.sampleSubjects.slice(0, 5).join(" | "))}</small></p>`
+                                : ""
+                        }`
+                        : "";
+                    tableBody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run Step 1 to pull emails where the subject starts with New Employee Details:.</p>${diagnosticsHtml}</div></td></tr>`;
                     return;
                 }
 
