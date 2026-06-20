@@ -39567,6 +39567,9 @@
                                                 <h4>Engagement Letters</h4>
                                                 <p class="detail-meta" id="chRegisterClientPageEngagementLettersMeta">Accepted engagement letters synced from Ignition.</p>
                                             </div>
+                                            <div class="detail-actions">
+                                                <button class="ghost-button" type="button" id="chRegisterClientPageEngagementLettersFetchButton">Get engagement letters</button>
+                                            </div>
                                         </div>
                                         <div class="ch-client-engagement-layout">
                                             <div class="ch-client-engagement-list">
@@ -125403,7 +125406,13 @@
             function renderClientRegisterEngagementLettersPanel(payload = null) {
                 const summary = document.getElementById("chRegisterClientPageEngagementLettersMeta");
                 const body = document.getElementById("chRegisterClientPageEngagementLettersBody");
+                const fetchButton = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
                 if (!summary || !body) return;
+                if (fetchButton) {
+                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                    fetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
+                    fetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
+                }
 
                 if (!payload) {
                     summary.textContent = "Sync in progress: loading accepted engagement letters from Ignition year-by-year…";
@@ -125447,6 +125456,37 @@
                         `;
                     }).join("")
                     : '<tr><td colspan="6" class="ch-empty-state">No engagement letter history is available for this client.</td></tr>';
+            }
+
+            async function refreshClientRegisterEngagementLetters() {
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const rowId = String(pageState.rowId || "").trim();
+                if (!rowId) return;
+                if (!isIgnitionConnected()) {
+                    showToast("Connect Ignition before fetching engagement letters.", "info", {
+                        label: "Connect Ignition",
+                        onClick: openIgnitionConnection,
+                    });
+                    return;
+                }
+                const button = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = "Syncing Ignition...";
+                }
+                try {
+                    await runIgnitionSync();
+                    await refreshClientRegisterClientPage();
+                    setClientRegisterClientPageTab("engagement-letters");
+                    showToast("Engagement letters refreshed from Ignition.", "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to refresh engagement letters from Ignition.", "error");
+                } finally {
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = "Get engagement letters";
+                    }
+                }
             }
 
             function clientRegisterFindMetricByKeyHints(source, hints = [], options = {}, depth = 0) {
@@ -126664,6 +126704,10 @@
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId || pageState.loading) return;
+                const currentPayload = clientPagePayload() || {};
+                const currentRow = currentPayload.row || {};
+                const companyId = String(currentRow?.companyId || "").trim();
+                const companyNumber = String(currentRow?.companyNumber || "").trim();
                 companiesHouseSettings.authRegisterClientPage = {
                     ...pageState,
                     loading: true,
@@ -126671,6 +126715,17 @@
                 };
                 renderClientRegisterClientPage();
                 try {
+                    if (companyId || companyNumber) {
+                        await requestJSON("/api/companies-house/sync", {
+                            method: "POST",
+                            body: JSON.stringify({
+                                mode: "manual",
+                                limit: 1,
+                                companyIds: companyId ? [companyId] : [],
+                                companyNumbers: companyNumber ? [companyNumber] : [],
+                            }),
+                        });
+                    }
                     const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!latestState.open || String(latestState.rowId || "").trim() !== rowId) return;
@@ -126682,7 +126737,7 @@
                     };
                     renderClientRegisterClientPage();
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
-                    showToast("Companies House panel refreshed.", "success");
+                    showToast("Companies House data refreshed and saved.", "success");
                 } catch (error) {
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     companiesHouseSettings.authRegisterClientPage = {
@@ -128117,7 +128172,19 @@
                         clientFilter: clientKey,
                     });
                 });
-                document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", openClientRegisterJukInvoiceLookupModal);
+                const handleClientRegisterJukFetchClick = (event) => {
+                    event?.preventDefault?.();
+                    void openClientRegisterJukInvoiceLookupModal(event);
+                };
+                document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", handleClientRegisterJukFetchClick);
+                if (!window.__chRegisterClientPageJukFetchDelegated) {
+                    window.__chRegisterClientPageJukFetchDelegated = true;
+                    document.addEventListener("click", (event) => {
+                        const button = event?.target?.closest?.("#chRegisterClientPageJukFetchButton");
+                        if (!button) return;
+                        handleClientRegisterJukFetchClick(event);
+                    });
+                }
                 document.getElementById("chRegisterClientPageJukInvoicesBody")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-juk-copy]");
                     if (!button) return;
@@ -128136,6 +128203,10 @@
                     const selected = letters.find((item) => item.proposalExternalId === letterId) || null;
                     if (!selected) return;
                     openClientRegisterEngagementLetterModal(selected);
+                });
+                document.getElementById("chRegisterClientPageEngagementLettersFetchButton")?.addEventListener("click", (event) => {
+                    event?.preventDefault?.();
+                    void refreshClientRegisterEngagementLetters();
                 });
                 document.getElementById("chRegisterClientPageEngagementLetterModalCloseButton")?.addEventListener("click", closeClientRegisterEngagementLetterModal);
                 document.getElementById("chRegisterClientPageEngagementLetterModal")?.addEventListener("click", (event) => {

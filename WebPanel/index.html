@@ -110,6 +110,7 @@
                         <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
                         <div class="status-badge" id="clientXeroStatusBadge">Connected to Xero: No</div>
                         <div class="status-badge" id="clientIgnitionStatusBadge">Connected to Ignition: No</div>
+                        <div class="status-badge" id="clientVatGatewayStatusBadge">VAT Gateway linked: No</div>
                     </div>
                     <button class="primary-button save-client-button" id="saveClientChangesButton" type="button" hidden>Save Changes</button>
                     <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
@@ -266,14 +267,17 @@
         </section>
 
         <section class="settings-screen detail-card" id="settingsScreen" hidden>
-            <div class="detail-hero">
-                <div>
-                    <button class="text-button" id="backToLedgerFromSettingsButton" type="button">Back to ledger</button>
-                    <p class="eyebrow">Settings</p>
-                    <h2>Client Matching</h2>
-                    <p class="detail-meta">Map each client register record to Xero and Ignition so statuses are accurate across the workspace.</p>
+                <div class="detail-hero">
+                    <div>
+                        <button class="text-button" id="backToLedgerFromSettingsButton" type="button">Back to ledger</button>
+                        <p class="eyebrow">Settings</p>
+                        <h2>Client Matching</h2>
+                        <p class="detail-meta">Map each client register record to Xero and Ignition so statuses are accurate across the workspace.</p>
+                    </div>
+                    <div class="detail-actions">
+                        <button class="ghost-button" id="openHmrcSettingsButton" type="button">HMRC Settings</button>
+                    </div>
                 </div>
-            </div>
 
             <section class="detail-panel settings-matching-panel">
                 <div class="panel-heading settings-matching-head">
@@ -293,11 +297,189 @@
                                 <th>Client</th>
                                 <th>Xero</th>
                                 <th>Ignition</th>
+                                <th>VAT MTD</th>
                                 <th>Mapped IDs</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody id="matchingTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+
+        <section class="hmrc-settings-screen detail-card" id="hmrcSettingsScreen" hidden>
+            <div class="detail-hero">
+                <div>
+                    <button class="text-button" id="backToSettingsFromHmrcButton" type="button">Back to settings</button>
+                    <p class="eyebrow">Connection settings</p>
+                    <h2>HMRC Settings</h2>
+                    <p class="detail-meta">Run the guided setup once: set Gateway ID, authenticate HMRC agent access, then sync VAT MTD details back into Jenius.</p>
+                </div>
+            </div>
+
+            <section class="detail-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Wizard</p>
+                        <h3>HMRC agent onboarding</h3>
+                    </div>
+                </div>
+                <div class="client-profile-layout">
+                    <div class="client-profile-fields">
+                        <label class="profile-field">Step 0. Agent Services Account (ASA)
+                            <input id="hmrcAsaInput" type="text" placeholder="ASA identifier">
+                        </label>
+                        <label class="profile-field">Step 0. Agent Reference Number (ARN)
+                            <input id="hmrcArnInput" type="text" placeholder="ARN">
+                        </label>
+                        <label class="profile-field">Step 0. HMRC app client ID
+                            <input id="hmrcAppClientIdInput" type="text" placeholder="HMRC developer app client ID">
+                        </label>
+                        <label class="profile-field">Step 0. HMRC app client secret
+                            <input id="hmrcAppClientSecretInput" type="password" placeholder="HMRC developer app secret">
+                        </label>
+                        <label class="profile-field">Step 1. Gateway client ID
+                            <input id="hmrcGatewayClientIdInput" type="text" placeholder="Enter HMRC gateway client ID">
+                        </label>
+                        <label class="profile-field">Step 1. VAT Registration Number (VRN)
+                            <input id="hmrcVrnInput" type="text" maxlength="9" placeholder="9 digit VRN">
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="ghost-button" id="saveHmrcGatewayClientIdButton" type="button">Save Gateway ID</button>
+                        </div>
+                        <label class="profile-field">Step 2. HMRC account connection status
+                            <input id="hmrcOauthStatusText" type="text" value="Checking..." readonly>
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="primary-button" id="connectHmrcButton" type="button">Connect HMRC Account</button>
+                            <button class="ghost-button" id="disconnectHmrcButton" type="button">Disconnect HMRC</button>
+                        </div>
+                        <label class="profile-field">Step 3. Pull VAT gateway details
+                            <input id="hmrcGatewayPullStatusText" type="text" value="No data pulled yet." readonly>
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="primary-button" id="pullHmrcGatewayDetailsButton" type="button">Pull VAT Details</button>
+                        </div>
+                        <label class="profile-field">Step 4. Digital handshake status
+                            <input id="hmrcHandshakeStatusText" type="text" value="No handshake started." readonly>
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="primary-button" id="startHmrcHandshakeButton" type="button">Generate Client Authorisation Link</button>
+                            <button class="ghost-button" id="checkHmrcHandshakeButton" type="button">Check Authorisation Status</button>
+                        </div>
+                        <label class="profile-field">Client authorisation link
+                            <input id="hmrcClientAuthorisationUrlInput" type="text" value="" readonly placeholder="Generated link appears here">
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="ghost-button" id="openHmrcClientAuthorisationLinkButton" type="button">Open Client Authorisation Link</button>
+                        </div>
+                        <label class="profile-field">Step 6. VAT MTD API data pull
+                            <textarea id="hmrcVatDataOutput" rows="8" readonly placeholder="Obligations, returns, liabilities and payments will appear here."></textarea>
+                        </label>
+                        <div class="confirmation-actions">
+                            <button class="primary-button" id="fetchHmrcVatDataButton" type="button">Fetch VAT MTD Data</button>
+                        </div>
+                    </div>
+                    <aside class="group-structure-panel">
+                        <div class="group-header">
+                            <p class="eyebrow">Gateway record</p>
+                            <strong id="hmrcGatewayRecordMeta">No HMRC record linked yet</strong>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Client</p>
+                            <div class="people-stack" id="hmrcGatewayClientName">--</div>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Status</p>
+                            <div class="people-stack" id="hmrcGatewayClientStatus">--</div>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Submission reference</p>
+                            <div class="people-stack" id="hmrcGatewaySubmissionRef">--</div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
+            <section class="detail-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">64-8 authorisation letters</p>
+                        <h3>CT / SA / PAYE wizard</h3>
+                    </div>
+                </div>
+                <div class="client-profile-layout">
+                    <div class="client-profile-fields">
+                        <label class="profile-field">Client name
+                            <input id="hmrc64ClientNameInput" type="text" placeholder="Client legal name">
+                        </label>
+                        <label class="profile-field">Client ID
+                            <input id="hmrc64ClientIdInput" type="text" placeholder="Internal/Gateway client ID">
+                        </label>
+                        <label class="profile-field">Postcode (needed for SA/CT)
+                            <input id="hmrc64PostcodeInput" type="text" placeholder="e.g. NE1 1AA">
+                        </label>
+                        <label class="profile-field">SA UTR
+                            <input id="hmrc64SaUtrInput" type="text" placeholder="10-digit SA UTR">
+                        </label>
+                        <label class="profile-field">CT UTR
+                            <input id="hmrc64CtUtrInput" type="text" placeholder="10-digit CT UTR">
+                        </label>
+                        <label class="profile-field">PAYE tax office number
+                            <input id="hmrc64TaxOfficeNumberInput" type="text" placeholder="e.g. 123">
+                        </label>
+                        <label class="profile-field">PAYE tax office reference
+                            <input id="hmrc64TaxOfficeReferenceInput" type="text" placeholder="e.g. AB12345">
+                        </label>
+                        <label class="profile-field">PAYE accounts office reference
+                            <input id="hmrc64AccountsOfficeReferenceInput" type="text" placeholder="e.g. 123PA12345678">
+                        </label>
+                        <div class="confirmation-actions">
+                            <label><input id="hmrc64IncludeSa" type="checkbox"> SA</label>
+                            <label><input id="hmrc64IncludeCt" type="checkbox"> CT</label>
+                            <label><input id="hmrc64IncludePaye" type="checkbox"> PAYE</label>
+                        </div>
+                        <div class="confirmation-actions">
+                            <button class="primary-button" id="sendHmrc64AuthorisationButton" type="button">Send 64-8 Authorisation</button>
+                            <button class="ghost-button" id="refreshHmrc64TrackerButton" type="button">Refresh Tracker</button>
+                        </div>
+                        <label class="profile-field">Wizard status
+                            <input id="hmrc64WizardStatusText" type="text" value="Ready" readonly>
+                        </label>
+                    </div>
+                    <aside class="group-structure-panel">
+                        <div class="group-header">
+                            <p class="eyebrow">Tracker</p>
+                            <strong id="hmrc64TrackerMeta">No requests loaded</strong>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Awaiting code</p>
+                            <div class="people-stack" id="hmrc64AwaitingCodeCount">0</div>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Authorised</p>
+                            <div class="people-stack" id="hmrc64AuthorisedCount">0</div>
+                        </div>
+                        <div class="group-bucket">
+                            <p>Total requests</p>
+                            <div class="people-stack" id="hmrc64TotalCount">0</div>
+                        </div>
+                    </aside>
+                </div>
+                <div class="confirmation-table-wrap">
+                    <table class="confirmation-table">
+                        <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Services</th>
+                                <th>Status</th>
+                                <th>Submitted</th>
+                                <th>Expected code by</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hmrc64TrackerTableBody"></tbody>
                     </table>
                 </div>
             </section>

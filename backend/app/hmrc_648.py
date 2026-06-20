@@ -38,6 +38,7 @@ PAYE_TAX_OFFICE_REFERENCE_RE = re.compile(r"^[A-Za-z0-9]{1,10}$")
 AO_REFERENCE_RE = re.compile(r"^[A-Za-z0-9]{1,13}$")
 POSTCODE_RE = re.compile(r"^[A-Za-z]{1,2}\d[A-Za-z\d]?\s?\d[A-Za-z]{2}$", re.IGNORECASE)
 XML_ALLOWED_CHARS_RE = re.compile(r"^[A-Za-z0-9 &'()*,\-\./%!+:;=?@\[\]\^_{}~]*$")
+VRN_RE = re.compile(r"^\d{9}$")
 
 
 def _text(value, limit: int = 3000) -> str:
@@ -797,6 +798,542 @@ def hmrc_mtd_oauth_disconnect(user: dict) -> dict:
             cursor.execute("DELETE FROM hmrc_mtd_connections WHERE user_id = %s", (user["id"],))
         connection.commit()
     return hmrc_mtd_oauth_status(user)
+
+
+def _normalise_vrn(value) -> str:
+    vrn = _text(value, 30).replace(" ", "")
+    if not VRN_RE.match(vrn):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="VRN must be exactly 9 digits.")
+    return vrn
+
+
+def _hmrc_mtd_api_base_url() -> str:
+    return _text(os.getenv("HMRC_MTD_API_BASE_URL"), 2000) or "https://test-api.service.hmrc.gov.uk"
+
+
+def _hmrc_mtd_api_request(
+    user: dict,
+    *,
+    method: str,
+    path_or_url: str,
+    params: dict | None = None,
+    json_body: dict | None = None,
+) -> dict:
+    access_token = _hmrc_mtd_access_token(user["id"])
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        url = path_or_url
+    else:
+        url = f"{_hmrc_mtd_api_base_url().rstrip('/')}/{path_or_url.lstrip('/')}"
+    response = httpx.request(
+        method=method.upper(),
+        url=url,
+        params=params or None,
+        json=json_body,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        detail = _text(response.text, 1200)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"HMRC API request failed ({response.status_code}): {detail}")
+    if not response.content:
+        return {}
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {}
+
+
+def _normalise_authorisation_status(value: str | None) -> str:
+    candidate = _text(value, 80).lower()
+    if candidate in {"authorised", "authorized", "accepted", "active", "approved"}:
+        return "authorised"
+    if candidate in {"expired"}:
+        return "expired"
+    if candidate in {"cancelled", "canceled"}:
+        return "cancelled"
+    if candidate in {"rejected", "declined", "refused"}:
+        return "rejected"
+    if candidate in {"pending", "awaiting", "waiting"}:
+        return "pending"
+    return candidate or "pending"
+
+
+def _extract_authorisation_link(payload: dict) -> str:
+    for key in ("authorisationUrl", "authorizationUrl", "acceptUrl", "url", "clientAuthorisationUrl", "clientAuthorisationLink"):
+        value = _text(payload.get(key), 4000)
+        if value.startswith("http://") or value.startswith("https://"):
+            return value
+    links = payload.get("_links")
+    if isinstance(links, dict):
+        for key in ("client", "self", "accept"):
+            entry = links.get(key)
+            if isinstance(entry, dict):
+                href = _text(entry.get("href"), 4000)
+                if href.startswith("http://") or href.startswith("https://"):
+                    return href
+    return ""
+
+
+def _extract_invitation_id(payload: dict) -> str:
+    for key in ("invitationId", "authorisationId", "authorizationId", "id", "reference"):
+        value = _text(payload.get(key), 240)
+        if value:
+            return value
+    return ""
+
+
+def _extract_authorisation_status(payload: dict) -> str:
+    for key in ("status", "authorisationStatus", "authorizationStatus", "state"):
+        value = _text(payload.get(key), 120)
+        if value:
+            return _normalise_authorisation_status(value)
+    return "pending"
+
+
+def _extract_accepted_at(payload: dict) -> datetime | None:
+    for key in ("acceptedAt", "authorisedAt", "authorizedAt", "updatedAt"):
+        value = payload.get(key)
+        parsed = _parse_datetime_or_none(value) if value not in (None, "") else None
+        if parsed:
+            return parsed
+    return None
+
+
+def _extract_expires_at(payload: dict) -> datetime | None:
+    for key in ("expiresAt", "expiryDate", "expirationDate"):
+        value = payload.get(key)
+        parsed = _parse_datetime_or_none(value) if value not in (None, "") else None
+        if parsed:
+            return parsed
+    return None
+
+
+def _serialise_vat_authorisation(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "gatewayClientId": row.get("gateway_client_id") or "",
+        "vrn": row.get("vrn") or "",
+        "agentReferenceNumber": row.get("agent_reference_number") or "",
+        "service": row.get("service") or "mtd-vat",
+        "invitationId": row.get("invitation_id") or "",
+        "authorisationUrl": row.get("authorisation_url") or "",
+        "status": row.get("status") or "pending",
+        "statusDetail": row.get("status_detail") or "",
+        "requestedAt": row.get("requested_at").isoformat() if row.get("requested_at") else "",
+        "acceptedAt": row.get("accepted_at").isoformat() if row.get("accepted_at") else "",
+        "expiresAt": row.get("expires_at").isoformat() if row.get("expires_at") else "",
+        "lastCheckedAt": row.get("last_checked_at").isoformat() if row.get("last_checked_at") else "",
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
+    }
+
+
+def _load_vat_authorisation(user_id: str, gateway_client_id: str, vrn: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM hmrc_mtd_vat_authorisations
+                WHERE user_id = %s
+                  AND gateway_client_id = %s
+                  AND vrn = %s
+                LIMIT 1
+                """,
+                (user_id, gateway_client_id, vrn),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No VAT authorisation record found for this gateway client and VRN.")
+    return row
+
+
+def _upsert_vat_authorisation(
+    user_id: str,
+    gateway_client_id: str,
+    vrn: str,
+    arn: str,
+    invitation_id: str,
+    authorisation_url: str,
+    status_value: str,
+    status_detail: str,
+    requested_at: datetime | None,
+    accepted_at: datetime | None,
+    expires_at: datetime | None,
+    raw_request: dict,
+    raw_status: dict,
+) -> dict:
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO hmrc_mtd_vat_authorisations (
+                    user_id,
+                    gateway_client_id,
+                    vrn,
+                    agent_reference_number,
+                    service,
+                    invitation_id,
+                    authorisation_url,
+                    status,
+                    status_detail,
+                    requested_at,
+                    accepted_at,
+                    expires_at,
+                    last_checked_at,
+                    raw_request,
+                    raw_status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    %s, %s, %s, %s, 'mtd-vat', %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s
+                )
+                ON CONFLICT (user_id, gateway_client_id, vrn)
+                DO UPDATE SET
+                    agent_reference_number = EXCLUDED.agent_reference_number,
+                    invitation_id = COALESCE(NULLIF(EXCLUDED.invitation_id, ''), hmrc_mtd_vat_authorisations.invitation_id),
+                    authorisation_url = COALESCE(NULLIF(EXCLUDED.authorisation_url, ''), hmrc_mtd_vat_authorisations.authorisation_url),
+                    status = EXCLUDED.status,
+                    status_detail = EXCLUDED.status_detail,
+                    requested_at = COALESCE(EXCLUDED.requested_at, hmrc_mtd_vat_authorisations.requested_at),
+                    accepted_at = COALESCE(EXCLUDED.accepted_at, hmrc_mtd_vat_authorisations.accepted_at),
+                    expires_at = COALESCE(EXCLUDED.expires_at, hmrc_mtd_vat_authorisations.expires_at),
+                    last_checked_at = EXCLUDED.last_checked_at,
+                    raw_request = COALESCE(EXCLUDED.raw_request, hmrc_mtd_vat_authorisations.raw_request),
+                    raw_status = COALESCE(EXCLUDED.raw_status, hmrc_mtd_vat_authorisations.raw_status),
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    user_id,
+                    gateway_client_id,
+                    vrn,
+                    arn,
+                    invitation_id,
+                    authorisation_url,
+                    status_value,
+                    status_detail,
+                    requested_at,
+                    accepted_at,
+                    expires_at,
+                    now,
+                    json.dumps(raw_request or {}),
+                    json.dumps(raw_status or {}),
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def hmrc_mtd_start_vat_authorisation(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    if not gateway_client_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gateway client ID is required.")
+    vrn = _normalise_vrn(payload.get("vrn"))
+    arn = _text(payload.get("agentReferenceNumber"), 120) or _text(os.getenv("HMRC_AGENT_REFERENCE_NUMBER"), 120)
+    if not arn:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agent Reference Number (ARN) is required.")
+    invitation_url = _text(os.getenv("HMRC_MTD_AGENT_AUTHORISATION_URL"), 2000)
+    if invitation_url:
+        invitation_url = invitation_url.replace("{arn}", arn).replace("{vrn}", vrn)
+    request_payload = {
+        "service": "MTD-VAT",
+        "gatewayClientId": gateway_client_id,
+        "vrn": vrn,
+        "agentReferenceNumber": arn,
+    }
+    if invitation_url:
+        remote = _hmrc_mtd_api_request(user, method="POST", path_or_url=invitation_url, json_body=request_payload)
+        auth_url = _extract_authorisation_link(remote)
+        invitation_id = _extract_invitation_id(remote) or uuid4().hex
+        status_value = _extract_authorisation_status(remote)
+        status_detail = _text(remote.get("message"), 800)
+        expires_at = _extract_expires_at(remote)
+        record = _upsert_vat_authorisation(
+            user_id=user["id"],
+            gateway_client_id=gateway_client_id,
+            vrn=vrn,
+            arn=arn,
+            invitation_id=invitation_id,
+            authorisation_url=auth_url,
+            status_value=status_value,
+            status_detail=status_detail,
+            requested_at=utcnow(),
+            accepted_at=_extract_accepted_at(remote),
+            expires_at=expires_at,
+            raw_request=request_payload,
+            raw_status=remote,
+        )
+        return {"authorisation": _serialise_vat_authorisation(record), "handshake": {"authorisationUrl": auth_url}}
+    fallback_url = f"https://www.tax.service.gov.uk/vat-through-software/sign-up/client/{gateway_client_id}"
+    record = _upsert_vat_authorisation(
+        user_id=user["id"],
+        gateway_client_id=gateway_client_id,
+        vrn=vrn,
+        arn=arn,
+        invitation_id=f"LOCAL-{uuid4().hex[:12].upper()}",
+        authorisation_url=fallback_url,
+        status_value="pending",
+        status_detail="HMRC_MTD_AGENT_AUTHORISATION_URL is not configured; fallback authorisation link generated locally.",
+        requested_at=utcnow(),
+        accepted_at=None,
+        expires_at=utcnow() + timedelta(days=30),
+        raw_request=request_payload,
+        raw_status={},
+    )
+    return {"authorisation": _serialise_vat_authorisation(record), "handshake": {"authorisationUrl": fallback_url}}
+
+
+def hmrc_mtd_check_vat_authorisation(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    row = _load_vat_authorisation(user["id"], gateway_client_id, vrn)
+    invitation_id = _text(payload.get("invitationId"), 240) or _text(row.get("invitation_id"), 240)
+    status_url = _text(os.getenv("HMRC_MTD_AGENT_AUTHORISATION_STATUS_URL"), 2000)
+    remote = {}
+    status_value = _normalise_authorisation_status(_text(row.get("status"), 80))
+    status_detail = _text(row.get("status_detail"), 800)
+    accepted_at = row.get("accepted_at")
+    expires_at = row.get("expires_at")
+    if status_url and invitation_id:
+        status_url = status_url.replace("{arn}", _text(row.get("agent_reference_number"), 120)).replace("{vrn}", vrn).replace("{invitationId}", invitation_id)
+        remote = _hmrc_mtd_api_request(user, method="GET", path_or_url=status_url)
+        status_value = _extract_authorisation_status(remote)
+        status_detail = _text(remote.get("message") or remote.get("reason"), 800)
+        accepted_at = _extract_accepted_at(remote) or accepted_at
+        expires_at = _extract_expires_at(remote) or expires_at
+    elif status_value in {"pending", "awaiting"}:
+        status_detail = status_detail or "Status endpoint not configured; using last known local status."
+    record = _upsert_vat_authorisation(
+        user_id=user["id"],
+        gateway_client_id=gateway_client_id,
+        vrn=vrn,
+        arn=_text(row.get("agent_reference_number"), 120),
+        invitation_id=invitation_id,
+        authorisation_url=_text(row.get("authorisation_url"), 4000),
+        status_value=status_value,
+        status_detail=status_detail,
+        requested_at=row.get("requested_at"),
+        accepted_at=accepted_at,
+        expires_at=expires_at,
+        raw_request=row.get("raw_request") if isinstance(row.get("raw_request"), dict) else {},
+        raw_status=remote or (row.get("raw_status") if isinstance(row.get("raw_status"), dict) else {}),
+    )
+    return {"authorisation": _serialise_vat_authorisation(record)}
+
+
+def _require_vat_authorised(user: dict, gateway_client_id: str, vrn: str) -> dict:
+    row = _load_vat_authorisation(user["id"], gateway_client_id, vrn)
+    status_value = _normalise_authorisation_status(_text(row.get("status"), 80))
+    if status_value != "authorised":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="VAT MTD authorisation is not active for this client.")
+    return row
+
+
+def hmrc_vat_obligations(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    _require_vat_authorised(user, gateway_client_id, vrn)
+    params = {
+        "from": _text(payload.get("from"), 40),
+        "to": _text(payload.get("to"), 40),
+        "status": _text(payload.get("status"), 20) or "O",
+    }
+    cleaned = {key: value for key, value in params.items() if value}
+    remote = _hmrc_mtd_api_request(
+        user,
+        method="GET",
+        path_or_url=f"/organisations/vat/{vrn}/obligations",
+        params=cleaned,
+    )
+    return {"gatewayClientId": gateway_client_id, "vrn": vrn, "obligations": remote.get("obligations") if isinstance(remote.get("obligations"), list) else []}
+
+
+def hmrc_vat_returns(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    period_key = _text(payload.get("periodKey"), 40)
+    if not period_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="periodKey is required.")
+    _require_vat_authorised(user, gateway_client_id, vrn)
+    remote = _hmrc_mtd_api_request(
+        user,
+        method="GET",
+        path_or_url=f"/organisations/vat/{vrn}/returns/{period_key}",
+    )
+    return {"gatewayClientId": gateway_client_id, "vrn": vrn, "periodKey": period_key, "return": remote}
+
+
+def hmrc_vat_liabilities(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    _require_vat_authorised(user, gateway_client_id, vrn)
+    params = {
+        "from": _text(payload.get("from"), 40),
+        "to": _text(payload.get("to"), 40),
+    }
+    cleaned = {key: value for key, value in params.items() if value}
+    remote = _hmrc_mtd_api_request(
+        user,
+        method="GET",
+        path_or_url=f"/organisations/vat/{vrn}/liabilities",
+        params=cleaned,
+    )
+    return {"gatewayClientId": gateway_client_id, "vrn": vrn, "liabilities": remote.get("liabilities") if isinstance(remote.get("liabilities"), list) else []}
+
+
+def hmrc_vat_payments(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    _require_vat_authorised(user, gateway_client_id, vrn)
+    params = {
+        "from": _text(payload.get("from"), 40),
+        "to": _text(payload.get("to"), 40),
+    }
+    cleaned = {key: value for key, value in params.items() if value}
+    remote = _hmrc_mtd_api_request(
+        user,
+        method="GET",
+        path_or_url=f"/organisations/vat/{vrn}/payments",
+        params=cleaned,
+    )
+    return {"gatewayClientId": gateway_client_id, "vrn": vrn, "payments": remote.get("payments") if isinstance(remote.get("payments"), list) else []}
+
+
+def hmrc_vat_submit_return(user: dict, payload: dict) -> dict:
+    gateway_client_id = _text(payload.get("gatewayClientId"), 120)
+    vrn = _normalise_vrn(payload.get("vrn"))
+    vat_return = payload.get("return")
+    if not isinstance(vat_return, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="return payload is required.")
+    _require_vat_authorised(user, gateway_client_id, vrn)
+    remote = _hmrc_mtd_api_request(
+        user,
+        method="POST",
+        path_or_url=f"/organisations/vat/{vrn}/returns",
+        json_body=vat_return,
+    )
+    return {"gatewayClientId": gateway_client_id, "vrn": vrn, "submission": remote}
+
+
+def _serialise_vat_gateway_record(row: dict) -> dict:
+    status_value = _text(row.get("status"), 40).lower() or "draft"
+    return {
+        "gatewayClientId": row.get("client_id") or "",
+        "clientName": row.get("client_name") or "",
+        "clientManager": row.get("client_manager") or "",
+        "clientContactName": row.get("client_contact_name") or "",
+        "clientContactEmail": row.get("client_contact_email") or "",
+        "clientContactPhone": row.get("client_contact_phone") or "",
+        "postalAddress": row.get("postal_address") or "",
+        "postcode": row.get("postcode") or "",
+        "status": status_value,
+        "hmrcSubmissionReference": row.get("hmrc_submission_reference") or "",
+        "expectedCodeBy": row.get("expected_code_by").isoformat() if row.get("expected_code_by") else "",
+        "submittedAt": row.get("submitted_at").isoformat() if row.get("submitted_at") else "",
+        "authorityCodeReceivedAt": row.get("authority_code_received_at").isoformat() if row.get("authority_code_received_at") else "",
+        "authorityActivatedAt": row.get("authority_activated_at").isoformat() if row.get("authority_activated_at") else "",
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
+        "vatMtdLinked": bool(row.get("include_vat_mtd")),
+        "vatMtdAuthorised": status_value == "authorised",
+    }
+
+
+def hmrc_vat_gateway_clients(user: dict, search: str = "", limit: int = 50) -> list[dict]:
+    search_value = _text(search, 200).lower()
+    limit_value = max(1, min(int(limit or 50), 200))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ON (client_id)
+                    client_id,
+                    client_name,
+                    client_manager,
+                    client_contact_name,
+                    client_contact_email,
+                    client_contact_phone,
+                    postal_address,
+                    postcode,
+                    status,
+                    hmrc_submission_reference,
+                    expected_code_by,
+                    submitted_at,
+                    authority_code_received_at,
+                    authority_activated_at,
+                    include_vat_mtd,
+                    updated_at
+                FROM hmrc_64_8_requests
+                WHERE created_by_user_id = %s
+                  AND include_vat_mtd = TRUE
+                  AND client_id <> ''
+                  AND (
+                    %s = ''
+                    OR LOWER(client_id) LIKE %s
+                    OR LOWER(client_name) LIKE %s
+                  )
+                ORDER BY client_id, updated_at DESC
+                LIMIT %s
+                """,
+                (
+                    user["id"],
+                    search_value,
+                    f"%{search_value}%",
+                    f"%{search_value}%",
+                    limit_value,
+                ),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return [_serialise_vat_gateway_record(row) for row in rows]
+
+
+def hmrc_vat_gateway_client_detail(user: dict, gateway_client_id: str) -> dict:
+    client_id = _text(gateway_client_id, 120)
+    if not client_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gateway client ID is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    client_id,
+                    client_name,
+                    client_manager,
+                    client_contact_name,
+                    client_contact_email,
+                    client_contact_phone,
+                    postal_address,
+                    postcode,
+                    status,
+                    hmrc_submission_reference,
+                    expected_code_by,
+                    submitted_at,
+                    authority_code_received_at,
+                    authority_activated_at,
+                    include_vat_mtd,
+                    updated_at
+                FROM hmrc_64_8_requests
+                WHERE created_by_user_id = %s
+                  AND include_vat_mtd = TRUE
+                  AND client_id = %s
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user["id"], client_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No VAT gateway record found for this client ID.")
+    return _serialise_vat_gateway_record(row)
 
 
 def hmrc_64_8_payload(user: dict) -> dict:

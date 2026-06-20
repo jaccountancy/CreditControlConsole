@@ -36,6 +36,17 @@ class _DummyResponse:
 
 @unittest.skipIf(hmrc648 is None, f"HMRC 64-8 tests skipped: {_HMRC_TEST_IMPORT_ERROR}")
 class Hmrc648Tests(unittest.TestCase):
+    def test_normalise_vrn_accepts_nine_digits(self):
+        self.assertEqual(hmrc648._normalise_vrn("123456789"), "123456789")
+
+    def test_normalise_vrn_rejects_invalid_value(self):
+        with self.assertRaises(HTTPException):
+            hmrc648._normalise_vrn("ABC123")
+
+    def test_extract_authorisation_link_supports_hmrc_links_object(self):
+        payload = {"_links": {"client": {"href": "https://example.test/authorise"}}}
+        self.assertEqual(hmrc648._extract_authorisation_link(payload), "https://example.test/authorise")
+
     def test_service_flags_requires_any_service(self):
         with self.assertRaises(HTTPException):
             hmrc648._service_flags_from_payload({})
@@ -276,6 +287,95 @@ class Hmrc648Tests(unittest.TestCase):
                     )
         self.assertIn("UPDATE hmrc_64_8_requests", fake_cursor.query)
         self.assertEqual(fake_cursor.query.count("%s"), len(fake_cursor.params))
+
+    def test_vat_gateway_client_detail_returns_latest_row(self):
+        class _FakeCursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, params=None):
+                self.query = str(query)
+                self.params = params or ()
+
+            def fetchone(self):
+                return {
+                    "client_id": "GW-100",
+                    "client_name": "Client 100",
+                    "client_manager": "Manager",
+                    "client_contact_name": "Owner",
+                    "client_contact_email": "owner@example.com",
+                    "client_contact_phone": "07000 000000",
+                    "postal_address": "Line 1",
+                    "postcode": "NE1 1AA",
+                    "status": "authorised",
+                    "hmrc_submission_reference": "REF-100",
+                    "expected_code_by": None,
+                    "submitted_at": None,
+                    "authority_code_received_at": None,
+                    "authority_activated_at": None,
+                    "include_vat_mtd": True,
+                    "updated_at": None,
+                }
+
+        class _FakeConnection:
+            def __init__(self, cursor):
+                self._cursor = cursor
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self._cursor
+
+            def commit(self):
+                return None
+
+        with patch.object(hmrc648, "get_connection", return_value=_FakeConnection(_FakeCursor())):
+            detail = hmrc648.hmrc_vat_gateway_client_detail({"id": "user-1"}, "GW-100")
+        self.assertEqual(detail["gatewayClientId"], "GW-100")
+        self.assertEqual(detail["clientName"], "Client 100")
+        self.assertTrue(detail["vatMtdAuthorised"])
+
+    def test_vat_gateway_client_detail_requires_match(self):
+        class _FakeCursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, params=None):
+                self.query = str(query)
+                self.params = params or ()
+
+            def fetchone(self):
+                return None
+
+        class _FakeConnection:
+            def __init__(self, cursor):
+                self._cursor = cursor
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self._cursor
+
+            def commit(self):
+                return None
+
+        with patch.object(hmrc648, "get_connection", return_value=_FakeConnection(_FakeCursor())):
+            with self.assertRaises(HTTPException):
+                hmrc648.hmrc_vat_gateway_client_detail({"id": "user-1"}, "GW-404")
 
 
 if __name__ == "__main__":

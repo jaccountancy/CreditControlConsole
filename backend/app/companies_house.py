@@ -1460,6 +1460,11 @@ def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
 def sync_companies_house_companies(user: dict | None, payload: dict | None = None) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    company_numbers = [
+        normalise_company_number(value)
+        for value in (payload.get("companyNumbers") or [])
+        if normalise_company_number(value)
+    ]
     limit = max(1, min(int(payload.get("limit") or MAX_COMPANIES_HOUSE_SYNC_BATCH), MAX_COMPANIES_HOUSE_SYNC_BATCH))
     user_id = user.get("id") if isinstance(user, dict) else None
     mode = str(payload.get("mode") or "manual").strip().lower()
@@ -1492,6 +1497,53 @@ def sync_companies_house_companies(user: dict | None, payload: dict | None = Non
                         (limit,),
                     )
                 companies = cursor.fetchall() or []
+
+                if company_numbers:
+                    cursor.execute(
+                        """
+                        SELECT r.company_number,
+                               COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
+                               r.client_id,
+                               r.client_manager,
+                               r.contact_email,
+                               r.contact_phone,
+                               r.client_address
+                        FROM ch_auth_code_register r
+                        WHERE r.company_number = ANY(%s)
+                        """,
+                        (company_numbers,),
+                    )
+                    register_rows = cursor.fetchall() or []
+                    for register_row in register_rows:
+                        _sync_auth_register_contacts_to_company(
+                            cursor,
+                            company_number=register_row.get("company_number") or "",
+                            display_name=register_row.get("display_name") or "",
+                            client_id=register_row.get("client_id") or "",
+                            client_manager=register_row.get("client_manager") or "",
+                            contact_email=register_row.get("contact_email") or "",
+                            contact_phone=register_row.get("contact_phone") or "",
+                            client_address=register_row.get("client_address") or "",
+                            user_id=user_id,
+                        )
+                    cursor.execute(
+                        """
+                        SELECT id, company_number, company_name
+                        FROM ch_companies
+                        WHERE company_number = ANY(%s)
+                        ORDER BY company_name ASC
+                        LIMIT %s
+                        """,
+                        (company_numbers, limit),
+                    )
+                    companies_by_number = cursor.fetchall() or []
+                    existing_ids = {str(item.get("id") or "") for item in companies}
+                    for company in companies_by_number:
+                        company_id = str(company.get("id") or "")
+                        if not company_id or company_id in existing_ids:
+                            continue
+                        companies.append(company)
+                        existing_ids.add(company_id)
             connection.commit()
 
         if not companies:
@@ -5423,6 +5475,8 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "nextMadeUpToDate": row.get("next_made_up_to_date").isoformat() if row.get("next_made_up_to_date") else "",
         "nextDueDate": row.get("next_due_date").isoformat() if row.get("next_due_date") else "",
         "lastFiledDate": row.get("last_filed_date").isoformat() if row.get("last_filed_date") else "",
+        "companiesHouseLastSyncAt": row.get("last_synced_at").isoformat() if row.get("last_synced_at") else "",
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
         "sourceFilename": row.get("source_filename") or "",
         "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
         "xeroTenantId": row.get("xero_tenant_id") or "",
@@ -5471,6 +5525,8 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.company_utr,
                        r.personal_utr,
                        c.id AS company_id,
+                       c.last_synced_at,
+                       c.updated_at,
                        COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
                        COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
                        COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
@@ -5853,6 +5909,8 @@ def _auth_register_client_page_row(cursor, row_id: str) -> dict | None:
                {c_col("next_made_up_to_date", default_expr="NULL::date")},
                {c_col("next_due_date", default_expr="NULL::date")},
                {c_col("last_filed_date", default_expr="NULL::date")},
+               {c_col("last_synced_at", default_expr="NULL::timestamptz")},
+               {c_col("updated_at", default_expr="NULL::timestamptz")},
                COALESCE(NULLIF({ 'c.contact_email' if 'contact_email' in company_columns else "''" }, ''), { "r.contact_email" if "contact_email" in register_columns else "''" }) AS contact_email,
                COALESCE(NULLIF({ 'c.contact_phone' if 'contact_phone' in company_columns else "''" }, ''), { "r.contact_phone" if "contact_phone" in register_columns else "''" }) AS contact_phone,
                COALESCE(NULLIF({ 'c.client_address' if 'client_address' in company_columns else "''" }, ''), { "r.client_address" if "client_address" in register_columns else "''" }) AS client_address,

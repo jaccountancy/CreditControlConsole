@@ -2369,6 +2369,51 @@ ALTER TABLE hmrc_mtd_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ
 CREATE UNIQUE INDEX IF NOT EXISTS hmrc_mtd_connections_user_unique_idx
 ON hmrc_mtd_connections (user_id);
 
+CREATE TABLE IF NOT EXISTS hmrc_mtd_vat_authorisations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gateway_client_id TEXT NOT NULL DEFAULT '',
+    vrn TEXT NOT NULL DEFAULT '',
+    agent_reference_number TEXT NOT NULL DEFAULT '',
+    service TEXT NOT NULL DEFAULT 'mtd-vat',
+    invitation_id TEXT NOT NULL DEFAULT '',
+    authorisation_url TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    status_detail TEXT NOT NULL DEFAULT '',
+    requested_at TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    last_checked_at TIMESTAMPTZ,
+    raw_request JSONB NOT NULL DEFAULT '{}'::jsonb,
+    raw_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS gateway_client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS vrn TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS agent_reference_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS service TEXT NOT NULL DEFAULT 'mtd-vat';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS invitation_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS authorisation_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS status_detail TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS raw_request JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS raw_status JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE hmrc_mtd_vat_authorisations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS hmrc_mtd_vat_authorisations_user_gateway_vrn_uidx
+ON hmrc_mtd_vat_authorisations (user_id, gateway_client_id, vrn);
+
+CREATE INDEX IF NOT EXISTS hmrc_mtd_vat_authorisations_status_idx
+ON hmrc_mtd_vat_authorisations (status, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS release_updates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL DEFAULT '',

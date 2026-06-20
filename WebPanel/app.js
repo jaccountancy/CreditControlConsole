@@ -1,6 +1,7 @@
 const STORAGE_KEY = "hymn-credit-control-ledger";
 const STORAGE_PREFIXES = [STORAGE_KEY, "creditControl.", "jenius-"];
 const CLIENT_MATCH_STORAGE_KEY = "hymn-credit-control-client-matches";
+const HMRC_SETTINGS_STORAGE_KEY = "hymn-credit-control-hmrc-settings";
 const DEFAULT_API_BASE_URL = window.location.origin;
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
@@ -44,6 +45,7 @@ let clientProfileSaving = false;
 let persistStateTimer = null;
 let persistClientMatchesTimer = null;
 let searchDebounceTimer = null;
+let hmrcWizardState = loadHmrcWizardState();
 const PERSIST_DEBOUNCE_MS = 180;
 const currencyFormatter = new Intl.NumberFormat("en-GB", {
     style: "currency",
@@ -113,7 +115,21 @@ function normaliseAPI(config) {
             companiesHouseCompanyDetail: config.endpoints?.companiesHouseCompanyDetail || "/api/companies-house/companies/:companyId",
             companiesHouseBulkSubmit: config.endpoints?.companiesHouseBulkSubmit || "/api/companies-house/submissions/bulk",
             companiesHouseBulkJob: config.endpoints?.companiesHouseBulkJob || "/api/companies-house/submissions/bulk-jobs/:jobId",
-            login: config.endpoints?.login || "/auth/xero/start?include_all_scopes=1"
+            login: config.endpoints?.login || "/auth/xero/start?include_all_scopes=1",
+            hmrcOAuthStatus: config.endpoints?.hmrcOAuthStatus || "/api/hmrc-64-8/oauth/status",
+            hmrcOAuthStart: config.endpoints?.hmrcOAuthStart || "/api/hmrc-64-8/oauth/start",
+            hmrcOAuthDisconnect: config.endpoints?.hmrcOAuthDisconnect || "/api/hmrc-64-8/oauth/disconnect",
+            hmrcVatGatewayClientDetail: config.endpoints?.hmrcVatGatewayClientDetail || "/api/hmrc-64-8/vat-gateway/clients/:clientId",
+            hmrcVatAuthorisationStart: config.endpoints?.hmrcVatAuthorisationStart || "/api/hmrc-64-8/vat-authorisations/start",
+            hmrcVatAuthorisationCheck: config.endpoints?.hmrcVatAuthorisationCheck || "/api/hmrc-64-8/vat-authorisations/check",
+            hmrcVatObligations: config.endpoints?.hmrcVatObligations || "/api/hmrc-64-8/vat/obligations",
+            hmrcVatReturns: config.endpoints?.hmrcVatReturns || "/api/hmrc-64-8/vat/returns",
+            hmrcVatLiabilities: config.endpoints?.hmrcVatLiabilities || "/api/hmrc-64-8/vat/liabilities",
+            hmrcVatPayments: config.endpoints?.hmrcVatPayments || "/api/hmrc-64-8/vat/payments",
+            hmrc64Payload: config.endpoints?.hmrc64Payload || "/api/hmrc-64-8",
+            hmrc64Create: config.endpoints?.hmrc64Create || "/api/hmrc-64-8/requests",
+            hmrc64Submit: config.endpoints?.hmrc64Submit || "/api/hmrc-64-8/requests/:requestId/submit",
+            hmrc64CaptureCode: config.endpoints?.hmrc64CaptureCode || "/api/hmrc-64-8/requests/:requestId/capture-code"
         }
     };
 }
@@ -132,6 +148,105 @@ function normaliseState(payload) {
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
     return injected;
+}
+
+function loadHmrcWizardState() {
+    try {
+        const raw = localStorage.getItem(HMRC_SETTINGS_STORAGE_KEY);
+        if (!raw) {
+            return {
+                gatewayClientId: "",
+                asaId: "",
+                arn: "",
+                appClientId: "",
+                appClientSecret: "",
+                vrn: "",
+                invitationId: "",
+                clientAuthorisationUrl: "",
+                handshakeStatus: "",
+                hmrc64WizardStatus: "Ready",
+                hmrc64Requests: [],
+                hmrc64Summary: null,
+                hmrc64ClientName: "",
+                hmrc64ClientId: "",
+                hmrc64Postcode: "",
+                hmrc64SaUtr: "",
+                hmrc64CtUtr: "",
+                hmrc64TaxOfficeNumber: "",
+                hmrc64TaxOfficeReference: "",
+                hmrc64AccountsOfficeReference: "",
+                oauthConnected: false,
+                oauthConfigured: false,
+                detail: null,
+                lastPulledAt: "",
+                vatDataSnapshot: null
+            };
+        }
+        const parsed = JSON.parse(raw);
+        return {
+            gatewayClientId: String(parsed?.gatewayClientId || ""),
+            asaId: String(parsed?.asaId || ""),
+            arn: String(parsed?.arn || ""),
+            appClientId: String(parsed?.appClientId || ""),
+            appClientSecret: String(parsed?.appClientSecret || ""),
+            vrn: String(parsed?.vrn || ""),
+            invitationId: String(parsed?.invitationId || ""),
+            clientAuthorisationUrl: String(parsed?.clientAuthorisationUrl || ""),
+            handshakeStatus: String(parsed?.handshakeStatus || ""),
+            hmrc64WizardStatus: String(parsed?.hmrc64WizardStatus || "Ready"),
+            hmrc64Requests: Array.isArray(parsed?.hmrc64Requests) ? parsed.hmrc64Requests : [],
+            hmrc64Summary: parsed?.hmrc64Summary && typeof parsed.hmrc64Summary === "object" ? parsed.hmrc64Summary : null,
+            hmrc64ClientName: String(parsed?.hmrc64ClientName || ""),
+            hmrc64ClientId: String(parsed?.hmrc64ClientId || ""),
+            hmrc64Postcode: String(parsed?.hmrc64Postcode || ""),
+            hmrc64SaUtr: String(parsed?.hmrc64SaUtr || ""),
+            hmrc64CtUtr: String(parsed?.hmrc64CtUtr || ""),
+            hmrc64TaxOfficeNumber: String(parsed?.hmrc64TaxOfficeNumber || ""),
+            hmrc64TaxOfficeReference: String(parsed?.hmrc64TaxOfficeReference || ""),
+            hmrc64AccountsOfficeReference: String(parsed?.hmrc64AccountsOfficeReference || ""),
+            oauthConnected: parsed?.oauthConnected === true,
+            oauthConfigured: parsed?.oauthConfigured === true,
+            detail: parsed?.detail && typeof parsed.detail === "object" ? parsed.detail : null,
+            lastPulledAt: String(parsed?.lastPulledAt || ""),
+            vatDataSnapshot: parsed?.vatDataSnapshot && typeof parsed.vatDataSnapshot === "object" ? parsed.vatDataSnapshot : null
+        };
+    } catch {
+        return {
+            gatewayClientId: "",
+            asaId: "",
+            arn: "",
+            appClientId: "",
+            appClientSecret: "",
+            vrn: "",
+            invitationId: "",
+            clientAuthorisationUrl: "",
+            handshakeStatus: "",
+            hmrc64WizardStatus: "Ready",
+            hmrc64Requests: [],
+            hmrc64Summary: null,
+            hmrc64ClientName: "",
+            hmrc64ClientId: "",
+            hmrc64Postcode: "",
+            hmrc64SaUtr: "",
+            hmrc64CtUtr: "",
+            hmrc64TaxOfficeNumber: "",
+            hmrc64TaxOfficeReference: "",
+            hmrc64AccountsOfficeReference: "",
+            oauthConnected: false,
+            oauthConfigured: false,
+            detail: null,
+            lastPulledAt: "",
+            vatDataSnapshot: null
+        };
+    }
+}
+
+function persistHmrcWizardState() {
+    try {
+        localStorage.setItem(HMRC_SETTINGS_STORAGE_KEY, JSON.stringify(hmrcWizardState));
+    } catch {
+        // Ignore localStorage write failures in private browsing contexts.
+    }
 }
 
 function persistState() {
@@ -163,8 +278,10 @@ function persistClientMatches() {
             payload[customer.id] = {
                 xeroOrganisationId: customer.xeroOrganisationId || "",
                 ignitionClientId: customer.ignitionClientId || "",
+                vatGatewayClientId: customer.vatGatewayClientId || "",
                 xeroConnected: isTruthyConnectionFlag(customer.xeroConnected),
-                ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected)
+                ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected),
+                vatGatewayConnected: isTruthyConnectionFlag(customer.vatGatewayConnected)
             };
         });
         localStorage.setItem(CLIENT_MATCH_STORAGE_KEY, JSON.stringify(payload));
@@ -215,9 +332,11 @@ function clearSensitiveStorage() {
         }
         keys.forEach((key) => localStorage.removeItem(key));
         localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
+        localStorage.removeItem(HMRC_SETTINGS_STORAGE_KEY);
     } catch {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
+        localStorage.removeItem(HMRC_SETTINGS_STORAGE_KEY);
     }
 }
 
@@ -227,8 +346,10 @@ function replaceState(next) {
     const localMatches = new Map(state.customers.map((customer) => [customer.id, {
         xeroOrganisationId: customer.xeroOrganisationId || "",
         ignitionClientId: customer.ignitionClientId || "",
+        vatGatewayClientId: customer.vatGatewayClientId || "",
         xeroConnected: isTruthyConnectionFlag(customer.xeroConnected),
-        ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected)
+        ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected),
+        vatGatewayConnected: isTruthyConnectionFlag(customer.vatGatewayConnected)
     }]));
     const storedMatches = loadClientMatches();
     state.organisation = next.organisation;
@@ -266,6 +387,12 @@ function normaliseCustomerIntegrations(customer) {
         || ignition.clientId
         || ignition.id
         || "";
+    const vatGateway = integrations.vatGateway || customer?.vatGateway || {};
+    const vatGatewayClientId = customer?.vatGatewayClientId
+        || customer?.vat_gateway_client_id
+        || vatGateway.clientId
+        || vatGateway.gatewayClientId
+        || "";
     const xeroConnected = isTruthyConnectionFlag(customer?.xeroConnected)
         || isTruthyConnectionFlag(customer?.xero_connected)
         || isTruthyConnectionFlag(xero?.connected)
@@ -274,12 +401,18 @@ function normaliseCustomerIntegrations(customer) {
         || isTruthyConnectionFlag(customer?.ignition_connected)
         || isTruthyConnectionFlag(ignition?.connected)
         || Boolean(ignitionClientId);
+    const vatGatewayConnected = isTruthyConnectionFlag(customer?.vatGatewayConnected)
+        || isTruthyConnectionFlag(customer?.vat_gateway_connected)
+        || isTruthyConnectionFlag(vatGateway?.connected)
+        || Boolean(vatGatewayClientId);
     return {
         ...customer,
         xeroOrganisationId,
         ignitionClientId,
+        vatGatewayClientId,
         xeroConnected,
-        ignitionConnected
+        ignitionConnected,
+        vatGatewayConnected
     };
 }
 
@@ -287,14 +420,18 @@ function applyStoredMatch(customer, stored) {
     if (!stored) return customer;
     const xeroOrganisationId = stored.xeroOrganisationId || customer.xeroOrganisationId || "";
     const ignitionClientId = stored.ignitionClientId || customer.ignitionClientId || "";
+    const vatGatewayClientId = stored.vatGatewayClientId || customer.vatGatewayClientId || "";
     const xeroConnected = isTruthyConnectionFlag(stored.xeroConnected) || Boolean(xeroOrganisationId) || customer.xeroConnected === true;
     const ignitionConnected = isTruthyConnectionFlag(stored.ignitionConnected) || Boolean(ignitionClientId) || customer.ignitionConnected === true;
+    const vatGatewayConnected = isTruthyConnectionFlag(stored.vatGatewayConnected) || Boolean(vatGatewayClientId) || customer.vatGatewayConnected === true;
     return {
         ...customer,
         xeroOrganisationId,
         ignitionClientId,
+        vatGatewayClientId,
         xeroConnected,
-        ignitionConnected
+        ignitionConnected,
+        vatGatewayConnected
     };
 }
 
@@ -869,9 +1006,11 @@ function renderClientScreen() {
     const ledgerView = document.getElementById("ledgerView");
     const clientScreen = document.getElementById("clientScreen");
     const settingsScreen = document.getElementById("settingsScreen");
+    const hmrcSettingsScreen = document.getElementById("hmrcSettingsScreen");
     ledgerView.hidden = activeView !== "ledger";
     clientScreen.hidden = activeView !== "client";
     settingsScreen.hidden = activeView !== "settings";
+    hmrcSettingsScreen.hidden = activeView !== "hmrcSettings";
     if (activeView !== "client") return;
 
     const invoice = findInvoiceById(selectedInvoiceId);
@@ -893,8 +1032,10 @@ function renderClientScreen() {
     document.getElementById("clientStatusBadge").className = "status-badge";
     const xeroConnected = client ? resolveIntegrationConnection(client, "xero") : false;
     const ignitionConnected = client ? resolveIntegrationConnection(client, "ignition") : false;
+    const vatGatewayConnected = client ? resolveIntegrationConnection(client, "vatGateway") : false;
     renderConnectionBadge("clientXeroStatusBadge", "Connected to Xero", xeroConnected);
     renderConnectionBadge("clientIgnitionStatusBadge", "Connected to Ignition", ignitionConnected);
+    renderConnectionBadge("clientVatGatewayStatusBadge", "VAT Gateway linked", vatGatewayConnected);
 
     const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
@@ -934,14 +1075,15 @@ function renderSettingsScreen() {
             customer.manager,
             customer.contact,
             customer.xeroOrganisationId,
-            customer.ignitionClientId
+            customer.ignitionClientId,
+            customer.vatGatewayClientId
         ].join(" ").toLowerCase();
         return haystack.includes(term);
     }).sort((a, b) => `${a.name || ""}`.localeCompare(`${b.name || ""}`));
     tbody.innerHTML = "";
     if (!customers.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="5"><p class="settings-empty">No clients match the current search.</p></td>`;
+        row.innerHTML = `<td colspan="6"><p class="settings-empty">No clients match the current search.</p></td>`;
         tbody.appendChild(row);
         return;
     }
@@ -949,6 +1091,7 @@ function renderSettingsScreen() {
         const row = document.createElement("tr");
         const xeroConnected = resolveIntegrationConnection(customer, "xero");
         const ignitionConnected = resolveIntegrationConnection(customer, "ignition");
+        const vatGatewayConnected = resolveIntegrationConnection(customer, "vatGateway");
         row.innerHTML = `
             <td>
                 <div class="settings-client-title">${customer.name || "Unnamed client"}</div>
@@ -956,25 +1099,48 @@ function renderSettingsScreen() {
             </td>
             <td><span class="status-badge ${xeroConnected ? "connected" : "disconnected"}">${xeroConnected ? "Connected" : "Not connected"}</span></td>
             <td><span class="status-badge ${ignitionConnected ? "connected" : "disconnected"}">${ignitionConnected ? "Connected" : "Not connected"}</span></td>
+            <td><span class="status-badge ${vatGatewayConnected ? "connected" : "disconnected"}">${vatGatewayConnected ? "Linked" : "Not linked"}</span></td>
             <td>
                 <div class="settings-match-inputs">
                     <input type="text" data-field="xeroOrganisationId" value="${escapeHTML(customer.xeroOrganisationId || "")}" placeholder="Xero organisation ID">
                     <input type="text" data-field="ignitionClientId" value="${escapeHTML(customer.ignitionClientId || "")}" placeholder="Ignition client ID">
+                    <input type="text" data-field="vatGatewayClientId" value="${escapeHTML(customer.vatGatewayClientId || "")}" placeholder="HMRC gateway client ID">
                 </div>
             </td>
             <td><button class="settings-save-match" type="button">Save match</button></td>
         `;
         const saveButton = row.querySelector(".settings-save-match");
-        saveButton.addEventListener("click", () => {
+        saveButton.addEventListener("click", async () => {
             const xeroInput = row.querySelector('[data-field="xeroOrganisationId"]');
             const ignitionInput = row.querySelector('[data-field="ignitionClientId"]');
+            const vatGatewayInput = row.querySelector('[data-field="vatGatewayClientId"]');
             customer.xeroOrganisationId = xeroInput?.value.trim() || "";
             customer.ignitionClientId = ignitionInput?.value.trim() || "";
+            customer.vatGatewayClientId = vatGatewayInput?.value.trim() || "";
             customer.xeroConnected = Boolean(customer.xeroOrganisationId);
             customer.ignitionConnected = Boolean(customer.ignitionClientId);
+            customer.vatGatewayConnected = Boolean(customer.vatGatewayClientId);
+            saveButton.disabled = true;
+            saveButton.textContent = "Saving...";
+            if (customer.vatGatewayClientId) {
+                try {
+                    const gatewayClient = await fetchHmrcGatewayClientDetail(customer.vatGatewayClientId);
+                    customer.vatGatewayDetails = gatewayClient;
+                    customer.vatGatewayConnected = true;
+                    if (customer.clientProfile && gatewayClient?.postalAddress && !customer.clientProfile.address) {
+                        customer.clientProfile.address = gatewayClient.postalAddress;
+                    }
+                } catch (error) {
+                    console.error("Unable to pull HMRC VAT gateway details for matched client", error);
+                }
+            } else {
+                customer.vatGatewayDetails = null;
+            }
             invalidateInvoiceCaches();
             persistState();
             persistClientMatches();
+            saveButton.disabled = false;
+            saveButton.textContent = "Save match";
             renderAll();
         });
         tbody.appendChild(row);
@@ -1000,7 +1166,211 @@ function renderConnectionBadge(targetId, label, connected) {
 function resolveIntegrationConnection(client, provider) {
     if (!client) return false;
     if (provider === "xero") return client.xeroConnected === true || Boolean(client.xeroOrganisationId);
-    return client.ignitionConnected === true || Boolean(client.ignitionClientId);
+    if (provider === "ignition") return client.ignitionConnected === true || Boolean(client.ignitionClientId);
+    if (provider === "vatGateway") return client.vatGatewayConnected === true || Boolean(client.vatGatewayClientId);
+    return false;
+}
+
+async function fetchHmrcGatewayClientDetail(gatewayClientId) {
+    const payload = await requestJSON(
+        api.endpoints.hmrcVatGatewayClientDetail,
+        { method: "GET" },
+        { clientId: gatewayClientId }
+    );
+    return payload?.gatewayClient || null;
+}
+
+function currentHmrcWizardFormState() {
+    hmrcWizardState.gatewayClientId = (document.getElementById("hmrcGatewayClientIdInput")?.value || "").trim();
+    hmrcWizardState.vrn = (document.getElementById("hmrcVrnInput")?.value || "").trim();
+    hmrcWizardState.asaId = (document.getElementById("hmrcAsaInput")?.value || "").trim();
+    hmrcWizardState.arn = (document.getElementById("hmrcArnInput")?.value || "").trim();
+    hmrcWizardState.appClientId = (document.getElementById("hmrcAppClientIdInput")?.value || "").trim();
+    hmrcWizardState.appClientSecret = (document.getElementById("hmrcAppClientSecretInput")?.value || "").trim();
+    return {
+        gatewayClientId: hmrcWizardState.gatewayClientId,
+        vrn: hmrcWizardState.vrn,
+        agentReferenceNumber: hmrcWizardState.arn,
+        asaId: hmrcWizardState.asaId
+    };
+}
+
+function currentHmrc64FormState() {
+    hmrcWizardState.hmrc64ClientName = (document.getElementById("hmrc64ClientNameInput")?.value || "").trim();
+    hmrcWizardState.hmrc64ClientId = (document.getElementById("hmrc64ClientIdInput")?.value || "").trim();
+    hmrcWizardState.hmrc64Postcode = (document.getElementById("hmrc64PostcodeInput")?.value || "").trim();
+    hmrcWizardState.hmrc64SaUtr = (document.getElementById("hmrc64SaUtrInput")?.value || "").trim();
+    hmrcWizardState.hmrc64CtUtr = (document.getElementById("hmrc64CtUtrInput")?.value || "").trim();
+    hmrcWizardState.hmrc64TaxOfficeNumber = (document.getElementById("hmrc64TaxOfficeNumberInput")?.value || "").trim();
+    hmrcWizardState.hmrc64TaxOfficeReference = (document.getElementById("hmrc64TaxOfficeReferenceInput")?.value || "").trim();
+    hmrcWizardState.hmrc64AccountsOfficeReference = (document.getElementById("hmrc64AccountsOfficeReferenceInput")?.value || "").trim();
+    const includeSa = document.getElementById("hmrc64IncludeSa")?.checked === true;
+    const includeCt = document.getElementById("hmrc64IncludeCt")?.checked === true;
+    const includePaye = document.getElementById("hmrc64IncludePaye")?.checked === true;
+    return {
+        clientName: hmrcWizardState.hmrc64ClientName,
+        clientId: hmrcWizardState.hmrc64ClientId,
+        postcode: hmrcWizardState.hmrc64Postcode,
+        saUtr: hmrcWizardState.hmrc64SaUtr,
+        ctUtr: hmrcWizardState.hmrc64CtUtr,
+        taxOfficeNumber: hmrcWizardState.hmrc64TaxOfficeNumber,
+        taxOfficeReference: hmrcWizardState.hmrc64TaxOfficeReference,
+        accountsOfficeReference: hmrcWizardState.hmrc64AccountsOfficeReference,
+        includeSa,
+        includeCt,
+        includePaye,
+    };
+}
+
+function hmrcWizardRedirectTarget() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("hmrcWizard", "1");
+    url.searchParams.delete("hmrcMtdConnected");
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function consumeHmrcCallbackParams() {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("hmrcMtdConnected") === "1";
+    const wizard = url.searchParams.get("hmrcWizard") === "1";
+    if (connected || wizard) activeView = "hmrcSettings";
+    if (connected) hmrcWizardState.oauthConnected = true;
+    persistHmrcWizardState();
+    if (url.searchParams.has("hmrcMtdConnected")) {
+        url.searchParams.delete("hmrcMtdConnected");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+}
+
+async function refreshHmrcOauthStatus() {
+    try {
+        const payload = await requestJSON(api.endpoints.hmrcOAuthStatus);
+        const oauth = payload?.oauth || {};
+        hmrcWizardState.oauthConnected = oauth.connected === true;
+        hmrcWizardState.oauthConfigured = oauth.configured === true;
+        persistHmrcWizardState();
+    } catch (error) {
+        console.error("Unable to refresh HMRC OAuth status", error);
+    }
+}
+
+async function refreshHmrc64Tracker() {
+    try {
+        const payload = await requestJSON(api.endpoints.hmrc64Payload);
+        hmrcWizardState.hmrc64Requests = Array.isArray(payload?.requests) ? payload.requests : [];
+        hmrcWizardState.hmrc64Summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : null;
+        persistHmrcWizardState();
+    } catch (error) {
+        console.error("Unable to load HMRC 64-8 tracker", error);
+    }
+}
+
+function renderHmrcSettingsScreen() {
+    if (activeView !== "hmrcSettings") return;
+    const gatewayInput = document.getElementById("hmrcGatewayClientIdInput");
+    const vrnInput = document.getElementById("hmrcVrnInput");
+    const asaInput = document.getElementById("hmrcAsaInput");
+    const arnInput = document.getElementById("hmrcArnInput");
+    const appClientInput = document.getElementById("hmrcAppClientIdInput");
+    const appSecretInput = document.getElementById("hmrcAppClientSecretInput");
+    const oauthStatusText = document.getElementById("hmrcOauthStatusText");
+    const pullStatusText = document.getElementById("hmrcGatewayPullStatusText");
+    const handshakeStatusText = document.getElementById("hmrcHandshakeStatusText");
+    const clientAuthorisationUrlInput = document.getElementById("hmrcClientAuthorisationUrlInput");
+    const vatDataOutput = document.getElementById("hmrcVatDataOutput");
+    const meta = document.getElementById("hmrcGatewayRecordMeta");
+    const clientName = document.getElementById("hmrcGatewayClientName");
+    const clientStatus = document.getElementById("hmrcGatewayClientStatus");
+    const submissionRef = document.getElementById("hmrcGatewaySubmissionRef");
+    const hmrc64ClientNameInput = document.getElementById("hmrc64ClientNameInput");
+    const hmrc64ClientIdInput = document.getElementById("hmrc64ClientIdInput");
+    const hmrc64PostcodeInput = document.getElementById("hmrc64PostcodeInput");
+    const hmrc64SaUtrInput = document.getElementById("hmrc64SaUtrInput");
+    const hmrc64CtUtrInput = document.getElementById("hmrc64CtUtrInput");
+    const hmrc64TaxOfficeNumberInput = document.getElementById("hmrc64TaxOfficeNumberInput");
+    const hmrc64TaxOfficeReferenceInput = document.getElementById("hmrc64TaxOfficeReferenceInput");
+    const hmrc64AccountsOfficeReferenceInput = document.getElementById("hmrc64AccountsOfficeReferenceInput");
+    const hmrc64WizardStatusText = document.getElementById("hmrc64WizardStatusText");
+    const hmrc64TrackerMeta = document.getElementById("hmrc64TrackerMeta");
+    const hmrc64AwaitingCodeCount = document.getElementById("hmrc64AwaitingCodeCount");
+    const hmrc64AuthorisedCount = document.getElementById("hmrc64AuthorisedCount");
+    const hmrc64TotalCount = document.getElementById("hmrc64TotalCount");
+    const hmrc64TrackerTableBody = document.getElementById("hmrc64TrackerTableBody");
+    if (!gatewayInput || !vrnInput || !oauthStatusText || !pullStatusText || !meta || !clientName || !clientStatus || !submissionRef) return;
+
+    gatewayInput.value = hmrcWizardState.gatewayClientId || "";
+    vrnInput.value = hmrcWizardState.vrn || "";
+    if (asaInput) asaInput.value = hmrcWizardState.asaId || "";
+    if (arnInput) arnInput.value = hmrcWizardState.arn || "";
+    if (appClientInput) appClientInput.value = hmrcWizardState.appClientId || "";
+    if (appSecretInput) appSecretInput.value = hmrcWizardState.appClientSecret || "";
+
+    const oauthConfigured = hmrcWizardState.oauthConfigured !== false;
+    if (!oauthConfigured) oauthStatusText.value = "HMRC developer app is not configured on the backend.";
+    else oauthStatusText.value = hmrcWizardState.oauthConnected ? "Connected to HMRC agent services account." : "Not connected.";
+
+    const detail = hmrcWizardState.detail;
+    pullStatusText.value = hmrcWizardState.lastPulledAt
+        ? `Last pull completed ${new Date(hmrcWizardState.lastPulledAt).toLocaleString("en-GB")}.`
+        : "No VAT gateway pull run yet.";
+    meta.textContent = detail?.gatewayClientId ? `Gateway client ${detail.gatewayClientId} linked` : "No HMRC record linked yet";
+    clientName.textContent = detail?.clientName || "--";
+    clientStatus.textContent = detail?.status || "--";
+    submissionRef.textContent = detail?.hmrcSubmissionReference || "--";
+    if (handshakeStatusText) handshakeStatusText.value = hmrcWizardState.handshakeStatus || "No handshake started.";
+    if (clientAuthorisationUrlInput) clientAuthorisationUrlInput.value = hmrcWizardState.clientAuthorisationUrl || "";
+    if (vatDataOutput) {
+        vatDataOutput.value = hmrcWizardState.vatDataSnapshot
+            ? JSON.stringify(hmrcWizardState.vatDataSnapshot, null, 2)
+            : "";
+    }
+
+    if (hmrc64ClientNameInput) hmrc64ClientNameInput.value = hmrcWizardState.hmrc64ClientName || detail?.clientName || "";
+    if (hmrc64ClientIdInput) hmrc64ClientIdInput.value = hmrcWizardState.hmrc64ClientId || hmrcWizardState.gatewayClientId || "";
+    if (hmrc64PostcodeInput) hmrc64PostcodeInput.value = hmrcWizardState.hmrc64Postcode || detail?.postcode || "";
+    if (hmrc64SaUtrInput) hmrc64SaUtrInput.value = hmrcWizardState.hmrc64SaUtr || "";
+    if (hmrc64CtUtrInput) hmrc64CtUtrInput.value = hmrcWizardState.hmrc64CtUtr || "";
+    if (hmrc64TaxOfficeNumberInput) hmrc64TaxOfficeNumberInput.value = hmrcWizardState.hmrc64TaxOfficeNumber || "";
+    if (hmrc64TaxOfficeReferenceInput) hmrc64TaxOfficeReferenceInput.value = hmrcWizardState.hmrc64TaxOfficeReference || "";
+    if (hmrc64AccountsOfficeReferenceInput) hmrc64AccountsOfficeReferenceInput.value = hmrcWizardState.hmrc64AccountsOfficeReference || "";
+    if (hmrc64WizardStatusText) hmrc64WizardStatusText.value = hmrcWizardState.hmrc64WizardStatus || "Ready";
+
+    const requests = Array.isArray(hmrcWizardState.hmrc64Requests) ? hmrcWizardState.hmrc64Requests : [];
+    const summary = hmrcWizardState.hmrc64Summary || {};
+    const awaitingCode = Number(summary.awaitingCode ?? requests.filter((row) => ["awaiting_code", "submitted", "code_received"].includes(String(row?.status || "").toLowerCase())).length);
+    const authorised = Number(summary.authorised ?? requests.filter((row) => String(row?.status || "").toLowerCase() === "authorised").length);
+    const total = Number(summary.total ?? requests.length);
+    if (hmrc64AwaitingCodeCount) hmrc64AwaitingCodeCount.textContent = String(awaitingCode);
+    if (hmrc64AuthorisedCount) hmrc64AuthorisedCount.textContent = String(authorised);
+    if (hmrc64TotalCount) hmrc64TotalCount.textContent = String(total);
+    if (hmrc64TrackerMeta) hmrc64TrackerMeta.textContent = `${awaitingCode} awaiting code · ${authorised} authorised`;
+    if (hmrc64TrackerTableBody) {
+        hmrc64TrackerTableBody.innerHTML = "";
+        if (!requests.length) {
+            hmrc64TrackerTableBody.innerHTML = `<tr><td colspan="6">No HMRC 64-8 requests yet.</td></tr>`;
+        } else {
+            requests.forEach((row) => {
+                const status = String(row?.status || "").toLowerCase();
+                const services = Array.isArray(row?.services) ? row.services.join(", ") : "";
+                const canCapture = ["awaiting_code", "code_received", "submitted"].includes(status);
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${escapeHTML(row?.clientName || "")}</td>
+                    <td>${escapeHTML(services)}</td>
+                    <td>${escapeHTML(status || "draft")}</td>
+                    <td>${escapeHTML(row?.submittedAt || "--")}</td>
+                    <td>${escapeHTML(row?.expectedCodeBy || "--")}</td>
+                    <td>
+                        ${canCapture ? `
+                            <input type="text" data-hmrc64-code-input="${escapeHTML(row?.id || "")}" placeholder="Authority code">
+                            <button class="ghost-button" type="button" data-hmrc64-code-received="${escapeHTML(row?.id || "")}">Code Received</button>
+                        ` : "<span>--</span>"}
+                    </td>
+                `;
+                hmrc64TrackerTableBody.appendChild(tr);
+            });
+        }
+    }
 }
 
 function renderClientInvoicePicker(invoices) {
@@ -1114,6 +1484,7 @@ function renderAll() {
     }
     renderClientScreen();
     renderSettingsScreen();
+    renderHmrcSettingsScreen();
 }
 
 function flushPendingPersistence() {
@@ -1135,12 +1506,15 @@ function flushPendingPersistence() {
             payload[customer.id] = {
                 xeroOrganisationId: customer.xeroOrganisationId || "",
                 ignitionClientId: customer.ignitionClientId || "",
+                vatGatewayClientId: customer.vatGatewayClientId || "",
                 xeroConnected: isTruthyConnectionFlag(customer.xeroConnected),
-                ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected)
+                ignitionConnected: isTruthyConnectionFlag(customer.ignitionConnected),
+                vatGatewayConnected: isTruthyConnectionFlag(customer.vatGatewayConnected)
             };
         });
         localStorage.setItem(CLIENT_MATCH_STORAGE_KEY, JSON.stringify(payload));
     }
+    persistHmrcWizardState();
 }
 
 function scheduleLedgerTableRender() {
@@ -1286,6 +1660,16 @@ function wireForms() {
         activeView = "settings";
         renderAll();
     });
+    document.getElementById("openHmrcSettingsButton").addEventListener("click", async () => {
+        activeView = "hmrcSettings";
+        await refreshHmrcOauthStatus();
+        await refreshHmrc64Tracker();
+        renderAll();
+    });
+    document.getElementById("backToSettingsFromHmrcButton").addEventListener("click", () => {
+        activeView = "settings";
+        renderAll();
+    });
     document.getElementById("backToLedgerFromSettingsButton").addEventListener("click", () => {
         activeView = "ledger";
         renderAll();
@@ -1297,6 +1681,289 @@ function wireForms() {
     document.getElementById("matchingSearch").addEventListener("input", (event) => {
         matchingSearchTerm = event.target.value || "";
         renderSettingsScreen();
+    });
+    document.getElementById("saveHmrcGatewayClientIdButton").addEventListener("click", () => {
+        currentHmrcWizardFormState();
+        persistHmrcWizardState();
+        renderHmrcSettingsScreen();
+    });
+    document.getElementById("connectHmrcButton").addEventListener("click", async () => {
+        currentHmrcWizardFormState();
+        persistHmrcWizardState();
+        try {
+            const payload = await requestJSON(
+                api.endpoints.hmrcOAuthStart,
+                { method: "POST", body: JSON.stringify({ redirectTo: hmrcWizardRedirectTarget() }) }
+            );
+            if (payload?.authorizeUrl) {
+                window.location.assign(payload.authorizeUrl);
+                return;
+            }
+            window.alert("HMRC login URL could not be generated.");
+        } catch (error) {
+            console.error("Unable to start HMRC OAuth", error);
+            window.alert("Unable to start HMRC OAuth. Check HMRC credentials and try again.");
+        }
+    });
+    document.getElementById("disconnectHmrcButton").addEventListener("click", async () => {
+        try {
+            await requestJSON(api.endpoints.hmrcOAuthDisconnect, { method: "POST", body: JSON.stringify({}) });
+            hmrcWizardState.oauthConnected = false;
+            persistHmrcWizardState();
+            await refreshHmrcOauthStatus();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to disconnect HMRC OAuth", error);
+            window.alert("Unable to disconnect HMRC currently.");
+        }
+    });
+    document.getElementById("pullHmrcGatewayDetailsButton").addEventListener("click", async () => {
+        currentHmrcWizardFormState();
+        if (!hmrcWizardState.gatewayClientId) {
+            window.alert("Enter a Gateway client ID first.");
+            return;
+        }
+        persistHmrcWizardState();
+        try {
+            const detail = await fetchHmrcGatewayClientDetail(hmrcWizardState.gatewayClientId);
+            hmrcWizardState.detail = detail;
+            hmrcWizardState.lastPulledAt = new Date().toISOString();
+            persistHmrcWizardState();
+            state.customers.forEach((customer) => {
+                if (!customer?.vatGatewayClientId) return;
+                if (String(customer.vatGatewayClientId).trim() !== hmrcWizardState.gatewayClientId) return;
+                customer.vatGatewayDetails = detail;
+                customer.vatGatewayConnected = true;
+            });
+            persistState();
+            persistClientMatches();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to pull HMRC gateway details", error);
+            window.alert("HMRC VAT gateway details could not be pulled. Check the client ID and authorisation status.");
+        }
+    });
+    document.getElementById("startHmrcHandshakeButton").addEventListener("click", async () => {
+        const wizardPayload = currentHmrcWizardFormState();
+        if (!wizardPayload.gatewayClientId || !wizardPayload.vrn) {
+            window.alert("Gateway client ID and VRN are required.");
+            return;
+        }
+        if (!wizardPayload.agentReferenceNumber) {
+            window.alert("Agent Reference Number (ARN) is required.");
+            return;
+        }
+        hmrcWizardState.handshakeStatus = "Creating HMRC authorisation link...";
+        persistHmrcWizardState();
+        renderHmrcSettingsScreen();
+        try {
+            const payload = await requestJSON(
+                api.endpoints.hmrcVatAuthorisationStart,
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        gatewayClientId: wizardPayload.gatewayClientId,
+                        vrn: wizardPayload.vrn,
+                        agentReferenceNumber: wizardPayload.agentReferenceNumber,
+                        asaId: wizardPayload.asaId,
+                    })
+                }
+            );
+            const authorisation = payload?.authorisation || {};
+            hmrcWizardState.invitationId = String(authorisation.invitationId || "");
+            hmrcWizardState.clientAuthorisationUrl = String(payload?.handshake?.authorisationUrl || authorisation.authorisationUrl || "");
+            hmrcWizardState.handshakeStatus = String(authorisation.status || "pending");
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+        } catch (error) {
+            console.error("Unable to start HMRC VAT handshake", error);
+            hmrcWizardState.handshakeStatus = "Failed to create handshake link.";
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+            window.alert("Could not create HMRC client authorisation link.");
+        }
+    });
+    document.getElementById("checkHmrcHandshakeButton").addEventListener("click", async () => {
+        const wizardPayload = currentHmrcWizardFormState();
+        if (!wizardPayload.gatewayClientId || !wizardPayload.vrn) {
+            window.alert("Gateway client ID and VRN are required.");
+            return;
+        }
+        try {
+            const payload = await requestJSON(
+                api.endpoints.hmrcVatAuthorisationCheck,
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        gatewayClientId: wizardPayload.gatewayClientId,
+                        vrn: wizardPayload.vrn,
+                        invitationId: hmrcWizardState.invitationId || "",
+                    })
+                }
+            );
+            const authorisation = payload?.authorisation || {};
+            hmrcWizardState.handshakeStatus = String(authorisation.status || "pending");
+            hmrcWizardState.clientAuthorisationUrl = String(authorisation.authorisationUrl || hmrcWizardState.clientAuthorisationUrl || "");
+            hmrcWizardState.invitationId = String(authorisation.invitationId || hmrcWizardState.invitationId || "");
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+        } catch (error) {
+            console.error("Unable to check HMRC VAT handshake status", error);
+            window.alert("Unable to check HMRC authorisation status right now.");
+        }
+    });
+    document.getElementById("openHmrcClientAuthorisationLinkButton").addEventListener("click", () => {
+        const url = String(hmrcWizardState.clientAuthorisationUrl || "").trim();
+        if (!url) {
+            window.alert("No client authorisation link has been generated yet.");
+            return;
+        }
+        window.open(url, "_blank", "noopener");
+    });
+    document.getElementById("fetchHmrcVatDataButton").addEventListener("click", async () => {
+        const wizardPayload = currentHmrcWizardFormState();
+        if (!wizardPayload.gatewayClientId || !wizardPayload.vrn) {
+            window.alert("Gateway client ID and VRN are required.");
+            return;
+        }
+        try {
+            const [obligationsPayload, liabilitiesPayload, paymentsPayload] = await Promise.all([
+                requestJSON(
+                    api.endpoints.hmrcVatObligations,
+                    { method: "POST", body: JSON.stringify({ gatewayClientId: wizardPayload.gatewayClientId, vrn: wizardPayload.vrn, status: "A" }) }
+                ),
+                requestJSON(
+                    api.endpoints.hmrcVatLiabilities,
+                    { method: "POST", body: JSON.stringify({ gatewayClientId: wizardPayload.gatewayClientId, vrn: wizardPayload.vrn }) }
+                ),
+                requestJSON(
+                    api.endpoints.hmrcVatPayments,
+                    { method: "POST", body: JSON.stringify({ gatewayClientId: wizardPayload.gatewayClientId, vrn: wizardPayload.vrn }) }
+                ),
+            ]);
+            let latestReturn = null;
+            const obligations = Array.isArray(obligationsPayload?.obligations) ? obligationsPayload.obligations : [];
+            if (obligations.length) {
+                const latestObligation = obligations[0];
+                if (latestObligation?.periodKey) {
+                    const returnPayload = await requestJSON(
+                        api.endpoints.hmrcVatReturns,
+                        { method: "POST", body: JSON.stringify({ gatewayClientId: wizardPayload.gatewayClientId, vrn: wizardPayload.vrn, periodKey: latestObligation.periodKey }) }
+                    );
+                    latestReturn = returnPayload?.return || null;
+                }
+            }
+            hmrcWizardState.vatDataSnapshot = {
+                fetchedAt: new Date().toISOString(),
+                gatewayClientId: wizardPayload.gatewayClientId,
+                vrn: wizardPayload.vrn,
+                obligations: obligationsPayload?.obligations || [],
+                latestReturn,
+                liabilities: liabilitiesPayload?.liabilities || [],
+                payments: paymentsPayload?.payments || [],
+            };
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+        } catch (error) {
+            console.error("Unable to fetch HMRC VAT data", error);
+            window.alert("VAT data fetch failed. Ensure the client handshake is authorised and HMRC API config is complete.");
+        }
+    });
+    document.getElementById("sendHmrc64AuthorisationButton").addEventListener("click", async () => {
+        const form = currentHmrc64FormState();
+        if (!form.clientName) {
+            window.alert("Client name is required.");
+            return;
+        }
+        if (!form.includeSa && !form.includeCt && !form.includePaye) {
+            window.alert("Select at least one service: SA, CT, or PAYE.");
+            return;
+        }
+        hmrcWizardState.hmrc64WizardStatus = "Creating HMRC 64-8 request...";
+        persistHmrcWizardState();
+        renderHmrcSettingsScreen();
+        try {
+            const createPayload = await requestJSON(
+                api.endpoints.hmrc64Create,
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        clientName: form.clientName,
+                        clientId: form.clientId || hmrcWizardState.gatewayClientId || "",
+                        postcode: form.postcode,
+                        saUtr: form.saUtr,
+                        ctUtr: form.ctUtr,
+                        taxOfficeNumber: form.taxOfficeNumber,
+                        taxOfficeReference: form.taxOfficeReference,
+                        accountsOfficeReference: form.accountsOfficeReference,
+                        includeSa: form.includeSa,
+                        includeCt: form.includeCt,
+                        includePaye: form.includePaye,
+                    })
+                }
+            );
+            const requestRow = createPayload?.request || null;
+            if (!requestRow?.id) throw new Error("HMRC 64-8 request was created without an ID.");
+            await requestJSON(
+                api.endpoints.hmrc64Submit,
+                {
+                    method: "POST",
+                    body: JSON.stringify({ submissionChannel: "online" })
+                },
+                { requestId: requestRow.id }
+            );
+            hmrcWizardState.hmrc64WizardStatus = "Submitted to HMRC. Status moved to Awaiting Code.";
+            await refreshHmrc64Tracker();
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+        } catch (error) {
+            console.error("Unable to send HMRC 64-8 authorisation", error);
+            hmrcWizardState.hmrc64WizardStatus = "Failed to submit 64-8 authorisation.";
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+            window.alert("64-8 submission failed. Check required SA/CT/PAYE fields.");
+        }
+    });
+    document.getElementById("refreshHmrc64TrackerButton").addEventListener("click", async () => {
+        await refreshHmrc64Tracker();
+        renderHmrcSettingsScreen();
+    });
+    document.getElementById("hmrc64TrackerTableBody").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-hmrc64-code-received]");
+        if (!button) return;
+        const requestId = button.getAttribute("data-hmrc64-code-received") || "";
+        if (!requestId) return;
+        const codeInput = document.querySelector(`[data-hmrc64-code-input="${requestId}"]`);
+        const authorityCode = (codeInput?.value || "").trim().toUpperCase();
+        if (!authorityCode) {
+            window.alert("Enter the authority code first.");
+            return;
+        }
+        button.disabled = true;
+        button.textContent = "Updating...";
+        try {
+            await requestJSON(
+                api.endpoints.hmrc64CaptureCode,
+                {
+                    method: "POST",
+                    body: JSON.stringify({ authorityCode, activateNow: true })
+                },
+                { requestId }
+            );
+            hmrcWizardState.hmrc64WizardStatus = "Code received and client marked authorised.";
+            await refreshHmrc64Tracker();
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+        } catch (error) {
+            console.error("Unable to mark HMRC 64-8 as code received", error);
+            hmrcWizardState.hmrc64WizardStatus = "Failed to capture code.";
+            persistHmrcWizardState();
+            renderHmrcSettingsScreen();
+            window.alert("Could not mark code received. Check code format for selected service.");
+        } finally {
+            button.disabled = false;
+            button.textContent = "Code Received";
+        }
     });
     document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
         selectedInvoiceId = event.target.value;
@@ -1404,7 +2071,10 @@ function wireForms() {
 }
 
 async function init() {
+    consumeHmrcCallbackParams();
     await hydrateFromAPI();
+    await refreshHmrcOauthStatus();
+    await refreshHmrc64Tracker();
     renderAll();
     wireFilters();
     wireLoginButtons();

@@ -330,10 +330,19 @@ from .hmrc_648 import (
     hmrc_64_8_export_csv,
     hmrc_64_8_history,
     hmrc_64_8_payload,
+    hmrc_mtd_check_vat_authorisation,
+    hmrc_vat_gateway_client_detail,
+    hmrc_vat_gateway_clients,
+    hmrc_mtd_start_vat_authorisation,
     hmrc_mtd_oauth_callback,
     hmrc_mtd_oauth_disconnect,
     hmrc_mtd_oauth_start,
     hmrc_mtd_oauth_status,
+    hmrc_vat_liabilities,
+    hmrc_vat_obligations,
+    hmrc_vat_payments,
+    hmrc_vat_returns,
+    hmrc_vat_submit_return,
     send_hmrc_64_8_reminder,
     submit_hmrc_64_8_request,
     update_hmrc_64_8_request,
@@ -3981,6 +3990,62 @@ def api_hmrc_64_8_oauth_callback(code: str = Query(""), state: str = Query("")):
 @app.post("/api/hmrc-64-8/oauth/disconnect")
 def api_hmrc_64_8_oauth_disconnect(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "oauth": hmrc_mtd_oauth_disconnect(user)}
+
+
+@app.post("/api/hmrc-64-8/vat-authorisations/start")
+async def api_hmrc_vat_authorisations_start(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_mtd_start_vat_authorisation(user, payload)}
+
+
+@app.post("/api/hmrc-64-8/vat-authorisations/check")
+async def api_hmrc_vat_authorisations_check(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_mtd_check_vat_authorisation(user, payload)}
+
+
+@app.get("/api/hmrc-64-8/vat-gateway/clients")
+def api_hmrc_64_8_vat_gateway_clients(
+    search: str = Query(""),
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "clients": hmrc_vat_gateway_clients(user, search=search, limit=limit)}
+
+
+@app.get("/api/hmrc-64-8/vat-gateway/clients/{client_id}")
+def api_hmrc_64_8_vat_gateway_client_detail(client_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "gatewayClient": hmrc_vat_gateway_client_detail(user, client_id)}
+
+
+@app.post("/api/hmrc-64-8/vat/obligations")
+async def api_hmrc_vat_obligations(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_vat_obligations(user, payload)}
+
+
+@app.post("/api/hmrc-64-8/vat/returns")
+async def api_hmrc_vat_returns(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_vat_returns(user, payload)}
+
+
+@app.post("/api/hmrc-64-8/vat/liabilities")
+async def api_hmrc_vat_liabilities(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_vat_liabilities(user, payload)}
+
+
+@app.post("/api/hmrc-64-8/vat/payments")
+async def api_hmrc_vat_payments(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_vat_payments(user, payload)}
+
+
+@app.post("/api/hmrc-64-8/vat/submit-return")
+async def api_hmrc_vat_submit_return(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **hmrc_vat_submit_return(user, payload)}
 
 
 @app.get("/api/hmrc-64-8/export.csv")
