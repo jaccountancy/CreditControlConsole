@@ -326,13 +326,25 @@
                 box-shadow: none;
                 padding: 0;
                 display: grid;
-                gap: 6px;
+                gap: 4px;
+                grid-template-rows: auto minmax(0, 1fr);
+                align-content: start;
+                height: 100%;
                 max-height: none;
                 overflow: visible;
+            }
+            body.client-register-sidebar-mode .app-sidebar-card .app-nav {
+                align-content: start;
+            }
+            body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-tab-rail {
+                margin-top: 0;
+                margin-bottom: 0;
+                min-height: 0;
             }
             body.client-register-sidebar-mode .app-sidebar .ch-register-client-page-tabs {
                 min-height: 0;
                 max-height: none;
+                height: 100%;
                 overflow-y: auto;
                 overflow-x: hidden;
                 display: grid;
@@ -28783,13 +28795,13 @@
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 8px;
-                margin-bottom: 12px;
-                padding-bottom: 12px;
+                margin-bottom: 6px;
+                padding-bottom: 8px;
                 border-bottom: 1px solid rgba(103, 127, 168, 0.16);
             }
             .ch-register-client-page-sidebar-actions > button {
                 width: 100%;
-                min-height: 34px;
+                min-height: 32px;
                 display: grid;
                 grid-template-columns: minmax(0, 1fr);
                 justify-content: stretch;
@@ -38865,7 +38877,6 @@
                                             </div>
                                             <span class="ch-client-id-badge" id="chRegisterClientPageClientIdBadge">CLIENT ID --</span>
                                             <button class="primary-button" type="button" id="chRegisterClientPageUploadFilesButton" hidden>Upload files</button>
-                                            <button class="ghost-button" type="button" id="chRegisterClientPageEngagementLettersQuickFetchButton">Get engagement letters</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPagePopulateCodesButton" hidden>Populate missing company auth codes</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPageReloadDirectoryButton" hidden>Reload directory</button>
                                         </div>
@@ -40379,15 +40390,10 @@
                                                 <article class="task-bookkeeping-workflow-card">
                                                     <h5>Stage 1 · Data Pull & Scope</h5>
                                                     <p class="task-bookkeeping-review-summary" id="taskBookkeepingReviewSummary">Pulling month data and validating the scope for this task.</p>
-                                                    <div class="task-bookkeeping-data-snapshot" id="taskBookkeepingDataPullSnapshot"></div>
                                                     <ul class="task-bookkeeping-blockers" id="taskBookkeepingBlockingList" hidden></ul>
                                                     <div class="task-bookkeeping-review-checks" id="taskBookkeepingReviewChecks"></div>
                                                     <label class="detail-meta" for="taskBookkeepingMissingNotesInput">Missing/inferred data notes</label>
                                                     <textarea id="taskBookkeepingMissingNotesInput" rows="3" placeholder="Record what was inferred and what was explicitly confirmed with the client/reviewer..."></textarea>
-                                                </article>
-                                                <article class="task-bookkeeping-workflow-card" style="margin-top: 10px;">
-                                                    <h5>Jenius AI Suggestions</h5>
-                                                    <ul class="task-bookkeeping-blockers" id="taskBookkeepingAiSuggestions"></ul>
                                                 </article>
                                             </section>
                                             <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="month_checks" hidden>
@@ -40691,6 +40697,21 @@
                                                             <label class="detail-meta" for="taskBookkeepingBlockerOverrideReason">Override reason</label>
                                                             <textarea id="taskBookkeepingBlockerOverrideReason" rows="3" placeholder="State the reason and evidence for overriding blockers..."></textarea>
                                                         </div>
+                                                    </div>
+                                                </article>
+                                            </section>
+                                            <section class="task-bookkeeping-workflow-stage" data-task-bookkeeping-stage-panel="client_email" hidden>
+                                                <article class="task-bookkeeping-workflow-card">
+                                                    <h5>Final stage · Client Bookkeeping Snapshot Email</h5>
+                                                    <p class="task-bookkeeping-review-summary" id="taskBookkeepingClientEmailSummary">Send the bookkeeping snapshot and covering email to the client, including CT estimate, director loan account position, and dividend availability.</p>
+                                                    <label class="detail-meta" for="taskBookkeepingClientEmailToInput">To</label>
+                                                    <input id="taskBookkeepingClientEmailToInput" type="email" placeholder="client@example.com">
+                                                    <label class="detail-meta" for="taskBookkeepingClientEmailSubjectInput" style="margin-top:8px;">Subject</label>
+                                                    <input id="taskBookkeepingClientEmailSubjectInput" type="text" placeholder="Bookkeeping Snapshot">
+                                                    <label class="detail-meta" for="taskBookkeepingClientEmailBodyInput" style="margin-top:8px;">Covering email</label>
+                                                    <textarea id="taskBookkeepingClientEmailBodyInput" rows="8" placeholder="Compose covering email..."></textarea>
+                                                    <div class="detail-actions" style="margin-top:10px;">
+                                                        <button class="primary-button" type="button" id="taskBookkeepingClientEmailSendButton">Send Bookkeeping Snapshot Email</button>
                                                     </div>
                                                 </article>
                                             </section>
@@ -52086,7 +52107,7 @@
                 const sidebarRect = sidebar.getBoundingClientRect();
                 const actions = sidebar.querySelector(".ch-register-client-page-sidebar-actions");
                 const actionsHeight = actions ? actions.getBoundingClientRect().height : 0;
-                const availableHeight = Math.max(140, Math.floor((navRect.bottom - sidebarRect.top) - actionsHeight - 10));
+                const availableHeight = Math.max(140, Math.floor((navRect.bottom - sidebarRect.top) - actionsHeight - 4));
                 tabsWrap.style.maxHeight = `${availableHeight}px`;
                 const fitClasses = ["is-fit-tight", "is-fit-compact", "is-fit-micro", "is-fit-ultra"];
                 for (const fitClass of fitClasses) {
@@ -116546,6 +116567,7 @@
                     awaiting_approval: "Awaiting approval",
                     awaiting_dean_approval: "Awaiting Dean's approval",
                     in_review: "In review",
+                    bounceback: "Bounceback",
                     query: "Query",
                     open: "Open",
                     completed: "Completed",
@@ -116556,7 +116578,7 @@
                 const key = String(value || "").trim().toLowerCase();
                 if (key === "completed") return "is-good";
                 if (key === "awaiting_approval" || key === "awaiting_dean_approval" || key === "in_review") return "is-open";
-                if (key === "records_requested" || key === "query") return "is-overdue";
+                if (key === "records_requested" || key === "query" || key === "bounceback") return "is-overdue";
                 return "is-due";
             }
 
@@ -116705,6 +116727,7 @@
                     workflowState: String(override.workflowState || row?.workflowState || ""),
                     workflowReviewer: String(override.workflowReviewer || row?.workflowReviewer || ""),
                     workflowReference: String(override.workflowReference || row?.workflowReference || ""),
+                    workflowSubmitter: String(override.workflowSubmitter || row?.workflowSubmitter || ""),
                     workflowDraftSavedAt: String(override.workflowDraftSavedAt || row?.workflowDraftSavedAt || ""),
                     workflowDraft: override.workflowDraft && typeof override.workflowDraft === "object" ? override.workflowDraft : null,
                     workflowEvidencePackAt: String(override.workflowEvidencePackAt || row?.workflowEvidencePackAt || ""),
@@ -116845,6 +116868,7 @@
                     { value: "awaiting_approval", label: "Awaiting approval" },
                     { value: "awaiting_dean_approval", label: "Awaiting Dean's approval" },
                     { value: "in_review", label: "In review" },
+                    { value: "bounceback", label: "Bounceback" },
                     { value: "query", label: "Query" },
                     { value: "completed", label: "Completed" },
                 ];
@@ -118775,11 +118799,11 @@
                 return taskBookkeepingWizardStagesForState();
             }
 
-            function taskBookkeepingWizardStagesForState(reviewState = {}) {
+            function taskBookkeepingWizardStagesForState(reviewState = {}, workflow = {}) {
                 const hasVatNumber = Boolean(String(reviewState?.vatNumber || "").trim());
+                const includeClientEmailStage = String(workflow?.workflowState || "").trim().toLowerCase() === "approved_pending_client_email";
                 const stages = [
                     { id: "data_pull", title: "Data pull" },
-                    { id: "month_checks", title: "Quality checks" },
                     { id: "vat", title: "VAT" },
                     { id: "reconciliations", title: "Reconciliations" },
                     { id: "profit_loss", title: "Profit and loss" },
@@ -118795,6 +118819,7 @@
                     { id: "fixed_assets", title: "Fixed assets" },
                     { id: "reviewer", title: "Reviewer" },
                     { id: "submit", title: "Submit" },
+                    ...(includeClientEmailStage ? [{ id: "client_email", title: "Client email" }] : []),
                 ];
                 const visible = hasVatNumber
                     ? stages.filter((stage) => stage.id !== "vat")
@@ -119076,7 +119101,7 @@
                 const feedback = workflow.feedback || {};
                 const reviewMode = !!workflow?.reviewMode;
                 if (reviewMode) {
-                    if (stageId === "submit") return true;
+                    if (stageId === "submit" || stageId === "client_email") return true;
                     const sectionComments = workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object"
                         ? workflow.reviewSectionComments
                         : {};
@@ -119356,7 +119381,7 @@
                 if (defaultReviewer && !managerPool.includes(defaultReviewer)) managerPool.unshift(defaultReviewer);
                 if (!workflow.reviewer) workflow.reviewer = defaultReviewer;
                 const reviewState = taskBookkeepingReviewState(row, workflow);
-                const stages = taskBookkeepingWizardStagesForState(reviewState);
+                const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
                 const stageIndexById = new Map(stages.map((item, index) => [item.id, index]));
                 const resolvedStage = stageIndexById.has(String(workflow.stage || "")) ? String(workflow.stage) : (stages[0]?.id || "data_pull");
                 const summary = reviewState.summary || {};
@@ -119364,6 +119389,7 @@
                 const hydratedWorkflow = {
                     ...workflow,
                     stage: resolvedStage,
+                    workflowState: String(row?.workflowState || workflow?.workflowState || ""),
                     feedback,
                     blockerOverride: {
                         enabled: !!workflow?.blockerOverride?.enabled,
@@ -119427,6 +119453,10 @@
                 const dividendComputationBody = document.getElementById("taskBookkeepingDividendComputationBody");
                 const finalSummary = document.getElementById("taskBookkeepingFinalSummary");
                 const finalBlockingList = document.getElementById("taskBookkeepingFinalBlockingList");
+                const clientEmailSummary = document.getElementById("taskBookkeepingClientEmailSummary");
+                const clientEmailToInput = document.getElementById("taskBookkeepingClientEmailToInput");
+                const clientEmailSubjectInput = document.getElementById("taskBookkeepingClientEmailSubjectInput");
+                const clientEmailBodyInput = document.getElementById("taskBookkeepingClientEmailBodyInput");
                 const vatSummary = document.getElementById("taskBookkeepingVatSummary");
                 const vatSnapshot = document.getElementById("taskBookkeepingVatSnapshot");
                 const vatTransactionsBody = document.getElementById("taskBookkeepingVatTransactionsBody");
@@ -119470,7 +119500,12 @@
                 }
                 if (topbarFlowTrack) {
                     if (topbarFlow) topbarFlow.hidden = false;
-                    if (topbarFlowTitle) topbarFlowTitle.textContent = `${bmTaskClientDisplayName(row?.clientName)} · Bookkeeping workflow`;
+                    if (topbarFlowTitle) {
+                        const periodLabel = String(reviewState?.periodConfig?.monthLabel || "").trim();
+                        topbarFlowTitle.textContent = periodLabel
+                            ? `Bookkeeping Workflow for ${periodLabel}`
+                            : "Bookkeeping Workflow";
+                    }
                     const stageCompletion = stages.map((stage) => taskBookkeepingStageCanAdvance(stage.id, hydratedWorkflow, reviewState));
                     const completedCount = stageCompletion
                         .slice(0, stageIndex)
@@ -120415,7 +120450,7 @@
                     showToast("Complete all workflow checks before submitting.", "info");
                     return;
                 }
-                const stages = taskBookkeepingWizardStagesForState(reviewState).slice(0, -1);
+                const stages = taskBookkeepingWizardStagesForState(reviewState, workflow).slice(0, -1);
                 const blockedStage = stages.find((stage) => !taskBookkeepingStageCanAdvance(stage.id, workflow, reviewState));
                 if (blockedStage) {
                     showToast(`Complete ${blockedStage.label.toLowerCase()} before submitting.`, "info");
@@ -120510,7 +120545,7 @@
                     return;
                 }
                 const reviewState = taskBookkeepingReviewState(row, workflow);
-                const stages = taskBookkeepingWizardStagesForState(reviewState);
+                const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
                 const reviewStages = stages.filter((stage) => stage.id !== "submit");
                 const reviewComments = workflow?.reviewSectionComments && typeof workflow.reviewSectionComments === "object"
                     ? workflow.reviewSectionComments
@@ -121356,7 +121391,7 @@
                 const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                 const filteredRows = (mode === "list" ? filteredBmTasksRows(allRows) : allRows.filter((row) => {
                     const status = String(row?.status || "").trim().toLowerCase();
-                    if (mode === "approvals") return ["awaiting_approval", "awaiting_dean_approval", "query", "records_requested"].includes(status);
+                    if (mode === "approvals") return ["awaiting_approval", "awaiting_dean_approval", "bounceback", "query", "records_requested"].includes(status);
                     if (mode === "completed") return status === "completed";
                     return true;
                 }));
@@ -124291,13 +124326,22 @@
                     const node = document.getElementById(id);
                     if (!node || node.dataset.clientPageAutosaveWired === "true") return;
                     node.dataset.clientPageAutosaveWired = "true";
-                    node.addEventListener("input", () => markClientRegisterClientPageDirty({ showPrompt: false }));
-                    node.addEventListener("change", () => markClientRegisterClientPageDirty({ showPrompt: true }));
+                    node.addEventListener("input", (event) => {
+                        if (!event?.isTrusted) return;
+                        markClientRegisterClientPageDirty({ showPrompt: false });
+                    });
+                    node.addEventListener("change", (event) => {
+                        if (!event?.isTrusted) return;
+                        markClientRegisterClientPageDirty({ showPrompt: true });
+                    });
                 });
                 document.querySelectorAll("[data-client-page-service]").forEach((node) => {
                     if (node.dataset.clientPageAutosaveWired === "true") return;
                     node.dataset.clientPageAutosaveWired = "true";
-                    node.addEventListener("change", () => markClientRegisterClientPageDirty({ showPrompt: true }));
+                    node.addEventListener("change", (event) => {
+                        if (!event?.isTrusted) return;
+                        markClientRegisterClientPageDirty({ showPrompt: true });
+                    });
                 });
             }
 
@@ -125779,17 +125823,11 @@
                 const summary = document.getElementById("chRegisterClientPageEngagementLettersMeta");
                 const body = document.getElementById("chRegisterClientPageEngagementLettersBody");
                 const fetchButton = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
-                const quickFetchButton = document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton");
                 if (!summary || !body) return;
                 if (fetchButton) {
                     const pageState = companiesHouseSettings.authRegisterClientPage || {};
                     fetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
                     fetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
-                }
-                if (quickFetchButton) {
-                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
-                    quickFetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
-                    quickFetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
                 }
 
                 if (!payload) {
@@ -125848,14 +125886,9 @@
                     return;
                 }
                 const button = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
-                const quickButton = document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton");
                 if (button) {
                     button.disabled = true;
                     button.textContent = "Syncing Ignition...";
-                }
-                if (quickButton) {
-                    quickButton.disabled = true;
-                    quickButton.textContent = "Syncing Ignition...";
                 }
                 try {
                     const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
@@ -125877,10 +125910,6 @@
                     if (button) {
                         button.disabled = false;
                         button.textContent = "Get engagement letters";
-                    }
-                    if (quickButton) {
-                        quickButton.disabled = false;
-                        quickButton.textContent = "Get engagement letters";
                     }
                 }
             }
@@ -126798,7 +126827,7 @@
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_vat">${escapeHTML(workflowState === "in_progress" ? "Finish prep" : "Start")}</button>`;
                                 }
                             } else if (workflowType === "bookkeeping") {
-                                if (["awaiting_approval", "awaiting_dean_approval"].includes(status) || workflowState === "submitted_for_review" || workflowState === "ready_to_complete") {
+                                if (["awaiting_approval", "awaiting_dean_approval", "bounceback"].includes(status) || workflowState === "submitted_for_review" || workflowState === "ready_to_complete") {
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
                                 } else {
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">${escapeHTML((workflowState === "draft_saved" || workflowState === "in_progress") ? "Resume" : "Start")}</button>`;
@@ -128606,10 +128635,6 @@
                     event?.preventDefault?.();
                     void refreshClientRegisterEngagementLetters();
                 });
-                document.getElementById("chRegisterClientPageEngagementLettersQuickFetchButton")?.addEventListener("click", (event) => {
-                    event?.preventDefault?.();
-                    void refreshClientRegisterEngagementLetters();
-                });
                 document.getElementById("chRegisterClientPageEngagementLetterModalCloseButton")?.addEventListener("click", closeClientRegisterEngagementLetterModal);
                 document.getElementById("chRegisterClientPageEngagementLetterModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "chRegisterClientPageEngagementLetterModal") closeClientRegisterEngagementLetterModal();
@@ -129043,7 +129068,7 @@
                     const workflow = companiesHouseSettings.bmTaskBookkeepingWorkflow || {};
                     const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
                     const reviewState = row ? taskBookkeepingReviewState(row, workflow) : {};
-                    const stages = taskBookkeepingWizardStagesForState(reviewState);
+                    const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
                     const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
                     if (index <= 0) return;
                     companiesHouseSettings.bmTaskBookkeepingWorkflow = {
@@ -129057,7 +129082,7 @@
                     const row = taskBookkeepingWorkflowCurrentRow((Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((item) => bmTaskRowWithOverrides(item)));
                     if (!row) return;
                     const reviewState = taskBookkeepingReviewState(row, workflow);
-                    const stages = taskBookkeepingWizardStagesForState(reviewState);
+                    const stages = taskBookkeepingWizardStagesForState(reviewState, workflow);
                     const index = Math.max(0, stages.findIndex((stage) => stage.id === String(workflow.stage || "")));
                     if (!taskBookkeepingCanAdvanceToStageIndex(stages, index + 1, workflow, reviewState)) {
                         taskBookkeepingOpenBlockedAdvanceModal(stages, workflow, reviewState, index + 1);

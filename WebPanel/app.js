@@ -2,6 +2,7 @@ const STORAGE_KEY = "hymn-credit-control-ledger";
 const STORAGE_PREFIXES = [STORAGE_KEY, "creditControl.", "jenius-"];
 const CLIENT_MATCH_STORAGE_KEY = "hymn-credit-control-client-matches";
 const HMRC_SETTINGS_STORAGE_KEY = "hymn-credit-control-hmrc-settings";
+const CLIENT_WORKFLOW_STORAGE_KEY = "hymn-credit-control-client-workflow";
 const DEFAULT_API_BASE_URL = window.location.origin;
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
@@ -46,6 +47,7 @@ let persistStateTimer = null;
 let persistClientMatchesTimer = null;
 let searchDebounceTimer = null;
 let hmrcWizardState = loadHmrcWizardState();
+let clientWorkflowStateByClient = loadClientWorkflowStateByClient();
 const PERSIST_DEBOUNCE_MS = 180;
 const currencyFormatter = new Intl.NumberFormat("en-GB", {
     style: "currency",
@@ -268,6 +270,55 @@ function loadClientMatches() {
     }
 }
 
+function loadClientWorkflowStateByClient() {
+    try {
+        const raw = localStorage.getItem(CLIENT_WORKFLOW_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistClientWorkflowStateByClient() {
+    try {
+        localStorage.setItem(CLIENT_WORKFLOW_STORAGE_KEY, JSON.stringify(clientWorkflowStateByClient));
+    } catch {
+        // Ignore localStorage write failures in private browsing contexts.
+    }
+}
+
+function workflowStateForClient(clientId) {
+    const raw = clientId ? clientWorkflowStateByClient[clientId] : null;
+    const reviewerStatus = raw?.reviewerStatus === "approved"
+        ? "approved"
+        : raw?.reviewerStatus === "changes-requested"
+            ? "changes-requested"
+            : "pending";
+    return {
+        reviewerName: String(raw?.reviewerName || ""),
+        reviewerStatus,
+        reviewerDecisionAt: String(raw?.reviewerDecisionAt || "")
+    };
+}
+
+function updateWorkflowStateForClient(clientId, patch) {
+    if (!clientId) return;
+    const current = workflowStateForClient(clientId);
+    const next = { ...current, ...patch };
+    clientWorkflowStateByClient[clientId] = {
+        reviewerName: String(next.reviewerName || "").trim(),
+        reviewerStatus: next.reviewerStatus === "approved"
+            ? "approved"
+            : next.reviewerStatus === "changes-requested"
+                ? "changes-requested"
+                : "pending",
+        reviewerDecisionAt: String(next.reviewerDecisionAt || "")
+    };
+    persistClientWorkflowStateByClient();
+}
+
 function persistClientMatches() {
     if (persistClientMatchesTimer !== null) window.clearTimeout(persistClientMatchesTimer);
     persistClientMatchesTimer = window.setTimeout(() => {
@@ -303,6 +354,7 @@ function clearSensitiveState() {
     state.dashboard = { ...emptyData.dashboard };
     state.customers = [];
     state.audit = [];
+    clientWorkflowStateByClient = {};
     state.selectedInvoice = null;
     selectedInvoiceId = null;
     selectedClientId = null;
@@ -333,10 +385,12 @@ function clearSensitiveStorage() {
         keys.forEach((key) => localStorage.removeItem(key));
         localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
         localStorage.removeItem(HMRC_SETTINGS_STORAGE_KEY);
+        localStorage.removeItem(CLIENT_WORKFLOW_STORAGE_KEY);
     } catch {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(CLIENT_MATCH_STORAGE_KEY);
         localStorage.removeItem(HMRC_SETTINGS_STORAGE_KEY);
+        localStorage.removeItem(CLIENT_WORKFLOW_STORAGE_KEY);
     }
 }
 
@@ -1058,9 +1112,81 @@ function renderClientScreen() {
     renderClientProfilePanel(client);
     renderClientInvoicePicker(invoices);
     renderClientInvoiceList(invoices);
+    renderReviewerWorkflowPanel(client);
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
     renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
     renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+}
+
+function reviewerStatusLabel(status) {
+    if (status === "approved") return "Approved";
+    if (status === "changes-requested") return "Changes requested";
+    return "Awaiting review";
+}
+
+function reviewerStatusClass(status) {
+    if (status === "approved") return "status-approved";
+    if (status === "changes-requested") return "status-changes";
+    return "status-pending";
+}
+
+function bookkeepingEmailDraft(client) {
+    const clientName = client?.name || "Client";
+    return [
+        `Hi ${clientName},`,
+        "",
+        "Please find your latest Bookkeeping Snapshot attached.",
+        "",
+        "As part of this update we have included:",
+        "- Corporation Tax estimates",
+        "- Director loan account position",
+        "- Current dividend availability",
+        "",
+        "If you want us to walk through any item, reply to this email and we will schedule it.",
+        "",
+        "Kind regards,",
+        "Jaccountancy"
+    ].join("\n");
+}
+
+function renderReviewerWorkflowPanel(client) {
+    const statusBadge = document.getElementById("reviewerWorkflowStatusBadge");
+    const statusText = document.getElementById("reviewerWorkflowStatusText");
+    const reviewerNameInput = document.getElementById("reviewerNameInput");
+    const decisionSelect = document.getElementById("reviewerDecisionSelect");
+    const finalStage = document.getElementById("finalWorkflowStage");
+    const emailDraft = document.getElementById("bookkeepingEmailDraft");
+    if (!statusBadge || !statusText || !reviewerNameInput || !decisionSelect || !finalStage || !emailDraft) return;
+
+    if (!client?.id) {
+        statusBadge.className = "workflow-status-pill status-pending";
+        statusBadge.textContent = "Awaiting review";
+        statusText.textContent = "Set reviewer decision to unlock the final client email stage.";
+        reviewerNameInput.value = "";
+        decisionSelect.value = "pending";
+        emailDraft.value = "";
+        finalStage.hidden = true;
+        return;
+    }
+
+    const workflow = workflowStateForClient(client.id);
+    const label = reviewerStatusLabel(workflow.reviewerStatus);
+    statusBadge.className = `workflow-status-pill ${reviewerStatusClass(workflow.reviewerStatus)}`;
+    statusBadge.textContent = label;
+    reviewerNameInput.value = workflow.reviewerName;
+    decisionSelect.value = workflow.reviewerStatus;
+    finalStage.hidden = workflow.reviewerStatus !== "approved";
+    emailDraft.value = bookkeepingEmailDraft(client);
+
+    const decidedBy = workflow.reviewerName ? ` by ${workflow.reviewerName}` : "";
+    const decidedAt = workflow.reviewerDecisionAt ? ` on ${formatDate(workflow.reviewerDecisionAt)}` : "";
+    if (workflow.reviewerStatus === "approved") {
+        statusText.textContent = `Reviewer approved${decidedBy}${decidedAt}. Final client email step is now open.`;
+    } else if (workflow.reviewerStatus === "changes-requested") {
+        statusText.textContent = `Reviewer requested changes${decidedBy}${decidedAt}. Final client email remains locked.`;
+    } else {
+        statusText.textContent = "Awaiting reviewer decision. Final client email remains locked.";
+    }
 }
 
 function renderSettingsScreen() {
@@ -1968,6 +2094,44 @@ function wireForms() {
     document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
         selectedInvoiceId = event.target.value;
         renderClientScreen();
+    });
+    document.getElementById("reviewerNameInput").addEventListener("input", (event) => {
+        if (!selectedClientId) return;
+        updateWorkflowStateForClient(selectedClientId, { reviewerName: event.target.value });
+        renderReviewerWorkflowPanel(findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId));
+    });
+    document.getElementById("reviewerDecisionSelect").addEventListener("change", (event) => {
+        if (!selectedClientId) return;
+        const reviewerName = document.getElementById("reviewerNameInput").value || "";
+        updateWorkflowStateForClient(selectedClientId, {
+            reviewerName,
+            reviewerStatus: event.target.value,
+            reviewerDecisionAt: new Date().toISOString()
+        });
+        renderReviewerWorkflowPanel(findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId));
+    });
+    document.getElementById("approveWorkflowButton").addEventListener("click", () => {
+        if (!selectedClientId) return;
+        const reviewerName = document.getElementById("reviewerNameInput").value || "";
+        updateWorkflowStateForClient(selectedClientId, {
+            reviewerName,
+            reviewerStatus: "approved",
+            reviewerDecisionAt: new Date().toISOString()
+        });
+        renderReviewerWorkflowPanel(findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId));
+    });
+    document.getElementById("openBookkeepingEmailButton").addEventListener("click", () => {
+        if (!selectedClientId) return;
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const workflow = workflowStateForClient(selectedClientId);
+        if (workflow.reviewerStatus !== "approved") {
+            window.alert("Reviewer approval is required before opening the final email step.");
+            return;
+        }
+        const recipient = encodeURIComponent(String(client?.clientProfile?.email || client?.email || "").trim());
+        const subject = encodeURIComponent(`${client?.name || "Client"} bookkeeping snapshot and planning update`);
+        const body = encodeURIComponent(bookkeepingEmailDraft(client));
+        window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
     });
 
     document.querySelectorAll(".client-profile-panel [data-field]").forEach((input) => {
