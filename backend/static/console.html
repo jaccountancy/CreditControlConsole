@@ -46260,6 +46260,24 @@
             let xeroLockMismatchVisibleTenantIds = [];
             let xeroLockFixProgressTenantIds = [];
             let xeroLockFixCurrentTenantId = "";
+            const PERF_PROFILE_QUERY_ENABLED = (() => {
+                try {
+                    return new URLSearchParams(window.location.search || "").get("profile") === "1";
+                } catch {
+                    return false;
+                }
+            })();
+            const PERF_PROFILE_STORAGE_ENABLED = (() => {
+                try {
+                    return localStorage.getItem("jenius_perf_profile") === "1";
+                } catch {
+                    return false;
+                }
+            })();
+            const PERF_PROFILE_ENABLED = PERF_PROFILE_QUERY_ENABLED || PERF_PROFILE_STORAGE_ENABLED;
+            const PERF_REPORT_EVERY = 30;
+            const perfStats = new Map();
+            let perfEventCounter = 0;
             let xeroLockFixProcessingInBackground = false;
             let xeroLockFixLastRunTotals = { fixed: 0, failed: 0, total: 0 };
             const bankStatementChartOfAccountsFallback = [
@@ -47267,6 +47285,44 @@
                     lastLoginAt: String(payload.lastLoginAt || payload.last_login_at || ""),
                     lastApprovedLoginAt: String(payload.lastApprovedLoginAt || payload.last_approved_login_at || ""),
                 };
+            }
+
+            function trackPerf(label, elapsedMs) {
+                if (!PERF_PROFILE_ENABLED) return;
+                const key = String(label || "unknown");
+                const elapsed = Number(elapsedMs || 0);
+                const row = perfStats.get(key) || { count: 0, totalMs: 0, maxMs: 0, lastMs: 0 };
+                row.count += 1;
+                row.totalMs += elapsed;
+                row.maxMs = Math.max(row.maxMs, elapsed);
+                row.lastMs = elapsed;
+                perfStats.set(key, row);
+                perfEventCounter += 1;
+                if (perfEventCounter % PERF_REPORT_EVERY !== 0) return;
+                const snapshot = [...perfStats.entries()]
+                    .map(([name, value]) => ({
+                        label: name,
+                        count: value.count,
+                        avgMs: Number((value.totalMs / Math.max(1, value.count)).toFixed(2)),
+                        maxMs: Number(value.maxMs.toFixed(2)),
+                        lastMs: Number(value.lastMs.toFixed(2)),
+                        totalMs: Number(value.totalMs.toFixed(2)),
+                    }))
+                    .sort((left, right) => right.totalMs - left.totalMs)
+                    .slice(0, 12);
+                console.groupCollapsed(`[Perf] ${new Date().toLocaleTimeString("en-GB")} · top ${snapshot.length} paths`);
+                console.table(snapshot);
+                console.groupEnd();
+            }
+
+            function withPerf(label, run) {
+                if (!PERF_PROFILE_ENABLED) return run();
+                const startedAt = performance.now();
+                try {
+                    return run();
+                } finally {
+                    trackPerf(label, performance.now() - startedAt);
+                }
             }
 
             function userRoleLabel(role, isSuperAdmin = false) {
@@ -50827,9 +50883,13 @@
             }
 
             function filteredInvoices() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const searchNeedle = String(searchTerm || "").toLowerCase();
                 const cacheKey = `${ledgerSourceKey()}:${selectedFilter}:${clientFilter}:${sortMode}:${searchNeedle}`;
-                if (filteredInvoicesCache.key === cacheKey) return filteredInvoicesCache.rows;
+                if (filteredInvoicesCache.key === cacheKey) {
+                    if (PERF_PROFILE_ENABLED) trackPerf("filteredInvoices(cache-hit)", performance.now() - startedAt);
+                    return filteredInvoicesCache.rows;
+                }
                 const rows = getLedgerInvoicesDataset().filter((invoice) => {
                     const matchesFilter = selectedFilter === "all" || invoice.__category === selectedFilter;
                     const matchesSearch = invoice.__searchBlob.includes(searchNeedle);
@@ -50843,6 +50903,7 @@
                     return matchesFilter && matchesSearch && matchesClient && matchesAmount;
                 }).sort(compareInvoices);
                 filteredInvoicesCache = { key: cacheKey, rows };
+                if (PERF_PROFILE_ENABLED) trackPerf("filteredInvoices(cache-miss)", performance.now() - startedAt);
                 return rows;
             }
 
@@ -50924,8 +50985,12 @@
             }
 
             function filteredClientGroups() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const cacheKey = `${ledgerSourceKey()}:${selectedFilter}:${clientFilter}:${sortMode}:${String(searchTerm || "").toLowerCase()}:${activeNavSection}`;
-                if (filteredClientGroupsCache.key === cacheKey) return filteredClientGroupsCache.groups;
+                if (filteredClientGroupsCache.key === cacheKey) {
+                    if (PERF_PROFILE_ENABLED) trackPerf("filteredClientGroups(cache-hit)", performance.now() - startedAt);
+                    return filteredClientGroupsCache.groups;
+                }
                 const grouped = new Map();
                 filteredInvoices().forEach((invoice) => {
                     const key = invoice.customerId || invoice.customerName || "unknown-client";
@@ -50985,6 +51050,7 @@
                     };
                 }).sort(compareClientGroups);
                 filteredClientGroupsCache = { key: cacheKey, groups };
+                if (PERF_PROFILE_ENABLED) trackPerf("filteredClientGroups(cache-miss)", performance.now() - startedAt);
                 return groups;
             }
 
@@ -51025,6 +51091,7 @@
             }
 
             function dashboardTotals() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const invoices = getLedgerInvoicesDataset();
                 const aggregates = invoices.reduce((acc, invoice) => {
                     const category = invoice.__category || invoiceCategory(invoice);
@@ -51055,7 +51122,7 @@
                 const notices = sevenDayNoticeSummaries();
                 const receivablesTotal = Number(state.dashboard?.totalReceivables);
                 const openInvoiceCount = Number(state.dashboard?.openInvoices);
-                return {
+                const totals = {
                     invoiceCount: invoices.length,
                     totalInvoiced: aggregates.totalInvoiced,
                     openCount: Number.isFinite(openInvoiceCount) && openInvoiceCount > 0 ? openInvoiceCount : aggregates.openCount,
@@ -51071,6 +51138,8 @@
                     lateChargeReviewCount: lateChargeStats.candidateCount,
                     sevenDayNotices: notices,
                 };
+                if (PERF_PROFILE_ENABLED) trackPerf("dashboardTotals", performance.now() - startedAt);
+                return totals;
             }
 
             function renderDashboardHero() {
@@ -62805,6 +62874,7 @@
             }
 
             function renderSummaryCounts() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const summaryKey = ledgerSourceKey();
                 let summary = ledgerSummaryCache.key === summaryKey ? ledgerSummaryCache.summary : null;
                 if (!summary) {
@@ -62882,6 +62952,7 @@
                 document.querySelectorAll("[data-filter-shortcut]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.filterShortcut === selectedFilter);
                 });
+                if (PERF_PROFILE_ENABLED) trackPerf("renderSummaryCounts", performance.now() - startedAt);
             }
 
             function renderToolbarControls() {
@@ -63094,6 +63165,7 @@
             }
 
             function renderInvoiceTable() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const tbody = document.getElementById("invoiceTableBody");
                 const groups = filteredClientGroups();
                 const pages = Math.max(1, Math.ceil(groups.length / pageSize));
@@ -63172,6 +63244,7 @@
                 applyColumnVisibility();
                 updateSelectAllState();
                 renderBulkActionToolbar();
+                if (PERF_PROFILE_ENABLED) trackPerf("renderInvoiceTable", performance.now() - startedAt);
             }
 
             function renderPagination(totalResults, totalPages, start, count, label = "result") {
@@ -108305,6 +108378,7 @@
             }
 
             function renderAll() {
+                const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const settingsSteps = new Set([
                     "renderSyncSettings",
                     "renderSettingsNavigation",
@@ -108442,12 +108516,19 @@
                 renderSteps.forEach(([label, run]) => {
                     if (!shouldRunStep(label)) return;
                     try {
-                        run();
+                        if (!PERF_PROFILE_ENABLED) {
+                            run();
+                        } else {
+                            const stepStartedAt = performance.now();
+                            run();
+                            trackPerf(`renderAll.step.${label}`, performance.now() - stepStartedAt);
+                        }
                     } catch (error) {
                         console.error(`Render step failed: ${label}`, error);
                         reportRenderFailure(label, error);
                     }
                 });
+                if (PERF_PROFILE_ENABLED) trackPerf("renderAll.total", performance.now() - startedAt);
                 schedulePersistState();
             }
 
@@ -131219,6 +131300,9 @@
             }
 
             async function init() {
+                if (PERF_PROFILE_ENABLED) {
+                    console.info("[Perf] lightweight profiling enabled (disable with localStorage.removeItem('jenius_perf_profile') and remove ?profile=1).");
+                }
                 showDedicatedLoadingScreen({
                     phase: "Loading Jenius AI Workspace",
                     detail: "Initializing navigation, workspace state, and secure context.",
