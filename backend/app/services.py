@@ -15354,7 +15354,18 @@ def _gmail_client_secret_value() -> str:
 
 
 def _gmail_scopes_value(value: str | None) -> str:
-    return " ".join(str(value or "").replace(",", " ").split())
+    configured = " ".join(str(value or "").replace(",", " ").split())
+    scopes = {scope for scope in configured.split() if scope}
+    # Ensure core scopes required across the app are always requested.
+    scopes.update(
+        {
+            "openid",
+            "email",
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/gmail.readonly",
+        }
+    )
+    return " ".join(sorted(scopes))
 
 
 def gmail_redirect_uri() -> str:
