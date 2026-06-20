@@ -15775,8 +15775,10 @@ SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
 
 
 def _submitted_employee_forms_subject_matches(subject: str) -> bool:
-    text = str(subject or "").strip().lower()
-    return bool(re.match(r"^new\s+employee\s+details\s*:", text))
+    text = re.sub(r"\s+", " ", str(subject or "").strip().lower())
+    if not text:
+        return False
+    return text.startswith("new employee details:")
 
 
 def _submitted_employee_forms_subject_suffix(subject: str) -> str:
@@ -16124,6 +16126,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 params={
                     "q": query,
                     "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH,
+                    "includeSpamTrash": "true",
                 },
             )
             if list_response.is_error:
@@ -16157,6 +16160,32 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 message_ids.append(message_id)
             if len(message_ids) >= SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH:
                 break
+        if not message_ids:
+            # Fallback: scan recent mailbox rows and filter subjects locally.
+            fallback_response = await client.get(
+                GMAIL_MESSAGES_LIST_URL,
+                headers=headers,
+                params={
+                    "q": f"in:anywhere newer_than:{max(1, safe_lookback_days // 7 + 1)}m",
+                    "maxResults": max(SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, 250),
+                    "includeSpamTrash": "true",
+                },
+            )
+            if fallback_response.is_success:
+                fallback_payload = fallback_response.json() if fallback_response.content else {}
+                fallback_rows = fallback_payload.get("messages") if isinstance(fallback_payload, dict) else []
+                if not isinstance(fallback_rows, list):
+                    fallback_rows = []
+                for row in fallback_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    message_id = str(row.get("id") or "").strip()
+                    if not message_id or message_id in seen_ids:
+                        continue
+                    seen_ids.add(message_id)
+                    message_ids.append(message_id)
+                    if len(message_ids) >= 400:
+                        break
         if not message_ids and first_error is not None:
             raise first_error
 
