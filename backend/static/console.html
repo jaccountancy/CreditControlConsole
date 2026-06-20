@@ -34800,7 +34800,33 @@
                     linear-gradient(160deg, #edf3fe 0%, #d6e4fb 42%, #cddbf3 100%);
                 opacity: 1;
                 visibility: visible;
-                transition: opacity 260ms ease, visibility 260ms ease;
+                transition: opacity 320ms ease, visibility 320ms ease;
+                overflow: hidden;
+            }
+            .app-loading-screen::before,
+            .app-loading-screen::after {
+                content: "";
+                position: absolute;
+                border-radius: 50%;
+                filter: blur(2px);
+                opacity: 0.4;
+                pointer-events: none;
+                animation: appLoadingDrift 12s ease-in-out infinite;
+            }
+            .app-loading-screen::before {
+                width: min(56vw, 680px);
+                height: min(56vw, 680px);
+                left: -12%;
+                top: -18%;
+                background: radial-gradient(circle, rgba(88, 151, 239, 0.34) 0%, rgba(88, 151, 239, 0) 66%);
+            }
+            .app-loading-screen::after {
+                width: min(44vw, 560px);
+                height: min(44vw, 560px);
+                right: -8%;
+                bottom: -22%;
+                background: radial-gradient(circle, rgba(44, 103, 190, 0.32) 0%, rgba(44, 103, 190, 0) 68%);
+                animation-delay: -5.5s;
             }
             .app-loading-screen.is-hidden {
                 opacity: 0;
@@ -34816,6 +34842,8 @@
                 padding: clamp(28px, 4vw, 44px);
                 display: grid;
                 gap: 20px;
+                position: relative;
+                animation: appLoadingCardEnter 560ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
             }
             .app-loading-brand {
                 display: flex;
@@ -34891,6 +34919,15 @@
                 background: linear-gradient(90deg, #3f78c9, #6fa5ea 58%, #9dc6f5);
                 box-shadow: 0 0 22px rgba(75, 131, 209, 0.45);
                 transition: width 220ms ease;
+                overflow: hidden;
+            }
+            .app-loading-progress-fill::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.34) 45%, transparent 100%);
+                transform: translateX(-100%);
+                animation: appLoadingShimmer 1.5s linear infinite;
             }
             .app-loading-footnote {
                 display: flex;
@@ -34907,6 +34944,23 @@
             @keyframes appLoadingSpin {
                 to { transform: rotate(360deg); }
             }
+            @keyframes appLoadingCardEnter {
+                0% {
+                    transform: translateY(22px) scale(0.985);
+                    opacity: 0;
+                }
+                100% {
+                    transform: translateY(0) scale(1);
+                    opacity: 1;
+                }
+            }
+            @keyframes appLoadingDrift {
+                0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+                50% { transform: translate3d(3%, -2%, 0) scale(1.08); }
+            }
+            @keyframes appLoadingShimmer {
+                to { transform: translateX(100%); }
+            }
                 </style>
             </head>
             <body>
@@ -34917,7 +34971,7 @@
                                 <img src="/static/JaccountancyBlueIcon.png" alt="">
                             </span>
                             <span class="app-loading-brand-copy">
-                                <strong>Credit Control Console</strong>
+                                <strong>Loading Jenius AI Workspace</strong>
                                 <span>Jenius workspace boot</span>
                             </span>
                         </div>
@@ -121939,14 +121993,20 @@
                 }
                 const currentClientId = String(
                     row?.ignitionClientId
+                    || row?.ignition_client_id
                     || row?.ignitionMatch?.clientId
+                    || row?.ignitionMatch?.client_id
                     || payload?.profile?.companiesHouse?.ignitionMatch?.clientId
+                    || payload?.profile?.companiesHouse?.ignitionMatch?.client_id
                     || ""
                 ).trim();
                 const currentClientName = String(
                     row?.ignitionClientName
+                    || row?.ignition_client_name
                     || row?.ignitionMatch?.clientName
+                    || row?.ignitionMatch?.client_name
                     || payload?.profile?.companiesHouse?.ignitionMatch?.clientName
+                    || payload?.profile?.companiesHouse?.ignitionMatch?.client_name
                     || ""
                 ).trim();
                 if (!clients.length && currentClientId) {
@@ -122717,23 +122777,23 @@
             }
 
             async function openClientRegisterJukInvoiceLookupModal(options = {}) {
-                const auto = !!options?.auto;
-                const suppressToast = !!options?.suppressToast;
-                const silentNoCustomers = !!options?.silentNoCustomers;
+                const isEventObject = !!(options && typeof options === "object" && typeof options.preventDefault === "function");
+                if (isEventObject) options.preventDefault();
+                const resolvedOptions = isEventObject ? {} : (options || {});
+                const suppressToast = !!resolvedOptions?.suppressToast;
+                const silentNoCustomers = !!resolvedOptions?.silentNoCustomers;
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 if (pageState.jukInvoiceLookupBusy) return;
                 const payload = clientPagePayload();
                 const row = payload?.row || {};
                 let candidates = clientRegisterJukCustomerCandidates(row);
                 if (!candidates.length) {
-                    if (auto) {
-                        try {
-                            await hydrateFromAPI();
-                        } catch (error) {
-                            console.warn("Unable to refresh panel data before auto-fetching JUK invoices", error);
-                        }
-                        candidates = clientRegisterJukCustomerCandidates(row);
+                    try {
+                        await hydrateFromAPI();
+                    } catch (error) {
+                        console.warn("Unable to refresh panel data before fetching JUK invoices", error);
                     }
+                    candidates = clientRegisterJukCustomerCandidates(row);
                     if (!candidates.length) {
                         if (!silentNoCustomers) {
                             showToast("No Xero customers are loaded. Sync Credit Control first.", "error");
@@ -123676,26 +123736,39 @@
                 const ignitionConnected = [
                     row?.ignitionMatched,
                     row?.ignitionConnected,
+                    row?.ignition_connected,
                     row?.isIgnitionMatched,
                     row?.hasIgnitionMatch,
                     row?.ignitionMatch?.matched,
                     profile?.ignitionMatched,
                     profile?.ignitionConnected,
+                    profile?.ignition_connected,
                     profile?.ignition?.connected,
                     profile?.ignition?.matched,
                     profile?.ignitionMatch?.matched,
                     profile?.companiesHouse?.ignitionMatch?.clientId,
+                    profile?.companiesHouse?.ignitionMatch?.client_id,
                 ].some(truthy) || [
                     row?.ignitionClientId,
+                    row?.ignition_client_id,
                     row?.ignitionClientName,
+                    row?.ignition_client_name,
                     row?.ignitionMatch?.clientId,
+                    row?.ignitionMatch?.client_id,
                     row?.ignitionMatch?.clientName,
+                    row?.ignitionMatch?.client_name,
                     profile?.ignition?.clientId,
+                    profile?.ignition?.client_id,
                     profile?.ignition?.clientName,
+                    profile?.ignition?.client_name,
                     profile?.ignitionMatch?.clientId,
+                    profile?.ignitionMatch?.client_id,
                     profile?.ignitionMatch?.clientName,
+                    profile?.ignitionMatch?.client_name,
                     profile?.companiesHouse?.ignitionMatch?.clientId,
+                    profile?.companiesHouse?.ignitionMatch?.client_id,
                     profile?.companiesHouse?.ignitionMatch?.clientName,
+                    profile?.companiesHouse?.ignitionMatch?.client_name,
                 ].some(hasText);
 
                 const companyNumber = String(
@@ -130643,7 +130716,7 @@
 
             async function init() {
                 showDedicatedLoadingScreen({
-                    phase: "Launching Credit Control Console",
+                    phase: "Loading Jenius AI Workspace",
                     detail: "Initializing navigation, workspace state, and secure context.",
                     progress: 8,
                 });

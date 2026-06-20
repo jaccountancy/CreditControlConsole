@@ -5222,8 +5222,16 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
     payroll = service_details.get("payroll") if isinstance(service_details.get("payroll"), dict) else {}
     p11d = service_details.get("p11d") if isinstance(service_details.get("p11d"), dict) else {}
     self_assessment = service_details.get("selfAssessment") if isinstance(service_details.get("selfAssessment"), dict) else {}
-    xero_match = source.get("xeroMatch") if isinstance(source.get("xeroMatch"), dict) else {}
-    ignition_match = source.get("ignitionMatch") if isinstance(source.get("ignitionMatch"), dict) else {}
+    xero_match = (
+        source.get("xeroMatch")
+        if isinstance(source.get("xeroMatch"), dict)
+        else (source.get("xero_match") if isinstance(source.get("xero_match"), dict) else {})
+    )
+    ignition_match = (
+        source.get("ignitionMatch")
+        if isinstance(source.get("ignitionMatch"), dict)
+        else (source.get("ignition_match") if isinstance(source.get("ignition_match"), dict) else {})
+    )
     engagement_letters_raw = source.get("ignitionEngagementLetters")
     engagement_letters: list[dict] = []
     if isinstance(engagement_letters_raw, list):
@@ -5314,14 +5322,14 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
         "authCodeStatus": _coerce_text(source.get("authCodeStatus"), 80),
         "notes": _coerce_text(source.get("notes"), 3000),
         "xeroMatch": {
-            "tenantId": _coerce_text(xero_match.get("tenantId"), 120),
-            "tenantName": _coerce_text(xero_match.get("tenantName"), 250),
-            "matchedAt": _coerce_text(xero_match.get("matchedAt"), 80),
+            "tenantId": _coerce_text(xero_match.get("tenantId") or xero_match.get("tenant_id"), 120),
+            "tenantName": _coerce_text(xero_match.get("tenantName") or xero_match.get("tenant_name"), 250),
+            "matchedAt": _coerce_text(xero_match.get("matchedAt") or xero_match.get("matched_at"), 80),
         },
         "ignitionMatch": {
-            "clientId": _coerce_text(ignition_match.get("clientId"), 120),
-            "clientName": _coerce_text(ignition_match.get("clientName"), 250),
-            "matchedAt": _coerce_text(ignition_match.get("matchedAt"), 80),
+            "clientId": _coerce_text(ignition_match.get("clientId") or ignition_match.get("client_id"), 120),
+            "clientName": _coerce_text(ignition_match.get("clientName") or ignition_match.get("client_name"), 250),
+            "matchedAt": _coerce_text(ignition_match.get("matchedAt") or ignition_match.get("matched_at"), 80),
         },
         "ignitionEngagementLetters": engagement_letters[:1000],
         "ignitionEngagementLetterSync": {
@@ -6721,7 +6729,7 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
                     cursor,
                     row,
                     user_id,
-                    _coerce_text(cached_ignition_match.get("clientId"), 120),
+                    _coerce_text(cached_ignition_match.get("clientId") or cached_ignition_match.get("client_id"), 120),
                 )
             except Exception:
                 logger.exception("Unable to sync Ignition engagement letters for client-page row %s", safe_row_id)
