@@ -43938,10 +43938,6 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="submittedEmployeeFormsRefreshButton" type="button">Refresh page</button>
                                     <a class="ghost-button action-link" id="submittedEmployeeFormsReconnectButton" href="/auth/gmail/start?redirect_to=/">Reconnect Gmail</a>
-                                    <label class="new-formations-inline-checkbox" title="Create missing employees in Xero Payroll">
-                                        <input id="submittedEmployeeFormsAutoCreateToggle" type="checkbox" checked>
-                                        <span>Auto create in Xero</span>
-                                    </label>
                                     <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Start wizard</button>
                                 </div>
                             </div>
@@ -46155,7 +46151,6 @@
             };
             let submittedEmployeeFormsLoading = false;
             let submittedEmployeeFormsSyncing = false;
-            let submittedEmployeeFormsAutoCreate = true;
             let submittedEmployeeFormsWizardStep = 1;
             let submittedEmployeeFormsSelectedRowIds = new Set();
             let submittedEmployeeFormsWindowStartIso = "";
@@ -49419,7 +49414,7 @@
                             mode,
                             lookbackDays: 28,
                             selectedFormIds,
-                            createMissing: options?.createMissing !== false,
+                            createMissing: true,
                         }),
                     });
                     submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
@@ -57206,11 +57201,10 @@
                 const refreshButton = document.getElementById("submittedEmployeeFormsRefreshButton");
                 const reconnectButton = document.getElementById("submittedEmployeeFormsReconnectButton");
                 const syncButton = document.getElementById("submittedEmployeeFormsSyncButton");
-                const autoCreateToggle = document.getElementById("submittedEmployeeFormsAutoCreateToggle");
                 const wizardMeta = document.getElementById("submittedEmployeeFormsWizardMeta");
                 const selectAllButton = document.getElementById("submittedEmployeeFormsSelectAllButton");
                 const clearSelectionButton = document.getElementById("submittedEmployeeFormsClearSelectionButton");
-                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !autoCreateToggle || !wizardMeta || !selectAllButton || !clearSelectionButton) return;
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton) return;
 
                 if (refreshButton.dataset.submittedEmployeeFormsWired !== "true") {
                     refreshButton.dataset.submittedEmployeeFormsWired = "true";
@@ -57223,20 +57217,14 @@
                     syncButton.dataset.submittedEmployeeFormsWired = "true";
                     syncButton.addEventListener("click", async () => {
                         if (submittedEmployeeFormsWizardStep <= 1) {
-                            await syncSubmittedEmployeeForms({ mode: "fetch", createMissing: submittedEmployeeFormsAutoCreate });
+                            await syncSubmittedEmployeeForms({ mode: "fetch" });
                             return;
                         }
                         if (!submittedEmployeeFormsSelectedRowIds.size) {
                             showToast("Select at least one email row for Step 2.", "info");
                             return;
                         }
-                        await syncSubmittedEmployeeForms({ mode: "process", createMissing: submittedEmployeeFormsAutoCreate });
-                    });
-                }
-                if (autoCreateToggle.dataset.submittedEmployeeFormsWired !== "true") {
-                    autoCreateToggle.dataset.submittedEmployeeFormsWired = "true";
-                    autoCreateToggle.addEventListener("change", () => {
-                        submittedEmployeeFormsAutoCreate = Boolean(autoCreateToggle.checked);
+                        await syncSubmittedEmployeeForms({ mode: "process" });
                     });
                 }
                 if (selectAllButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -57254,8 +57242,6 @@
                         renderSubmittedEmployeeFormsScreen();
                     });
                 }
-                autoCreateToggle.checked = submittedEmployeeFormsAutoCreate;
-
                 const gmail = submittedEmployeeFormsData?.gmail || {};
                 const gmailNeedsReconnect = Boolean(gmail?.needsReconnect) || ["not_connected", "reauth_required"].includes(String(gmail?.status || "").trim().toLowerCase());
                 reconnectButton.href = endpointURL("/auth/gmail/start?redirect_to=/#credit-control-submitted-employee-forms");
@@ -57269,7 +57255,6 @@
                 } else {
                     syncButton.textContent = `Run Step 2: Process selected (${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")})`;
                 }
-                autoCreateToggle.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || submittedEmployeeFormsWizardStep <= 1;
                 selectAllButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
                 clearSelectionButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || !submittedEmployeeFormsSelectedRowIds.size;
 

@@ -16104,37 +16104,61 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     headers = {"Authorization": f"Bearer {connection_row.get('access_token') or ''}"}
     safe_lookback_days = max(1, min(int(lookback_days or 28), 180))
     after_date = (utcnow() - timedelta(days=safe_lookback_days)).date()
-    query = f'subject:"New Employee Details" after:{after_date.strftime("%Y/%m/%d")}'
+    after_token = after_date.strftime("%Y/%m/%d")
+    query_candidates = [
+        f'in:anywhere subject:"New Employee Details" after:{after_token}',
+        f'in:anywhere "New Employee Details:" after:{after_token}',
+        f'in:anywhere "New Employee Details" after:{after_token}',
+        'in:anywhere subject:"New Employee Details"',
+        'in:anywhere "New Employee Details:"',
+    ]
 
     async with httpx.AsyncClient(timeout=30) as client:
-        list_response = await client.get(
-            GMAIL_MESSAGES_LIST_URL,
-            headers=headers,
-            params={
-                "q": query,
-                "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH,
-            },
-        )
-        if list_response.is_error:
-            detail = list_response.text[:300]
-            if list_response.status_code in (401, 403):
-                response_meta.update(
-                    {
-                        "status": "reauth_required",
-                        "message": "Gmail denied message read access. Reconnect Gmail with read scope.",
-                        "needsReconnect": True,
-                    }
-                )
-                return [], response_meta
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Gmail message search failed ({list_response.status_code}): {detail or 'Unknown error'}",
+        message_ids: list[str] = []
+        seen_ids: set[str] = set()
+        first_error: HTTPException | None = None
+        for query in query_candidates:
+            list_response = await client.get(
+                GMAIL_MESSAGES_LIST_URL,
+                headers=headers,
+                params={
+                    "q": query,
+                    "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH,
+                },
             )
-        list_payload = list_response.json() if list_response.content else {}
-        message_rows = list_payload.get("messages") if isinstance(list_payload, dict) else []
-        if not isinstance(message_rows, list):
-            message_rows = []
-        message_ids = [str(row.get("id") or "").strip() for row in message_rows if isinstance(row, dict) and row.get("id")]
+            if list_response.is_error:
+                detail = list_response.text[:300]
+                if list_response.status_code in (401, 403):
+                    response_meta.update(
+                        {
+                            "status": "reauth_required",
+                            "message": "Gmail denied message read access. Reconnect Gmail with read scope.",
+                            "needsReconnect": True,
+                        }
+                    )
+                    return [], response_meta
+                if first_error is None:
+                    first_error = HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Gmail message search failed ({list_response.status_code}): {detail or 'Unknown error'}",
+                    )
+                continue
+            list_payload = list_response.json() if list_response.content else {}
+            message_rows = list_payload.get("messages") if isinstance(list_payload, dict) else []
+            if not isinstance(message_rows, list):
+                message_rows = []
+            for row in message_rows:
+                if not isinstance(row, dict):
+                    continue
+                message_id = str(row.get("id") or "").strip()
+                if not message_id or message_id in seen_ids:
+                    continue
+                seen_ids.add(message_id)
+                message_ids.append(message_id)
+            if len(message_ids) >= SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH:
+                break
+        if not message_ids and first_error is not None:
+            raise first_error
 
         semaphore = asyncio.Semaphore(8)
 
@@ -16174,7 +16198,17 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             }
 
         fetched = await asyncio.gather(*[_fetch_message(message_id) for message_id in message_ids])
-    rows = [row for row in fetched if isinstance(row, dict) and row.get("gmailMessageId")]
+    minimum_received_at = datetime.combine(after_date, datetime.min.time(), tzinfo=timezone.utc)
+    rows = [
+        row
+        for row in fetched
+        if isinstance(row, dict)
+        and row.get("gmailMessageId")
+        and (
+            not isinstance(row.get("receivedAt"), datetime)
+            or row.get("receivedAt") >= minimum_received_at
+        )
+    ]
     response_meta.update(
         {
             "status": "connected",
