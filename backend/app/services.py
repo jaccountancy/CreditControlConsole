@@ -16232,12 +16232,21 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             if list_response.is_error:
                 detail = list_response.text[:300]
                 diagnostics["listErrors"] = int(diagnostics.get("listErrors") or 0) + 1
+                diagnostics["lastListErrorStatus"] = int(list_response.status_code or 0)
+                diagnostics["lastListErrorDetail"] = detail
                 if list_response.status_code in (401, 403):
+                    lower_detail = detail.lower()
+                    hint = "Reconnect Gmail with read scope."
+                    if "insufficient permissions" in lower_detail or "insufficientpermission" in lower_detail:
+                        hint = "Reconnect Gmail and accept all requested permissions."
+                    elif "access not configured" in lower_detail or "has not been used in project" in lower_detail:
+                        hint = "Enable the Gmail API in your Google Cloud project, then reconnect Gmail."
                     response_meta.update(
                         {
                             "status": "reauth_required",
-                            "message": "Gmail denied message read access. Reconnect Gmail with read scope.",
+                            "message": f"Gmail denied message read access ({list_response.status_code}). {hint}",
                             "needsReconnect": True,
+                            "diagnostics": diagnostics,
                         }
                     )
                     return [], response_meta

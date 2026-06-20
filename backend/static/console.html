@@ -49423,8 +49423,11 @@
                     if (mode === "fetch") {
                         const imported = Number(syncMeta.imported || 0);
                         const gmailMeta = syncMeta?.gmail && typeof syncMeta.gmail === "object" ? syncMeta.gmail : {};
-                        if (submittedEmployeeFormsData?.gmail && gmailMeta?.message) {
+                        if (submittedEmployeeFormsData?.gmail && gmailMeta && typeof gmailMeta === "object") {
                             submittedEmployeeFormsData.gmail.message = String(gmailMeta.message || submittedEmployeeFormsData.gmail.message || "");
+                            submittedEmployeeFormsData.gmail.status = String(gmailMeta.status || submittedEmployeeFormsData.gmail.status || "");
+                            submittedEmployeeFormsData.gmail.needsReconnect = Boolean(gmailMeta.needsReconnect ?? submittedEmployeeFormsData.gmail.needsReconnect);
+                            submittedEmployeeFormsData.gmail.gmailEmail = String(gmailMeta.gmailEmail || submittedEmployeeFormsData.gmail.gmailEmail || "");
                         }
                         submittedEmployeeFormsLastSyncDiagnostics = gmailMeta?.diagnostics && typeof gmailMeta.diagnostics === "object"
                             ? gmailMeta.diagnostics
@@ -57251,7 +57254,11 @@
                     });
                 }
                 const gmail = submittedEmployeeFormsData?.gmail || {};
-                const gmailNeedsReconnect = Boolean(gmail?.needsReconnect) || ["not_connected", "reauth_required"].includes(String(gmail?.status || "").trim().toLowerCase());
+                const gmailMessageLower = String(gmail?.message || "").trim().toLowerCase();
+                const gmailNeedsReconnect =
+                    Boolean(gmail?.needsReconnect)
+                    || ["not_connected", "reauth_required"].includes(String(gmail?.status || "").trim().toLowerCase())
+                    || gmailMessageLower.includes("denied message read access");
                 reconnectButton.href = endpointURL("/auth/gmail/start?redirect_to=/#credit-control-submitted-employee-forms");
                 reconnectButton.hidden = !gmailNeedsReconnect;
                 refreshButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
