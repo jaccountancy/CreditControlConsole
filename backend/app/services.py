@@ -15801,6 +15801,8 @@ def _submitted_employee_forms_normalized_subject(subject: str) -> str:
     compact = re.sub(r"\s+", " ", str(decoded or "").strip())
     if not compact:
         return ""
+    # Remove common mail gateway labels prepended to subjects.
+    compact = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", compact).strip()
     # Ignore common thread prefixes that can appear in Gmail subjects.
     return re.sub(r"^(?:(?:re|fw|fwd)\s*:\s*)+", "", compact, flags=re.IGNORECASE).strip()
 
@@ -15809,7 +15811,11 @@ def _submitted_employee_forms_subject_matches(subject: str) -> bool:
     text = _submitted_employee_forms_normalized_subject(subject).lower()
     if not text:
         return False
-    return text.startswith("new employee details:")
+    # Accept the expected prefix with optional punctuation/spacing variance.
+    if text.startswith("new employee details"):
+        return True
+    # Some senders duplicate the prefix in a single subject line.
+    return "new employee details:new employee details" in text
 
 
 def _submitted_employee_forms_subject_suffix(subject: str) -> str:
@@ -16148,13 +16154,17 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     query_candidates = [
         f'in:anywhere subject:"New Employee Details" after:{after_token}',
         f'in:anywhere "New Employee Details:" after:{after_token}',
+        f'in:anywhere subject:"New Employee Details:New Employee Details:" after:{after_token}',
         f'in:anywhere "New Employee Details" after:{after_token}',
+        f'in:anywhere subject:("New Employee Details" OR "New Employee Details:New Employee Details:") after:{after_token}',
         'in:anywhere subject:"New Employee Details"',
         'in:anywhere "New Employee Details:"',
+        'in:anywhere subject:"New Employee Details:New Employee Details:"',
+        'in:anywhere subject:("New Employee Details" OR "New Employee Details:New Employee Details:")',
     ]
 
     async with httpx.AsyncClient(timeout=30) as client:
-        async def _collect_message_ids(params: dict, limit: int = SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, max_pages: int = 4) -> list[str]:
+        async def _collect_message_ids(params: dict, limit: int = SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, max_pages: int = 8) -> list[str]:
             collected: list[str] = []
             page_token = ""
             pages = 0
@@ -16194,6 +16204,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
         first_error: HTTPException | None = None
         diagnostics = response_meta.get("diagnostics") if isinstance(response_meta.get("diagnostics"), dict) else {}
         sample_subjects: list[str] = []
+        diagnostics.setdefault("listErrors", 0)
 
         def _diag_increment(field: str, amount: int = 1) -> None:
             diagnostics[field] = int(diagnostics.get(field) or 0) + amount
@@ -16209,6 +16220,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             )
             if list_response.is_error:
                 detail = list_response.text[:300]
+                diagnostics["listErrors"] = int(diagnostics.get("listErrors") or 0) + 1
                 if list_response.status_code in (401, 403):
                     response_meta.update(
                         {
