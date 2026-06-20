@@ -5418,10 +5418,28 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                 "vatAddress": _coerce_text(vat.get("vatAddress"), 1000),
             },
             "payroll": {
-                "employersPayeReference": _coerce_text(payroll.get("employersPayeReference"), 120),
-                "accountsOfficeReference": _coerce_text(payroll.get("accountsOfficeReference"), 120),
-                "firstPayday": _coerce_text(payroll.get("firstPayday"), 80),
-                "rtiDeadline": _coerce_text(payroll.get("rtiDeadline"), 80),
+                "employersPayeReference": _coerce_text(
+                    payroll.get("employersPayeReference")
+                    or payroll.get("employerPayeReference")
+                    or payroll.get("payeReference")
+                    or payroll.get("paye_reference"),
+                    120,
+                ),
+                "accountsOfficeReference": _coerce_text(
+                    payroll.get("accountsOfficeReference")
+                    or payroll.get("accounts_office_reference"),
+                    120,
+                ),
+                "firstPayday": _coerce_text(
+                    payroll.get("firstPayday")
+                    or payroll.get("first_payday"),
+                    80,
+                ),
+                "rtiDeadline": _coerce_text(
+                    payroll.get("rtiDeadline")
+                    or payroll.get("rti_deadline"),
+                    80,
+                ),
             },
             "p11d": {
                 "nextReturnDueDate": _coerce_text(p11d.get("nextReturnDueDate"), 80),
@@ -6691,6 +6709,7 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ig
     if not safe_row_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
     user_id = _coerce_text((user or {}).get("id"), 120) if isinstance(user, dict) else ""
+    payroll_fallback: dict[str, str] = {}
     with get_connection() as connection:
         with connection.cursor() as cursor:
             row = _auth_register_client_page_row(cursor, safe_row_id)
@@ -6838,6 +6857,50 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ig
                             safe_row_id,
                         )
                     row["companies_house"] = next_companies_house
+            if user_id:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT paye_reference,
+                               tax_office_number,
+                               tax_office_reference,
+                               accounts_office_reference
+                        FROM hmrc_64_8_requests
+                        WHERE created_by_user_id = %s
+                          AND (
+                                (%s <> '' AND client_id = %s)
+                                OR
+                                (%s <> '' AND LOWER(TRIM(client_name)) = LOWER(TRIM(%s)))
+                              )
+                          AND (
+                                NULLIF(TRIM(COALESCE(paye_reference, '')), '') IS NOT NULL
+                                OR NULLIF(TRIM(COALESCE(tax_office_number, '')), '') IS NOT NULL
+                                OR NULLIF(TRIM(COALESCE(tax_office_reference, '')), '') IS NOT NULL
+                                OR NULLIF(TRIM(COALESCE(accounts_office_reference, '')), '') IS NOT NULL
+                              )
+                        ORDER BY COALESCE(updated_at, created_at) DESC
+                        LIMIT 1
+                        """,
+                        (
+                            user_id,
+                            _coerce_text(row.get("client_id"), 120),
+                            _coerce_text(row.get("client_id"), 120),
+                            _coerce_text(row.get("display_name"), 250),
+                            _coerce_text(row.get("display_name"), 250),
+                        ),
+                    )
+                    fallback_row = cursor.fetchone() or {}
+                    paye_reference = _coerce_text(fallback_row.get("paye_reference"), 120)
+                    tax_office_number = _coerce_text(fallback_row.get("tax_office_number"), 40)
+                    tax_office_reference = _coerce_text(fallback_row.get("tax_office_reference"), 80)
+                    if not paye_reference and tax_office_number and tax_office_reference:
+                        paye_reference = _coerce_text(f"{tax_office_number}/{tax_office_reference}", 120)
+                    payroll_fallback = {
+                        "employersPayeReference": paye_reference,
+                        "accountsOfficeReference": _coerce_text(fallback_row.get("accounts_office_reference"), 120),
+                    }
+                except Exception:
+                    payroll_fallback = {}
         connection.commit()
 
     try:
@@ -6876,6 +6939,10 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ig
             vat["memberState"] = "GB"
         if not self_assessment.get("utr"):
             self_assessment["utr"] = _coerce_text(row.get("personal_utr"), 20)
+        if not _coerce_text(payroll.get("employersPayeReference"), 120):
+            payroll["employersPayeReference"] = _coerce_text(payroll_fallback.get("employersPayeReference"), 120)
+        if not _coerce_text(payroll.get("accountsOfficeReference"), 120):
+            payroll["accountsOfficeReference"] = _coerce_text(payroll_fallback.get("accountsOfficeReference"), 120)
         companies_house_profile["serviceDetails"] = {
             "accountsReturns": accounts_returns,
             "confirmationStatement": confirmation_statement,
