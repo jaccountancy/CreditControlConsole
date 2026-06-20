@@ -39433,6 +39433,7 @@
                                             </div>
                                         </div>
                                         <p class="detail-meta" id="chRegisterClientPageCallStatsSummary">Call stats will appear here.</p>
+                                        <p class="detail-meta" id="chRegisterClientPageCallStatsSearchMeta">Search not run yet.</p>
                                         <div class="summary-grid" id="chRegisterClientPageCallStatsCards"></div>
                                         <div class="ch-companies-table-wrap">
                                             <table class="ch-table" aria-label="Client call stats rows">
@@ -122028,6 +122029,8 @@
                         payload: null,
                         error: "",
                         loadedAt: "",
+                        searchAt: "",
+                        searchUpdatedCount: 0,
                     },
                     autoXeroMatching: false,
                     autoXeroScanned: false,
@@ -123766,6 +123769,8 @@
                             payload: null,
                             error: "No client ID available for call-stat matching.",
                             loadedAt: current.loadedAt || "",
+                            searchAt: current.searchAt || "",
+                            searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                         },
                     };
                     renderClientRegisterClientPage();
@@ -123781,6 +123786,8 @@
                         payload: current.payload || null,
                         error: "",
                         loadedAt: current.loadedAt || "",
+                        searchAt: current.searchAt || "",
+                        searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                     },
                 };
                 renderClientRegisterClientPage();
@@ -123796,6 +123803,8 @@
                             payload: response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] },
                             error: "",
                             loadedAt: new Date().toISOString(),
+                            searchAt: current.searchAt || "",
+                            searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                         },
                     };
                     renderClientRegisterClientPage();
@@ -123814,6 +123823,8 @@
                             payload: current.payload || null,
                             error: String(error?.message || "Unable to load call stats."),
                             loadedAt: current.loadedAt || "",
+                            searchAt: current.searchAt || "",
+                            searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                         },
                     };
                     renderClientRegisterClientPage();
@@ -123841,6 +123852,8 @@
                         payload: current.payload || null,
                         error: "",
                         loadedAt: current.loadedAt || "",
+                        searchAt: current.searchAt || "",
+                        searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                     },
                 };
                 renderClientRegisterClientPage();
@@ -123859,6 +123872,8 @@
                             payload: nextPayload,
                             error: "",
                             loadedAt: new Date().toISOString(),
+                            searchAt: new Date().toISOString(),
+                            searchUpdatedCount: canonicalised,
                         },
                     };
                     renderClientRegisterClientPage();
@@ -123879,6 +123894,8 @@
                             payload: current.payload || null,
                             error: String(error?.message || "Unable to search client call records."),
                             loadedAt: current.loadedAt || "",
+                            searchAt: current.searchAt || "",
+                            searchUpdatedCount: Number(current.searchUpdatedCount || 0),
                         },
                     };
                     renderClientRegisterClientPage();
@@ -123896,6 +123913,7 @@
                 const benchmark = payload.benchmark || {};
                 const rows = Array.isArray(payload.rows) ? payload.rows : [];
                 const summaryNode = document.getElementById("chRegisterClientPageCallStatsSummary");
+                const searchMetaNode = document.getElementById("chRegisterClientPageCallStatsSearchMeta");
                 const cardsNode = document.getElementById("chRegisterClientPageCallStatsCards");
                 const bodyNode = document.getElementById("chRegisterClientPageCallStatsBody");
                 const refreshButton = document.getElementById("chRegisterClientPageCallStatsRefreshButton");
@@ -123915,6 +123933,13 @@
                         const loadedLabel = callStats.loadedAt ? chFormatDateTime(callStats.loadedAt) : "just now";
                         summaryNode.textContent = `Matched calls loaded for client ${clientId} · ${rows.length.toLocaleString("en-GB")} row${rows.length === 1 ? "" : "s"} · refreshed ${loadedLabel}.`;
                     }
+                }
+                if (searchMetaNode) {
+                    const searchedAt = String(callStats.searchAt || "").trim();
+                    const updatedCount = Number(callStats.searchUpdatedCount || 0);
+                    searchMetaNode.textContent = searchedAt
+                        ? `Last search ${chFormatDateTime(searchedAt)} · ${updatedCount.toLocaleString("en-GB")} record${updatedCount === 1 ? "" : "s"} updated to this client.`
+                        : "Search not run yet.";
                 }
                 if (cardsNode) {
                     const cards = [
@@ -126781,6 +126806,8 @@
                         payload: null,
                         error: "",
                         loadedAt: "",
+                        searchAt: "",
+                        searchUpdatedCount: 0,
                     },
                 };
                 syncActiveViewShell();
