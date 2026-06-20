@@ -24,6 +24,7 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from email.header import decode_header
 from email.message import EmailMessage
 from email.utils import formataddr, parsedate_to_datetime
 from pathlib import Path
@@ -15774,15 +15775,45 @@ SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX = "New Employee Details:"
 SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
 
 
+def _gmail_decode_header_value(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        chunks = decode_header(text)
+    except Exception:
+        return text
+    decoded_parts: list[str] = []
+    for chunk, charset in chunks:
+        if isinstance(chunk, bytes):
+            encoding = (charset or "utf-8").strip() or "utf-8"
+            try:
+                decoded_parts.append(chunk.decode(encoding, errors="replace"))
+            except Exception:
+                decoded_parts.append(chunk.decode("utf-8", errors="replace"))
+        else:
+            decoded_parts.append(str(chunk))
+    return "".join(decoded_parts).strip()
+
+
+def _submitted_employee_forms_normalized_subject(subject: str) -> str:
+    decoded = _gmail_decode_header_value(subject)
+    compact = re.sub(r"\s+", " ", str(decoded or "").strip())
+    if not compact:
+        return ""
+    # Ignore common thread prefixes that can appear in Gmail subjects.
+    return re.sub(r"^(?:(?:re|fw|fwd)\s*:\s*)+", "", compact, flags=re.IGNORECASE).strip()
+
+
 def _submitted_employee_forms_subject_matches(subject: str) -> bool:
-    text = re.sub(r"\s+", " ", str(subject or "").strip().lower())
+    text = _submitted_employee_forms_normalized_subject(subject).lower()
     if not text:
         return False
     return text.startswith("new employee details:")
 
 
 def _submitted_employee_forms_subject_suffix(subject: str) -> str:
-    text = str(subject or "").strip()
+    text = _submitted_employee_forms_normalized_subject(subject)
     return re.sub(r"^new\s+employee\s+details\s*:\s*", "", text, flags=re.IGNORECASE).strip()
 
 
@@ -16237,7 +16268,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             payload = message_response.json() if message_response.content else {}
             if not isinstance(payload, dict):
                 return None
-            subject = _gmail_header_value(payload, "Subject")
+            subject = _submitted_employee_forms_normalized_subject(_gmail_header_value(payload, "Subject"))
             if not _submitted_employee_forms_subject_matches(subject):
                 return None
             from_header = _gmail_header_value(payload, "From")
