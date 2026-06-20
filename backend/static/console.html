@@ -83554,13 +83554,13 @@
                 if (gmailLink) {
                     gmailLink.href = endpointURL("/auth/gmail/start?redirect_to=/");
                     gmailLink.textContent = gmail.connected ? "Reconnect Gmail" : "Connect Gmail";
-                    gmailLink.classList.toggle("is-disabled", !gmail.configured);
-                    gmailLink.setAttribute("aria-disabled", String(!gmail.configured));
+                    gmailLink.classList.remove("is-disabled");
+                    gmailLink.setAttribute("aria-disabled", "false");
                 }
                 if (gmailDisconnectButton) {
-                    gmailDisconnectButton.hidden = !gmail.connected;
-                    gmailDisconnectButton.disabled = !gmail.connected;
-                    gmailDisconnectButton.textContent = gmail.connected ? "Disconnect Gmail" : "Disconnect Gmail";
+                    gmailDisconnectButton.hidden = false;
+                    gmailDisconnectButton.disabled = false;
+                    gmailDisconnectButton.textContent = gmail.connected ? "Disconnect Gmail" : "Forget Gmail link";
                 }
             }
 
@@ -116031,10 +116031,7 @@
                 if (reloadGmailConnectionButton) reloadGmailConnectionButton.addEventListener("click", () => loadMeReport(true));
                 const connectGmailButton = document.getElementById("connectGmailButton");
                 if (connectGmailButton) connectGmailButton.addEventListener("click", (event) => {
-                    if (connectGmailButton.getAttribute("aria-disabled") === "true") {
-                        event.preventDefault();
-                        showToast("Add Gmail OAuth credentials before connecting Gmail", "error");
-                    }
+                    if (connectGmailButton.getAttribute("aria-disabled") === "true") event.preventDefault();
                 });
                 const disconnectGmailButton = document.getElementById("disconnectGmailButton");
                 if (disconnectGmailButton) disconnectGmailButton.addEventListener("click", async () => {
