@@ -13348,6 +13348,9 @@
                 display: grid;
                 gap: 14px;
             }
+            .submitted-employee-preview-modal-panel {
+                width: min(1640px, calc(100vw - 48px));
+            }
             .company-secretarial-modal-head {
                 display: flex;
                 align-items: flex-start;
@@ -13620,6 +13623,9 @@
                 .company-secretarial-modal-panel {
                     max-height: calc(100vh - 24px);
                     padding: 16px;
+                }
+                .submitted-employee-preview-grid {
+                    grid-template-columns: 1fr;
                 }
                 .ye-prep-workspace-confirm-panel .company-secretarial-modal-head {
                     grid-template-columns: 1fr;
@@ -26949,6 +26955,30 @@
             }
             .submitted-employee-note-body { margin-top: 8px; max-width: 460px; }
             .submitted-employee-note-body small { color: var(--muted); line-height: 1.45; display: block; white-space: normal; }
+            .submitted-employee-preview-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+                align-items: start;
+            }
+            .submitted-employee-preview-table-wrap {
+                border-radius: 14px;
+                overflow: hidden;
+            }
+            .submitted-employee-preview-table th,
+            .submitted-employee-preview-table td {
+                padding-top: 9px;
+                padding-bottom: 9px;
+            }
+            .submitted-employee-preview-table td:first-child {
+                width: 42%;
+                font-weight: 700;
+                color: color-mix(in srgb, var(--ink) 82%, white);
+            }
+            .submitted-employee-preview-table td:last-child {
+                color: var(--ink);
+                word-break: break-word;
+            }
             #codeBreakerWorkspaceTableBody tr {
                 border-left: 4px solid transparent;
                 transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
@@ -43985,7 +44015,7 @@
                         </section>
                     </section>
                     <div class="company-secretarial-modal" id="submittedEmployeeFormsPreviewModal" hidden>
-                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsPreviewTitle">
+                        <section class="company-secretarial-modal-panel submitted-employee-preview-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsPreviewTitle">
                             <div class="company-secretarial-modal-head">
                                 <div>
                                     <p class="eyebrow">Submitted Employee Forms</p>
@@ -43996,16 +44026,29 @@
                                     <button class="ghost-button" id="submittedEmployeeFormsPreviewCloseButton" type="button">Close</button>
                                 </div>
                             </div>
-                            <section class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="Submitted employee form extracted fields">
-                                    <thead>
-                                        <tr>
-                                            <th>Field</th>
-                                            <th>Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="submittedEmployeeFormsPreviewBody"></tbody>
-                                </table>
+                            <section class="submitted-employee-preview-grid">
+                                <section class="ch-companies-table-wrap submitted-employee-preview-table-wrap">
+                                    <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form extracted fields left">
+                                        <thead>
+                                            <tr>
+                                                <th>Field</th>
+                                                <th>Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="submittedEmployeeFormsPreviewBodyLeft"></tbody>
+                                    </table>
+                                </section>
+                                <section class="ch-companies-table-wrap submitted-employee-preview-table-wrap">
+                                    <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form extracted fields right">
+                                        <thead>
+                                            <tr>
+                                                <th>Field</th>
+                                                <th>Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="submittedEmployeeFormsPreviewBodyRight"></tbody>
+                                    </table>
+                                </section>
                             </section>
                         </section>
                     </div>
@@ -57521,8 +57564,9 @@
                 const previewModal = document.getElementById("submittedEmployeeFormsPreviewModal");
                 const previewTitle = document.getElementById("submittedEmployeeFormsPreviewTitle");
                 const previewMeta = document.getElementById("submittedEmployeeFormsPreviewMeta");
-                const previewBody = document.getElementById("submittedEmployeeFormsPreviewBody");
-                if (!previewModal || !previewTitle || !previewMeta || !previewBody) return;
+                const previewBodyLeft = document.getElementById("submittedEmployeeFormsPreviewBodyLeft");
+                const previewBodyRight = document.getElementById("submittedEmployeeFormsPreviewBodyRight");
+                if (!previewModal || !previewTitle || !previewMeta || !previewBodyLeft || !previewBodyRight) return;
                 const rows = Array.isArray(allRows) ? allRows : [];
                 const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
                 previewModal.hidden = !row;
@@ -57559,7 +57603,16 @@
                     ["Missing/unclear", Array.isArray(extracted.missingOrUnclear) ? extracted.missingOrUnclear.join(", ") : ""],
                     ["Sender", `${String(row?.fromName || "").trim() || "--"} ${String(row?.fromEmail || "").trim() ? `(${String(row?.fromEmail || "").trim()})` : ""}`.trim()],
                 ];
-                previewBody.innerHTML = fieldPairs.map(([label, value]) => `
+                const half = Math.ceil(fieldPairs.length / 2);
+                const leftPairs = fieldPairs.slice(0, half);
+                const rightPairs = fieldPairs.slice(half);
+                previewBodyLeft.innerHTML = leftPairs.map(([label, value]) => `
+                    <tr>
+                        <td>${escapeHTML(label)}</td>
+                        <td>${escapeHTML(value || "--")}</td>
+                    </tr>
+                `).join("");
+                previewBodyRight.innerHTML = rightPairs.map(([label, value]) => `
                     <tr>
                         <td>${escapeHTML(label)}</td>
                         <td>${escapeHTML(value || "--")}</td>
