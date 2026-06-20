@@ -57319,6 +57319,10 @@
                         : null;
                     const diagnosticsHtml = diagnostics
                         ? `<p><small>Diagnostics: scanned ${escapeHTML(String(diagnostics.messageIdsCollected || 0))} IDs · inspected ${escapeHTML(String(diagnostics.messagesInspected || 0))} messages · subject matched ${escapeHTML(String(diagnostics.subjectMatched || 0))} · within 4 weeks ${escapeHTML(String(diagnostics.withinWindow || 0))}.</small></p>${
+                            diagnostics.lastListErrorStatus || diagnostics.lastListErrorDetail
+                                ? `<p><small>Gmail API error${diagnostics.lastListErrorStatus ? ` (${escapeHTML(String(diagnostics.lastListErrorStatus))})` : ""}: ${escapeHTML(String(diagnostics.lastListErrorDetail || "Unknown error"))}</small></p>`
+                                : ""
+                        }${
                             Array.isArray(diagnostics.sampleSubjects) && diagnostics.sampleSubjects.length
                                 ? `<p><small>Sample subjects: ${escapeHTML(diagnostics.sampleSubjects.slice(0, 5).join(" | "))}</small></p>`
                                 : ""
