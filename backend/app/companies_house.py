@@ -27,9 +27,14 @@ from psycopg import errors as pg_errors
 from .config import get_settings
 from .database import ensure_schema, get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
-from .services import get_xero_connection_for_user, gmail_connection_for_user, refresh_gmail_connection
+from .services import (
+    get_xero_connection_for_user,
+    gmail_connection_for_user,
+    refresh_gmail_connection,
+    xero_connection_for_user_tenant,
+)
 from .usage_metrics import estimate_openai_cost_usd, infer_openai_feature_page, parse_openai_usage_tokens, record_usage_event
-from .xero import create_sales_invoice, fetch_invoice_pdf
+from .xero import ACCOUNTS_URL, INVOICES_URL, create_sales_invoice, fetch_invoice_pdf, fetch_paginated_collection
 
 try:
     from lxml import etree as LET
@@ -6842,6 +6847,220 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None) -> dict
         ],
         "timeline": [_auth_register_timeline_entry(item) for item in audit_rows],
         "ignitionEngagementLetters": ignition_engagement_letters,
+    }
+
+
+def _client_page_juk_invoice_key(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("id") or payload.get("invoiceId") or payload.get("invoiceNumber") or "").strip()
+
+
+def _xero_where_literal(value: str) -> str:
+    return str(value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _client_page_juk_invoice_bill_payload(invoice: dict, account_code: str) -> dict:
+    invoice_number = str(invoice.get("invoiceNumber") or invoice.get("id") or "").strip()
+    invoice_date = _coerce_text(invoice.get("invoiceDate"), 80) or utcnow().date().isoformat()
+    due_date = _coerce_text(invoice.get("dueDate"), 80) or invoice_date
+    currency = _coerce_text(invoice.get("currency"), 20).upper() or "GBP"
+    total = _coerce_decimal(invoice.get("total"), "total")
+    if total <= Decimal("0.00"):
+        total = _coerce_decimal(invoice.get("amountDue"), "amountDue")
+    if total <= Decimal("0.00"):
+        total = Decimal("0.01")
+    line_description = _coerce_text(invoice.get("description"), 400) or f"JUK invoice {invoice_number or 'copy'}"
+    line_item = {
+        "Description": line_description,
+        "Quantity": 1,
+        "UnitAmount": float(total.quantize(Decimal("0.01"))),
+        "TaxType": "NONE",
+        "AccountCode": account_code,
+    }
+    return {
+        "Type": "ACCPAY",
+        "Contact": {"Name": "Jaccountancy (UK) Ltd"},
+        "Date": invoice_date,
+        "DueDate": due_date,
+        "InvoiceNumber": invoice_number[:120],
+        "Reference": "JUK client page copy",
+        "Status": "AUTHORISED",
+        "LineAmountTypes": "Exclusive",
+        "CurrencyCode": currency,
+        "LineItems": [line_item],
+    }
+
+
+async def _client_page_juk_destination_bill_for_number(connection_row: dict, invoice_number: str) -> tuple[bool, str]:
+    safe_number = str(invoice_number or "").strip()
+    if not safe_number:
+        return False, ""
+    where = f'Type=="ACCPAY"&&InvoiceNumber=="{_xero_where_literal(safe_number)}"'
+    rows = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": where, "order": "Date DESC"},
+        max_pages=2,
+    )
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_number = str(row.get("InvoiceNumber") or "").strip().lower()
+        if row_number != safe_number.lower():
+            continue
+        bill_id = str(row.get("InvoiceID") or row.get("InvoiceId") or "").strip()
+        return True, bill_id
+    return False, ""
+
+
+async def _client_page_resolve_purchase_account_code(connection_row: dict) -> str:
+    fallback_code = "401"
+    try:
+        accounts = await fetch_paginated_collection(
+            connection_row,
+            ACCOUNTS_URL,
+            "Accounts",
+            params={"where": 'Status=="ACTIVE"', "order": "Code ASC"},
+            max_pages=4,
+        )
+    except Exception:
+        return fallback_code
+    expense_types = {"EXPENSE", "DIRECTCOSTS", "OVERHEADS"}
+    active_accounts = [row for row in accounts if isinstance(row, dict)]
+    by_code = {str(row.get("Code") or "").strip(): row for row in active_accounts if str(row.get("Code") or "").strip()}
+    if fallback_code in by_code:
+        return fallback_code
+    for row in active_accounts:
+        if str(row.get("Type") or "").strip().upper() not in expense_types:
+            continue
+        code = str(row.get("Code") or "").strip()
+        if code:
+            return code
+    return fallback_code
+
+
+def _client_page_auth_register_row(row_id: str) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _auth_register_client_page_row(cursor, safe_row_id)
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+    return row
+
+
+async def sync_client_page_juk_invoice_presence(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    row = _client_page_auth_register_row(row_id)
+    row_tenant_id = _coerce_text(row.get("xero_tenant_id"), 120)
+    requested_tenant_id = _coerce_text(payload.get("tenantId"), 120) or row_tenant_id
+    if not requested_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This client is not connected to a Xero tenant yet.")
+    invoices = payload.get("invoices")
+    if not isinstance(invoices, list) or not invoices:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide at least one invoice to sync.")
+    connection_row = xero_connection_for_user_tenant(user, requested_tenant_id, include_fallback=False)
+    rows: list[dict] = []
+    for item in invoices[:500]:
+        invoice = item if isinstance(item, dict) else {}
+        invoice_key = _client_page_juk_invoice_key(invoice)
+        invoice_number = _coerce_text(invoice.get("invoiceNumber"), 120)
+        if not invoice_key:
+            continue
+        if not invoice_number:
+            rows.append(
+                {
+                    "invoiceKey": invoice_key,
+                    "invoiceNumber": "",
+                    "present": False,
+                    "billId": "",
+                    "status": "error",
+                    "message": "Missing invoice number.",
+                }
+            )
+            continue
+        try:
+            present, bill_id = await _client_page_juk_destination_bill_for_number(connection_row, invoice_number)
+            rows.append(
+                {
+                    "invoiceKey": invoice_key,
+                    "invoiceNumber": invoice_number,
+                    "present": bool(present),
+                    "billId": bill_id,
+                    "status": "present" if present else "missing",
+                    "message": "Invoice already exists in this tenant." if present else "Invoice is not present in this tenant.",
+                }
+            )
+        except Exception as exc:
+            rows.append(
+                {
+                    "invoiceKey": invoice_key,
+                    "invoiceNumber": invoice_number,
+                    "present": False,
+                    "billId": "",
+                    "status": "error",
+                    "message": str(exc) or "Unable to check destination tenant.",
+                }
+            )
+    return {
+        "tenantId": _coerce_text(connection_row.get("tenant_id"), 120),
+        "tenantName": _coerce_text(connection_row.get("tenant_name"), 250),
+        "syncedAt": utcnow().isoformat(),
+        "rows": rows,
+    }
+
+
+async def copy_client_page_juk_invoice_to_xero(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    row = _client_page_auth_register_row(row_id)
+    invoice = payload.get("invoice") if isinstance(payload.get("invoice"), dict) else {}
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice payload is required.")
+    invoice_key = _client_page_juk_invoice_key(invoice)
+    invoice_number = _coerce_text(invoice.get("invoiceNumber"), 120)
+    if not invoice_key or not invoice_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice key and invoice number are required.")
+    row_tenant_id = _coerce_text(row.get("xero_tenant_id"), 120)
+    requested_tenant_id = _coerce_text(payload.get("tenantId"), 120) or row_tenant_id
+    if not requested_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This client is not connected to a Xero tenant yet.")
+    connection_row = xero_connection_for_user_tenant(user, requested_tenant_id, include_fallback=False)
+    exists, existing_bill_id = await _client_page_juk_destination_bill_for_number(connection_row, invoice_number)
+    if exists:
+        return {
+            "invoiceKey": invoice_key,
+            "invoiceNumber": invoice_number,
+            "status": "present",
+            "present": True,
+            "billId": existing_bill_id,
+            "created": False,
+            "message": "Invoice already exists in this tenant.",
+            "tenantId": _coerce_text(connection_row.get("tenant_id"), 120),
+            "tenantName": _coerce_text(connection_row.get("tenant_name"), 250),
+        }
+    account_code = await _client_page_resolve_purchase_account_code(connection_row)
+    invoice_payload = _client_page_juk_invoice_bill_payload(invoice, account_code)
+    created = await create_sales_invoice(connection_row, invoice_payload, idempotency_key=f"client-page-juk-copy-{requested_tenant_id}-{invoice_number}")
+    created_rows = created.get("Invoices") if isinstance(created, dict) else []
+    first = created_rows[0] if isinstance(created_rows, list) and created_rows else {}
+    bill_id = _coerce_text((first or {}).get("InvoiceID") or (first or {}).get("InvoiceId"), 120)
+    if not bill_id:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero did not return the created bill ID.")
+    return {
+        "invoiceKey": invoice_key,
+        "invoiceNumber": invoice_number,
+        "status": "present",
+        "present": True,
+        "billId": bill_id,
+        "created": True,
+        "message": "Invoice copied to the connected Xero tenant.",
+        "tenantId": _coerce_text(connection_row.get("tenant_id"), 120),
+        "tenantName": _coerce_text(connection_row.get("tenant_name"), 250),
     }
 
 

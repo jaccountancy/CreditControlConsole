@@ -30061,6 +30061,48 @@
                 color: #b12e2e;
                 font-weight: 800;
             }
+            .ch-juk-xero-sync-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 0.01em;
+                border: 1px solid rgba(106, 125, 162, 0.24);
+                background: rgba(239, 244, 255, 0.82);
+                color: #5a6d92;
+            }
+            .ch-juk-xero-sync-badge.is-present {
+                background: rgba(228, 250, 236, 0.9);
+                border-color: rgba(44, 162, 79, 0.28);
+                color: #1f7e47;
+            }
+            .ch-juk-xero-sync-badge.is-missing {
+                background: rgba(255, 241, 229, 0.95);
+                border-color: rgba(193, 95, 33, 0.32);
+                color: #9a4715;
+            }
+            .ch-juk-xero-sync-badge.is-error {
+                background: rgba(255, 233, 233, 0.96);
+                border-color: rgba(180, 53, 53, 0.32);
+                color: #a43333;
+            }
+            .ch-juk-xero-copy-button {
+                padding: 7px 12px;
+                font-size: 11px;
+                font-weight: 800;
+                border-radius: 999px;
+                border: 1px solid rgba(58, 116, 199, 0.28);
+                background: rgba(237, 246, 255, 0.92);
+                color: #2a5eac;
+                white-space: nowrap;
+            }
+            .ch-juk-xero-copy-button[disabled] {
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
             @keyframes juk-fetch-pulse {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-1px); }
@@ -34964,30 +35006,6 @@
                 </style>
             </head>
             <body>
-                <div class="app-loading-screen" id="appLoadingScreen" role="status" aria-live="polite" aria-atomic="true">
-                    <div class="app-loading-card">
-                        <div class="app-loading-brand">
-                            <span class="app-loading-brand-mark" aria-hidden="true">
-                                <img src="/static/JaccountancyBlueIcon.png" alt="">
-                            </span>
-                            <span class="app-loading-brand-copy">
-                                <strong>Loading Jenius AI Workspace</strong>
-                                <span>Jenius workspace boot</span>
-                            </span>
-                        </div>
-                        <div class="app-loading-status">
-                            <p class="app-loading-phase" id="appLoadingPhase">Preparing workspace</p>
-                            <p class="app-loading-detail" id="appLoadingDetail">Setting up client context and secure session.</p>
-                        </div>
-                        <div class="app-loading-progress" aria-hidden="true">
-                            <span class="app-loading-progress-fill" id="appLoadingProgressFill"></span>
-                        </div>
-                        <div class="app-loading-footnote">
-                            <span>Jenius orchestration in progress</span>
-                            <strong id="appLoadingProgressLabel">10%</strong>
-                        </div>
-                    </div>
-                </div>
                 <div class="console-app">
                 <div class="console-app-frame">
                 <aside class="app-sidebar" aria-label="Main navigation">
@@ -39150,6 +39168,8 @@
                                                         <th>Amount due</th>
                                                         <th>Payment</th>
                                                         <th>Status</th>
+                                                        <th>Xero</th>
+                                                        <th>Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="chRegisterClientPageJukInvoicesBody"></tbody>
@@ -47118,6 +47138,8 @@
                         juksibAutomation: config.endpoints?.juksibAutomation || "/api/juksib/automation",
                         juksibAutomationSettings: config.endpoints?.juksibAutomationSettings || "/api/juksib/automation/settings",
                         juksibAutomationRunNow: config.endpoints?.juksibAutomationRunNow || "/api/juksib/automation/run-now",
+                        clientPageJukInvoiceSync: config.endpoints?.clientPageJukInvoiceSync || "/api/companies-house/auth-code-register/:rowId/client-page/juk-invoices/sync",
+                        clientPageJukInvoiceCopy: config.endpoints?.clientPageJukInvoiceCopy || "/api/companies-house/auth-code-register/:rowId/client-page/juk-invoices/copy",
                         meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
                         meReportRenameNominalAccount: config.endpoints?.meReportRenameNominalAccount || "/api/me-report/clients/:clientId/xero/nominal-accounts/rename",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
@@ -114847,6 +114869,12 @@
                     writeFailure: { message: "", retryAction: "" },
                     showCompletedTasks: false,
                     payload: null,
+                    jukInvoiceLookupBusy: false,
+                    jukInvoiceLookup: null,
+                    jukInvoiceLookupAnimateUntil: 0,
+                    jukInvoiceTenantSyncBusy: false,
+                    jukInvoiceTenantSyncByKey: {},
+                    jukInvoiceTenantSyncAt: "",
                 },
             };
 
@@ -120684,6 +120712,9 @@
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
+                    jukInvoiceTenantSyncBusy: false,
+                    jukInvoiceTenantSyncByKey: {},
+                    jukInvoiceTenantSyncAt: "",
                     autoLinking: false,
                     autoLinkScanned: false,
                     callStats: {
@@ -122730,6 +122761,159 @@
                     });
             }
 
+            function clientRegisterJukInvoiceKey(invoice = {}) {
+                return String(invoice?.id || invoice?.invoiceNumber || "").trim();
+            }
+
+            async function syncClientRegisterJukInvoicesAgainstTenant(options = {}) {
+                const silent = !!options?.silent;
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                if (!pageState?.open) return;
+                const rowId = String(pageState.rowId || "").trim();
+                const payload = clientPagePayload() || {};
+                const row = payload?.row || {};
+                const tenantId = String(row?.xeroTenantId || row?.xero_tenant_id || "").trim();
+                if (!rowId || !tenantId) return;
+                const invoices = clientRegisterJukInvoicesForRow(row);
+                if (!invoices.length) return;
+                const invoiceRows = invoices
+                    .map((invoice) => ({
+                        id: clientRegisterJukInvoiceKey(invoice),
+                        invoiceNumber: String(invoice?.invoiceNumber || "").trim(),
+                        invoiceDate: String(invoice?.invoiceDate || "").trim(),
+                        dueDate: String(invoice?.dueDate || "").trim(),
+                        total: Number(invoice?.total || 0),
+                        amountDue: Number(invoice?.amountDue || 0),
+                        currency: "GBP",
+                    }))
+                    .filter((invoice) => invoice.id && invoice.invoiceNumber);
+                if (!invoiceRows.length) return;
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    jukInvoiceTenantSyncBusy: true,
+                };
+                renderClientRegisterClientPage();
+                try {
+                    const response = await requestJSON(api.endpoints.clientPageJukInvoiceSync, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            tenantId,
+                            invoices: invoiceRows,
+                        }),
+                    }, { rowId });
+                    const result = response?.result && typeof response.result === "object" ? response.result : {};
+                    const rows = Array.isArray(result?.rows) ? result.rows : [];
+                    const byKey = {};
+                    rows.forEach((entry) => {
+                        const key = String(entry?.invoiceKey || "").trim();
+                        if (!key) return;
+                        byKey[key] = {
+                            status: String(entry?.status || "").trim() || "error",
+                            present: !!entry?.present,
+                            billId: String(entry?.billId || "").trim(),
+                            message: String(entry?.message || "").trim(),
+                        };
+                    });
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoiceTenantSyncBusy: false,
+                        jukInvoiceTenantSyncByKey: byKey,
+                        jukInvoiceTenantSyncAt: String(result?.syncedAt || new Date().toISOString()),
+                    };
+                    renderClientRegisterClientPage();
+                } catch (error) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoiceTenantSyncBusy: false,
+                    };
+                    renderClientRegisterClientPage();
+                    if (!silent) {
+                        showToast(error?.message || "Unable to sync invoice presence in the connected Xero tenant.", "error");
+                    }
+                }
+            }
+
+            async function copyClientRegisterJukInvoiceToConnectedXero(invoiceKey = "") {
+                const safeInvoiceKey = String(invoiceKey || "").trim();
+                if (!safeInvoiceKey) return;
+                const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                const rowId = String(pageState.rowId || "").trim();
+                const payload = clientPagePayload() || {};
+                const row = payload?.row || {};
+                const tenantId = String(row?.xeroTenantId || row?.xero_tenant_id || "").trim();
+                if (!rowId || !tenantId) {
+                    showToast("Connect a client Xero tenant before copying invoices.", "error");
+                    return;
+                }
+                const invoices = clientRegisterJukInvoicesForRow(row);
+                const invoice = invoices.find((item) => clientRegisterJukInvoiceKey(item) === safeInvoiceKey);
+                if (!invoice) {
+                    showToast("Selected invoice could not be found.", "error");
+                    return;
+                }
+                const syncByKey = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                    ? pageState.jukInvoiceTenantSyncByKey
+                    : {};
+                const syncEntry = syncByKey[safeInvoiceKey] || null;
+                if (syncEntry?.present) {
+                    showToast("Invoice is already present in the connected Xero tenant.", "info");
+                    return;
+                }
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    jukInvoiceTenantSyncBusy: true,
+                };
+                renderClientRegisterClientPage();
+                try {
+                    const response = await requestJSON(api.endpoints.clientPageJukInvoiceCopy, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            tenantId,
+                            invoice: {
+                                id: safeInvoiceKey,
+                                invoiceNumber: String(invoice?.invoiceNumber || "").trim(),
+                                invoiceDate: String(invoice?.invoiceDate || "").trim(),
+                                dueDate: String(invoice?.dueDate || "").trim(),
+                                total: Number(invoice?.total || 0),
+                                amountDue: Number(invoice?.amountDue || 0),
+                                description: String(invoice?.description || "").trim(),
+                                currency: "GBP",
+                            },
+                        }),
+                    }, { rowId });
+                    const result = response?.result && typeof response.result === "object" ? response.result : {};
+                    const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                        ? pageState.jukInvoiceTenantSyncByKey
+                        : {};
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoiceTenantSyncBusy: false,
+                        jukInvoiceTenantSyncAt: new Date().toISOString(),
+                        jukInvoiceTenantSyncByKey: {
+                            ...currentMap,
+                            [safeInvoiceKey]: {
+                                status: "present",
+                                present: true,
+                                billId: String(result?.billId || "").trim(),
+                                message: String(result?.message || "Invoice copied to connected tenant.").trim(),
+                            },
+                        },
+                    };
+                    renderClientRegisterClientPage();
+                    showToast(
+                        result?.created ? "Invoice copied to connected Xero tenant." : "Invoice is already present in connected Xero tenant.",
+                        "success"
+                    );
+                } catch (error) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoiceTenantSyncBusy: false,
+                    };
+                    renderClientRegisterClientPage();
+                    showToast(error?.message || "Unable to copy invoice to connected Xero tenant.", "error");
+                }
+            }
+
             function clientRegisterJukCustomerCandidates(row = {}) {
                 const customers = Array.isArray(state?.customers) ? state.customers : [];
                 const rowClientId = String(row?.clientId || "").trim().toLowerCase();
@@ -122863,8 +123047,11 @@
                             },
                         },
                         jukInvoiceLookupAnimateUntil: Date.now() + 1800,
+                        jukInvoiceTenantSyncByKey: {},
+                        jukInvoiceTenantSyncAt: "",
                     };
                     renderClientRegisterClientPage();
+                    void syncClientRegisterJukInvoicesAgainstTenant({ silent: true });
                     window.setTimeout(() => {
                         const latest = companiesHouseSettings.authRegisterClientPage || {};
                         if (!latest?.open) return;
@@ -124974,6 +125161,10 @@
                 const jukFetchStatus = document.getElementById("chRegisterClientPageJukFetchStatus");
                 const jukActions = document.getElementById("chRegisterClientPageJukInvoiceActions");
                 const jukLookup = pageState?.jukInvoiceLookup || {};
+                const tenantSyncByKey = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                    ? pageState.jukInvoiceTenantSyncByKey
+                    : {};
+                const tenantSyncBusy = !!pageState?.jukInvoiceTenantSyncBusy;
                 const lookupAnimateUntil = Number(pageState?.jukInvoiceLookupAnimateUntil || 0);
                 const lookupAnimating = lookupAnimateUntil > Date.now();
                 if (jukInvoicesBody) {
@@ -124984,6 +125175,24 @@
                             const amountDue = Number(invoice?.amountDue || 0);
                             const paymentStatusText = String(invoice?.paymentStatus || "").trim();
                             const statusText = String(invoice?.status || "imported").trim();
+                            const invoiceKey = clientRegisterJukInvoiceKey(invoice);
+                            const tenantSync = tenantSyncByKey[invoiceKey] || null;
+                            const syncStatus = String(tenantSync?.status || "").trim().toLowerCase();
+                            const syncBubbleText = syncStatus === "present"
+                                ? "Present in client Xero"
+                                : syncStatus === "missing"
+                                    ? "Missing in client Xero"
+                                    : syncStatus === "error"
+                                        ? "Sync check failed"
+                                        : "Checking Xero…";
+                            const syncBubbleClass = syncStatus === "present"
+                                ? "is-present"
+                                : syncStatus === "missing"
+                                    ? "is-missing"
+                                    : syncStatus === "error"
+                                        ? "is-error"
+                                        : "";
+                            const showCopyButton = syncStatus === "missing";
                             const paidByAmount = Number.isFinite(amountDue) && amountDue <= 0;
                             const paidByStatus = /paid|settled|completed/i.test(`${paymentStatusText} ${statusText}`);
                             const isPaid = paidByAmount || paidByStatus;
@@ -124998,10 +125207,12 @@
                                 <td>${escapeHTML(formatCurrency(invoice.amountDue || 0))}</td>
                                 <td>${escapeHTML(invoice.paymentStatus || "—")}</td>
                                 <td>${escapeHTML(invoice.status || "imported")}</td>
+                                <td><span class="ch-juk-xero-sync-badge ${syncBubbleClass}" title="${escapeHTML(tenantSync?.message || syncBubbleText)}">${escapeHTML(syncBubbleText)}</span></td>
+                                <td>${showCopyButton ? `<button class="ch-juk-xero-copy-button" type="button" data-client-page-juk-copy="${escapeHTML(invoiceKey)}" ${tenantSyncBusy ? "disabled" : ""}>Copy to connected Xero</button>` : "—"}</td>
                             </tr>
                         `;
                         }).join("")
-                        : `<tr><td colspan="7" class="ch-empty-state">No JUK invoices linked to this client yet. Use Get invoices to search Xero contacts and load all invoices.</td></tr>`;
+                        : `<tr><td colspan="9" class="ch-empty-state">No JUK invoices linked to this client yet. Use Get invoices to search Xero contacts and load all invoices.</td></tr>`;
                     if (jukFetchButton) {
                         const busy = !!pageState?.jukInvoiceLookupBusy;
                         jukFetchButton.disabled = busy;
@@ -125020,6 +125231,9 @@
                         const syncLabel = syncedAt ? `Last sync ${chFormatDateTime(syncedAt)}` : "Not synced yet";
                         const matchLabel = matchedName ? `Matched: ${matchedName}` : "Auto-match pending";
                         const confidenceLabel = matchedName ? `AI confidence ${confidencePct}%` : "AI confidence pending";
+                        const tenantSyncLabel = tenantSyncBusy
+                            ? "Xero tenant sync checking…"
+                            : (pageState?.jukInvoiceTenantSyncAt ? `Xero tenant sync ${chFormatDateTime(pageState.jukInvoiceTenantSyncAt)}` : "Xero tenant sync pending");
                         const incremental = jukLookup?.incrementalSummary && typeof jukLookup.incrementalSummary === "object"
                             ? jukLookup.incrementalSummary
                             : {};
@@ -125027,7 +125241,7 @@
                             ? `Changes: +${Number(incremental.createdCount || 0).toLocaleString("en-GB")} new, ${Number(incremental.updatedCount || 0).toLocaleString("en-GB")} updated`
                             : "No invoice changes detected";
                         jukFetchStatus.textContent = clientInvoices.length
-                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${incrementalLabel} · ${syncLabel}`
+                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${incrementalLabel} · ${tenantSyncLabel} · ${syncLabel}`
                             : `No invoices loaded. ${matchLabel}. Use Get invoices to auto-run AI matching across Xero contacts.`;
                         jukFetchStatus.classList.remove("is-muted", "is-success", "is-error");
                         jukFetchStatus.classList.add(clientInvoices.length ? "is-success" : "is-muted");
@@ -125115,6 +125329,9 @@
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
+                    jukInvoiceTenantSyncBusy: false,
+                    jukInvoiceTenantSyncByKey: {},
+                    jukInvoiceTenantSyncAt: "",
                     callStats: {
                         loading: false,
                         clientId: "",
@@ -126608,6 +126825,14 @@
                     });
                 });
                 document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", openClientRegisterJukInvoiceLookupModal);
+                document.getElementById("chRegisterClientPageJukInvoicesBody")?.addEventListener("click", (event) => {
+                    const button = event.target?.closest?.("[data-client-page-juk-copy]");
+                    if (!button) return;
+                    event.preventDefault();
+                    const invoiceKey = String(button.getAttribute("data-client-page-juk-copy") || "").trim();
+                    if (!invoiceKey) return;
+                    copyClientRegisterJukInvoiceToConnectedXero(invoiceKey);
+                });
                 document.getElementById("chRegisterClientPageEngagementLettersBody")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-engagement-letter-open]");
                     if (!button) return;

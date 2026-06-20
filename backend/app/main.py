@@ -55,6 +55,8 @@ from .companies_house import (
     get_companies_house_settings,
     get_company_detail,
     get_auth_register_client_page,
+    sync_client_page_juk_invoice_presence,
+    copy_client_page_juk_invoice_to_xero,
     get_submission_raw_response,
     list_dead_letters,
     list_company_secretarial_filings,
@@ -3493,6 +3495,28 @@ async def api_companies_house_auth_code_register_client_page_add_note(
 ):
     payload = await request.json()
     return {"status": "ok", **add_auth_register_client_note(user, row_id, payload)}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}/client-page/juk-invoices/sync")
+async def api_companies_house_auth_code_register_client_page_juk_sync(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    result = await sync_client_page_juk_invoice_presence(user, row_id, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", "result": result}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}/client-page/juk-invoices/copy")
+async def api_companies_house_auth_code_register_client_page_juk_copy(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    result = await copy_client_page_juk_invoice_to_xero(user, row_id, payload if isinstance(payload, dict) else {})
+    return {"status": "ok", "result": result}
 
 
 @app.post("/api/code-breaker/workspace-snapshot")
