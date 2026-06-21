@@ -1413,6 +1413,26 @@ def _payroll_overview_account_is_tax_liability(account: dict) -> bool:
     return False
 
 
+def _payroll_overview_account_is_pension_liability(account: dict) -> bool:
+    code = _payroll_overview_text(account.get("Code")).lower()
+    name = _payroll_overview_text(account.get("Name")).lower()
+    combined = f"{code} {name}"
+    keywords = (
+        "pension payable",
+        "workplace pension",
+        "nest payable",
+        "pension creditor",
+        "auto enrolment pension",
+        "auto-enrolment pension",
+    )
+    if any(keyword in combined for keyword in keywords):
+        return True
+    account_type = _payroll_overview_text(account.get("Type")).upper()
+    if account_type not in {"CURRLIAB", "LIABILITY"}:
+        return False
+    return "pension" in combined and ("payable" in combined or "creditor" in combined or "liability" in combined)
+
+
 def _payroll_overview_account_balance(account: dict) -> Decimal:
     for key in ("CurrentBalance", "Balance", "YTDBalance", "CurrentNetBalance"):
         raw = account.get(key)
@@ -1533,6 +1553,33 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         )
     tax_rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
 
+    pension_rows = []
+    for account in accounts:
+        if not _payroll_overview_account_is_pension_liability(account):
+            continue
+        balance = _payroll_overview_account_balance(account)
+        if abs(balance) < Decimal("0.005"):
+            continue
+        pension_rows.append(
+            {
+                "accountId": _payroll_overview_text(account.get("AccountID") or account.get("ID")),
+                "code": _payroll_overview_text(account.get("Code")),
+                "name": _payroll_overview_text(account.get("Name")) or "Pension payable account",
+                "type": _payroll_overview_text(account.get("Type")),
+                "status": _payroll_overview_text(account.get("Status")),
+                "balance": float(balance),
+                "isPayable": balance > 0,
+            }
+        )
+    pension_rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
+
+    outstanding_tax_balance = float(
+        sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in tax_rows)
+    )
+    pension_payable_balance = float(
+        sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in pension_rows)
+    )
+
     return {
         "tenantId": clean_tenant_id,
         "tenantName": str(connection_row.get("tenant_name") or clean_tenant_id),
@@ -1544,12 +1591,15 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "draftPayRunCount": len(draft_payruns),
             "latestPayRunDate": payrun_rows[0].get("paymentDate") if payrun_rows else "",
             "nextPayRunDate": next_due.isoformat() if isinstance(next_due, date) else "",
-            "outstandingTaxBalance": float(sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in tax_rows)),
+            "outstandingTaxBalance": outstanding_tax_balance,
+            "estimatedP32TaxBalance": outstanding_tax_balance,
+            "pensionPayableBalance": pension_payable_balance,
         },
         "payRuns": payrun_rows[:12],
         "draftPayRuns": draft_payruns[:6],
         "employees": employee_rows[:60],
         "outstandingTaxes": tax_rows[:20],
+        "outstandingPensions": pension_rows[:20],
         "errors": errors,
     }
 

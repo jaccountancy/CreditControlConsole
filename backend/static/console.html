@@ -28122,6 +28122,28 @@
             #taskCompletedScreen .ch-table td:nth-child(4) {
                 width: 17%;
             }
+            body.is-task-list-focused .ledger-topbar {
+                display: none;
+            }
+            body.is-task-list-focused #taskListScreen {
+                margin-top: 0;
+                padding: 0;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+            }
+            body.is-task-list-focused #taskListScreen > .detail-panel {
+                padding: 0;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+            }
+            body.is-task-list-focused #taskListScreen > .detail-panel > .ch-settings-card {
+                padding: 0;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+            }
             .task-bookkeeping-workflow {
                 margin-top: 14px;
                 border: 1px solid rgba(70, 97, 148, 0.2);
@@ -28827,6 +28849,66 @@
                 background: var(--surface-soft);
                 color: var(--ink);
                 font: inherit;
+            }
+            .task-detail-modal-card textarea {
+                width: 100%;
+                min-height: 220px;
+                resize: vertical;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+                font: inherit;
+            }
+            .task-detail-modal-card label {
+                display: grid;
+                gap: 6px;
+            }
+            .task-detail-modal-hint {
+                margin: 0;
+                font-size: 11px;
+                font-weight: 700;
+                color: var(--muted);
+            }
+            .task-detail-extraction-status {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                display: grid;
+                gap: 7px;
+            }
+            .task-detail-extraction-status li {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12.5px;
+                color: var(--muted);
+                transition: color 0.2s ease, transform 0.2s ease;
+            }
+            .task-detail-extraction-status li::before {
+                content: "";
+                width: 9px;
+                height: 9px;
+                border-radius: 999px;
+                background: rgba(112, 136, 175, 0.38);
+                box-shadow: 0 0 0 0 rgba(83, 130, 197, 0.45);
+                transition: background 0.2s ease, box-shadow 0.2s ease;
+            }
+            .task-detail-extraction-status li.is-active {
+                color: #1b4f83;
+                transform: translateX(2px);
+            }
+            .task-detail-extraction-status li.is-active::before {
+                background: #3484c5;
+                box-shadow: 0 0 0 5px rgba(52, 132, 197, 0.16);
+            }
+            .task-detail-extraction-status li.is-complete {
+                color: #1f5f8d;
+            }
+            .task-detail-extraction-status li.is-complete::before {
+                background: #3484c5;
+                box-shadow: 0 0 0 4px rgba(52, 132, 197, 0.12);
             }
             .task-detail-modal-card ul {
                 margin: 0;
@@ -53470,10 +53552,12 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const isTaskListView = activeView === "task-list" || activeView === "tasks";
+                document.body.classList.toggle("is-task-list-focused", isTaskListView);
                 const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
-                if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
+                if (taskListTopbarSummary) taskListTopbarSummary.hidden = true;
                 const taskListHeroCard = document.getElementById("taskListHeroCard");
-                if (taskListHeroCard) taskListHeroCard.hidden = activeView === "task-list" || activeView === "tasks";
+                if (taskListHeroCard) taskListHeroCard.hidden = isTaskListView;
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
@@ -96178,10 +96262,12 @@
                 renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
+                const isTaskListView = activeView === "task-list" || activeView === "tasks";
+                document.body.classList.toggle("is-task-list-focused", isTaskListView);
                 const taskListTopbarSummary = document.getElementById("taskListTopbarSummary");
-                if (taskListTopbarSummary) taskListTopbarSummary.hidden = !(activeView === "task-list" || activeView === "tasks");
+                if (taskListTopbarSummary) taskListTopbarSummary.hidden = true;
                 const taskListHeroCard = document.getElementById("taskListHeroCard");
-                if (taskListHeroCard) taskListHeroCard.hidden = activeView === "task-list" || activeView === "tasks";
+                if (taskListHeroCard) taskListHeroCard.hidden = isTaskListView;
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
                 if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
                 renderPiClearingTopbarSummary();
@@ -118603,7 +118689,37 @@
                 const taskName = String(row?.taskName || "").trim().toLowerCase();
                 if (taskName.includes("bookkeeping")) return "bookkeeping";
                 if (taskName.includes("vat")) return "vat";
+                if (/\b(payroll|pay run|payrun|p32|rti|paye)\b/i.test(taskName)) return "payroll";
                 return "";
+            }
+
+            function bmTaskFindRegisterRowForTask(row = {}) {
+                const rows = Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
+                if (!rows.length) return null;
+                const registerRowId = String(row?.matchedRegister?.id || "").trim();
+                if (registerRowId) {
+                    const byId = rows.find((item) => String(item?.id || "").trim() === registerRowId);
+                    if (byId) return byId;
+                }
+                return findClientRegisterRowForNotification({
+                    registerRowId,
+                    clientId: String(row?.matchedRegister?.clientId || row?.clientId || "").trim(),
+                    clientName: String(row?.matchedRegister?.displayName || row?.clientName || "").trim(),
+                });
+            }
+
+            function bmTaskPayrollWorkflowEnabled(row = {}, registerRow = null) {
+                if (bmTaskWorkflowType(row) !== "payroll") return false;
+                const source = registerRow && typeof registerRow === "object" ? registerRow : bmTaskFindRegisterRowForTask(row);
+                const services = source?.services || {};
+                const serviceDetails = source?.companiesHouse?.serviceDetails || source?.serviceDetails || {};
+                const payrollDetails = serviceDetails?.payroll || {};
+                if (services?.payroll === true) return true;
+                if (payrollDetails?.enabled === true) return true;
+                if (String(payrollDetails?.employersPayeReference || "").trim()) return true;
+                if (String(payrollDetails?.accountsOfficeReference || "").trim()) return true;
+                const resolvedXero = bmTaskResolvedXeroMatch(row);
+                return !!String(resolvedXero?.tenantId || "").trim();
             }
 
             function bmTaskResolvedXeroMatch(row = {}) {
@@ -123262,22 +123378,28 @@
                 menu.id = "taskCompleteActionMenu";
                 menu.className = "task-complete-action-menu";
                 menu.hidden = true;
-                menu.innerHTML = `
-                    <button class="task-complete-action-option" type="button" data-task-complete-choice="complete">Complete task</button>
-                    <button class="task-complete-action-option" type="button" data-task-complete-choice="complete-notify">Complete and notify</button>
-                `;
                 menu.addEventListener("click", (event) => {
                     const option = event.target.closest?.("[data-task-complete-choice]");
                     if (!option) return;
                     event.preventDefault();
                     const context = taskCompleteActionMenuContext;
-                    const shouldNotify = String(option.getAttribute("data-task-complete-choice") || "") === "complete-notify";
+                    const choice = String(option.getAttribute("data-task-complete-choice") || "").trim().toLowerCase();
                     closeTaskCompleteActionMenu();
                     if (context && typeof context.onSelect === "function") {
-                        context.onSelect(shouldNotify);
+                        context.onSelect(choice || "complete");
                     }
                 });
                 document.body.appendChild(menu);
+                document.addEventListener("mousedown", (event) => {
+                    const activeMenu = document.getElementById("taskCompleteActionMenu");
+                    if (!activeMenu || activeMenu.hidden) return;
+                    const target = event.target;
+                    if (target instanceof Node && activeMenu.contains(target)) return;
+                    closeTaskCompleteActionMenu();
+                });
+                document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape") closeTaskCompleteActionMenu();
+                });
                 return menu;
             }
 
@@ -123287,9 +123409,20 @@
                 taskCompleteActionMenuContext = null;
             }
 
-            function openTaskCompleteActionMenu(anchorButton, onSelect) {
+            function openTaskCompleteActionMenu(anchorButton, onSelect, options = null) {
                 if (!(anchorButton instanceof HTMLElement) || typeof onSelect !== "function") return;
                 const menu = ensureTaskCompleteActionMenu();
+                const menuOptions = Array.isArray(options) && options.length
+                    ? options
+                    : [
+                        { value: "complete", label: "Complete task" },
+                        { value: "complete-notify", label: "Complete and notify" },
+                    ];
+                menu.innerHTML = menuOptions.map((option) => `
+                    <button class="task-complete-action-option" type="button" data-task-complete-choice="${escapeHTML(String(option?.value || "complete"))}">
+                        ${escapeHTML(String(option?.label || "Complete task"))}
+                    </button>
+                `).join("");
                 taskCompleteActionMenuContext = { onSelect };
                 menu.hidden = false;
                 const rect = anchorButton.getBoundingClientRect();
@@ -123301,6 +123434,344 @@
                 const top = Math.min(Math.max(8, rect.bottom + 8), Math.max(8, viewportHeight - menuHeight - 8));
                 menu.style.left = `${left}px`;
                 menu.style.top = `${top}px`;
+            }
+
+            function payrollHmrcDueDateFromPaymentDate(paymentDateRaw = "") {
+                const paymentDate = parseDateValue(paymentDateRaw);
+                if (!(paymentDate instanceof Date) || Number.isNaN(paymentDate.getTime())) return "";
+                const day = paymentDate.getUTCDate();
+                const monthIndex = paymentDate.getUTCMonth();
+                const year = paymentDate.getUTCFullYear();
+                const dueMonthIndex = day <= 5 ? monthIndex : (monthIndex + 1);
+                const dueDate = new Date(Date.UTC(year, dueMonthIndex, 22));
+                return dueDate.toISOString().slice(0, 10);
+            }
+
+            function composePayrollPostedEmailDraft({
+                clientName = "",
+                paymentDate = "",
+                payeReference = "",
+                accountsOfficeReference = "",
+                p32TaxAmount = 0,
+                pensionPayableAmount = 0,
+                hmrcDueDate = "",
+            } = {}) {
+                const cleanClientName = String(clientName || "").trim() || "Client";
+                const cleanPaymentDate = String(paymentDate || "").trim();
+                const cleanPayeReference = String(payeReference || "").trim() || "Not provided";
+                const cleanOfficeReference = String(accountsOfficeReference || "").trim() || "Not provided";
+                const cleanHmrcDueDate = String(hmrcDueDate || "").trim();
+                const periodLine = cleanPaymentDate
+                    ? `Payroll has now been posted in Xero for payment date ${formatDate(cleanPaymentDate)}.`
+                    : "Payroll has now been posted in Xero.";
+                const dueLine = cleanHmrcDueDate
+                    ? `Please ensure HMRC PAYE/NIC is paid by BACS by ${formatDate(cleanHmrcDueDate)}.`
+                    : "Please ensure HMRC PAYE/NIC is paid by BACS by the 22nd of the next tax month.";
+                return [
+                    `Hi ${cleanClientName},`,
+                    "",
+                    periodLine,
+                    "",
+                    "Summary:",
+                    `- HMRC PAYE/NIC (P32 estimate): ${formatCurrency(Number(p32TaxAmount || 0))}`,
+                    `- Pension payable: ${formatCurrency(Number(pensionPayableAmount || 0))}`,
+                    `- Employer PAYE reference: ${cleanPayeReference}`,
+                    `- Accounts Office reference: ${cleanOfficeReference}`,
+                    "",
+                    dueLine,
+                    "",
+                    "Kind regards,",
+                    "Jaccountancy Payroll Team",
+                ].join("\n");
+            }
+
+            async function confirmPayrollTaskCompletionEmailWorkflow({
+                modalResult = {},
+                tenantId = "",
+                registerRow = {},
+                resolvedTask = {},
+            } = {}) {
+                const rows = [
+                    {
+                        paymentDate: modalResult?.paymentDate ? formatDate(modalResult.paymentDate) : "Not set",
+                        hmrcDueDate: modalResult?.hmrcDueDate ? formatDate(modalResult.hmrcDueDate) : "Not set",
+                        p32TaxAmount: formatCurrency(Number(modalResult?.p32TaxAmount || 0)),
+                        pensionPayableAmount: formatCurrency(Number(modalResult?.pensionPayableAmount || 0)),
+                        payeReference: String(modalResult?.payeReference || "").trim() || "Not set",
+                        accountsOfficeReference: String(modalResult?.accountsOfficeReference || "").trim() || "Not set",
+                    },
+                ];
+                const warnings = [];
+                if (!String(modalResult?.payeReference || "").trim()) warnings.push("PAYE reference missing");
+                if (!String(modalResult?.accountsOfficeReference || "").trim()) warnings.push("Accounts Office reference missing");
+                if (!String(modalResult?.hmrcDueDate || "").trim()) warnings.push("HMRC due date missing");
+                return await showOperationReviewDialog({
+                    eyebrow: "Payroll task",
+                    title: "Confirmation",
+                    subtitle: "Confirm these payroll values before completing the task and opening the client email draft.",
+                    confirmLabel: "Confirm and continue",
+                    cancelLabel: "Back",
+                    columns: [
+                        { key: "paymentDate", label: "Payment date" },
+                        { key: "hmrcDueDate", label: "HMRC due date" },
+                        { key: "p32TaxAmount", label: "P32 / PAYE-NIC" },
+                        { key: "pensionPayableAmount", label: "Pension payable" },
+                        { key: "payeReference", label: "PAYE ref" },
+                        { key: "accountsOfficeReference", label: "Accounts Office ref" },
+                    ],
+                    rows,
+                    summaryChips: [
+                        tenantId ? "Xero payroll data linked" : "No Xero payroll match",
+                        registerRow?.id ? "Client register linked" : "Client register not linked",
+                        warnings.length ? warnings.join(" · ") : "All required payment references present",
+                    ],
+                    onRender: ({ body }) => {
+                        const preview = String(modalResult?.emailBody || "").trim();
+                        if (!preview) return;
+                        const snippet = preview.length > 1200 ? `${preview.slice(0, 1200)}\n…` : preview;
+                        body.insertAdjacentHTML("beforeend", `
+                            <article class="task-detail-modal-card" style="margin-top: 12px;">
+                                <h5>Email preview</h5>
+                                <textarea readonly>${escapeHTML(snippet)}</textarea>
+                                <p class="task-detail-modal-hint">You can make final edits after this step in the notification composer.</p>
+                            </article>
+                        `);
+                    },
+                });
+            }
+
+            async function openPayrollTaskCompletionEmailWorkflow({
+                row = {},
+                rowId = "",
+                mode = "list",
+                button = null,
+                rowNode = null,
+            } = {}) {
+                const resolvedTask = bmTaskRowWithOverrides(row);
+                if (!resolvedTask || bmTaskWorkflowType(resolvedTask) !== "payroll") return;
+                if (!Array.isArray(companiesHouseSettings?.authRegisterRows) || !companiesHouseSettings.authRegisterRows.length) {
+                    try {
+                        await loadAuthCodeRegisterDirectory(false);
+                    } catch {}
+                }
+                const registerRow = bmTaskFindRegisterRowForTask(resolvedTask) || {};
+                const serviceDetails = registerRow?.companiesHouse?.serviceDetails || registerRow?.serviceDetails || {};
+                const payrollDetails = serviceDetails?.payroll || {};
+                const resolvedXero = bmTaskResolvedXeroMatch(resolvedTask);
+                const tenantId = String(resolvedXero?.tenantId || "").trim();
+                const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId) : null;
+                const summary = overview?.summary || {};
+                const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
+                const latestPayRun = payRuns[0] || {};
+                const paymentDateRaw = String(
+                    latestPayRun?.paymentDate
+                    || summary?.latestPayRunDate
+                    || payrollDetails?.rtiDeadline
+                    || ""
+                ).trim();
+                const paymentDate = (() => {
+                    const parsed = parseDateValue(paymentDateRaw);
+                    return parsed ? parsed.toISOString().slice(0, 10) : "";
+                })();
+                const initialP32Tax = Number(
+                    summary?.estimatedP32TaxBalance
+                    ?? summary?.outstandingTaxBalance
+                    ?? 0
+                );
+                const initialPension = Number(
+                    summary?.pensionPayableBalance
+                    ?? 0
+                );
+                let payeReference = String(
+                    payrollDetails?.employersPayeReference
+                    || registerRow?.payeReference
+                    || ""
+                ).trim();
+                let accountsOfficeReference = String(
+                    payrollDetails?.accountsOfficeReference
+                    || registerRow?.accountsOfficeReference
+                    || ""
+                ).trim();
+                let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
+                let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
+                let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
+                let emailBody = composePayrollPostedEmailDraft({
+                    clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                    paymentDate,
+                    payeReference,
+                    accountsOfficeReference,
+                    p32TaxAmount,
+                    pensionPayableAmount,
+                    hmrcDueDate,
+                });
+
+                const modalResult = await showOperationReviewDialog({
+                    eyebrow: "Payroll task",
+                    title: "Payroll email workflow",
+                    subtitle: "Step 1 of 2. AI extraction is filling payroll details now, then review and amend before confirmation.",
+                    confirmLabel: "Continue to confirmation",
+                    cancelLabel: "Cancel",
+                    columns: [],
+                    rows: [{}],
+                    summaryChips: [
+                        tenantId ? "Xero payroll data linked" : "No Xero payroll match",
+                        registerRow?.id ? "Client register linked" : "Client register not linked",
+                    ],
+                    onRender: ({ body }) => {
+                        body.innerHTML = `
+                            <div class="task-detail-modal-grid">
+                                <article class="task-detail-modal-card">
+                                    <h5>AI extraction status</h5>
+                                    <ul id="taskPayrollExtractionStatus" class="task-detail-extraction-status">
+                                        <li data-step-index="0">Extracting payment date from payroll run</li>
+                                        <li data-step-index="1">Extracting P32 PAYE/NIC estimate</li>
+                                        <li data-step-index="2">Extracting pension payable figure</li>
+                                        <li data-step-index="3">Extracting HMRC payment references</li>
+                                        <li data-step-index="4">Drafting payroll posted email</li>
+                                    </ul>
+                                    <p class="task-detail-modal-hint">Fields are populated one-by-one so the review path is clear.</p>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Payroll figures</h5>
+                                    <div class="task-detail-modal-grid">
+                                        <label>P32 / HMRC PAYE-NIC estimate
+                                            <input id="taskPayrollEmailP32Amount" type="number" step="0.01" value="">
+                                        </label>
+                                        <label>Pension payable (if applicable)
+                                            <input id="taskPayrollEmailPensionAmount" type="number" step="0.01" value="">
+                                        </label>
+                                        <label>Payroll payment date
+                                            <input id="taskPayrollEmailPaymentDate" type="date" value="">
+                                        </label>
+                                        <label>HMRC due date (BACS)
+                                            <input id="taskPayrollEmailHmrcDueDate" type="date" value="">
+                                        </label>
+                                    </div>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>HMRC references</h5>
+                                    <div class="task-detail-modal-grid">
+                                        <label>Employer PAYE reference
+                                            <input id="taskPayrollEmailPayeRef" type="text" value="">
+                                        </label>
+                                        <label>Accounts Office reference
+                                            <input id="taskPayrollEmailAccountsOfficeRef" type="text" value="">
+                                        </label>
+                                    </div>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Email draft</h5>
+                                    <textarea id="taskPayrollEmailDraftBody"></textarea>
+                                </article>
+                            </div>
+                        `;
+                        const bindRegenerate = () => {
+                            const p32Input = body.querySelector("#taskPayrollEmailP32Amount");
+                            const pensionInput = body.querySelector("#taskPayrollEmailPensionAmount");
+                            const paymentInput = body.querySelector("#taskPayrollEmailPaymentDate");
+                            const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
+                            const payeInput = body.querySelector("#taskPayrollEmailPayeRef");
+                            const officeInput = body.querySelector("#taskPayrollEmailAccountsOfficeRef");
+                            const draftInput = body.querySelector("#taskPayrollEmailDraftBody");
+                            const statusItems = Array.from(body.querySelectorAll("#taskPayrollExtractionStatus [data-step-index]"));
+                            const updateStatusState = (index, state) => {
+                                const item = statusItems[index];
+                                if (!item) return;
+                                item.classList.remove("is-active", "is-complete");
+                                if (state) item.classList.add(state);
+                            };
+                            const updateDraft = () => {
+                                const paymentDateValue = String(paymentInput?.value || "").trim();
+                                const dueValue = String(hmrcDueInput?.value || "").trim()
+                                    || payrollHmrcDueDateFromPaymentDate(paymentDateValue);
+                                if (hmrcDueInput && dueValue) hmrcDueInput.value = dueValue;
+                                const draft = composePayrollPostedEmailDraft({
+                                    clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                    paymentDate: paymentDateValue,
+                                    payeReference: String(payeInput?.value || "").trim(),
+                                    accountsOfficeReference: String(officeInput?.value || "").trim(),
+                                    p32TaxAmount: Number(p32Input?.value || 0),
+                                    pensionPayableAmount: Number(pensionInput?.value || 0),
+                                    hmrcDueDate: dueValue,
+                                });
+                                if (draftInput) draftInput.value = draft;
+                            };
+                            [p32Input, pensionInput, paymentInput, hmrcDueInput, payeInput, officeInput].forEach((input) => {
+                                input?.addEventListener("change", updateDraft);
+                                input?.addEventListener("input", updateDraft);
+                            });
+                            const startExtractionAnimation = () => {
+                                const assignments = [
+                                    () => { if (paymentInput) paymentInput.value = paymentDate; },
+                                    () => { if (p32Input) p32Input.value = String(p32TaxAmount.toFixed(2)); },
+                                    () => { if (pensionInput) pensionInput.value = String(pensionPayableAmount.toFixed(2)); },
+                                    () => {
+                                        if (payeInput) payeInput.value = payeReference;
+                                        if (officeInput) officeInput.value = accountsOfficeReference;
+                                        if (hmrcDueInput && !hmrcDueInput.value) hmrcDueInput.value = hmrcDueDate;
+                                    },
+                                    () => { if (draftInput) draftInput.value = emailBody; },
+                                ];
+                                const confirmButton = document.getElementById("confirmOperationReviewButton");
+                                if (confirmButton) confirmButton.disabled = true;
+                                const stepDelay = 210;
+                                assignments.forEach((apply, index) => {
+                                    window.setTimeout(() => {
+                                        updateStatusState(index, "is-active");
+                                        window.setTimeout(() => {
+                                            apply();
+                                            updateDraft();
+                                            updateStatusState(index, "is-complete");
+                                            if (index + 1 < assignments.length) updateStatusState(index + 1, "is-active");
+                                            if (index === assignments.length - 1 && confirmButton) confirmButton.disabled = false;
+                                        }, 140);
+                                    }, index * stepDelay);
+                                });
+                                if (statusItems.length) updateStatusState(0, "is-active");
+                            };
+                            startExtractionAnimation();
+                        };
+                        bindRegenerate();
+                    },
+                    resultProvider: () => {
+                        const p32Input = document.getElementById("taskPayrollEmailP32Amount");
+                        const pensionInput = document.getElementById("taskPayrollEmailPensionAmount");
+                        const paymentInput = document.getElementById("taskPayrollEmailPaymentDate");
+                        const hmrcDueInput = document.getElementById("taskPayrollEmailHmrcDueDate");
+                        const payeInput = document.getElementById("taskPayrollEmailPayeRef");
+                        const officeInput = document.getElementById("taskPayrollEmailAccountsOfficeRef");
+                        const draftInput = document.getElementById("taskPayrollEmailDraftBody");
+                        return {
+                            p32TaxAmount: Number(p32Input?.value || 0),
+                            pensionPayableAmount: Number(pensionInput?.value || 0),
+                            paymentDate: String(paymentInput?.value || "").trim(),
+                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
+                            payeReference: String(payeInput?.value || "").trim(),
+                            accountsOfficeReference: String(officeInput?.value || "").trim(),
+                            emailBody: String(draftInput?.value || "").trim(),
+                        };
+                    },
+                });
+                if (!modalResult || typeof modalResult !== "object") return;
+                const confirmed = await confirmPayrollTaskCompletionEmailWorkflow({
+                    modalResult,
+                    tenantId,
+                    registerRow,
+                    resolvedTask,
+                });
+                if (!confirmed) return;
+                completeTaskRowFromButton({ rowId, match: resolvedTask, button, rowNode, mode, notifyAfter: false });
+                const subjectDate = modalResult?.paymentDate ? ` · ${formatDate(modalResult.paymentDate)}` : "";
+                const subject = `Payroll posted confirmation${subjectDate}`;
+                openSidebarNotifyModal({
+                    category: "Payroll",
+                    clientId: String(registerRow?.clientId || resolvedTask?.clientId || "").trim(),
+                    taskReference: bmTaskDisplayName(resolvedTask),
+                    subject,
+                    message: modalResult.emailBody || "",
+                    urgent: false,
+                });
+                showToast("Payroll task completed and email workflow drafted.", "success");
             }
 
             function bmTaskAllRowsWithOverrides() {
@@ -123497,35 +123968,46 @@
                         }
                         if (actionKind === "awaiting_review") return;
                         const rowNode = completeButton.closest("tr");
-                        const applyCompletion = () => {
-                            try {
-                                updateBmTaskStatus(match, "completed", "", {
-                                    autoNote: "Task marked completed from task list.",
-                                });
-                                if (String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "") === rowId) {
-                                    resetTaskBookkeepingWorkflowPanel();
-                                }
-                                if (companiesHouseSettings.bmTasksSelection?.has(rowId)) {
-                                    companiesHouseSettings.bmTasksSelection.delete(rowId);
-                                }
-                                showToast("Task completed. Review it in Completed Tasks.", "success");
-                            } catch (error) {
-                                console.error("Unable to complete task", error);
-                                showToast(error?.message || "Unable to complete task.", "error");
-                            } finally {
-                                renderTaskSubpages();
-                            }
-                        };
-                        if (mode !== "completed" && rowNode && !rowNode.classList.contains("task-row-completing") && !rowNode.classList.contains("task-row-collapsing")) {
-                            rowNode.classList.add("task-row-completing");
-                            completeButton.classList.add("is-completing");
-                            const icon = completeButton.querySelector(".task-complete-icon");
-                            if (icon) icon.textContent = "✓";
-                            completeButton.disabled = true;
-                            animateTaskRowCollapse(rowNode, applyCompletion);
+                        const registerRow = bmTaskFindRegisterRowForTask(match);
+                        const payrollWorkflowEnabled = bmTaskPayrollWorkflowEnabled(match, registerRow);
+                        if (payrollWorkflowEnabled && mode !== "completed") {
+                            openTaskCompleteActionMenu(
+                                completeButton,
+                                async (choice) => {
+                                    if (choice === "complete-email-workflow") {
+                                        await openPayrollTaskCompletionEmailWorkflow({
+                                            row: match,
+                                            rowId,
+                                            mode,
+                                            button: completeButton,
+                                            rowNode,
+                                        });
+                                        return;
+                                    }
+                                    completeTaskRowFromButton({
+                                        rowId,
+                                        match,
+                                        button: completeButton,
+                                        rowNode,
+                                        mode,
+                                        notifyAfter: choice === "complete-notify",
+                                    });
+                                },
+                                [
+                                    { value: "complete", label: "Complete task" },
+                                    { value: "complete-email-workflow", label: "Complete and start email workflow" },
+                                ]
+                            );
                             return;
                         }
-                        applyCompletion();
+                        completeTaskRowFromButton({
+                            rowId,
+                            match,
+                            button: completeButton,
+                            rowNode,
+                            mode,
+                            notifyAfter: false,
+                        });
                         return;
                     }
 
