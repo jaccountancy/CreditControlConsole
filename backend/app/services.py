@@ -16300,9 +16300,18 @@ def _submitted_employee_forms_rows_payload(rows: list[dict]) -> list[dict]:
             "snippet": str(row.get("snippet") or ""),
             "xeroTenantId": str(row.get("xero_tenant_id") or ""),
             "xeroTenantName": str(row.get("xero_tenant_name") or ""),
+            "clientManager": str(row.get("client_manager") or ""),
+            "clientManagerUserIds": (
+                [str(item).strip() for item in (row.get("client_manager_user_ids") if isinstance(row.get("client_manager_user_ids"), list) else []) if str(item).strip()]
+            ),
             "xeroEmployeeId": str(row.get("xero_employee_id") or ""),
             "xeroStatus": str(row.get("xero_status") or "pending"),
             "xeroNote": str(row.get("xero_note") or ""),
+            "attemptHistory": (
+                row.get("attempt_history")
+                if isinstance(row.get("attempt_history"), list)
+                else []
+            ),
             "createdAt": _iso(row.get("created_at")) or "",
             "updatedAt": _iso(row.get("updated_at")) or "",
         }
@@ -16328,12 +16337,174 @@ def _submitted_employee_forms_query_rows(user_id: str) -> list[dict]:
                     )
                     rows = cursor.fetchall() or []
                 connection.commit()
-            return rows
+            return _attach_submitted_employee_forms_attempt_history(user_id, rows)
         except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
             if schema_repaired:
                 raise
             ensure_schema()
             schema_repaired = True
+
+
+def _submitted_employee_form_attempts_by_row_ids(user_id: str, row_ids: list[str], limit_per_row: int = 20) -> dict[str, list[dict]]:
+    clean_ids = [str(row_id or "").strip() for row_id in row_ids if str(row_id or "").strip()]
+    if not clean_ids:
+        return {}
+    attempts_by_row_id: dict[str, list[dict]] = {row_id: [] for row_id in clean_ids}
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM submitted_employee_form_attempts
+                        WHERE user_id = %s
+                          AND submitted_employee_form_id = ANY(%s)
+                        ORDER BY created_at DESC
+                        """,
+                        (user_id, clean_ids),
+                    )
+                    attempt_rows = cursor.fetchall() or []
+                connection.commit()
+            for attempt in attempt_rows:
+                row_id = str(attempt.get("submitted_employee_form_id") or "").strip()
+                if not row_id:
+                    continue
+                target_list = attempts_by_row_id.setdefault(row_id, [])
+                if len(target_list) >= max(1, int(limit_per_row or 20)):
+                    continue
+                target_list.append(
+                    {
+                        "id": str(attempt.get("id") or ""),
+                        "attemptType": str(attempt.get("attempt_type") or "process"),
+                        "xeroStatus": str(attempt.get("xero_status") or "pending"),
+                        "xeroTenantId": str(attempt.get("xero_tenant_id") or ""),
+                        "xeroTenantName": str(attempt.get("xero_tenant_name") or ""),
+                        "xeroEmployeeId": str(attempt.get("xero_employee_id") or ""),
+                        "note": str(attempt.get("note") or ""),
+                        "createdAt": _iso(attempt.get("created_at")) or "",
+                    }
+                )
+            return attempts_by_row_id
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _attach_submitted_employee_forms_attempt_history(user_id: str, rows: list[dict], limit_per_row: int = 20) -> list[dict]:
+    if not rows:
+        return rows
+    row_ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
+    attempts_by_row_id = _submitted_employee_form_attempts_by_row_ids(user_id, row_ids, limit_per_row=limit_per_row)
+    enriched_rows: list[dict] = []
+    for row in rows:
+        row_id = str(row.get("id") or "").strip()
+        enriched = dict(row)
+        enriched["attempt_history"] = attempts_by_row_id.get(row_id, [])
+        enriched_rows.append(enriched)
+    return enriched_rows
+
+
+def _submitted_employee_forms_manager_directory() -> list[dict]:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, full_name, email, role, status
+                        FROM users
+                        WHERE COALESCE(status, 'active') = 'active'
+                        ORDER BY COALESCE(NULLIF(full_name, ''), email) ASC, id ASC
+                        """
+                    )
+                    user_rows = cursor.fetchall() or []
+                connection.commit()
+            directory: list[dict] = []
+            for row in user_rows:
+                user_id = str(row.get("id") or "").strip()
+                full_name = str(row.get("full_name") or "").strip()
+                email = str(row.get("email") or "").strip().lower()
+                if not user_id or not (full_name or email):
+                    continue
+                directory.append(
+                    {
+                        "id": user_id,
+                        "fullName": full_name or email,
+                        "email": email,
+                        "role": str(row.get("role") or "").strip().lower(),
+                        "status": str(row.get("status") or "active").strip().lower() or "active",
+                    }
+                )
+            return directory
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _submitted_employee_forms_attach_client_manager(rows: list[dict], manager_directory: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+    schema_repaired = False
+    manager_lookup: dict[str, str] = {}
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT client_name, company_name, client_manager, uploaded_at
+                        FROM ch_auth_code_register
+                        WHERE COALESCE(TRIM(client_manager), '') <> ''
+                        ORDER BY uploaded_at DESC, id DESC
+                        """
+                    )
+                    register_rows = cursor.fetchall() or []
+                connection.commit()
+            for register_row in register_rows:
+                manager_name = re.sub(r"\s+", " ", str(register_row.get("client_manager") or "")).strip()
+                if not manager_name:
+                    continue
+                for candidate_name in (register_row.get("client_name"), register_row.get("company_name")):
+                    key = _bm_tasks_normalise_name_key(str(candidate_name or ""))
+                    if key and key not in manager_lookup:
+                        manager_lookup[key] = manager_name
+            break
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+    user_ids_by_name: dict[str, list[str]] = {}
+    for item in manager_directory:
+        user_id = str(item.get("id") or "").strip()
+        name_key = _bm_tasks_normalise_name_key(str(item.get("fullName") or ""))
+        if user_id and name_key:
+            user_ids_by_name.setdefault(name_key, []).append(user_id)
+    enriched_rows: list[dict] = []
+    for row in rows:
+        enriched = dict(row)
+        client_manager = ""
+        for candidate in (
+            row.get("xero_tenant_name"),
+            row.get("employer_name"),
+            row.get("from_name"),
+        ):
+            key = _bm_tasks_normalise_name_key(str(candidate or ""))
+            if key and key in manager_lookup:
+                client_manager = manager_lookup[key]
+                break
+        manager_key = _bm_tasks_normalise_name_key(client_manager)
+        enriched["client_manager"] = client_manager
+        enriched["client_manager_user_ids"] = user_ids_by_name.get(manager_key, []) if manager_key else []
+        enriched_rows.append(enriched)
+    return enriched_rows
 
 
 def submitted_employee_forms_payload(user: dict) -> dict:
@@ -16352,7 +16523,9 @@ def submitted_employee_forms_payload(user: dict) -> dict:
             gmail_message = "Reconnect Gmail and include read access to load submitted employee forms."
             needs_reconnect = True
 
+    manager_directory = _submitted_employee_forms_manager_directory()
     rows = _submitted_employee_forms_query_rows(str(user.get("id") or ""))
+    rows = _submitted_employee_forms_attach_client_manager(rows, manager_directory)
     return {
         "submittedEmployeeForms": {
             "gmail": {
@@ -16364,6 +16537,7 @@ def submitted_employee_forms_payload(user: dict) -> dict:
             "rows": _submitted_employee_forms_rows_payload(rows),
             "summary": _submitted_employee_forms_summary(rows),
             "subjectPrefix": SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX,
+            "managerDirectory": manager_directory,
         }
     }
 
@@ -16989,7 +17163,7 @@ def _submitted_employee_forms_query_rows_by_ids(user_id: str, row_ids: list[str]
                     )
                     rows = cursor.fetchall() or []
                 connection.commit()
-            return rows
+            return _attach_submitted_employee_forms_attempt_history(user_id, rows)
         except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
             if schema_repaired:
                 raise
@@ -17058,6 +17232,55 @@ def _update_submitted_employee_form_xero_status(
                             xero_note,
                             utcnow(),
                             row_id,
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _record_submitted_employee_form_attempt(
+    *,
+    row_id: str,
+    user_id: str,
+    attempt_type: str,
+    xero_status: str,
+    note: str,
+    tenant_id: str = "",
+    tenant_name: str = "",
+    xero_employee_id: str = "",
+) -> None:
+    clean_row_id = str(row_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    if not clean_row_id or not clean_user_id:
+        return
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO submitted_employee_form_attempts (
+                            submitted_employee_form_id, user_id, attempt_type, xero_status,
+                            xero_tenant_id, xero_tenant_name, xero_employee_id, note, created_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            clean_row_id,
+                            clean_user_id,
+                            str(attempt_type or "process").strip().lower() or "process",
+                            str(xero_status or "pending").strip().lower() or "pending",
+                            str(tenant_id or "").strip(),
+                            str(tenant_name or "").strip(),
+                            str(xero_employee_id or "").strip(),
+                            str(note or "").strip(),
+                            utcnow(),
                         ),
                     )
                 connection.commit()
@@ -17141,6 +17364,33 @@ async def sync_submitted_employee_forms(
         if not employee_name:
             employee_name = str(row.get("employee_full_name") or "").strip().lower()
 
+        def update_row_state(
+            *,
+            tenant_id: str = "",
+            tenant_name: str = "",
+            xero_employee_id: str = "",
+            xero_status: str = "pending",
+            xero_note: str = "",
+        ) -> None:
+            _update_submitted_employee_form_xero_status(
+                row_id,
+                tenant_id=tenant_id,
+                tenant_name=tenant_name,
+                xero_employee_id=xero_employee_id,
+                xero_status=xero_status,
+                xero_note=xero_note,
+            )
+            _record_submitted_employee_form_attempt(
+                row_id=row_id,
+                user_id=user_id,
+                attempt_type="process",
+                xero_status=xero_status,
+                tenant_id=tenant_id,
+                tenant_name=tenant_name,
+                xero_employee_id=xero_employee_id,
+                note=xero_note,
+            )
+
         employer_name = _submitted_forms_employer_name(row)
         target_workspace = None
         ai_match_reason = ""
@@ -17165,8 +17415,7 @@ async def sync_submitted_employee_forms(
                 ai_match_confidence = ai_confidence
         if not target_workspace:
             needs_review += 1
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id="",
                 tenant_name="",
                 xero_status="needs-review",
@@ -17182,8 +17431,7 @@ async def sync_submitted_employee_forms(
         clean_tenant_name = str(target_workspace.get("tenantName") or connection_row.get("tenant_name") or clean_tenant_id).strip()
         if not clean_tenant_id:
             needs_review += 1
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id="",
                 tenant_name="",
                 xero_status="needs-review",
@@ -17228,8 +17476,7 @@ async def sync_submitted_employee_forms(
         if not existing_employee_id and not employee_email and employee_name:
             if employee_name in duplicate_names:
                 needs_review += 1
-                _update_submitted_employee_form_xero_status(
-                    row_id,
+                update_row_state(
                     tenant_id=clean_tenant_id,
                     tenant_name=clean_tenant_name,
                     xero_status="needs-review",
@@ -17246,8 +17493,7 @@ async def sync_submitted_employee_forms(
 
         if existing_employee_id:
             existing += 1
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_employee_id=existing_employee_id,
@@ -17261,8 +17507,7 @@ async def sync_submitted_employee_forms(
             continue
 
         if not create_missing:
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_status="pending",
@@ -17276,8 +17521,7 @@ async def sync_submitted_employee_forms(
 
         if not employee_email and not employee_name:
             needs_review += 1
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_status="needs-review",
@@ -17299,8 +17543,7 @@ async def sync_submitted_employee_forms(
                         existing_by_name_unique.pop(employee_name, None)
                     else:
                         existing_by_name_unique[employee_name] = created_employee_id
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_employee_id=created_employee_id,
@@ -17314,8 +17557,7 @@ async def sync_submitted_employee_forms(
         except Exception as exc:
             failed += 1
             error_message = _sync_error_message(exc)
-            _update_submitted_employee_form_xero_status(
-                row_id,
+            update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_status="failed",
@@ -17341,6 +17583,168 @@ async def sync_submitted_employee_forms(
         "selectedCount": len(selected_ids),
     }
     return payload
+
+
+def notify_submitted_employee_form_managers(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    form_id = str(body.get("formId") or "").strip()
+    recipient_ids = [
+        str(item or "").strip()
+        for item in (body.get("recipientUserIds") if isinstance(body.get("recipientUserIds"), list) else [])
+        if str(item or "").strip()
+    ]
+    custom_message = re.sub(r"\s+", " ", str(body.get("message") or "")).strip()
+    if not form_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A submitted employee form ID is required.")
+    if not recipient_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one manager to notify.")
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM submitted_employee_forms
+                        WHERE id = %s AND user_id = %s
+                        """,
+                        (form_id, str(user.get("id") or "")),
+                    )
+                    form_row = cursor.fetchone()
+                    if not form_row:
+                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submitted employee form row not found.")
+                    cursor.execute(
+                        """
+                        SELECT id, full_name, email
+                        FROM users
+                        WHERE id = ANY(%s) AND COALESCE(status, 'active') = 'active'
+                        """,
+                        (recipient_ids,),
+                    )
+                    recipient_rows = cursor.fetchall() or []
+                    if not recipient_rows:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active users were found for those recipients.")
+                    actor_name = str(user.get("full_name") or user.get("name") or user.get("email") or "A team member").strip()
+                    employee_name = str(form_row.get("employee_full_name") or "").strip() or "Employee"
+                    tenant_name = str(form_row.get("xero_tenant_name") or "").strip() or _submitted_forms_employer_name(form_row)
+                    received_label = _iso(form_row.get("received_at")) or _iso(form_row.get("created_at")) or ""
+                    title = f"Employee form submitted for {tenant_name or 'client'}"
+                    message = custom_message or (
+                        f"{actor_name} requested setup for {employee_name}"
+                        + (f" ({tenant_name})" if tenant_name else "")
+                        + (f". Received {received_label}." if received_label else ".")
+                    )
+                    inserted = 0
+                    inserted_rows: list[dict] = []
+                    for recipient in recipient_rows:
+                        recipient_id = str(recipient.get("id") or "").strip()
+                        if not recipient_id:
+                            continue
+                        notification_payload = {
+                            "source": "submitted-employee-forms",
+                            "formId": form_id,
+                            "employeeName": employee_name,
+                            "tenantName": tenant_name,
+                            "xeroStatus": str(form_row.get("xero_status") or ""),
+                            "xeroNote": str(form_row.get("xero_note") or ""),
+                            "recipientName": str(recipient.get("full_name") or "").strip(),
+                            "recipientEmail": str(recipient.get("email") or "").strip().lower(),
+                            "actorName": actor_name,
+                        }
+                        cursor.execute(
+                            """
+                            INSERT INTO user_notifications (
+                                target_user_id, actor_user_id, source, category, title, message, payload, is_read, created_at
+                            )
+                            VALUES (%s, %s, 'submitted-employee-forms', 'info', %s, %s, %s::jsonb, FALSE, %s)
+                            RETURNING id, target_user_id, title, message, created_at
+                            """,
+                            (
+                                recipient_id,
+                                str(user.get("id") or "") or None,
+                                title,
+                                message,
+                                json.dumps(notification_payload, default=_json_default),
+                                utcnow(),
+                            ),
+                        )
+                        inserted_row = cursor.fetchone()
+                        if inserted_row:
+                            inserted += 1
+                            inserted_rows.append(inserted_row)
+                connection.commit()
+            return {
+                "formId": form_id,
+                "notifiedCount": inserted,
+                "notifications": [
+                    {
+                        "id": str(row.get("id") or ""),
+                        "targetUserId": str(row.get("target_user_id") or ""),
+                        "title": str(row.get("title") or ""),
+                        "message": str(row.get("message") or ""),
+                        "createdAt": _iso(row.get("created_at")) or "",
+                    }
+                    for row in inserted_rows
+                ],
+            }
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def pull_user_notifications(user: dict, limit: int = 30) -> dict:
+    safe_limit = max(1, min(int(limit or 30), 80))
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM user_notifications
+                        WHERE target_user_id = %s
+                          AND is_read = FALSE
+                        ORDER BY created_at ASC
+                        LIMIT %s
+                        """,
+                        (str(user.get("id") or ""), safe_limit),
+                    )
+                    rows = cursor.fetchall() or []
+                    notification_ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
+                    if notification_ids:
+                        cursor.execute(
+                            """
+                            UPDATE user_notifications
+                            SET is_read = TRUE,
+                                read_at = %s
+                            WHERE id = ANY(%s)
+                            """,
+                            (utcnow(), notification_ids),
+                        )
+                connection.commit()
+            return {
+                "notifications": [
+                    {
+                        "id": str(row.get("id") or ""),
+                        "source": str(row.get("source") or ""),
+                        "category": str(row.get("category") or "info"),
+                        "title": str(row.get("title") or ""),
+                        "message": str(row.get("message") or ""),
+                        "payload": row.get("payload") if isinstance(row.get("payload"), dict) else {},
+                        "createdAt": _iso(row.get("created_at")) or "",
+                    }
+                    for row in rows
+                ]
+            }
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
 
 
 def _serialize_me_report_settings(row: dict | None) -> dict:

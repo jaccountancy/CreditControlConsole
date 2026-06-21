@@ -27044,6 +27044,65 @@
                 color: var(--ink);
                 word-break: break-word;
             }
+            .submitted-employee-setup-modal-panel {
+                width: min(1080px, calc(100vw - 48px));
+            }
+            .submitted-employee-setup-log-wrap,
+            .submitted-employee-preview-audit-wrap {
+                margin-top: 12px;
+                max-height: 260px;
+                overflow: auto;
+            }
+            .submitted-employee-notify-modal-panel {
+                width: min(780px, calc(100vw - 48px));
+            }
+            .submitted-employee-notify-recipient-list {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 8px;
+                max-height: 340px;
+                overflow: auto;
+                padding: 4px;
+            }
+            .submitted-employee-notify-option {
+                display: flex;
+                gap: 10px;
+                align-items: flex-start;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: var(--surface-soft);
+            }
+            .submitted-employee-notify-option strong {
+                display: block;
+                color: var(--ink);
+                font-size: 0.9rem;
+            }
+            .submitted-employee-notify-option small {
+                display: block;
+                color: var(--muted);
+                font-size: 0.78rem;
+            }
+            .status-pill.submitted-employee-status-pending {
+                color: #7a5b00;
+                border-color: rgba(201, 153, 0, 0.45);
+                background: rgba(255, 230, 142, 0.4);
+            }
+            .status-pill.submitted-employee-status-failed {
+                color: #8f1a1a;
+                border-color: rgba(203, 69, 69, 0.45);
+                background: rgba(255, 185, 185, 0.35);
+            }
+            .status-pill.submitted-employee-status-created {
+                color: #0a6a2a;
+                border-color: rgba(27, 168, 86, 0.42);
+                background: rgba(171, 241, 201, 0.32);
+            }
+            .status-pill.submitted-employee-status-exists {
+                color: #5332ab;
+                border-color: rgba(122, 87, 224, 0.42);
+                background: rgba(219, 204, 255, 0.34);
+            }
             #codeBreakerWorkspaceTableBody tr {
                 border-left: 4px solid transparent;
                 transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
@@ -44051,7 +44110,7 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="submittedEmployeeFormsRefreshButton" type="button">Refresh page</button>
                                     <a class="ghost-button action-link" id="submittedEmployeeFormsReconnectButton" href="/auth/gmail/start?redirect_to=/">Reconnect Gmail</a>
-                                    <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Start wizard</button>
+                                    <button class="primary-button" id="submittedEmployeeFormsSyncButton" type="button">Set Up Employees In Xero</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="submittedEmployeeFormsSummary">Submitted employee forms workspace is ready.</p>
@@ -44068,9 +44127,11 @@
                                             <th>Received</th>
                                             <th>Employee</th>
                                             <th>Matched client</th>
+                                            <th>Client manager</th>
                                             <th>From</th>
                                             <th>Preview</th>
                                             <th>Xero status</th>
+                                            <th>Notify</th>
                                             <th>Note</th>
                                         </tr>
                                     </thead>
@@ -44079,6 +44140,41 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="submittedEmployeeFormsSetupModal" hidden>
+                        <section class="company-secretarial-modal-panel submitted-employee-setup-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsSetupTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Submitted Employee Forms</p>
+                                    <h4 id="submittedEmployeeFormsSetupTitle">Set up employees in Xero</h4>
+                                    <p class="detail-meta" id="submittedEmployeeFormsSetupMeta">Sync email submissions, then process each employee one-by-one into the matched Xero workspace.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="submittedEmployeeFormsSetupCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="empty-state submitted-employee-setup-state">
+                                <p class="eyebrow" id="submittedEmployeeFormsSetupStage">Ready</p>
+                                <h4 id="submittedEmployeeFormsSetupTitleLine">No setup running</h4>
+                                <p id="submittedEmployeeFormsSetupProgressText">Press start to sync submissions and process each employee row.</p>
+                            </div>
+                            <section class="ch-companies-table-wrap submitted-employee-setup-log-wrap">
+                                <table class="ch-table" aria-label="Submitted employee setup progress">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Employee</th>
+                                            <th>Status</th>
+                                            <th>Detail</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="submittedEmployeeFormsSetupLogBody"></tbody>
+                                </table>
+                            </section>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="submittedEmployeeFormsSetupStartButton" type="button">Start setup run</button>
+                            </div>
+                        </section>
+                    </div>
                     <div class="company-secretarial-modal" id="submittedEmployeeFormsPreviewModal" hidden>
                         <section class="company-secretarial-modal-panel submitted-employee-preview-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsPreviewTitle">
                             <div class="company-secretarial-modal-head">
@@ -44115,6 +44211,37 @@
                                     </table>
                                 </section>
                             </section>
+                            <section class="ch-companies-table-wrap submitted-employee-preview-audit-wrap">
+                                <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form audit history">
+                                    <thead>
+                                        <tr>
+                                            <th>Attempt at</th>
+                                            <th>Status</th>
+                                            <th>Workspace</th>
+                                            <th>Note</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="submittedEmployeeFormsPreviewAuditBody"></tbody>
+                                </table>
+                            </section>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="submittedEmployeeFormsNotifyModal" hidden>
+                        <section class="company-secretarial-modal-panel submitted-employee-notify-modal-panel" role="dialog" aria-modal="true" aria-labelledby="submittedEmployeeFormsNotifyTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Submitted Employee Forms</p>
+                                    <h4 id="submittedEmployeeFormsNotifyTitle">Notify client managers</h4>
+                                    <p class="detail-meta" id="submittedEmployeeFormsNotifyMeta">Choose who to notify about this employee submission.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="submittedEmployeeFormsNotifyCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="submitted-employee-notify-recipient-list" id="submittedEmployeeFormsNotifyRecipients"></section>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="submittedEmployeeFormsNotifySendButton" type="button">Send notification</button>
+                            </div>
                         </section>
                     </div>
                     <div class="company-secretarial-modal" id="submittedEmployeeFormsNoteModal" hidden>
@@ -46315,6 +46442,7 @@
                 summary: { total: 0, created: 0, exists: 0, pending: 0, failed: 0, needsReview: 0 },
                 gmail: { status: "not_connected", message: "Connect Gmail to read submitted employee forms.", needsReconnect: false, gmailEmail: "" },
                 subjectPrefix: "New Employee Details:",
+                managerDirectory: [],
             };
             let submittedEmployeeFormsLoading = false;
             let submittedEmployeeFormsSyncing = false;
@@ -46324,6 +46452,25 @@
             let submittedEmployeeFormsLastSyncDiagnostics = null;
             let submittedEmployeeFormsPreviewRowId = "";
             let submittedEmployeeFormsActiveNoteRowId = "";
+            let submittedEmployeeFormsSetupModalOpen = false;
+            let submittedEmployeeFormsSetupState = {
+                running: false,
+                stage: "idle",
+                total: 0,
+                processed: 0,
+                created: 0,
+                exists: 0,
+                failed: 0,
+                pending: 0,
+                currentLabel: "",
+                logs: [],
+            };
+            let submittedEmployeeFormsNotifyModalOpen = false;
+            let submittedEmployeeFormsNotifyRowId = "";
+            let submittedEmployeeFormsNotifySelectedUserIds = new Set();
+            let submittedEmployeeFormsNotifySending = false;
+            let notificationPullTimer = null;
+            let notificationPullInFlight = false;
             const clientPagePayrollOverviewCache = new Map();
             const clientPageVatScanCache = new Map();
             let clientPageLockSummaryLoading = false;
@@ -47881,6 +48028,8 @@
                         payrollHeadcountIgnitionSync: config.endpoints?.payrollHeadcountIgnitionSync || "/api/payroll-headcount/ignition-sync",
                         submittedEmployeeForms: config.endpoints?.submittedEmployeeForms || "/api/submitted-employee-forms",
                         submittedEmployeeFormsSync: config.endpoints?.submittedEmployeeFormsSync || "/api/submitted-employee-forms/sync",
+                        submittedEmployeeFormsNotify: config.endpoints?.submittedEmployeeFormsNotify || "/api/submitted-employee-forms/notify",
+                        notificationsPull: config.endpoints?.notificationsPull || "/api/notifications/pull",
                         payrollTenantOverview: config.endpoints?.payrollTenantOverview || "/api/payroll/tenants/:tenantId/overview",
                         clientCallStats: config.endpoints?.clientCallStats || "/api/client-call-stats",
                         clientCallStatsImportPreview: config.endpoints?.clientCallStatsImportPreview || "/api/client-call-stats/import/preview",
@@ -49533,10 +49682,27 @@
                 const rows = Array.isArray(source?.rows)
                     ? source.rows.map((row) => {
                         const extractedFields = row?.extractedFields && typeof row.extractedFields === "object" ? row.extractedFields : {};
+                        const attemptHistory = Array.isArray(row?.attemptHistory)
+                            ? row.attemptHistory.map((attempt) => ({
+                                id: String(attempt?.id || ""),
+                                attemptType: String(attempt?.attemptType || "process"),
+                                xeroStatus: String(attempt?.xeroStatus || "pending"),
+                                xeroTenantId: String(attempt?.xeroTenantId || ""),
+                                xeroTenantName: String(attempt?.xeroTenantName || ""),
+                                xeroEmployeeId: String(attempt?.xeroEmployeeId || ""),
+                                note: String(attempt?.note || ""),
+                                createdAt: String(attempt?.createdAt || ""),
+                            }))
+                            : [];
                         return {
                             ...row,
                             employerName: String(row?.employerName || extractedFields?.employerName || "").trim(),
+                            clientManager: String(row?.clientManager || "").trim(),
+                            clientManagerUserIds: Array.isArray(row?.clientManagerUserIds)
+                                ? row.clientManagerUserIds.map((value) => String(value || "").trim()).filter(Boolean)
+                                : [],
                             extractedFields,
+                            attemptHistory,
                         };
                     })
                     : [];
@@ -49559,6 +49725,14 @@
                         gmailEmail: String(gmail.gmailEmail || ""),
                     },
                     subjectPrefix: String(source?.subjectPrefix || "New Employee Details:"),
+                    managerDirectory: Array.isArray(source?.managerDirectory)
+                        ? source.managerDirectory.map((item) => ({
+                            id: String(item?.id || "").trim(),
+                            fullName: String(item?.fullName || "").trim(),
+                            email: String(item?.email || "").trim(),
+                            role: String(item?.role || "").trim(),
+                        })).filter((item) => item.id && (item.fullName || item.email))
+                        : [],
                 };
             }
 
@@ -49582,69 +49756,196 @@
                 }
             }
 
-            async function syncSubmittedEmployeeForms(options = {}) {
-                if (submittedEmployeeFormsSyncing) return;
+            async function submittedEmployeeFormsSyncRequest({ mode = "fetch", selectedFormIds = [], createMissing = true, lookbackDays = 28 } = {}) {
+                const payload = await requestJSON(api.endpoints.submittedEmployeeFormsSync, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        mode: String(mode || "fetch").trim().toLowerCase(),
+                        lookbackDays,
+                        selectedFormIds: Array.isArray(selectedFormIds) ? selectedFormIds : [],
+                        createMissing: createMissing !== false,
+                    }),
+                });
+                submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
+                const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
+                if (mode === "fetch") {
+                    const gmailMeta = syncMeta?.gmail && typeof syncMeta.gmail === "object" ? syncMeta.gmail : {};
+                    submittedEmployeeFormsLastSyncDiagnostics = gmailMeta?.diagnostics && typeof gmailMeta.diagnostics === "object"
+                        ? gmailMeta.diagnostics
+                        : null;
+                }
+                return { payload, syncMeta };
+            }
+
+            function submittedEmployeeFormsEligibleRowIdsForSetup() {
+                const rows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                const selected = [...submittedEmployeeFormsSelectedRowIds].filter(Boolean);
+                if (selected.length) return selected;
+                return rows
+                    .filter((row) => ["pending", "failed", "needs-review", ""].includes(String(row?.xeroStatus || "").trim().toLowerCase()))
+                    .map((row) => String(row?.id || "").trim())
+                    .filter(Boolean);
+            }
+
+            function submittedEmployeeFormsResetSetupState() {
+                submittedEmployeeFormsSetupState = {
+                    running: false,
+                    stage: "idle",
+                    total: 0,
+                    processed: 0,
+                    created: 0,
+                    exists: 0,
+                    failed: 0,
+                    pending: 0,
+                    currentLabel: "",
+                    logs: [],
+                };
+            }
+
+            async function runSubmittedEmployeeFormsSetupFlow() {
+                if (submittedEmployeeFormsSyncing || submittedEmployeeFormsSetupState.running) return;
                 submittedEmployeeFormsSyncing = true;
+                submittedEmployeeFormsSetupState.running = true;
+                submittedEmployeeFormsSetupState.stage = "syncing";
+                submittedEmployeeFormsSetupState.currentLabel = "Syncing Gmail submissions";
                 renderSubmittedEmployeeFormsScreen();
                 try {
-                    const mode = String(options?.mode || (submittedEmployeeFormsWizardStep <= 1 ? "fetch" : "process")).trim().toLowerCase();
-                    const selectedFormIds = [...submittedEmployeeFormsSelectedRowIds];
-                    const payload = await requestJSON(api.endpoints.submittedEmployeeFormsSync, {
-                        method: "POST",
-                        body: JSON.stringify({
-                            mode,
-                            lookbackDays: 28,
-                            selectedFormIds,
-                            createMissing: true,
-                        }),
+                    const { syncMeta } = await submittedEmployeeFormsSyncRequest({ mode: "fetch", lookbackDays: 28 });
+                    const imported = Number(syncMeta.imported || 0);
+                    const eligibleRowIds = submittedEmployeeFormsEligibleRowIdsForSetup();
+                    submittedEmployeeFormsSetupState.total = eligibleRowIds.length;
+                    submittedEmployeeFormsSetupState.stage = "processing";
+                    submittedEmployeeFormsSetupState.logs.unshift({
+                        at: new Date().toISOString(),
+                        employee: "Submission sync",
+                        status: "pending",
+                        detail: `${imported.toLocaleString("en-GB")} email submission${imported === 1 ? "" : "s"} synced from Gmail.`,
                     });
-                    submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
-                    const syncMeta = payload?.sync && typeof payload.sync === "object" ? payload.sync : {};
-                    if (mode === "fetch") {
-                        const imported = Number(syncMeta.imported || 0);
-                        const gmailMeta = syncMeta?.gmail && typeof syncMeta.gmail === "object" ? syncMeta.gmail : {};
-                        if (submittedEmployeeFormsData?.gmail && gmailMeta && typeof gmailMeta === "object") {
-                            submittedEmployeeFormsData.gmail.message = String(gmailMeta.message || submittedEmployeeFormsData.gmail.message || "");
-                            submittedEmployeeFormsData.gmail.status = String(gmailMeta.status || submittedEmployeeFormsData.gmail.status || "");
-                            submittedEmployeeFormsData.gmail.needsReconnect = Boolean(gmailMeta.needsReconnect ?? submittedEmployeeFormsData.gmail.needsReconnect);
-                            submittedEmployeeFormsData.gmail.gmailEmail = String(gmailMeta.gmailEmail || submittedEmployeeFormsData.gmail.gmailEmail || "");
-                        }
-                        submittedEmployeeFormsLastSyncDiagnostics = gmailMeta?.diagnostics && typeof gmailMeta.diagnostics === "object"
-                            ? gmailMeta.diagnostics
-                            : null;
-                        const gmailStatus = String((syncMeta?.gmail || {}).status || submittedEmployeeFormsData?.gmail?.status || "").trim().toLowerCase();
-                        const canAdvance = imported > 0 && gmailStatus === "connected";
-                        submittedEmployeeFormsWizardStep = canAdvance ? 2 : 1;
-                        submittedEmployeeFormsSelectedRowIds.clear();
-                        const lookbackDays = Number(syncMeta.lookbackDays || 28);
-                        const now = new Date();
-                        const windowStart = new Date(now.getTime() - (Math.max(1, lookbackDays) * 24 * 60 * 60 * 1000));
-                        submittedEmployeeFormsWindowStartIso = windowStart.toISOString();
-                        showToast(
-                            canAdvance
-                                ? `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled from the last 4 weeks.`
-                                : `Step 1 complete. ${imported.toLocaleString("en-GB")} email form${imported === 1 ? "" : "s"} pulled. Reconnect Gmail read access or check subject format if expected rows are missing.`,
-                            canAdvance ? "success" : "warning"
-                        );
-                    } else {
-                        const created = Number(syncMeta.created || 0);
-                        const existing = Number(syncMeta.existing || 0);
-                        const failed = Number(syncMeta.failed || 0);
-                        showToast(
-                            `Step 2 complete. ${created.toLocaleString("en-GB")} created, ${existing.toLocaleString("en-GB")} already in Xero, ${failed.toLocaleString("en-GB")} failed.`,
-                            failed ? "warning" : "success"
-                        );
-                        submittedEmployeeFormsSelectedRowIds.clear();
-                        submittedEmployeeFormsWizardStep = 1;
-                        submittedEmployeeFormsWindowStartIso = "";
+                    if (!eligibleRowIds.length) {
+                        submittedEmployeeFormsSetupState.running = false;
+                        submittedEmployeeFormsSetupState.stage = "complete";
+                        submittedEmployeeFormsSetupState.currentLabel = "No pending rows to process";
+                        showToast("Submissions synced. No pending employee rows to process.", "info");
+                        return;
                     }
+                    for (const rowId of eligibleRowIds) {
+                        const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === rowId);
+                        const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
+                        submittedEmployeeFormsSetupState.currentLabel = employeeName;
+                        const { syncMeta: processMeta } = await submittedEmployeeFormsSyncRequest({
+                            mode: "process",
+                            selectedFormIds: [rowId],
+                            createMissing: true,
+                        });
+                        submittedEmployeeFormsSetupState.processed += 1;
+                        submittedEmployeeFormsSetupState.created += Number(processMeta?.created || 0);
+                        submittedEmployeeFormsSetupState.exists += Number(processMeta?.existing || 0);
+                        submittedEmployeeFormsSetupState.failed += Number(processMeta?.failed || 0);
+                        submittedEmployeeFormsSetupState.pending += Number(processMeta?.needsReview || 0);
+                        const processedRow = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === rowId);
+                        submittedEmployeeFormsSetupState.logs.unshift({
+                            at: new Date().toISOString(),
+                            employee: employeeName,
+                            status: String(processedRow?.xeroStatus || "pending").trim().toLowerCase() || "pending",
+                            detail: String(processedRow?.xeroNote || "").trim() || "Processed.",
+                        });
+                        renderSubmittedEmployeeFormsScreen();
+                    }
+                    submittedEmployeeFormsSetupState.running = false;
+                    submittedEmployeeFormsSetupState.stage = "complete";
+                    submittedEmployeeFormsSetupState.currentLabel = "Completed";
+                    showToast(
+                        `Setup complete. ${submittedEmployeeFormsSetupState.created.toLocaleString("en-GB")} created, ${submittedEmployeeFormsSetupState.exists.toLocaleString("en-GB")} already exist, ${submittedEmployeeFormsSetupState.failed.toLocaleString("en-GB")} failed.`,
+                        submittedEmployeeFormsSetupState.failed ? "warning" : "success"
+                    );
                 } catch (error) {
-                    console.error("Unable to sync submitted employee forms", error);
-                    showToast(error?.message || "Unable to sync submitted employee forms.", "error");
+                    console.error("Unable to run submitted employee forms setup flow", error);
+                    submittedEmployeeFormsSetupState.running = false;
+                    submittedEmployeeFormsSetupState.stage = "error";
+                    submittedEmployeeFormsSetupState.logs.unshift({
+                        at: new Date().toISOString(),
+                        employee: "Setup workflow",
+                        status: "failed",
+                        detail: error?.message || "Setup failed.",
+                    });
+                    showToast(error?.message || "Unable to run setup flow.", "error");
                 } finally {
                     submittedEmployeeFormsSyncing = false;
                     renderSubmittedEmployeeFormsScreen();
                 }
+            }
+
+            function submittedEmployeeFormsRecipientCandidates(row = null) {
+                const directory = Array.isArray(submittedEmployeeFormsData?.managerDirectory) ? submittedEmployeeFormsData.managerDirectory : [];
+                const rowUserIds = Array.isArray(row?.clientManagerUserIds) ? row.clientManagerUserIds : [];
+                const directIds = new Set(rowUserIds.map((value) => String(value || "").trim()).filter(Boolean));
+                const managerNameKey = String(row?.clientManager || "").trim().toLowerCase();
+                return directory.map((item) => ({
+                    ...item,
+                    recommended: directIds.has(String(item?.id || "").trim())
+                        || (managerNameKey && String(item?.fullName || "").trim().toLowerCase() === managerNameKey),
+                }));
+            }
+
+            async function sendSubmittedEmployeeFormsNotification() {
+                if (submittedEmployeeFormsNotifySending) return;
+                const formId = String(submittedEmployeeFormsNotifyRowId || "").trim();
+                if (!formId) return;
+                const recipientUserIds = [...submittedEmployeeFormsNotifySelectedUserIds].filter(Boolean);
+                if (!recipientUserIds.length) {
+                    showToast("Select at least one recipient.", "info");
+                    return;
+                }
+                submittedEmployeeFormsNotifySending = true;
+                renderSubmittedEmployeeFormsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.submittedEmployeeFormsNotify, {
+                        method: "POST",
+                        body: JSON.stringify({ formId, recipientUserIds }),
+                    });
+                    const notifiedCount = Number(payload?.notifiedCount || recipientUserIds.length || 0);
+                    showToast(`Notification sent to ${notifiedCount.toLocaleString("en-GB")} manager${notifiedCount === 1 ? "" : "s"}.`, "success");
+                    submittedEmployeeFormsNotifyModalOpen = false;
+                    submittedEmployeeFormsNotifyRowId = "";
+                    submittedEmployeeFormsNotifySelectedUserIds = new Set();
+                } catch (error) {
+                    console.error("Unable to send submitted employee form notification", error);
+                    showToast(error?.message || "Unable to send notification.", "error");
+                } finally {
+                    submittedEmployeeFormsNotifySending = false;
+                    renderSubmittedEmployeeFormsScreen();
+                }
+            }
+
+            async function pullUserNotifications({ silent = true } = {}) {
+                if (notificationPullInFlight) return;
+                notificationPullInFlight = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.notificationsPull, {
+                        suppressFailurePanel: true,
+                        timeoutMs: 8000,
+                    });
+                    const notifications = Array.isArray(payload?.notifications) ? payload.notifications : [];
+                    notifications.forEach((item) => {
+                        const title = String(item?.title || "Notification").trim();
+                        const message = String(item?.message || "").trim();
+                        const text = message ? `${title}: ${message}` : title;
+                        showToast(text, "info");
+                    });
+                } catch (error) {
+                    if (!silent) {
+                        showToast(error?.message || "Unable to refresh notifications.", "error");
+                    }
+                } finally {
+                    notificationPullInFlight = false;
+                }
+            }
+
+            function startNotificationPulling() {
+                if (notificationPullTimer) window.clearInterval(notificationPullTimer);
+                notificationPullTimer = window.setInterval(() => {
+                    pullUserNotifications({ silent: true });
+                }, 45000);
             }
 
             function persistMicroAnalyzerWorkspaces() {
@@ -57426,7 +57727,13 @@
                 const previewCloseButton = document.getElementById("submittedEmployeeFormsPreviewCloseButton");
                 const noteModal = document.getElementById("submittedEmployeeFormsNoteModal");
                 const noteCloseButton = document.getElementById("submittedEmployeeFormsNoteCloseButton");
-                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !noteModal || !noteCloseButton) return;
+                const setupModal = document.getElementById("submittedEmployeeFormsSetupModal");
+                const setupCloseButton = document.getElementById("submittedEmployeeFormsSetupCloseButton");
+                const setupStartButton = document.getElementById("submittedEmployeeFormsSetupStartButton");
+                const notifyModal = document.getElementById("submittedEmployeeFormsNotifyModal");
+                const notifyCloseButton = document.getElementById("submittedEmployeeFormsNotifyCloseButton");
+                const notifySendButton = document.getElementById("submittedEmployeeFormsNotifySendButton");
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !noteModal || !noteCloseButton || !setupModal || !setupCloseButton || !setupStartButton || !notifyModal || !notifyCloseButton || !notifySendButton) return;
                 summary.hidden = true;
                 summary.textContent = "";
 
@@ -57439,16 +57746,12 @@
                 }
                 if (syncButton.dataset.submittedEmployeeFormsWired !== "true") {
                     syncButton.dataset.submittedEmployeeFormsWired = "true";
-                    syncButton.addEventListener("click", async () => {
-                        if (submittedEmployeeFormsWizardStep <= 1) {
-                            await syncSubmittedEmployeeForms({ mode: "fetch" });
-                            return;
+                    syncButton.addEventListener("click", () => {
+                        submittedEmployeeFormsSetupModalOpen = true;
+                        if (!submittedEmployeeFormsSetupState.running && !submittedEmployeeFormsSetupState.logs.length) {
+                            submittedEmployeeFormsResetSetupState();
                         }
-                        if (!submittedEmployeeFormsSelectedRowIds.size) {
-                            showToast("Select at least one email row for Step 2.", "info");
-                            return;
-                        }
-                        await syncSubmittedEmployeeForms({ mode: "process" });
+                        renderSubmittedEmployeeFormsScreen();
                     });
                 }
                 if (selectAllButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -57464,6 +57767,26 @@
                     clearSelectionButton.addEventListener("click", () => {
                         submittedEmployeeFormsSelectedRowIds.clear();
                         renderSubmittedEmployeeFormsScreen();
+                    });
+                }
+                if (setupCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    setupCloseButton.dataset.submittedEmployeeFormsWired = "true";
+                    setupCloseButton.addEventListener("click", () => {
+                        if (submittedEmployeeFormsSetupState.running) return;
+                        submittedEmployeeFormsSetupModalOpen = false;
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                    setupModal.addEventListener("click", (event) => {
+                        if (event.target === setupModal && !submittedEmployeeFormsSetupState.running) {
+                            submittedEmployeeFormsSetupModalOpen = false;
+                            renderSubmittedEmployeeFormsScreen();
+                        }
+                    });
+                }
+                if (setupStartButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    setupStartButton.dataset.submittedEmployeeFormsWired = "true";
+                    setupStartButton.addEventListener("click", async () => {
+                        await runSubmittedEmployeeFormsSetupFlow();
                     });
                 }
                 if (previewCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -57492,6 +57815,30 @@
                         }
                     });
                 }
+                if (notifyCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    notifyCloseButton.dataset.submittedEmployeeFormsWired = "true";
+                    notifyCloseButton.addEventListener("click", () => {
+                        if (submittedEmployeeFormsNotifySending) return;
+                        submittedEmployeeFormsNotifyModalOpen = false;
+                        submittedEmployeeFormsNotifyRowId = "";
+                        submittedEmployeeFormsNotifySelectedUserIds = new Set();
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                    notifyModal.addEventListener("click", (event) => {
+                        if (event.target === notifyModal && !submittedEmployeeFormsNotifySending) {
+                            submittedEmployeeFormsNotifyModalOpen = false;
+                            submittedEmployeeFormsNotifyRowId = "";
+                            submittedEmployeeFormsNotifySelectedUserIds = new Set();
+                            renderSubmittedEmployeeFormsScreen();
+                        }
+                    });
+                }
+                if (notifySendButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    notifySendButton.dataset.submittedEmployeeFormsWired = "true";
+                    notifySendButton.addEventListener("click", async () => {
+                        await sendSubmittedEmployeeFormsNotification();
+                    });
+                }
                 const gmail = submittedEmployeeFormsData?.gmail || {};
                 const gmailMessageLower = String(gmail?.message || "").trim().toLowerCase();
                 const gmailNeedsReconnect =
@@ -57501,35 +57848,23 @@
                 reconnectButton.href = endpointURL("/auth/gmail/start?redirect_to=/#credit-control-submitted-employee-forms");
                 reconnectButton.hidden = !gmailNeedsReconnect;
                 refreshButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
-                syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || (submittedEmployeeFormsWizardStep <= 1 && gmailNeedsReconnect);
-                if (submittedEmployeeFormsSyncing) {
-                    syncButton.textContent = "Processing...";
-                } else if (submittedEmployeeFormsWizardStep <= 1) {
-                    syncButton.textContent = "Start Step 1: Sync last 4 weeks";
-                } else {
-                    syncButton.textContent = `Run Step 2: Process selected (${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")})`;
-                }
-                selectAllButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
-                clearSelectionButton.disabled = submittedEmployeeFormsWizardStep <= 1 || submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || !submittedEmployeeFormsSelectedRowIds.size;
+                syncButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || gmailNeedsReconnect;
+                syncButton.textContent = submittedEmployeeFormsSyncing ? "Setting up..." : "Set Up Employees In Xero";
+                selectAllButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing;
+                clearSelectionButton.disabled = submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || !submittedEmployeeFormsSelectedRowIds.size;
+                wizardMeta.textContent = "Sync submissions, then process each selected employee row into the matched Xero workspace.";
 
                 if (submittedEmployeeFormsLoading) {
-                    wizardMeta.textContent = submittedEmployeeFormsWizardStep <= 1
-                        ? "Step 1 of 2: Sync the last four weeks of matching emails."
-                        : "Step 2 of 2: Match employer name to a connected client workspace, then check Xero Payroll.";
-                    tableBody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Gmail submissions</h4><p>Reading submitted employee details and current Xero statuses.</p></div></td></tr>';
                     renderSubmittedEmployeeFormsPreviewModal([]);
                     renderSubmittedEmployeeFormsNoteModal([]);
+                    renderSubmittedEmployeeFormsSetupModal([]);
+                    renderSubmittedEmployeeFormsNotifyModal([]);
                     return;
                 }
 
                 const allRows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
-                const windowStartMs = submittedEmployeeFormsWindowStartIso ? Date.parse(submittedEmployeeFormsWindowStartIso) : Number.NaN;
-                const rows = Number.isFinite(windowStartMs)
-                    ? allRows.filter((row) => {
-                        const receivedMs = Date.parse(String(row?.receivedAt || row?.createdAt || ""));
-                        return Number.isFinite(receivedMs) && receivedMs >= windowStartMs;
-                    })
-                    : allRows;
+                const rows = allRows;
                 const validRowIds = new Set(rows.map((row) => String(row?.id || "").trim()).filter(Boolean));
                 submittedEmployeeFormsSelectedRowIds = new Set([...submittedEmployeeFormsSelectedRowIds].filter((rowId) => validRowIds.has(rowId)));
                 const summaryData = submittedEmployeeFormsData?.summary || {};
@@ -57548,9 +57883,8 @@
                 const failed = Number(rows.length === allRows.length ? (summaryData.failed || 0) : summaryFromRows.failed);
                 const pending = Number(rows.length === allRows.length ? (summaryData.pending || 0) : summaryFromRows.pending);
                 const needsReview = Number(rows.length === allRows.length ? (summaryData.needsReview || 0) : summaryFromRows.needsReview);
-                wizardMeta.textContent = submittedEmployeeFormsWizardStep <= 1
-                    ? "Step 1 of 2: Sync the last four weeks of matching emails."
-                    : `Step 2 of 2: Match employer name to connected client workspaces and process selected rows. ${submittedEmployeeFormsSelectedRowIds.size.toLocaleString("en-GB")} selected.`;
+                summary.hidden = false;
+                summary.textContent = `${total.toLocaleString("en-GB")} rows · ${pending.toLocaleString("en-GB")} pending · ${created.toLocaleString("en-GB")} created · ${existing.toLocaleString("en-GB")} exists · ${failed.toLocaleString("en-GB")} failed · ${needsReview.toLocaleString("en-GB")} needs review`;
 
                 if (!rows.length) {
                     const diagnostics = submittedEmployeeFormsLastSyncDiagnostics && typeof submittedEmployeeFormsLastSyncDiagnostics === "object"
@@ -57567,9 +57901,11 @@
                                 : ""
                         }`
                         : "";
-                    tableBody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Run Step 1 to pull emails where the subject starts with New Employee Details:.</p>${diagnosticsHtml}</div></td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><p class="eyebrow">No rows</p><h4>No submitted employee forms found</h4><p>Use Set Up Employees In Xero to sync and process submissions.</p>${diagnosticsHtml}</div></td></tr>`;
                     renderSubmittedEmployeeFormsPreviewModal(allRows);
                     renderSubmittedEmployeeFormsNoteModal(allRows);
+                    renderSubmittedEmployeeFormsSetupModal(allRows);
+                    renderSubmittedEmployeeFormsNotifyModal(allRows);
                     return;
                 }
 
@@ -57579,6 +57915,7 @@
                     const receivedAt = formatDateTime(row?.receivedAt || row?.createdAt || "");
                     const employeeName = String(row?.employeeFullName || "").trim() || "Employee name not parsed";
                     const matchedClient = submittedEmployeeFormsMatchedClientName(row);
+                    const clientManager = String(row?.clientManager || "").trim();
                     const employerName = String(row?.employerName || "").trim();
                     const sender = String(row?.fromName || "").trim() || String(row?.fromEmail || "").trim() || "--";
                     const fromDisplay = employerName || sender;
@@ -57589,16 +57926,19 @@
                     const xeroStatusLabel = xeroStatus
                         ? xeroStatus.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
                         : "Pending";
+                    const statusClass = submittedEmployeeFormsStatusClass(xeroStatus);
                     const note = String(row?.xeroNote || "").trim();
                     return `
                         <tr>
-                            <td><input type="checkbox" data-submitted-employee-form-select="${escapeHTML(rowId)}" ${selected ? "checked" : ""} ${submittedEmployeeFormsWizardStep <= 1 ? "disabled" : ""}></td>
+                            <td><input type="checkbox" data-submitted-employee-form-select="${escapeHTML(rowId)}" ${selected ? "checked" : ""}></td>
                             <td>${escapeHTML(receivedAt || "--")}</td>
                             <td><strong>${escapeHTML(employeeName)}</strong></td>
                             <td><span class="submitted-employee-matched-client">${escapeHTML(matchedClient || "--")}</span></td>
+                            <td>${escapeHTML(clientManager || "--")}</td>
                             <td>${escapeHTML(fromDisplay)}${fromSubline ? `<br><small>${escapeHTML(fromSubline)}</small>` : ""}</td>
                             <td><button class="ghost-button" type="button" data-submitted-employee-form-preview="${escapeHTML(rowId)}">Preview</button></td>
-                            <td><span class="status-pill">${escapeHTML(xeroStatusLabel)}</span></td>
+                            <td><span class="status-pill ${statusClass}">${escapeHTML(xeroStatusLabel)}</span></td>
+                            <td><button class="ghost-button" type="button" data-submitted-employee-form-notify="${escapeHTML(rowId)}">Notify</button></td>
                             <td class="submitted-employee-note-cell">
                                 ${note
                                     ? `<button
@@ -57630,6 +57970,21 @@
                         renderSubmittedEmployeeFormsPreviewModal(allRows);
                     });
                 });
+                tableBody.querySelectorAll("[data-submitted-employee-form-notify]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const rowId = String(button.dataset.submittedEmployeeFormNotify || "").trim();
+                        if (!rowId) return;
+                        submittedEmployeeFormsNotifyRowId = rowId;
+                        submittedEmployeeFormsNotifyModalOpen = true;
+                        const row = allRows.find((item) => String(item?.id || "").trim() === rowId) || null;
+                        const defaults = submittedEmployeeFormsRecipientCandidates(row)
+                            .filter((item) => item.recommended)
+                            .map((item) => String(item.id || "").trim())
+                            .filter(Boolean);
+                        submittedEmployeeFormsNotifySelectedUserIds = new Set(defaults);
+                        renderSubmittedEmployeeFormsNotifyModal(allRows);
+                    });
+                });
                 tableBody.querySelectorAll("[data-submitted-employee-form-note-open]").forEach((button) => {
                     button.addEventListener("click", () => {
                         const rowId = String(button.dataset.submittedEmployeeFormNoteOpen || "").trim();
@@ -57640,6 +57995,90 @@
                 });
                 renderSubmittedEmployeeFormsPreviewModal(allRows);
                 renderSubmittedEmployeeFormsNoteModal(allRows);
+                renderSubmittedEmployeeFormsSetupModal(allRows);
+                renderSubmittedEmployeeFormsNotifyModal(allRows);
+            }
+
+            function submittedEmployeeFormsStatusClass(statusValue) {
+                const status = String(statusValue || "pending").trim().toLowerCase();
+                if (status === "created") return "submitted-employee-status-created";
+                if (status === "exists") return "submitted-employee-status-exists";
+                if (status === "failed") return "submitted-employee-status-failed";
+                return "submitted-employee-status-pending";
+            }
+
+            function renderSubmittedEmployeeFormsSetupModal(allRows = []) {
+                const setupModal = document.getElementById("submittedEmployeeFormsSetupModal");
+                const setupStage = document.getElementById("submittedEmployeeFormsSetupStage");
+                const setupTitleLine = document.getElementById("submittedEmployeeFormsSetupTitleLine");
+                const setupProgressText = document.getElementById("submittedEmployeeFormsSetupProgressText");
+                const setupLogBody = document.getElementById("submittedEmployeeFormsSetupLogBody");
+                const setupStartButton = document.getElementById("submittedEmployeeFormsSetupStartButton");
+                if (!setupModal || !setupStage || !setupTitleLine || !setupProgressText || !setupLogBody || !setupStartButton) return;
+                setupModal.hidden = !submittedEmployeeFormsSetupModalOpen;
+                if (setupModal.hidden) return;
+                const state = submittedEmployeeFormsSetupState || {};
+                const stageLabel = String(state.stage || "idle").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+                setupStage.textContent = stageLabel || "Ready";
+                setupTitleLine.textContent = state.running
+                    ? `Processing ${Number(state.processed || 0).toLocaleString("en-GB")} of ${Number(state.total || 0).toLocaleString("en-GB")}`
+                    : (state.stage === "complete" ? "Setup run complete" : "Ready to run setup");
+                setupProgressText.textContent = state.running
+                    ? `${String(state.currentLabel || "Working")} · ${Number(state.created || 0).toLocaleString("en-GB")} created · ${Number(state.exists || 0).toLocaleString("en-GB")} exists · ${Number(state.failed || 0).toLocaleString("en-GB")} failed`
+                    : "Sync submissions and process each selected employee row one-by-one.";
+                setupLogBody.innerHTML = Array.isArray(state.logs) && state.logs.length
+                    ? state.logs.map((entry) => `
+                        <tr>
+                            <td>${escapeHTML(formatDateTime(entry?.at || "") || "--")}</td>
+                            <td>${escapeHTML(String(entry?.employee || "--"))}</td>
+                            <td><span class="status-pill ${submittedEmployeeFormsStatusClass(entry?.status)}">${escapeHTML(String(entry?.status || "pending").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()))}</span></td>
+                            <td>${escapeHTML(String(entry?.detail || ""))}</td>
+                        </tr>
+                    `).join("")
+                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No run yet</p><h4>No setup events logged</h4><p>Start a setup run to process synced employee submissions.</p></div></td></tr>';
+                setupStartButton.disabled = Boolean(state.running);
+                setupStartButton.textContent = state.running ? "Running..." : "Start setup run";
+            }
+
+            function renderSubmittedEmployeeFormsNotifyModal(allRows = []) {
+                const notifyModal = document.getElementById("submittedEmployeeFormsNotifyModal");
+                const notifyMeta = document.getElementById("submittedEmployeeFormsNotifyMeta");
+                const notifyRecipients = document.getElementById("submittedEmployeeFormsNotifyRecipients");
+                const notifySendButton = document.getElementById("submittedEmployeeFormsNotifySendButton");
+                if (!notifyModal || !notifyMeta || !notifyRecipients || !notifySendButton) return;
+                const rows = Array.isArray(allRows) ? allRows : [];
+                const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsNotifyRowId || "").trim()) || null;
+                notifyModal.hidden = !(submittedEmployeeFormsNotifyModalOpen && row);
+                if (notifyModal.hidden || !row) return;
+                const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
+                const managerName = String(row?.clientManager || "").trim() || "Unassigned";
+                notifyMeta.textContent = `${employeeName} · Client manager: ${managerName}`;
+                const recipients = submittedEmployeeFormsRecipientCandidates(row);
+                notifyRecipients.innerHTML = recipients.length
+                    ? recipients.map((recipient) => {
+                        const userId = String(recipient?.id || "").trim();
+                        const selected = submittedEmployeeFormsNotifySelectedUserIds.has(userId);
+                        return `
+                            <label class="submitted-employee-notify-option">
+                                <input type="checkbox" data-submitted-employee-notify-select="${escapeHTML(userId)}" ${selected ? "checked" : ""}>
+                                <span>
+                                    <strong>${escapeHTML(String(recipient?.fullName || recipient?.email || "User"))}</strong>
+                                    <small>${escapeHTML(String(recipient?.email || "--"))} · ${escapeHTML(String(recipient?.role || "staff"))}${recipient?.recommended ? " · Recommended" : ""}</small>
+                                </span>
+                            </label>
+                        `;
+                    }).join("")
+                    : '<div class="empty-state"><p class="eyebrow">No recipients</p><h4>No active users available</h4><p>Add users in Security settings first.</p></div>';
+                notifyRecipients.querySelectorAll("[data-submitted-employee-notify-select]").forEach((input) => {
+                    input.addEventListener("change", () => {
+                        const userId = String(input.dataset.submittedEmployeeNotifySelect || "").trim();
+                        if (!userId) return;
+                        if (input.checked) submittedEmployeeFormsNotifySelectedUserIds.add(userId);
+                        else submittedEmployeeFormsNotifySelectedUserIds.delete(userId);
+                    });
+                });
+                notifySendButton.disabled = submittedEmployeeFormsNotifySending || !submittedEmployeeFormsNotifySelectedUserIds.size;
+                notifySendButton.textContent = submittedEmployeeFormsNotifySending ? "Sending..." : "Send notification";
             }
 
             function renderSubmittedEmployeeFormsPreviewModal(allRows = []) {
@@ -57648,7 +58087,8 @@
                 const previewMeta = document.getElementById("submittedEmployeeFormsPreviewMeta");
                 const previewBodyLeft = document.getElementById("submittedEmployeeFormsPreviewBodyLeft");
                 const previewBodyRight = document.getElementById("submittedEmployeeFormsPreviewBodyRight");
-                if (!previewModal || !previewTitle || !previewMeta || !previewBodyLeft || !previewBodyRight) return;
+                const previewAuditBody = document.getElementById("submittedEmployeeFormsPreviewAuditBody");
+                if (!previewModal || !previewTitle || !previewMeta || !previewBodyLeft || !previewBodyRight || !previewAuditBody) return;
                 const rows = Array.isArray(allRows) ? allRows : [];
                 const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
                 previewModal.hidden = !row;
@@ -57700,6 +58140,22 @@
                         <td>${escapeHTML(value || "--")}</td>
                     </tr>
                 `).join("");
+                const attempts = Array.isArray(row?.attemptHistory) ? row.attemptHistory : [];
+                previewAuditBody.innerHTML = attempts.length
+                    ? attempts.map((attempt) => {
+                        const statusRaw = String(attempt?.xeroStatus || "pending").trim();
+                        const statusLabel = statusRaw ? statusRaw.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "Pending";
+                        const workspace = String(attempt?.xeroTenantName || attempt?.xeroTenantId || "").trim() || "--";
+                        return `
+                            <tr>
+                                <td>${escapeHTML(formatDateTime(attempt?.createdAt || "") || "--")}</td>
+                                <td><span class="status-pill ${submittedEmployeeFormsStatusClass(statusRaw)}">${escapeHTML(statusLabel)}</span></td>
+                                <td>${escapeHTML(workspace)}</td>
+                                <td>${escapeHTML(String(attempt?.note || "").trim() || "--")}</td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No attempts yet</p><h4>No setup attempts logged</h4><p>Run Set Up Employees In Xero to create an audit trail for this row.</p></div></td></tr>';
             }
 
             function closePayrollHeadcountWorkspacePickerModal() {
@@ -133813,6 +134269,8 @@
                     progress: 52,
                 });
                 panelPayload = await hydrateFromAPI();
+                pullUserNotifications({ silent: true });
+                startNotificationPulling();
                 updateDedicatedLoadingScreen({
                     phase: "Loading company workflows",
                     detail: "Finalising Companies House and register queue state in the background.",

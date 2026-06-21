@@ -1801,6 +1801,64 @@ ON submitted_employee_forms (user_id, received_at DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS submitted_employee_forms_user_tenant_idx
 ON submitted_employee_forms (user_id, xero_tenant_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS submitted_employee_form_attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submitted_employee_form_id UUID NOT NULL REFERENCES submitted_employee_forms(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attempt_type TEXT NOT NULL DEFAULT 'process',
+    xero_status TEXT NOT NULL DEFAULT 'pending',
+    xero_tenant_id TEXT NOT NULL DEFAULT '',
+    xero_tenant_name TEXT NOT NULL DEFAULT '',
+    xero_employee_id TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS submitted_employee_form_id UUID REFERENCES submitted_employee_forms(id) ON DELETE CASCADE;
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS attempt_type TEXT NOT NULL DEFAULT 'process';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS xero_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS xero_tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS xero_tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS xero_employee_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_form_attempts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS submitted_employee_form_attempts_form_created_idx
+ON submitted_employee_form_attempts (submitted_employee_form_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS submitted_employee_form_attempts_user_created_idx
+ON submitted_employee_form_attempts (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    target_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    source TEXT NOT NULL DEFAULT 'submitted-employee-forms',
+    category TEXT NOT NULL DEFAULT 'info',
+    title TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    read_at TIMESTAMPTZ
+);
+
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'submitted-employee-forms';
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'info';
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '';
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS user_notifications_target_unread_idx
+ON user_notifications (target_user_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS user_notifications_target_created_idx
+ON user_notifications (target_user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS me_report_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,

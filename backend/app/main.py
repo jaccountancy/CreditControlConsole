@@ -241,6 +241,8 @@ from .services import (
     send_me_report_email,
     send_ignition_renewals_email,
     submitted_employee_forms_payload,
+    notify_submitted_employee_form_managers,
+    pull_user_notifications,
     sync_submitted_employee_forms,
     sync_payroll_headcount_with_ignition,
     sync_payroll_headcount_workspace,
@@ -4977,6 +4979,17 @@ async def api_sync_submitted_employee_forms(request: Request, user: dict = Depen
             lookback_days=lookback_days,
         ),
     }
+
+
+@app.post("/api/submitted-employee-forms/notify")
+async def api_notify_submitted_employee_forms(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **notify_submitted_employee_form_managers(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.get("/api/notifications/pull")
+def api_pull_notifications(limit: int = Query(30), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **pull_user_notifications(user, limit=limit)}
 
 
 @app.post("/api/me-report/settings")
