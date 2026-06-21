@@ -16200,6 +16200,37 @@ async def _submitted_employee_forms_extract_with_openai(
         return {}
 
 
+def _submitted_employee_forms_normalise_date(value: str) -> str:
+    raw_value = re.sub(r"\s+", " ", str(value or "")).strip().strip("\"'")
+    if not raw_value:
+        return ""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value):
+        return raw_value
+    iso_prefix = re.match(r"(\d{4}-\d{2}-\d{2})[T\s]", raw_value)
+    if iso_prefix:
+        return iso_prefix.group(1)
+    cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", raw_value, flags=re.IGNORECASE)
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d.%m.%Y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%Y/%m/%d",
+        "%Y.%m.%d",
+        "%d/%m/%y",
+        "%d-%m-%y",
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+    ):
+        try:
+            return datetime.strptime(cleaned, fmt).date().isoformat()
+        except Exception:
+            continue
+    return ""
+
+
 def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity: dict) -> dict:
     merged: dict[str, str] = {}
     for key in SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA.get("required", []):
@@ -16220,14 +16251,8 @@ def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity:
     merged["nationalInsuranceNumber"] = re.sub(r"\s+", "", str(merged.get("nationalInsuranceNumber") or "")).upper()
     for field_name in ("dateOfBirth", "startDate"):
         value = str(merged.get(field_name) or "").strip()
-        normalised = value
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y"):
-            try:
-                normalised = datetime.strptime(value, fmt).date().isoformat()
-                break
-            except Exception:
-                continue
-        merged[field_name] = normalised
+        normalised = _submitted_employee_forms_normalise_date(value)
+        merged[field_name] = normalised or value
     missing = (ai_identity or {}).get("missingOrUnclear")
     merged["missingOrUnclear"] = [
         str(item).strip() for item in (missing if isinstance(missing, list) else []) if str(item).strip()
@@ -17193,8 +17218,19 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
     if email_value:
         employee_row["Email"] = email_value[:160]
     extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
-    date_of_birth = str(extracted_fields.get("dateOfBirth") or "").strip()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_of_birth):
+    date_of_birth_candidates = (
+        extracted_fields.get("dateOfBirth"),
+        extracted_fields.get("date_of_birth"),
+        extracted_fields.get("dob"),
+        form_row.get("date_of_birth"),
+    )
+    date_of_birth = ""
+    for candidate in date_of_birth_candidates:
+        normalised = _submitted_employee_forms_normalise_date(str(candidate or ""))
+        if normalised:
+            date_of_birth = normalised
+            break
+    if date_of_birth:
         employee_row["DateOfBirth"] = date_of_birth
     return {"Employees": [employee_row]}
 
