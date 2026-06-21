@@ -12,7 +12,7 @@ struct Credit_Control_ConsoleApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .tint(Color(red: 0.08, green: 0.36, blue: 0.66))
+                .tint(Color(red: 0.204, green: 0.518, blue: 0.773))
         }
     }
 }

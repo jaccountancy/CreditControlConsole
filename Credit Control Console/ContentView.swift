@@ -9,7 +9,7 @@ import SwiftUI
 
 private enum BrandPalette {
     static let navy = Color(red: 0.06, green: 0.14, blue: 0.24)
-    static let blue = Color(red: 0.08, green: 0.36, blue: 0.66)
+    static let blue = Color(red: 0.204, green: 0.518, blue: 0.773)
     static let cyan = Color(red: 0.0, green: 0.68, blue: 0.83)
     static let mist = Color(red: 0.93, green: 0.96, blue: 0.99)
     static let card = Color.white.opacity(0.92)
