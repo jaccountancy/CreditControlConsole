@@ -1994,6 +1994,38 @@
                 stroke-linecap: round;
                 stroke-linejoin: round;
             }
+            .sidebar-notification-count {
+                position: absolute;
+                left: 50%;
+                top: calc(100% + 1px);
+                transform: translateX(-50%);
+                min-width: 16px;
+                height: 14px;
+                padding: 0 4px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 86, 98, 0.5);
+                background: rgba(255, 86, 98, 0.16);
+                color: #b22733;
+                font-size: 0.54rem;
+                font-weight: 820;
+                line-height: 12px;
+                text-align: center;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.16s ease, transform 0.16s ease;
+            }
+            .sidebar-notification-bell.has-unarchived .sidebar-notification-count {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+                animation: sidebar-notification-count-pulse 2.2s ease-in-out infinite;
+            }
+            .sidebar-notification-bell.is-active .sidebar-notification-count {
+                animation: none;
+            }
+            @keyframes sidebar-notification-count-pulse {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(255, 86, 98, 0.12); }
+                45% { box-shadow: 0 0 0 4px rgba(255, 86, 98, 0.0); }
+            }
             .sidebar-search-trigger svg {
                 width: 15px;
                 height: 15px;
@@ -35729,6 +35761,7 @@
                         </button>
                         <button class="sidebar-notification-bell" id="sidebarNotificationsButton" type="button" aria-label="Open notifications" title="Notifications">
                             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M15 17H5a2 2 0 0 1-2-2c0-1.4 1.2-2.4 1.8-3.3.7-1 .7-1.9.8-3.9A5.4 5.4 0 0 1 11 3a5.4 5.4 0 0 1 5.4 4.8c.1 2 .1 2.9.8 3.9.6.9 1.8 1.9 1.8 3.3a2 2 0 0 1-2 2h-2"></path><path d="M9 19a2 2 0 0 0 4 0"></path></svg>
+                            <span class="sidebar-notification-count" id="sidebarNotificationsCount" aria-hidden="true">0</span>
                         </button>
                         <button class="sidebar-notify-trigger" id="sidebarNotifySomeoneButton" type="button" aria-label="Notify" title="Notify">Notify</button>
                         <button class="sidebar-search-trigger" id="sidebarSearchToggle" type="button" aria-label="Search menu" title="Search menu">
@@ -49927,11 +49960,36 @@
                     });
                     const notifications = Array.isArray(payload?.notifications) ? payload.notifications : [];
                     notifications.forEach((item) => {
+                        const payloadObject = item?.payload && typeof item.payload === "object" ? item.payload : {};
+                        const externalRef = String(payloadObject?.source === "submitted-employee-forms" && payloadObject?.formId
+                            ? `submitted-employee-forms:${payloadObject.formId}`
+                            : (item?.id || ""))
+                            .trim();
+                        if (externalRef) {
+                            const existing = (notificationRecords || []).find((record) => String(record?.externalRef || "").trim() === externalRef);
+                            if (!existing) {
+                                createNotificationRecord({
+                                    externalRef,
+                                    source: "User",
+                                    category: "Task",
+                                    priority: "medium",
+                                    subject: String(item?.title || "Notification").trim() || "Notification",
+                                    content: String(item?.message || "").trim(),
+                                    clientName: String(payloadObject?.tenantName || "").trim(),
+                                    createdById: String(payloadObject?.actorId || payloadObject?.actorName || "system"),
+                                    createdByName: String(payloadObject?.actorName || "System"),
+                                    createdAt: String(item?.createdAt || "").trim() || new Date().toISOString(),
+                                    assignedToId: notificationCurrentUser().id,
+                                    assignedToName: notificationCurrentUser().name,
+                                });
+                            }
+                        }
                         const title = String(item?.title || "Notification").trim();
                         const message = String(item?.message || "").trim();
                         const text = message ? `${title}: ${message}` : title;
                         showToast(text, "info");
                     });
+                    if (notifications.length) renderSidebarMiniNotificationCentre();
                 } catch (error) {
                     if (!silent) {
                         showToast(error?.message || "Unable to refresh notifications.", "error");
@@ -94893,6 +94951,7 @@
                 const miniPanel = document.getElementById("sidebarMiniNotificationCentre");
                 const activeList = document.getElementById("sidebarMiniNotificationActiveList");
                 const bellButton = document.getElementById("sidebarNotificationsButton");
+                const bellCount = document.getElementById("sidebarNotificationsCount");
                 if (!sidebar || !miniPanel || !activeList) return;
                 renderSidebarArchivedUrgentBadge();
                 const rows = sidebarMiniNotificationRecords();
@@ -94902,6 +94961,18 @@
                 if (bellButton) {
                     bellButton.classList.toggle("is-active", Boolean(sidebarNotificationsMiniMode));
                     bellButton.classList.toggle("has-unarchived", unarchivedCount > 0);
+                    bellButton.setAttribute(
+                        "aria-label",
+                        unarchivedCount > 0
+                            ? `Open notifications (${unarchivedCount} unarchived)`
+                            : "Open notifications"
+                    );
+                    bellButton.title = unarchivedCount > 0
+                        ? `Notifications (${unarchivedCount} unarchived)`
+                        : "Notifications";
+                }
+                if (bellCount) {
+                    bellCount.textContent = unarchivedCount > 99 ? "99+" : String(unarchivedCount);
                 }
                 if (!sidebarNotificationsMiniMode) return;
 
