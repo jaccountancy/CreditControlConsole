@@ -1,13 +1,18 @@
-# Jenius AI Backend
+# Jenius Platform Backend
 
-This backend now owns:
+Jenius started as a Credit Control Console and has rapidly evolved into Jaccountancy's all-in-one operating platform.
 
-- Xero OAuth login and callback
-- token storage and refresh handling
-- PostgreSQL persistence
-- sync jobs for customers and invoices
-- dashboard metrics for the macOS app
-- the full web-based credit control panel
+Today this backend powers a broader system across practice operations, including:
+
+- credit control and debtor management
+- client, invoice, cash, and document workflows
+- Xero integration (accounting + payroll)
+- HMRC integration
+- Companies House integration
+- AI-assisted extraction, matching, drafting, and workflow support using OpenAI
+- the web-based Jenius console and the macOS companion app
+
+Jenius is built to replace fragmented point tools with one connected platform, including workflows previously spread across products such as Ignition, Dext, Adobe, BrightManager, and separate client portals.
 
 ## Railway
 
@@ -62,6 +67,7 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `/api/ignition/connect` authenticated Ignition OAuth start endpoint
 - `/api/ignition/callback` Ignition OAuth callback
 - `/auth/ignition/callback` legacy Ignition OAuth callback alias
+- `POST /api/hmrc/*` HMRC workflows (authorisation, profile, VAT/filing data depending on endpoint)
 - `POST /api/companies-house/sync` refreshes Companies House company snapshots (profile, officers, PSCs, filing history) into PostgreSQL
 - `POST /api/companies-house/submissions/reconcile` polls live CS01 submission statuses and updates accepted/rejected outcomes
 - `/customers` customer list
