@@ -16718,6 +16718,34 @@ async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> 
         response = await client.post(XERO_PAYROLL_EMPLOYEES_URL, headers=headers, json=payload)
     if response.is_error:
         detail = response.text[:400]
+        try:
+            error_payload = response.json() if response.content else {}
+        except ValueError:
+            error_payload = {}
+        if isinstance(error_payload, dict):
+            detail_candidates = [
+                error_payload.get("Message"),
+                error_payload.get("message"),
+                error_payload.get("Detail"),
+                error_payload.get("detail"),
+            ]
+            elements = error_payload.get("Elements")
+            if not any(str(item or "").strip() for item in detail_candidates) and isinstance(elements, list) and elements:
+                first_element = elements[0] if isinstance(elements[0], dict) else {}
+                validations = first_element.get("ValidationErrors") if isinstance(first_element, dict) else None
+                if isinstance(validations, list) and validations:
+                    first_validation = validations[0] if isinstance(validations[0], dict) else {}
+                    detail_candidates.extend(
+                        [
+                            first_validation.get("Message"),
+                            first_validation.get("message"),
+                        ]
+                    )
+            for candidate in detail_candidates:
+                candidate_text = str(candidate or "").strip()
+                if candidate_text:
+                    detail = candidate_text[:400]
+                    break
         if response.status_code in (401, 403):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -17168,25 +17196,53 @@ async def sync_submitted_employee_forms(
             employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
             existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
             existing_by_email: dict[str, str] = {}
-            existing_by_name: dict[str, str] = {}
+            existing_name_candidates: dict[str, set[str]] = {}
             for employee in existing_employees:
                 employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
                 if employee_email and employee_email not in existing_by_email:
                     existing_by_email[employee_email] = employee_id
-                if employee_name and employee_name not in existing_by_name:
-                    existing_by_name[employee_name] = employee_id
+                if employee_name and employee_id:
+                    existing_name_candidates.setdefault(employee_name, set()).add(employee_id)
+            existing_by_name_unique: dict[str, str] = {}
+            duplicate_names: set[str] = set()
+            for name_key, ids in existing_name_candidates.items():
+                if len(ids) == 1:
+                    existing_by_name_unique[name_key] = next(iter(ids))
+                elif len(ids) > 1:
+                    duplicate_names.add(name_key)
             employee_index_by_tenant[clean_tenant_id] = {
                 "byEmail": existing_by_email,
-                "byName": existing_by_name,
+                "byNameUnique": existing_by_name_unique,
+                "duplicateNames": duplicate_names,
             }
         tenant_employee_index = employee_index_by_tenant.get(clean_tenant_id) or {}
         existing_by_email = tenant_employee_index.get("byEmail") or {}
-        existing_by_name = tenant_employee_index.get("byName") or {}
+        existing_by_name_unique = tenant_employee_index.get("byNameUnique") or {}
+        duplicate_names = tenant_employee_index.get("duplicateNames") or set()
         existing_employee_id = ""
+        existing_match_method = ""
         if employee_email:
             existing_employee_id = existing_by_email.get(employee_email) or ""
-        if not existing_employee_id and employee_name:
-            existing_employee_id = existing_by_name.get(employee_name) or ""
+            if existing_employee_id:
+                existing_match_method = "email"
+        if not existing_employee_id and not employee_email and employee_name:
+            if employee_name in duplicate_names:
+                needs_review += 1
+                _update_submitted_employee_form_xero_status(
+                    row_id,
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "but multiple Xero Payroll employees share the same name and no employee email was parsed. "
+                        "Open Preview, confirm email, then retry Step 2."
+                    ),
+                )
+                continue
+            existing_employee_id = existing_by_name_unique.get(employee_name) or ""
+            if existing_employee_id:
+                existing_match_method = "name"
 
         if existing_employee_id:
             existing += 1
@@ -17198,7 +17254,7 @@ async def sync_submitted_employee_forms(
                 xero_status="exists",
                 xero_note=(
                     f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
-                    f"Employee already exists in Xero Payroll."
+                    f"Employee already exists in Xero Payroll (matched by {existing_match_method or 'identity'})."
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
             )
@@ -17236,7 +17292,13 @@ async def sync_submitted_employee_forms(
             if employee_email and created_employee_id:
                 existing_by_email[employee_email] = created_employee_id
             if employee_name and created_employee_id:
-                existing_by_name[employee_name] = created_employee_id
+                current_name_match = existing_by_name_unique.get(employee_name)
+                if employee_name not in duplicate_names:
+                    if current_name_match and current_name_match != created_employee_id:
+                        duplicate_names.add(employee_name)
+                        existing_by_name_unique.pop(employee_name, None)
+                    else:
+                        existing_by_name_unique[employee_name] = created_employee_id
             _update_submitted_employee_form_xero_status(
                 row_id,
                 tenant_id=clean_tenant_id,
@@ -17251,12 +17313,17 @@ async def sync_submitted_employee_forms(
             )
         except Exception as exc:
             failed += 1
+            error_message = _sync_error_message(exc)
             _update_submitted_employee_form_xero_status(
                 row_id,
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
                 xero_status="failed",
-                xero_note=_sync_error_message(exc),
+                xero_note=(
+                    f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                    f"but employee creation failed: {error_message}"
+                    f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
+                ),
             )
 
     payload = submitted_employee_forms_payload(user)
