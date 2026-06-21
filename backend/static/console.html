@@ -27755,6 +27755,26 @@
             .task-list-client-label {
                 font-weight: 800;
             }
+            .task-list-client-link {
+                border: 0;
+                background: transparent;
+                padding: 0;
+                margin: 0;
+                font: inherit;
+                font-weight: 800;
+                color: #2f5fb0;
+                text-align: left;
+                cursor: pointer;
+            }
+            .task-list-client-link:hover,
+            .task-list-client-link:focus-visible {
+                text-decoration: underline;
+            }
+            .task-list-client-link:focus-visible {
+                outline: 2px solid rgba(47, 95, 176, 0.35);
+                outline-offset: 2px;
+                border-radius: 5px;
+            }
             .task-list-task-cell {
                 display: grid;
                 gap: 3px;
@@ -39894,7 +39914,7 @@
                                                 <p class="detail-meta" id="chRegisterClientPageEngagementLettersMeta">Accepted engagement letters synced from Ignition.</p>
                                             </div>
                                             <div class="detail-actions">
-                                                <button class="ghost-button" type="button" id="chRegisterClientPageEngagementLettersFetchButton">Get engagement letters</button>
+                                                <button class="ghost-button" type="button" id="chRegisterClientPageEngagementLettersFetchButton">Get EL's</button>
                                             </div>
                                         </div>
                                         <div class="ch-client-engagement-layout">
@@ -122685,6 +122705,44 @@
                 return sourceRows.find((row) => bmTaskIdentitySafe(row) === id) || null;
             }
 
+            async function openTaskClientPageFromTaskRow(row = {}) {
+                const candidate = row && typeof row === "object" ? row : {};
+                let registerRowId = String(candidate?.matchedRegister?.id || "").trim();
+                activeView = "client-auth-register";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                try {
+                    await loadAuthCodeRegisterDirectory(false);
+                } catch (error) {
+                    showToast(error?.message || "Unable to open client page.", "error");
+                    return;
+                }
+                if (!registerRowId) {
+                    const fallbackRecord = {
+                        clientId: String(candidate?.clientId || "").trim(),
+                        clientName: String(candidate?.clientName || "").trim(),
+                    };
+                    const registerRow = findClientRegisterRowForNotification(fallbackRecord)
+                        || findClientRegisterRowForSidebarCustomer({
+                            id: fallbackRecord.clientId,
+                            displayName: fallbackRecord.clientName,
+                            companyName: fallbackRecord.clientName,
+                            clientName: fallbackRecord.clientName,
+                        });
+                    registerRowId = String(registerRow?.id || "").trim();
+                }
+                if (!registerRowId) {
+                    showToast("No matching client register row was found for this task.", "info");
+                    scrollConsoleToTop();
+                    return;
+                }
+                companiesHouseSettings.authRegisterSelectedRowId = registerRowId;
+                await openClientRegisterClientPage(registerRowId);
+                scrollConsoleToTop();
+            }
+
             function bmTaskVisibleRowsForBody(body) {
                 if (!(body instanceof HTMLElement)) return [];
                 const allRows = bmTaskAllRowsWithOverrides();
@@ -122721,6 +122779,22 @@
                         const allRows = bmTaskAllRowsWithOverrides();
                         const clientRows = allRows.filter((row) => bmTaskClientTimelineKey(row) === clientKey);
                         openTaskClientTimeline(clientKey, clientName, clientRows);
+                        return;
+                    }
+
+                    const clientPageButton = target.closest("[data-task-open-client-page]");
+                    if (clientPageButton instanceof HTMLElement) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rowId = String(clientPageButton.getAttribute("data-task-open-client-page") || "");
+                        if (!rowId) return;
+                        const allRows = bmTaskAllRowsWithOverrides();
+                        const match = bmTaskFindRowById(rowId, allRows);
+                        if (!match) {
+                            showToast("Unable to open client page from this task row.", "error");
+                            return;
+                        }
+                        await openTaskClientPageFromTaskRow(match);
                         return;
                     }
 
@@ -123077,7 +123151,7 @@
                             <td>
                                 <div class="task-list-client-cell">
                                     <button class="task-client-timeline-button" type="button" title="Open client timeline" data-task-open-client-timeline="${escapeHTML(clientKey)}" data-task-open-client-name="${escapeHTML(clientName)}">◷</button>
-                                    <span class="task-list-client-label">${escapeHTML(clientName)}</span>
+                                    <button class="task-list-client-link" type="button" title="Open client page" data-task-open-client-page="${escapeHTML(rowId)}"><span class="task-list-client-label">${escapeHTML(clientName)}</span></button>
                                 </div>
                             </td>
                             <td><strong>${escapeHTML(taskName)}</strong></td>
@@ -123738,6 +123812,36 @@
                     if (!vaultFiles.length && !vaultLoading) refreshVaultData({ silent: true });
                     renderClientRegisterClientPageVaultPanel();
                 }
+                if (next === "engagement-letters") {
+                    const payload = clientPagePayload() || {};
+                    const letters = Array.isArray(payload?.ignitionEngagementLetters) ? payload.ignitionEngagementLetters : [];
+                    if (!letters.length && !isIgnitionSyncing) {
+                        window.setTimeout(() => {
+                            const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                            if (!latestState.open || String(latestState.activeTab || "").trim() !== "engagement-letters") return;
+                            void refreshClientRegisterEngagementLetters({ silentToast: true });
+                        }, 0);
+                    }
+                }
+                if (next === "companies-house") {
+                    const payload = clientPagePayload() || {};
+                    const row = payload?.row || {};
+                    const companyNumber = String(row?.companyNumber || "").trim();
+                    const officers = Array.isArray(row?.officers) ? row.officers : [];
+                    const filingHistory = Array.isArray(row?.filingHistory) ? row.filingHistory : [];
+                    const shouldRefresh = companyNumber && !companiesHouseSettings.authRegisterClientPage?.companiesHouseAutoRefreshed && !officers.length && !filingHistory.length;
+                    if (shouldRefresh) {
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...companiesHouseSettings.authRegisterClientPage,
+                            companiesHouseAutoRefreshed: true,
+                        };
+                        window.setTimeout(() => {
+                            const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                            if (!latestState.open || String(latestState.activeTab || "").trim() !== "companies-house") return;
+                            void refreshClientRegisterClientPage();
+                        }, 0);
+                    }
+                }
                 if (next === "juk-invoices") {
                     window.setTimeout(() => {
                         const latestState = companiesHouseSettings.authRegisterClientPage || {};
@@ -123791,6 +123895,7 @@
                     },
                     autoXeroMatching: false,
                     autoXeroScanned: false,
+                    companiesHouseAutoRefreshed: false,
                 };
                 const panel = document.getElementById("chRegisterClientPage");
                 const tableWrap = document.getElementById("chAuthCodeRegisterTableWrap");
@@ -125502,12 +125607,26 @@
                     });
             }
 
+            function clientRegisterCallStatsClientIdCandidatesForRow(row = {}) {
+                const candidates = [
+                    String(row?.clientId || "").trim(),
+                    String(row?.id || "").trim(),
+                    String(row?.companyNumber || "").trim(),
+                    clientRegisterClientDisplayName(row),
+                    String(row?.companyName || "").trim(),
+                ].map((value) => String(value || "").trim()).filter(Boolean);
+                const seen = new Set();
+                return candidates.filter((value) => {
+                    const key = value.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            }
+
             function clientRegisterCallStatsClientIdForRow(row = {}) {
-                const preferred = String(row?.clientId || "").trim();
-                if (preferred) return preferred;
-                const displayName = clientRegisterClientDisplayName(row);
-                if (displayName) return displayName;
-                return String(row?.id || "").trim();
+                const candidates = clientRegisterCallStatsClientIdCandidatesForRow(row);
+                return candidates[0] || "";
             }
 
             async function loadClientRegisterClientPageCallStats({ force = false, silent = true } = {}) {
@@ -125515,7 +125634,8 @@
                 const rowId = String(pageState?.rowId || "").trim();
                 if (!rowId || !pageState.open) return;
                 const row = clientPagePayload()?.row || {};
-                const clientId = clientRegisterCallStatsClientIdForRow(row);
+                const clientIdCandidates = clientRegisterCallStatsClientIdCandidatesForRow(row);
+                const clientId = clientIdCandidates[0] || "";
                 const current = pageState?.callStats || {};
                 if (!clientId) {
                     companiesHouseSettings.authRegisterClientPage = {
@@ -125534,7 +125654,7 @@
                     return;
                 }
                 if (current.loading) return;
-                if (!force && current.clientId === clientId && current.payload) return;
+                if (!force && current.clientId && clientIdCandidates.includes(current.clientId) && current.payload) return;
                 companiesHouseSettings.authRegisterClientPage = {
                     ...pageState,
                     callStats: {
@@ -125549,24 +125669,69 @@
                 };
                 renderClientRegisterClientPage();
                 try {
-                    const response = await requestJSON(api.endpoints.clientCallStatsClientLogs, { method: "GET", suppressFailurePanel: true }, { clientId });
+                    let resolvedClientId = clientId;
+                    let resolvedPayload = null;
+                    let resolvedSearchAt = current.searchAt || "";
+                    let resolvedSearchUpdatedCount = Number(current.searchUpdatedCount || 0);
+                    let lastError = null;
+
+                    for (const candidateId of clientIdCandidates) {
+                        try {
+                            const response = await requestJSON(api.endpoints.clientCallStatsClientLogs, { method: "GET", suppressFailurePanel: true }, { clientId: candidateId });
+                            const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
+                            const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
+                            if (!resolvedPayload || rowCount > (Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows.length : 0)) {
+                                resolvedPayload = payload;
+                                resolvedClientId = candidateId;
+                            }
+                            if (rowCount > 0) break;
+                        } catch (error) {
+                            lastError = error;
+                        }
+                    }
+
+                    const resolvedRowCount = Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows.length : 0;
+                    if (resolvedRowCount === 0) {
+                        for (const candidateId of clientIdCandidates) {
+                            try {
+                                const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId: candidateId });
+                                const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
+                                const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
+                                const canonicalised = Number(response?.canonicalisedCount || payload?.canonicalisedCount || 0);
+                                if (!resolvedPayload || rowCount > (Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows.length : 0) || canonicalised > resolvedSearchUpdatedCount) {
+                                    resolvedPayload = payload;
+                                    resolvedClientId = String(response?.clientId || candidateId || "").trim() || candidateId;
+                                    resolvedSearchAt = new Date().toISOString();
+                                    resolvedSearchUpdatedCount = canonicalised;
+                                }
+                                if (rowCount > 0 || canonicalised > 0) break;
+                            } catch (error) {
+                                lastError = error;
+                            }
+                        }
+                    }
+
+                    if (!resolvedPayload) {
+                        throw (lastError || new Error("Unable to load call stats."));
+                    }
+
                     const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
                     companiesHouseSettings.authRegisterClientPage = {
                         ...nextPageState,
                         callStats: {
                             loading: false,
-                            clientId,
-                            payload: response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] },
+                            clientId: resolvedClientId,
+                            payload: resolvedPayload,
                             error: "",
                             loadedAt: new Date().toISOString(),
-                            searchAt: current.searchAt || "",
-                            searchUpdatedCount: Number(current.searchUpdatedCount || 0),
+                            searchAt: resolvedSearchAt,
+                            searchUpdatedCount: resolvedSearchUpdatedCount,
                         },
                     };
                     renderClientRegisterClientPage();
                     if (!silent) {
-                        const callRows = Array.isArray(response?.clientCallLogs?.rows) ? response.clientCallLogs.rows.length : 0;
+                        const callRows = Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows.length : 0;
                         showToast(`Client call stats refreshed (${callRows.toLocaleString("en-GB")} row${callRows === 1 ? "" : "s"}).`, "success");
                     }
                 } catch (error) {
@@ -125594,7 +125759,8 @@
                 const rowId = String(pageState?.rowId || "").trim();
                 if (!rowId || !pageState.open) return;
                 const row = clientPagePayload()?.row || {};
-                const clientId = clientRegisterCallStatsClientIdForRow(row);
+                const clientIdCandidates = clientRegisterCallStatsClientIdCandidatesForRow(row);
+                const clientId = clientIdCandidates[0] || "";
                 const current = pageState?.callStats || {};
                 if (!clientId) {
                     showToast("No client ID available for call-stat searching.", "error");
@@ -125615,28 +125781,52 @@
                 };
                 renderClientRegisterClientPage();
                 try {
-                    const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId });
+                    let bestResponse = null;
+                    let bestClientId = clientId;
+                    let bestCanonicalised = 0;
+                    let lastError = null;
+
+                    for (const candidateId of clientIdCandidates) {
+                        try {
+                            const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId: candidateId });
+                            const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
+                            const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
+                            const canonicalised = Number(response?.canonicalisedCount || payload?.canonicalisedCount || 0);
+                            if (!bestResponse || rowCount > (Array.isArray(bestResponse?.clientCallLogs?.rows) ? bestResponse.clientCallLogs.rows.length : 0) || canonicalised > bestCanonicalised) {
+                                bestResponse = response;
+                                bestClientId = String(response?.clientId || candidateId || "").trim() || candidateId;
+                                bestCanonicalised = canonicalised;
+                            }
+                            if (rowCount > 0 || canonicalised > 0) break;
+                        } catch (error) {
+                            lastError = error;
+                        }
+                    }
+
+                    if (!bestResponse) {
+                        throw (lastError || new Error("Unable to search client call records."));
+                    }
+
                     const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
-                    const nextPayload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
-                    const canonicalised = Number(response?.canonicalisedCount || nextPayload?.canonicalisedCount || 0);
+                    const nextPayload = bestResponse?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
                     const rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : 0;
                     companiesHouseSettings.authRegisterClientPage = {
                         ...nextPageState,
                         callStats: {
                             loading: false,
-                            clientId: String(response?.clientId || clientId || "").trim(),
+                            clientId: bestClientId,
                             payload: nextPayload,
                             error: "",
                             loadedAt: new Date().toISOString(),
                             searchAt: new Date().toISOString(),
-                            searchUpdatedCount: canonicalised,
+                            searchUpdatedCount: bestCanonicalised,
                         },
                     };
                     renderClientRegisterClientPage();
                     showToast(
-                        canonicalised > 0
-                            ? `Search complete: ${rowCount.toLocaleString("en-GB")} call row${rowCount === 1 ? "" : "s"} loaded, ${canonicalised.toLocaleString("en-GB")} record${canonicalised === 1 ? "" : "s"} updated to this client.`
+                        bestCanonicalised > 0
+                            ? `Search complete: ${rowCount.toLocaleString("en-GB")} call row${rowCount === 1 ? "" : "s"} loaded, ${bestCanonicalised.toLocaleString("en-GB")} record${bestCanonicalised === 1 ? "" : "s"} updated to this client.`
                             : `Search complete: ${rowCount.toLocaleString("en-GB")} call row${rowCount === 1 ? "" : "s"} loaded.`,
                         "success"
                     );
@@ -125943,7 +126133,14 @@
                 const pageState = companiesHouseSettings?.authRegisterClientPage || {};
                 const lookup = pageState?.jukInvoiceLookup || {};
                 const lookupRows = Array.isArray(lookup?.rows) ? lookup.rows : [];
-                const rows = lookupRows.length ? lookupRows : clientRegisterJukInvoicesFromBatchMatch(row);
+                let rows = lookupRows.length ? lookupRows : clientRegisterJukInvoicesFromBatchMatch(row);
+                if (!rows.length) {
+                    const candidates = clientRegisterJukCustomerCandidates(row);
+                    const preferredCandidate = candidates.find((candidate) => Number(candidate?.invoiceCount || 0) > 0) || candidates[0] || null;
+                    if (preferredCandidate?.customer) {
+                        rows = clientRegisterJukInvoicesFromCustomer(preferredCandidate.customer);
+                    }
+                }
                 return rows
                     .filter((invoice) => {
                         const key = String(invoice?.id || invoice?.invoiceNumber || "").trim();
@@ -126180,7 +126377,9 @@
                         return;
                     }
                 }
-                const chosen = candidates[0];
+                const exactWithInvoices = candidates.find((candidate) => String(candidate?.reason || "").includes("Exact Client ID match") && Number(candidate?.invoiceCount || 0) > 0) || null;
+                const bestWithInvoices = candidates.find((candidate) => Number(candidate?.invoiceCount || 0) > 0) || null;
+                const chosen = exactWithInvoices || bestWithInvoices || candidates[0];
                 if (!chosen?.customer) {
                     if (!suppressToast) {
                         showToast("Automatic customer match could not be resolved.", "error");
@@ -127312,7 +127511,7 @@
                 if (fetchButton) {
                     const pageState = companiesHouseSettings.authRegisterClientPage || {};
                     fetchButton.disabled = !!pageState.loading || !!isIgnitionSyncing;
-                    fetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get engagement letters";
+                    fetchButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Get EL's";
                 }
 
                 if (!payload) {
@@ -127359,15 +127558,18 @@
                     : '<tr><td colspan="6" class="ch-empty-state">No engagement letter history is available for this client.</td></tr>';
             }
 
-            async function refreshClientRegisterEngagementLetters() {
+            async function refreshClientRegisterEngagementLetters(options = {}) {
+                const silentToast = !!options?.silentToast;
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId) return;
                 if (!isIgnitionConnected()) {
-                    showToast("Connect Ignition before fetching engagement letters.", "info", {
-                        label: "Connect Ignition",
-                        onClick: openIgnitionConnection,
-                    });
+                    if (!silentToast) {
+                        showToast("Connect Ignition before fetching engagement letters.", "info", {
+                            label: "Connect Ignition",
+                            onClick: openIgnitionConnection,
+                        });
+                    }
                     return;
                 }
                 const button = document.getElementById("chRegisterClientPageEngagementLettersFetchButton");
@@ -127388,13 +127590,17 @@
                         renderClientRegisterClientPage();
                     }
                     setClientRegisterClientPageTab("engagement-letters");
-                    showToast("Engagement letters refreshed from Ignition.", "success");
+                    if (!silentToast) {
+                        showToast("Engagement letters refreshed from Ignition.", "success");
+                    }
                 } catch (error) {
-                    showToast(error?.message || "Unable to refresh engagement letters from Ignition.", "error");
+                    if (!silentToast) {
+                        showToast(error?.message || "Unable to refresh engagement letters from Ignition.", "error");
+                    }
                 } finally {
                     if (button) {
                         button.disabled = false;
-                        button.textContent = "Get engagement letters";
+                        button.textContent = "Get EL's";
                     }
                 }
             }
@@ -128288,7 +128494,7 @@
                 }
                 const tasksBody = document.getElementById("chRegisterClientPageTasksBody");
                 const tasksMeta = document.getElementById("chRegisterClientPageTasksMeta");
-                const includeCompletedTasks = false;
+                const includeCompletedTasks = true;
                 const bmTasksLoading = !!companiesHouseSettings.bmTasksLoading;
                 if (tasksBody) {
                     const clientTasks = clientRegisterTasksForRow(row, { includeCompleted: includeCompletedTasks });
@@ -128312,10 +128518,18 @@
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_vat">${escapeHTML(workflowState === "in_progress" ? "Finish prep" : "Start")}</button>`;
                                 }
                             } else if (workflowType === "bookkeeping") {
-                                if (["awaiting_approval", "awaiting_dean_approval", "bounceback"].includes(status) || workflowState === "submitted_for_review" || workflowState === "ready_to_complete") {
+                                if (["awaiting_approval", "awaiting_dean_approval"].includes(status) || workflowState === "submitted_for_review") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_review">Start review</button>`;
+                                } else if (workflowState === "ready_to_complete") {
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
+                                } else if (workflowState === "approved_pending_client_email") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">Send snapshot</button>`;
+                                } else if (workflowState === "bounceback" || status === "bounceback") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">Continue</button>`;
+                                } else if (workflowState === "draft_saved" || workflowState === "in_progress") {
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">Continue</button>`;
                                 } else {
-                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">${escapeHTML((workflowState === "draft_saved" || workflowState === "in_progress") ? "Resume" : "Start")}</button>`;
+                                    actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="start_bookkeeping">Start</button>`;
                                 }
                             } else {
                                 actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
@@ -128584,6 +128798,7 @@
                         searchAt: "",
                         searchUpdatedCount: 0,
                     },
+                    companiesHouseAutoRefreshed: false,
                 };
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
@@ -128596,6 +128811,14 @@
                         payload,
                     };
                     renderClientRegisterClientPage();
+                    const engagementLetters = Array.isArray(payload?.ignitionEngagementLetters) ? payload.ignitionEngagementLetters : [];
+                    if (!engagementLetters.length && isIgnitionConnected() && !isIgnitionSyncing) {
+                        window.setTimeout(() => {
+                            const latestState = companiesHouseSettings.authRegisterClientPage || {};
+                            if (!latestState.open || String(latestState.rowId || "").trim() !== safeRowId) return;
+                            void refreshClientRegisterEngagementLetters({ silentToast: true });
+                        }, 0);
+                    }
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                     window.setTimeout(() => {
                         clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
@@ -130183,6 +130406,12 @@
                         const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
                             .map((row) => bmTaskRowWithOverrides(row));
                         handleBookkeepingTaskStartFlow(task, allRows);
+                        return;
+                    }
+                    if (actionKind === "start_review") {
+                        const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
+                            .map((row) => bmTaskRowWithOverrides(row));
+                        openTaskBookkeepingWorkflowPanel(task, allRows, { reviewMode: true });
                         return;
                     }
                     if (actionKind === "complete") {
