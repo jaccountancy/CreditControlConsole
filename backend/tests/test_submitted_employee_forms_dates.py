@@ -56,6 +56,33 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
         )
         self.assertEqual(payload["Employees"][0].get("DateOfBirth"), "1989-04-07")
 
+    def test_apply_field_overrides_updates_extracted_and_identity_fields(self):
+        row = {
+            "employee_full_name": "Celeste Vivian",
+            "employee_first_name": "Celeste",
+            "employee_last_name": "Vivian",
+            "employee_email": "old@example.com",
+            "employer_name": "Old Employer",
+            "extracted_fields": {"dateOfBirth": "07/04/1989"},
+        }
+        override = {
+            "employeeFirstName": "Sarah",
+            "employeeLastName": "Chapman",
+            "employeeEmail": "Sarah.Chapman@Example.com",
+            "employerName": "S Fleming Ltd",
+            "dateOfBirth": "1988-11-02T00:00:00Z",
+            "extractedFields": {"jobTitle": "Senior Accountant"},
+        }
+        updated = services._submitted_employee_forms_apply_field_overrides(row, override)
+        self.assertEqual(updated.get("employee_first_name"), "Sarah")
+        self.assertEqual(updated.get("employee_last_name"), "Chapman")
+        self.assertEqual(updated.get("employee_full_name"), "Sarah Chapman")
+        self.assertEqual(updated.get("employee_email"), "sarah.chapman@example.com")
+        self.assertEqual(updated.get("employer_name"), "S Fleming Ltd")
+        extracted = updated.get("extracted_fields") or {}
+        self.assertEqual(extracted.get("dateOfBirth"), "1988-11-02")
+        self.assertEqual(extracted.get("jobTitle"), "Senior Accountant")
+
 
 if __name__ == "__main__":
     unittest.main()

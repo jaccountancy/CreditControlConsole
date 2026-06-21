@@ -10949,6 +10949,41 @@
             .insights-home-section {
                 scroll-margin-top: 84px;
             }
+            .insights-home-refresh-shell {
+                position: relative;
+            }
+            .insights-home-refresh-shell .insights-home.is-refreshing {
+                opacity: 0.68;
+                filter: saturate(0.92);
+                pointer-events: none;
+                transition: opacity 220ms ease, filter 220ms ease;
+            }
+            .insights-refresh-overlay {
+                position: absolute;
+                inset: 12px;
+                border-radius: 14px;
+                border: 1px dashed color-mix(in srgb, var(--blue) 34%, white);
+                background: color-mix(in srgb, var(--blue-soft) 68%, white);
+                display: grid;
+                place-items: center;
+                z-index: 3;
+            }
+            .insights-refresh-overlay[hidden] {
+                display: none;
+            }
+            .insights-refresh-overlay-copy {
+                display: grid;
+                grid-auto-flow: column;
+                gap: 10px;
+                align-items: center;
+                color: var(--ink);
+                font-weight: 800;
+                letter-spacing: 0.01em;
+            }
+            .insights-refresh-overlay-copy .sync-inline-spinner {
+                width: 18px;
+                height: 18px;
+            }
             .insights-home .insight-two-column {
                 gap: 14px;
             }
@@ -13700,7 +13735,13 @@
                     max-height: calc(100vh - 24px);
                     padding: 16px;
                 }
-                .submitted-employee-preview-grid {
+                .submitted-employee-preview-form-layout {
+                    grid-template-columns: 1fr;
+                }
+                .submitted-employee-preview-form {
+                    grid-template-columns: 1fr;
+                }
+                .submitted-employee-preview-confirm-grid {
                     grid-template-columns: 1fr;
                 }
                 .ye-prep-workspace-confirm-panel .company-secretarial-modal-head {
@@ -27048,15 +27089,163 @@
                 line-height: 1.55;
                 white-space: pre-wrap;
             }
-            .submitted-employee-preview-grid {
+            .submitted-employee-preview-form-layout {
                 display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-columns: 320px minmax(0, 1fr);
                 gap: 12px;
                 align-items: start;
             }
-            .submitted-employee-preview-table-wrap {
+            .submitted-employee-preview-xero-fields {
+                border: 1px solid var(--line);
                 border-radius: 14px;
-                overflow: hidden;
+                background: var(--surface-soft);
+                padding: 12px;
+                max-height: 520px;
+                overflow: auto;
+            }
+            .submitted-employee-preview-xero-fields h5 {
+                margin: 0 0 8px;
+                font-size: 0.78rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+            .submitted-employee-preview-xero-fields ul {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 6px;
+            }
+            .submitted-employee-preview-xero-fields li {
+                border-radius: 10px;
+                border: 1px solid var(--line);
+                background: var(--surface-strong);
+                padding: 8px 10px;
+                font-size: 0.83rem;
+                color: var(--ink);
+                font-weight: 700;
+                transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+            }
+            .submitted-employee-preview-xero-fields li.is-filled {
+                border-color: rgba(27, 168, 86, 0.42);
+                background: rgba(171, 241, 201, 0.22);
+                transform: translateX(2px);
+            }
+            .submitted-employee-preview-form-wrap {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: var(--surface-soft);
+                padding: 12px;
+                max-height: 520px;
+                overflow: auto;
+            }
+            .submitted-employee-preview-form {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .submitted-employee-preview-form label {
+                display: grid;
+                gap: 6px;
+                font-size: 0.78rem;
+                font-weight: 800;
+                color: var(--muted);
+            }
+            .submitted-employee-preview-form label.is-wide {
+                grid-column: 1 / -1;
+            }
+            .submitted-employee-preview-form input,
+            .submitted-employee-preview-form textarea {
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                font: inherit;
+                color: var(--ink);
+                background: var(--surface-strong);
+                font-weight: 700;
+                transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+            }
+            .submitted-employee-preview-form textarea {
+                min-height: 72px;
+                resize: vertical;
+            }
+            .submitted-employee-preview-form input:focus-visible,
+            .submitted-employee-preview-form textarea:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.5);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+            }
+            .submitted-employee-preview-form input.is-autofilled,
+            .submitted-employee-preview-form textarea.is-autofilled {
+                border-color: rgba(27, 168, 86, 0.45);
+                box-shadow: 0 0 0 2px rgba(27, 168, 86, 0.16);
+                transform: translateY(-1px);
+            }
+            .submitted-employee-preview-fill-status {
+                border: 1px dashed color-mix(in srgb, var(--blue) 35%, white);
+                border-radius: 12px;
+                background: color-mix(in srgb, var(--blue-soft) 72%, white);
+                padding: 10px 12px;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 6px 10px;
+                align-items: center;
+            }
+            .submitted-employee-preview-fill-status strong {
+                color: var(--ink);
+                font-size: 0.9rem;
+            }
+            .submitted-employee-preview-fill-status p {
+                margin: 0;
+                grid-column: 2;
+                color: var(--muted);
+                font-size: 0.8rem;
+            }
+            .submitted-employee-preview-confirm {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.74);
+                padding: 14px;
+                display: grid;
+                gap: 10px;
+            }
+            .submitted-employee-preview-confirm h4 {
+                margin: 0;
+                font-size: 1.06rem;
+                color: var(--ink);
+            }
+            .submitted-employee-preview-confirm-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .submitted-employee-preview-confirm-grid article {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: var(--surface-strong);
+                display: grid;
+                gap: 4px;
+            }
+            .submitted-employee-preview-confirm-grid article span {
+                font-size: 0.72rem;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--muted);
+                font-weight: 800;
+            }
+            .submitted-employee-preview-confirm-grid article strong {
+                font-size: 0.92rem;
+                color: var(--ink);
+                line-height: 1.3;
+                word-break: break-word;
+            }
+            .submitted-employee-preview-confirm-grid article p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.78rem;
             }
             .submitted-employee-preview-table th,
             .submitted-employee-preview-table td {
@@ -44277,35 +44466,31 @@
                                 <div>
                                     <p class="eyebrow">Submitted Employee Forms</p>
                                     <h4 id="submittedEmployeeFormsPreviewTitle">Employee form preview</h4>
-                                    <p class="detail-meta" id="submittedEmployeeFormsPreviewMeta">Review extracted fields before running Step 2.</p>
+                                    <p class="detail-meta" id="submittedEmployeeFormsPreviewMeta">Review and amend extracted fields before publishing to Xero Payroll.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="submittedEmployeeFormsPreviewCloseButton" type="button">Close</button>
                                 </div>
                             </div>
-                            <section class="submitted-employee-preview-grid">
-                                <section class="ch-companies-table-wrap submitted-employee-preview-table-wrap">
-                                    <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form extracted fields left">
-                                        <thead>
-                                            <tr>
-                                                <th>Field</th>
-                                                <th>Value</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="submittedEmployeeFormsPreviewBodyLeft"></tbody>
-                                    </table>
+                            <div class="submitted-employee-preview-fill-status" id="submittedEmployeeFormsPreviewFillStatus" hidden>
+                                <span class="sync-inline-spinner" aria-hidden="true"></span>
+                                <strong id="submittedEmployeeFormsPreviewFillStatusTitle">Running OpenAI extraction</strong>
+                                <p id="submittedEmployeeFormsPreviewFillStatusMeta">Populating Xero field map from the email one field at a time.</p>
+                            </div>
+                            <section class="submitted-employee-preview-form-layout">
+                                <aside class="submitted-employee-preview-xero-fields">
+                                    <h5>Xero Payroll Fields</h5>
+                                    <ul id="submittedEmployeeFormsPreviewXeroFieldList"></ul>
+                                </aside>
+                                <section class="submitted-employee-preview-form-wrap">
+                                    <form class="submitted-employee-preview-form" id="submittedEmployeeFormsPreviewForm"></form>
                                 </section>
-                                <section class="ch-companies-table-wrap submitted-employee-preview-table-wrap">
-                                    <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form extracted fields right">
-                                        <thead>
-                                            <tr>
-                                                <th>Field</th>
-                                                <th>Value</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="submittedEmployeeFormsPreviewBodyRight"></tbody>
-                                    </table>
-                                </section>
+                            </section>
+                            <section class="submitted-employee-preview-confirm" id="submittedEmployeeFormsPreviewConfirm" hidden>
+                                <p class="eyebrow">Confirmation</p>
+                                <h4>Ready to publish this employee to Xero Payroll?</h4>
+                                <p class="detail-meta" id="submittedEmployeeFormsPreviewConfirmMeta">Review the summary below before creating the employee record.</p>
+                                <div class="submitted-employee-preview-confirm-grid" id="submittedEmployeeFormsPreviewConfirmGrid"></div>
                             </section>
                             <section class="ch-companies-table-wrap submitted-employee-preview-audit-wrap">
                                 <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form audit history">
@@ -44320,6 +44505,12 @@
                                     <tbody id="submittedEmployeeFormsPreviewAuditBody"></tbody>
                                 </table>
                             </section>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="submittedEmployeeFormsPreviewAutofillButton" type="button">Re-run AI fill</button>
+                                <button class="ghost-button" id="submittedEmployeeFormsPreviewBackButton" type="button" hidden>Back to edit</button>
+                                <button class="ghost-button" id="submittedEmployeeFormsPreviewContinueButton" type="button">Continue to confirmation</button>
+                                <button class="primary-button" id="submittedEmployeeFormsPreviewPublishButton" type="button">Publish to Xero Payroll</button>
+                            </div>
                         </section>
                     </div>
                     <div class="company-secretarial-modal" id="submittedEmployeeFormsNotifyModal" hidden>
@@ -46565,6 +46756,10 @@
             let submittedEmployeeFormsNotifyRowId = "";
             let submittedEmployeeFormsNotifySelectedUserIds = new Set();
             let submittedEmployeeFormsNotifySending = false;
+            let submittedEmployeeFormsPreviewDraftByRowId = new Map();
+            let submittedEmployeeFormsPreviewAutofillState = { running: false, rowId: "", timer: null, index: 0 };
+            let submittedEmployeeFormsPreviewPublishing = false;
+            let submittedEmployeeFormsPreviewStep = "edit";
             let notificationPullTimer = null;
             let notificationPullInFlight = false;
             const clientPagePayrollOverviewCache = new Map();
@@ -47149,6 +47344,7 @@
             let userActivityLoggingWired = false;
             let insightsData = null;
             let insightsLoading = false;
+            const insightsCacheStorageKey = `${STORAGE_KEY}:insights-cache:v1`;
             let insightsLoaderStartedAt = 0;
             let insightsLoaderTickTimer = null;
             let insightsLoaderMessageIndex = 0;
@@ -49776,6 +49972,121 @@
                 }
             }
 
+            const submittedEmployeeFormsXeroFieldBlueprint = [
+                { key: "employerName", label: "Employer name", wide: true },
+                { key: "employeeFirstName", label: "First name" },
+                { key: "employeeLastName", label: "Last name" },
+                { key: "employeeFullName", label: "Full name", wide: true },
+                { key: "employeeEmail", label: "Employee email", type: "email", wide: true },
+                { key: "employeePhone", label: "Phone number", wide: true },
+                { key: "dateOfBirth", label: "Date of birth", type: "date" },
+                { key: "nationalInsuranceNumber", label: "NI number" },
+                { key: "startDate", label: "Start date", type: "date" },
+                { key: "jobTitle", label: "Job title" },
+                { key: "department", label: "Department" },
+                { key: "payrollNumber", label: "Payroll number" },
+                { key: "taxCode", label: "Tax code" },
+                { key: "employmentType", label: "Employment type" },
+                { key: "hoursPerWeek", label: "Hours per week" },
+                { key: "salary", label: "Salary" },
+                { key: "addressLine1", label: "Address line 1", wide: true },
+                { key: "addressLine2", label: "Address line 2", wide: true },
+                { key: "city", label: "City" },
+                { key: "postcode", label: "Postcode" },
+                { key: "country", label: "Country" },
+                { key: "bankAccountName", label: "Bank account name", wide: true },
+                { key: "bankAccountNumber", label: "Bank account number" },
+                { key: "bankSortCode", label: "Bank sort code" },
+                { key: "missingOrUnclear", label: "Missing or unclear notes", wide: true, multiline: true },
+            ];
+
+            function submittedEmployeeFormsPreviewDraftFromRow(row = {}) {
+                const extracted = row?.extractedFields && typeof row.extractedFields === "object" ? row.extractedFields : {};
+                const draft = {};
+                submittedEmployeeFormsXeroFieldBlueprint.forEach((field) => {
+                    const key = field.key;
+                    if (key === "employeeFirstName") draft[key] = String(extracted.employeeFirstName || row?.employeeFirstName || "").trim();
+                    else if (key === "employeeLastName") draft[key] = String(extracted.employeeLastName || row?.employeeLastName || "").trim();
+                    else if (key === "employeeFullName") draft[key] = String(extracted.employeeFullName || row?.employeeFullName || "").trim();
+                    else if (key === "employeeEmail") draft[key] = String(extracted.employeeEmail || row?.employeeEmail || "").trim();
+                    else if (key === "employerName") draft[key] = String(extracted.employerName || row?.employerName || "").trim();
+                    else if (key === "missingOrUnclear") {
+                        const list = Array.isArray(extracted.missingOrUnclear) ? extracted.missingOrUnclear : [];
+                        draft[key] = list.map((item) => String(item || "").trim()).filter(Boolean).join(", ");
+                    } else {
+                        draft[key] = String(extracted?.[key] || "").trim();
+                    }
+                });
+                return draft;
+            }
+
+            function submittedEmployeeFormsPreviewCurrentDraft(row = {}) {
+                const rowId = String(row?.id || "").trim();
+                if (!rowId) return submittedEmployeeFormsPreviewDraftFromRow(row);
+                if (submittedEmployeeFormsPreviewDraftByRowId.has(rowId)) {
+                    return { ...submittedEmployeeFormsPreviewDraftByRowId.get(rowId) };
+                }
+                const draft = submittedEmployeeFormsPreviewDraftFromRow(row);
+                submittedEmployeeFormsPreviewDraftByRowId.set(rowId, draft);
+                return { ...draft };
+            }
+
+            function submittedEmployeeFormsPreviewStopAutofill() {
+                if (submittedEmployeeFormsPreviewAutofillState.timer) {
+                    window.clearInterval(submittedEmployeeFormsPreviewAutofillState.timer);
+                    submittedEmployeeFormsPreviewAutofillState.timer = null;
+                }
+                submittedEmployeeFormsPreviewAutofillState.running = false;
+                submittedEmployeeFormsPreviewAutofillState.rowId = "";
+                submittedEmployeeFormsPreviewAutofillState.index = 0;
+            }
+
+            function submittedEmployeeFormsPreviewStartAutofill(row = null, options = {}) {
+                const targetRow = row && typeof row === "object" ? row : null;
+                const rowId = String(targetRow?.id || "").trim();
+                if (!targetRow || !rowId) return;
+                submittedEmployeeFormsPreviewStopAutofill();
+                const stepMs = Math.max(45, Number(options?.stepMs || 85));
+                const resetDraft = options?.resetDraft !== false;
+                const extractedDraft = submittedEmployeeFormsPreviewDraftFromRow(targetRow);
+                if (resetDraft) {
+                    const blank = {};
+                    submittedEmployeeFormsXeroFieldBlueprint.forEach((field) => { blank[field.key] = ""; });
+                    submittedEmployeeFormsPreviewDraftByRowId.set(rowId, blank);
+                } else if (!submittedEmployeeFormsPreviewDraftByRowId.has(rowId)) {
+                    submittedEmployeeFormsPreviewDraftByRowId.set(rowId, { ...extractedDraft });
+                }
+                submittedEmployeeFormsPreviewAutofillState.running = true;
+                submittedEmployeeFormsPreviewAutofillState.rowId = rowId;
+                submittedEmployeeFormsPreviewAutofillState.index = 0;
+                renderSubmittedEmployeeFormsScreen();
+                submittedEmployeeFormsPreviewAutofillState.timer = window.setInterval(() => {
+                    if (!submittedEmployeeFormsPreviewModalOpenForRowId(rowId)) {
+                        submittedEmployeeFormsPreviewStopAutofill();
+                        renderSubmittedEmployeeFormsScreen();
+                        return;
+                    }
+                    const draft = { ...(submittedEmployeeFormsPreviewDraftByRowId.get(rowId) || {}) };
+                    const field = submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index];
+                    if (!field) {
+                        submittedEmployeeFormsPreviewStopAutofill();
+                        renderSubmittedEmployeeFormsScreen();
+                        return;
+                    }
+                    draft[field.key] = String(extractedDraft[field.key] || "").trim();
+                    submittedEmployeeFormsPreviewDraftByRowId.set(rowId, draft);
+                    submittedEmployeeFormsPreviewAutofillState.index += 1;
+                    if (submittedEmployeeFormsPreviewAutofillState.index >= submittedEmployeeFormsXeroFieldBlueprint.length) {
+                        submittedEmployeeFormsPreviewStopAutofill();
+                    }
+                    renderSubmittedEmployeeFormsScreen();
+                }, stepMs);
+            }
+
+            function submittedEmployeeFormsPreviewModalOpenForRowId(rowId = "") {
+                return String(submittedEmployeeFormsPreviewRowId || "").trim() === String(rowId || "").trim();
+            }
+
             function normaliseSubmittedEmployeeFormsPayload(payload = {}) {
                 const source = payload?.submittedEmployeeForms && typeof payload.submittedEmployeeForms === "object"
                     ? payload.submittedEmployeeForms
@@ -49857,7 +50168,7 @@
                 }
             }
 
-            async function submittedEmployeeFormsSyncRequest({ mode = "fetch", selectedFormIds = [], createMissing = true, lookbackDays = 28 } = {}) {
+            async function submittedEmployeeFormsSyncRequest({ mode = "fetch", selectedFormIds = [], createMissing = true, lookbackDays = 28, fieldOverridesByRow = {} } = {}) {
                 const payload = await requestJSON(api.endpoints.submittedEmployeeFormsSync, {
                     method: "POST",
                     body: JSON.stringify({
@@ -49865,6 +50176,7 @@
                         lookbackDays,
                         selectedFormIds: Array.isArray(selectedFormIds) ? selectedFormIds : [],
                         createMissing: createMissing !== false,
+                        fieldOverridesByRow: fieldOverridesByRow && typeof fieldOverridesByRow === "object" ? fieldOverridesByRow : {},
                     }),
                 });
                 submittedEmployeeFormsData = normaliseSubmittedEmployeeFormsPayload(payload || {});
@@ -57851,6 +58163,10 @@
                 const clearSelectionButton = document.getElementById("submittedEmployeeFormsClearSelectionButton");
                 const previewModal = document.getElementById("submittedEmployeeFormsPreviewModal");
                 const previewCloseButton = document.getElementById("submittedEmployeeFormsPreviewCloseButton");
+                const previewAutofillButton = document.getElementById("submittedEmployeeFormsPreviewAutofillButton");
+                const previewBackButton = document.getElementById("submittedEmployeeFormsPreviewBackButton");
+                const previewContinueButton = document.getElementById("submittedEmployeeFormsPreviewContinueButton");
+                const previewPublishButton = document.getElementById("submittedEmployeeFormsPreviewPublishButton");
                 const noteModal = document.getElementById("submittedEmployeeFormsNoteModal");
                 const noteCloseButton = document.getElementById("submittedEmployeeFormsNoteCloseButton");
                 const setupModal = document.getElementById("submittedEmployeeFormsSetupModal");
@@ -57859,7 +58175,7 @@
                 const notifyModal = document.getElementById("submittedEmployeeFormsNotifyModal");
                 const notifyCloseButton = document.getElementById("submittedEmployeeFormsNotifyCloseButton");
                 const notifySendButton = document.getElementById("submittedEmployeeFormsNotifySendButton");
-                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !noteModal || !noteCloseButton || !setupModal || !setupCloseButton || !setupStartButton || !notifyModal || !notifyCloseButton || !notifySendButton) return;
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !previewAutofillButton || !previewBackButton || !previewContinueButton || !previewPublishButton || !noteModal || !noteCloseButton || !setupModal || !setupCloseButton || !setupStartButton || !notifyModal || !notifyCloseButton || !notifySendButton) return;
                 summary.hidden = true;
                 summary.textContent = "";
 
@@ -57918,14 +58234,60 @@
                 if (previewCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
                     previewCloseButton.dataset.submittedEmployeeFormsWired = "true";
                     previewCloseButton.addEventListener("click", () => {
+                        submittedEmployeeFormsPreviewStopAutofill();
+                        submittedEmployeeFormsPreviewStep = "edit";
                         submittedEmployeeFormsPreviewRowId = "";
                         renderSubmittedEmployeeFormsPreviewModal([]);
                     });
                     previewModal.addEventListener("click", (event) => {
                         if (event.target === previewModal) {
+                            submittedEmployeeFormsPreviewStopAutofill();
+                            submittedEmployeeFormsPreviewStep = "edit";
                             submittedEmployeeFormsPreviewRowId = "";
                             renderSubmittedEmployeeFormsPreviewModal([]);
                         }
+                    });
+                }
+                if (previewAutofillButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewAutofillButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewAutofillButton.addEventListener("click", () => {
+                        const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
+                        submittedEmployeeFormsPreviewStep = "edit";
+                        if (row) submittedEmployeeFormsPreviewStartAutofill(row, { resetDraft: true });
+                    });
+                }
+                if (previewContinueButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewContinueButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewContinueButton.addEventListener("click", () => {
+                        const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
+                        if (!row) return;
+                        const draft = submittedEmployeeFormsPreviewCurrentDraft(row);
+                        const firstName = String(draft.employeeFirstName || "").trim();
+                        const lastName = String(draft.employeeLastName || "").trim();
+                        const dateOfBirth = String(draft.dateOfBirth || "").trim();
+                        if (!firstName || !lastName) {
+                            showToast("First name and last name are required before confirmation.", "warning");
+                            return;
+                        }
+                        if (!dateOfBirth) {
+                            showToast("Date of birth is required before publishing to Xero Payroll.", "warning");
+                            return;
+                        }
+                        submittedEmployeeFormsPreviewStep = "confirm";
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                }
+                if (previewBackButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewBackButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewBackButton.addEventListener("click", () => {
+                        submittedEmployeeFormsPreviewStep = "edit";
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                }
+                if (previewPublishButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewPublishButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewPublishButton.addEventListener("click", async () => {
+                        await publishSubmittedEmployeeFormsPreviewRow();
                     });
                 }
                 if (noteCloseButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -58093,6 +58455,11 @@
                         const rowId = String(button.dataset.submittedEmployeeFormPreview || "").trim();
                         if (!rowId) return;
                         submittedEmployeeFormsPreviewRowId = rowId;
+                        submittedEmployeeFormsPreviewStep = "edit";
+                        const selectedRow = allRows.find((item) => String(item?.id || "").trim() === rowId) || null;
+                        if (selectedRow && !submittedEmployeeFormsPreviewDraftByRowId.has(rowId)) {
+                            submittedEmployeeFormsPreviewStartAutofill(selectedRow, { resetDraft: true });
+                        }
                         renderSubmittedEmployeeFormsPreviewModal(allRows);
                     });
                 });
@@ -58211,10 +58578,20 @@
                 const previewModal = document.getElementById("submittedEmployeeFormsPreviewModal");
                 const previewTitle = document.getElementById("submittedEmployeeFormsPreviewTitle");
                 const previewMeta = document.getElementById("submittedEmployeeFormsPreviewMeta");
-                const previewBodyLeft = document.getElementById("submittedEmployeeFormsPreviewBodyLeft");
-                const previewBodyRight = document.getElementById("submittedEmployeeFormsPreviewBodyRight");
+                const previewForm = document.getElementById("submittedEmployeeFormsPreviewForm");
+                const xeroFieldList = document.getElementById("submittedEmployeeFormsPreviewXeroFieldList");
                 const previewAuditBody = document.getElementById("submittedEmployeeFormsPreviewAuditBody");
-                if (!previewModal || !previewTitle || !previewMeta || !previewBodyLeft || !previewBodyRight || !previewAuditBody) return;
+                const autofillStatus = document.getElementById("submittedEmployeeFormsPreviewFillStatus");
+                const autofillStatusTitle = document.getElementById("submittedEmployeeFormsPreviewFillStatusTitle");
+                const autofillStatusMeta = document.getElementById("submittedEmployeeFormsPreviewFillStatusMeta");
+                const confirmSection = document.getElementById("submittedEmployeeFormsPreviewConfirm");
+                const confirmMeta = document.getElementById("submittedEmployeeFormsPreviewConfirmMeta");
+                const confirmGrid = document.getElementById("submittedEmployeeFormsPreviewConfirmGrid");
+                const autofillButton = document.getElementById("submittedEmployeeFormsPreviewAutofillButton");
+                const backButton = document.getElementById("submittedEmployeeFormsPreviewBackButton");
+                const continueButton = document.getElementById("submittedEmployeeFormsPreviewContinueButton");
+                const publishButton = document.getElementById("submittedEmployeeFormsPreviewPublishButton");
+                if (!previewModal || !previewTitle || !previewMeta || !previewForm || !xeroFieldList || !previewAuditBody || !autofillStatus || !autofillStatusTitle || !autofillStatusMeta || !confirmSection || !confirmMeta || !confirmGrid || !autofillButton || !backButton || !continueButton || !publishButton) return;
                 const rows = Array.isArray(allRows) ? allRows : [];
                 const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
                 previewModal.hidden = !row;
@@ -58222,50 +58599,87 @@
                 const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
                 previewTitle.textContent = `${employeeName} · Employee form preview`;
                 previewMeta.textContent = `${formatDateTime(row?.receivedAt || row?.createdAt || "") || "--"} · ${String(row?.subject || "").trim() || "Submitted employee form"}`;
-                const extracted = row?.extractedFields && typeof row.extractedFields === "object" ? row.extractedFields : {};
-                const fieldPairs = [
-                    ["Employer", String(extracted.employerName || row?.employerName || "").trim()],
-                    ["Employee full name", String(extracted.employeeFullName || row?.employeeFullName || "").trim()],
-                    ["First name", String(extracted.employeeFirstName || row?.employeeFirstName || "").trim()],
-                    ["Last name", String(extracted.employeeLastName || row?.employeeLastName || "").trim()],
-                    ["Employee email", String(extracted.employeeEmail || row?.employeeEmail || "").trim()],
-                    ["Phone", String(extracted.employeePhone || "").trim()],
-                    ["Date of birth", String(extracted.dateOfBirth || "").trim()],
-                    ["National Insurance number", String(extracted.nationalInsuranceNumber || "").trim()],
-                    ["Start date", String(extracted.startDate || "").trim()],
-                    ["Job title", String(extracted.jobTitle || "").trim()],
-                    ["Department", String(extracted.department || "").trim()],
-                    ["Payroll number", String(extracted.payrollNumber || "").trim()],
-                    ["Tax code", String(extracted.taxCode || "").trim()],
-                    ["Employment type", String(extracted.employmentType || "").trim()],
-                    ["Hours per week", String(extracted.hoursPerWeek || "").trim()],
-                    ["Salary", String(extracted.salary || "").trim()],
-                    ["Address line 1", String(extracted.addressLine1 || "").trim()],
-                    ["Address line 2", String(extracted.addressLine2 || "").trim()],
-                    ["City", String(extracted.city || "").trim()],
-                    ["Postcode", String(extracted.postcode || "").trim()],
-                    ["Country", String(extracted.country || "").trim()],
-                    ["Bank account name", String(extracted.bankAccountName || "").trim()],
-                    ["Bank account number", String(extracted.bankAccountNumber || "").trim()],
-                    ["Bank sort code", String(extracted.bankSortCode || "").trim()],
-                    ["Missing/unclear", Array.isArray(extracted.missingOrUnclear) ? extracted.missingOrUnclear.join(", ") : ""],
-                    ["Sender", `${String(row?.fromName || "").trim() || "--"} ${String(row?.fromEmail || "").trim() ? `(${String(row?.fromEmail || "").trim()})` : ""}`.trim()],
-                ];
-                const half = Math.ceil(fieldPairs.length / 2);
-                const leftPairs = fieldPairs.slice(0, half);
-                const rightPairs = fieldPairs.slice(half);
-                previewBodyLeft.innerHTML = leftPairs.map(([label, value]) => `
-                    <tr>
-                        <td>${escapeHTML(label)}</td>
-                        <td>${escapeHTML(value || "--")}</td>
-                    </tr>
-                `).join("");
-                previewBodyRight.innerHTML = rightPairs.map(([label, value]) => `
-                    <tr>
-                        <td>${escapeHTML(label)}</td>
-                        <td>${escapeHTML(value || "--")}</td>
-                    </tr>
-                `).join("");
+                const rowId = String(row?.id || "").trim();
+                const draft = submittedEmployeeFormsPreviewCurrentDraft(row);
+                const autofilling = submittedEmployeeFormsPreviewAutofillState.running && submittedEmployeeFormsPreviewAutofillState.rowId === rowId;
+                const isConfirmStep = submittedEmployeeFormsPreviewStep === "confirm";
+                const currentAutofillKey = autofilling
+                    ? (submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index - 1]?.key || "")
+                    : "";
+                confirmSection.hidden = !isConfirmStep;
+                const formLayout = previewForm.closest(".submitted-employee-preview-form-layout");
+                if (formLayout) formLayout.hidden = isConfirmStep;
+                xeroFieldList.innerHTML = submittedEmployeeFormsXeroFieldBlueprint.map((field) => {
+                    const value = String(draft?.[field.key] || "").trim();
+                    const isFilled = Boolean(value);
+                    return `<li class="${isFilled ? "is-filled" : ""}" data-submitted-employee-xero-field="${escapeHTML(field.key)}">${escapeHTML(field.label)}</li>`;
+                }).join("");
+                previewForm.innerHTML = submittedEmployeeFormsXeroFieldBlueprint.map((field) => {
+                    const key = field.key;
+                    const value = String(draft?.[key] || "").trim();
+                    const inputType = field.type || "text";
+                    const isCurrent = currentAutofillKey === key;
+                    const commonAttrs = `data-submitted-employee-preview-input="${escapeHTML(key)}" ${field.multiline ? "" : `type="${escapeHTML(inputType)}"`} value="${field.multiline ? "" : escapeHTML(value)}" ${submittedEmployeeFormsPreviewPublishing ? "disabled" : ""}`;
+                    return `
+                        <label class="${field.wide ? "is-wide" : ""}">
+                            <span>${escapeHTML(field.label)}</span>
+                            ${field.multiline
+                                ? `<textarea ${commonAttrs}>${escapeHTML(value)}</textarea>`
+                                : `<input ${commonAttrs} class="${isCurrent ? "is-autofilled" : ""}">`
+                            }
+                        </label>
+                    `;
+                }).join("");
+                previewForm.querySelectorAll("[data-submitted-employee-preview-input]").forEach((input) => {
+                    input.addEventListener("input", () => {
+                        const key = String(input.getAttribute("data-submitted-employee-preview-input") || "").trim();
+                        if (!key || !rowId) return;
+                        const current = { ...(submittedEmployeeFormsPreviewDraftByRowId.get(rowId) || {}) };
+                        current[key] = String(input.value || "").trim();
+                        submittedEmployeeFormsPreviewDraftByRowId.set(rowId, current);
+                        const fieldChip = xeroFieldList.querySelector(`[data-submitted-employee-xero-field="${CSS.escape(key)}"]`);
+                        if (fieldChip) fieldChip.classList.toggle("is-filled", Boolean(current[key]));
+                    });
+                });
+                autofillStatus.hidden = !autofilling;
+                if (autofilling) {
+                    const currentField = submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index]
+                        || submittedEmployeeFormsXeroFieldBlueprint[Math.max(0, submittedEmployeeFormsPreviewAutofillState.index - 1)];
+                    autofillStatusTitle.textContent = "OpenAI extraction in progress";
+                    autofillStatusMeta.textContent = currentField
+                        ? `Populating ${currentField.label} from the submitted email.`
+                        : "Finalising extracted values.";
+                }
+                if (isConfirmStep) {
+                    const summaryRows = [
+                        ["Employer", draft.employerName || "--", "Matched Xero workspace will be used for publish."],
+                        ["Employee", `${draft.employeeFirstName || ""} ${draft.employeeLastName || ""}`.trim() || draft.employeeFullName || "--", draft.employeeEmail || "--"],
+                        ["Date of birth", draft.dateOfBirth || "--", draft.nationalInsuranceNumber ? `NI ${draft.nationalInsuranceNumber}` : "NI not provided"],
+                        ["Start date", draft.startDate || "--", draft.jobTitle || "Job title not provided"],
+                        ["Department", draft.department || "--", draft.employmentType || "Employment type not provided"],
+                        ["Address", [draft.addressLine1, draft.addressLine2, draft.city, draft.postcode, draft.country].filter(Boolean).join(", ") || "--", ""],
+                        ["Payroll", draft.payrollNumber || "--", draft.taxCode ? `Tax code ${draft.taxCode}` : "Tax code not provided"],
+                        ["Bank details", draft.bankAccountName || "--", [draft.bankSortCode, draft.bankAccountNumber].filter(Boolean).join(" · ") || "Bank details not provided"],
+                    ];
+                    confirmMeta.textContent = `Confirm ${employeeName} before creating the Xero Payroll employee record.`;
+                    confirmGrid.innerHTML = summaryRows.map(([label, value, detail]) => `
+                        <article>
+                            <span>${escapeHTML(label)}</span>
+                            <strong>${escapeHTML(String(value || "--"))}</strong>
+                            ${detail ? `<p>${escapeHTML(String(detail || ""))}</p>` : ""}
+                        </article>
+                    `).join("");
+                }
+                autofillButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling;
+                autofillButton.textContent = autofilling ? "AI filling..." : "Re-run AI fill";
+                autofillButton.hidden = isConfirmStep;
+                continueButton.hidden = isConfirmStep;
+                backButton.hidden = !isConfirmStep;
+                publishButton.hidden = !isConfirmStep;
+                continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling;
+                backButton.disabled = submittedEmployeeFormsPreviewPublishing;
+                publishButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || !isConfirmStep;
+                publishButton.textContent = submittedEmployeeFormsPreviewPublishing ? "Publishing..." : "Publish to Xero Payroll";
                 const attempts = Array.isArray(row?.attemptHistory) ? row.attemptHistory : [];
                 previewAuditBody.innerHTML = attempts.length
                     ? attempts.map((attempt) => {
@@ -58282,6 +58696,73 @@
                         `;
                     }).join("")
                     : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No attempts yet</p><h4>No setup attempts logged</h4><p>Run Set Up Employees In Xero to create an audit trail for this row.</p></div></td></tr>';
+            }
+
+            function submittedEmployeeFormsPreviewOverridePayload(row = null) {
+                const target = row && typeof row === "object" ? row : null;
+                const rowId = String(target?.id || "").trim();
+                if (!target || !rowId) return null;
+                const draft = { ...submittedEmployeeFormsPreviewCurrentDraft(target) };
+                const payload = {
+                    employeeFirstName: String(draft.employeeFirstName || "").trim(),
+                    employeeLastName: String(draft.employeeLastName || "").trim(),
+                    employeeFullName: String(draft.employeeFullName || "").trim(),
+                    employeeEmail: String(draft.employeeEmail || "").trim(),
+                    employerName: String(draft.employerName || "").trim(),
+                    extractedFields: {},
+                };
+                submittedEmployeeFormsXeroFieldBlueprint.forEach((field) => {
+                    if (field.key === "missingOrUnclear") {
+                        payload.extractedFields[field.key] = String(draft[field.key] || "")
+                            .split(",")
+                            .map((item) => item.trim())
+                            .filter(Boolean);
+                        return;
+                    }
+                    payload.extractedFields[field.key] = String(draft[field.key] || "").trim();
+                });
+                return payload;
+            }
+
+            async function publishSubmittedEmployeeFormsPreviewRow() {
+                if (submittedEmployeeFormsPreviewPublishing) return;
+                const rowId = String(submittedEmployeeFormsPreviewRowId || "").trim();
+                if (!rowId) return;
+                const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === rowId);
+                if (!row) return;
+                const overrides = submittedEmployeeFormsPreviewOverridePayload(row);
+                if (!overrides) return;
+                submittedEmployeeFormsPreviewPublishing = true;
+                renderSubmittedEmployeeFormsScreen();
+                try {
+                    await submittedEmployeeFormsSyncRequest({
+                        mode: "process",
+                        selectedFormIds: [rowId],
+                        createMissing: true,
+                        fieldOverridesByRow: { [rowId]: overrides },
+                    });
+                    const updated = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === rowId);
+                    const statusLabel = String(updated?.xeroStatus || "pending").trim().toLowerCase();
+                    if (statusLabel === "created") {
+                        showToast("Employee published to Xero Payroll.", "success");
+                        submittedEmployeeFormsPreviewStep = "edit";
+                        submittedEmployeeFormsPreviewRowId = "";
+                    } else if (statusLabel === "exists") {
+                        showToast("Employee already exists in Xero Payroll.", "info");
+                        submittedEmployeeFormsPreviewStep = "edit";
+                        submittedEmployeeFormsPreviewRowId = "";
+                    }
+                    else if (statusLabel === "needs-review") showToast("Employee saved but still needs review before create.", "warning");
+                    else if (statusLabel === "failed") showToast(String(updated?.xeroNote || "Xero publish failed."), "error");
+                    else showToast("Employee processing completed.", "info");
+                } catch (error) {
+                    console.error("Unable to publish submitted employee form row", error);
+                    showToast(error?.message || "Unable to publish employee to Xero Payroll.", "error");
+                } finally {
+                    submittedEmployeeFormsPreviewPublishing = false;
+                    submittedEmployeeFormsPreviewStopAutofill();
+                    renderSubmittedEmployeeFormsScreen();
+                }
             }
 
             function closePayrollHeadcountWorkspacePickerModal() {
@@ -96326,13 +96807,48 @@
                 }
             }
 
+            function loadCachedInsightsPayload() {
+                try {
+                    const raw = localStorage.getItem(insightsCacheStorageKey);
+                    if (!raw) return null;
+                    const parsed = JSON.parse(raw);
+                    if (!parsed || typeof parsed !== "object") return null;
+                    if (!parsed.payload || typeof parsed.payload !== "object") return null;
+                    return parsed.payload;
+                } catch (error) {
+                    return null;
+                }
+            }
+
+            function persistCachedInsightsPayload(payload = null) {
+                try {
+                    if (!payload || typeof payload !== "object") return;
+                    localStorage.setItem(insightsCacheStorageKey, JSON.stringify({
+                        savedAt: new Date().toISOString(),
+                        payload,
+                    }));
+                } catch (error) {
+                    // Ignore storage failures and keep live insights flow running.
+                }
+            }
+
             async function loadInsights(force = false) {
                 if (insightsLoading) return;
-                if (insightsData && !force) return;
+                let loadedFromCache = false;
+                if (!insightsData) {
+                    const cached = loadCachedInsightsPayload();
+                    if (cached) {
+                        insightsData = cached;
+                        loadedFromCache = true;
+                        renderInsightsScreen();
+                    }
+                }
+                if (insightsData && !force && !loadedFromCache) return;
                 setAiLoading(true, force ? "Refreshing AI copilot briefing with Jenius AI (OpenAI)." : "Building the AI copilot briefing");
                 renderInsightsScreen();
                 try {
                     insightsData = await requestJSON(api.endpoints.insights);
+                    persistCachedInsightsPayload(insightsData);
                 } catch (error) {
                     console.error("Unable to load AI insights", error);
                     const authRequired = error instanceof AuthRequiredError;
@@ -96742,7 +97258,11 @@
                     heroXeroStatus.hidden = true;
                     heroXeroStatus.innerHTML = "";
                 }
-                target.innerHTML = aiCopilotHomeInsights(analytics, ai);
+                const homeMarkup = aiCopilotHomeInsights(analytics, ai);
+                const refreshOverlay = insightsLoading
+                    ? `<div class="insights-refresh-overlay" aria-live="polite"><div class="insights-refresh-overlay-copy"><span class="sync-inline-spinner" aria-hidden="true"></span><span>Refreshing insights cards...</span></div></div>`
+                    : "";
+                target.innerHTML = `<div class="insights-home-refresh-shell">${homeMarkup.replace('<div class="insights-home">', `<div class="insights-home${insightsLoading ? " is-refreshing" : ""}">`)}${refreshOverlay}</div>`;
                 renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
             }

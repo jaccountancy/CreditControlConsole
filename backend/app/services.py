@@ -17235,6 +17235,119 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
     return {"Employees": [employee_row]}
 
 
+def _submitted_employee_forms_apply_field_overrides(form_row: dict, field_overrides: dict | None) -> dict:
+    if not isinstance(field_overrides, dict) or not field_overrides:
+        return dict(form_row)
+    row = dict(form_row)
+    existing_extracted = row.get("extracted_fields") if isinstance(row.get("extracted_fields"), dict) else {}
+    override_extracted = field_overrides.get("extractedFields") if isinstance(field_overrides.get("extractedFields"), dict) else {}
+    merged_extracted = dict(existing_extracted)
+    for key in SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA.get("required", []):
+        if key == "missingOrUnclear":
+            source = override_extracted.get(key, field_overrides.get(key))
+            if isinstance(source, list):
+                merged_extracted[key] = [str(item or "").strip() for item in source if str(item or "").strip()][:24]
+            elif isinstance(source, str) and source.strip():
+                merged_extracted[key] = [item.strip() for item in source.split(",") if item.strip()][:24]
+            continue
+        source = override_extracted.get(key, field_overrides.get(key))
+        if source is None:
+            continue
+        merged_extracted[key] = re.sub(r"\s+", " ", str(source or "")).strip()
+    for field_name in ("dateOfBirth", "startDate"):
+        normalised = _submitted_employee_forms_normalise_date(str(merged_extracted.get(field_name) or ""))
+        if normalised:
+            merged_extracted[field_name] = normalised
+
+    first_name = re.sub(r"\s+", " ", str(field_overrides.get("employeeFirstName") or merged_extracted.get("employeeFirstName") or row.get("employee_first_name") or "")).strip()
+    last_name = re.sub(r"\s+", " ", str(field_overrides.get("employeeLastName") or merged_extracted.get("employeeLastName") or row.get("employee_last_name") or "")).strip()
+    full_name = re.sub(r"\s+", " ", str(field_overrides.get("employeeFullName") or merged_extracted.get("employeeFullName") or "")).strip()
+    original_full_name = re.sub(r"\s+", " ", str(row.get("employee_full_name") or "")).strip()
+    if not full_name:
+        full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+    if not full_name and original_full_name:
+        full_name = original_full_name
+    if full_name and (not first_name or not last_name):
+        parts = [part for part in re.split(r"\s+", full_name) if part]
+        if parts and not first_name:
+            first_name = parts[0]
+        if len(parts) >= 2 and not last_name:
+            last_name = " ".join(parts[1:])
+    email_value = str(
+        field_overrides.get("employeeEmail")
+        or merged_extracted.get("employeeEmail")
+        or row.get("employee_email")
+        or ""
+    ).strip().lower()
+    employer_name = re.sub(
+        r"\s+",
+        " ",
+        str(field_overrides.get("employerName") or merged_extracted.get("employerName") or row.get("employer_name") or ""),
+    ).strip()
+
+    row["employee_first_name"] = first_name
+    row["employee_last_name"] = last_name
+    row["employee_full_name"] = full_name
+    row["employee_email"] = email_value
+    row["employer_name"] = employer_name
+    row["extracted_fields"] = merged_extracted
+    return row
+
+
+def _update_submitted_employee_form_override_fields(
+    row_id: str,
+    user_id: str,
+    *,
+    employee_full_name: str = "",
+    employee_first_name: str = "",
+    employee_last_name: str = "",
+    employee_email: str = "",
+    employer_name: str = "",
+    extracted_fields: dict | None = None,
+) -> None:
+    clean_row_id = str(row_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    if not clean_row_id or not clean_user_id:
+        return
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE submitted_employee_forms
+                        SET employee_full_name = %s,
+                            employee_first_name = %s,
+                            employee_last_name = %s,
+                            employee_email = %s,
+                            employer_name = %s,
+                            extracted_fields = %s::jsonb,
+                            updated_at = %s
+                        WHERE id = %s
+                          AND user_id = %s
+                        """,
+                        (
+                            str(employee_full_name or "").strip(),
+                            str(employee_first_name or "").strip(),
+                            str(employee_last_name or "").strip(),
+                            str(employee_email or "").strip().lower(),
+                            str(employer_name or "").strip(),
+                            json.dumps(extracted_fields if isinstance(extracted_fields, dict) else {}, default=_json_default),
+                            utcnow(),
+                            clean_row_id,
+                            clean_user_id,
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
 def _update_submitted_employee_form_xero_status(
     row_id: str,
     *,
@@ -17334,6 +17447,7 @@ async def sync_submitted_employee_forms(
     create_missing: bool = True,
     mode: str = "process",
     selected_form_ids: list[str] | None = None,
+    field_overrides_by_row: dict | None = None,
     lookback_days: int = 28,
 ) -> dict:
     user_id = str(user.get("id") or "")
@@ -17385,10 +17499,23 @@ async def sync_submitted_employee_forms(
     last_tenant_name = ""
     employee_index_by_tenant: dict[str, dict] = {}
 
+    row_overrides = field_overrides_by_row if isinstance(field_overrides_by_row, dict) else {}
+
     for row in rows:
         row_id = str(row.get("id") or "").strip()
         if not row_id:
             continue
+        row = _submitted_employee_forms_apply_field_overrides(row, row_overrides.get(row_id))
+        _update_submitted_employee_form_override_fields(
+            row_id,
+            user_id,
+            employee_full_name=str(row.get("employee_full_name") or ""),
+            employee_first_name=str(row.get("employee_first_name") or ""),
+            employee_last_name=str(row.get("employee_last_name") or ""),
+            employee_email=str(row.get("employee_email") or ""),
+            employer_name=str(row.get("employer_name") or ""),
+            extracted_fields=row.get("extracted_fields") if isinstance(row.get("extracted_fields"), dict) else {},
+        )
         processed += 1
         employee_email = str(row.get("employee_email") or "").strip().lower()
         employee_name = " ".join(

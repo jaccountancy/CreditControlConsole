@@ -4968,6 +4968,9 @@ async def api_sync_submitted_employee_forms(request: Request, user: dict = Depen
     selected_form_ids = (payload or {}).get("selectedFormIds") if isinstance(payload, dict) else []
     if not isinstance(selected_form_ids, list):
         selected_form_ids = []
+    field_overrides_by_row = (payload or {}).get("fieldOverridesByRow") if isinstance(payload, dict) else {}
+    if not isinstance(field_overrides_by_row, dict):
+        field_overrides_by_row = {}
     return {
         "status": "ok",
         **await sync_submitted_employee_forms(
@@ -4976,6 +4979,7 @@ async def api_sync_submitted_employee_forms(request: Request, user: dict = Depen
             create_missing=create_missing,
             mode=mode,
             selected_form_ids=selected_form_ids,
+            field_overrides_by_row=field_overrides_by_row,
             lookback_days=lookback_days,
         ),
     }
