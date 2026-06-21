@@ -28856,6 +28856,30 @@
                 color: #8b2330;
                 font-weight: 780;
             }
+            .ch-register-client-page-nlac-banner {
+                margin: 10px 0 12px;
+                border: 1px solid rgba(187, 28, 44, 0.52);
+                border-radius: 12px;
+                background: linear-gradient(180deg, rgba(255, 230, 235, 0.98), rgba(255, 214, 221, 0.95));
+                color: #8f1626;
+                padding: 12px 14px;
+                display: grid;
+                gap: 4px;
+                box-shadow: 0 10px 24px rgba(187, 28, 44, 0.16);
+            }
+            .ch-register-client-page-nlac-banner strong {
+                margin: 0;
+                font-size: 0.92rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .ch-register-client-page-nlac-banner p {
+                margin: 0;
+                font-size: 0.84rem;
+                font-weight: 760;
+                color: #7a1f2a;
+            }
             .ch-client-status-badge.is-good {
                 border-color: rgba(43, 156, 96, 0.26);
                 background: rgba(229, 248, 236, 0.92);
@@ -39136,7 +39160,7 @@
                                     </table>
                                 </div>
                                 <section class="ch-register-client-page" id="chRegisterClientPage" hidden>
-                                    <article class="ch-register-client-page-topbar">
+                                <article class="ch-register-client-page-topbar">
                                         <div class="ch-register-client-page-identity">
                                             <div class="ch-register-client-page-title-row">
                                                 <h3 id="chRegisterClientPageTitle">Client profile</h3>
@@ -39164,6 +39188,10 @@
                                         </div>
                                         <p class="ch-register-relationship-since" id="chRegisterClientRelationshipSince">Client since --</p>
                                     </article>
+                                    <div class="ch-register-client-page-nlac-banner" id="chRegisterClientPageNlacBanner" hidden>
+                                        <strong>THIS ACCOUNT IS NLAC</strong>
+                                        <p>No Longer A Client. All services are disabled and linked tasks are marked completed.</p>
+                                    </div>
                                     <section class="ch-register-client-page-shell">
                                         <aside class="ch-register-client-page-sidebar" id="chRegisterClientPageSidebar">
                                             <div class="ch-register-client-page-sidebar-actions">
@@ -40142,6 +40170,25 @@
                                     <div class="detail-actions">
                                         <button class="primary-button" id="chRegisterClientPageVatNoVatApplyButton" type="button">Set all VAT-coded transactions to NO VAT</button>
                                         <button class="ghost-button" id="chRegisterClientPageVatNoVatOpenServiceButton" type="button">Open VAT service page</button>
+                                    </div>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="chRegisterClientPageNlacConfirmModal" hidden>
+                                <section class="company-secretarial-modal-panel ch-register-xero-match-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterClientPageNlacConfirmTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client Page</p>
+                                            <h4 id="chRegisterClientPageNlacConfirmTitle">Mark as No Longer A Client</h4>
+                                            <p class="detail-meta" id="chRegisterClientPageNlacConfirmMeta">Are you sure you want to mark this record as NO LONGER A CLIENT?</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="chRegisterClientPageNlacConfirmCloseButton" type="button">Cancel</button>
+                                        </div>
+                                    </div>
+                                    <p class="detail-meta" id="chRegisterClientPageNlacConfirmStatus">This action will disable all services, mark all linked tasks completed, and archive this client as NLAC.</p>
+                                    <div class="detail-actions">
+                                        <button class="primary-button" id="chRegisterClientPageNlacConfirmApplyButton" type="button">Yes, Mark NLAC</button>
+                                        <button class="ghost-button" id="chRegisterClientPageNlacConfirmCancelButton" type="button">Keep Active</button>
                                     </div>
                                 </section>
                             </div>
@@ -46532,6 +46579,11 @@
                 count: 0,
                 applying: false,
                 status: "",
+            };
+            let clientPageNlacConfirmModalState = {
+                open: false,
+                clientName: "",
+                submitting: false,
             };
             let supplierPaymentsData = { tenantName: "", tenantId: "", accounts: [], invoices: [], fetchedAt: "", barclays: { configured: false, connected: false, status: "disconnected", expiresAt: "" } };
             let supplierPaymentsLoading = false;
@@ -117724,7 +117776,7 @@
                 }
             }
 
-            async function markClientRegisterClientPageAsNlac() {
+            async function markClientRegisterClientPageAsNlac(options = {}) {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState.rowId || "").trim();
                 if (!rowId) return;
@@ -117740,9 +117792,16 @@
                     return;
                 }
                 const clientName = clientRegisterClientDisplayName(currentRow);
-                if (!window.confirm(`Mark ${clientName} as NLAC? This removes the client from active search and places it in the NLAC list.`)) {
+                const confirmed = options?.confirmed === true;
+                if (!confirmed) {
+                    openClientRegisterNlacConfirmModal(clientName);
                     return;
                 }
+                clientPageNlacConfirmModalState = {
+                    ...clientPageNlacConfirmModalState,
+                    submitting: true,
+                };
+                renderClientRegisterNlacConfirmModal();
                 const payloadState = clientPagePayload() || {};
                 const profileState = payloadState?.profile || {};
                 const servicesState = clientRegisterApplyLinkedServiceRules(profileState?.services || {});
@@ -117811,14 +117870,32 @@
                         saving: false,
                         payload: nextPayload,
                     };
+                    const nlacRowForTasks = (nextPayload?.row && typeof nextPayload.row === "object") ? nextPayload.row : (updatedRow || currentRow);
+                    const linkedTasks = clientRegisterTasksForRow(nlacRowForTasks, { includeCompleted: true });
+                    let completedTaskCount = 0;
+                    linkedTasks.forEach((task) => {
+                        const status = String(task?.status || "").trim().toLowerCase();
+                        if (status === "completed") return;
+                        completedTaskCount += 1;
+                        updateBmTaskStatus(task, "completed", "", {
+                            autoNote: "Task auto-completed because this client was marked NLAC.",
+                        });
+                    });
+                    if (completedTaskCount > 0 && String(companiesHouseSettings.bmTaskBookkeepingWorkflow?.rowId || "").trim()) {
+                        const currentWorkflowRowId = String(companiesHouseSettings.bmTaskBookkeepingWorkflow.rowId || "").trim();
+                        const workflowTaskMatch = linkedTasks.some((task) => bmTaskIdentitySafe(task) === currentWorkflowRowId);
+                        if (workflowTaskMatch) resetTaskBookkeepingWorkflowPanel();
+                    }
+                    closeClientRegisterNlacConfirmModal();
                     renderAuthCodeRegisterDirectory(
                         companiesHouseSettings.authRegisterRows || [],
                         companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0
                     );
+                    renderTaskSubpages();
                     renderClientRegisterClientPage();
                     renderSidebarMiniSearchPanel();
                     renderNlacListScreen();
-                    showToast("Client marked as NLAC.", "success");
+                    showToast(`Client marked as NLAC.${completedTaskCount > 0 ? ` ${completedTaskCount.toLocaleString("en-GB")} task${completedTaskCount === 1 ? "" : "s"} completed.` : ""}`, "success");
                 } catch (error) {
                     console.error("Unable to mark client as NLAC", error);
                     if (error instanceof AuthRequiredError) {
@@ -117828,6 +117905,11 @@
                         ...companiesHouseSettings.authRegisterClientPage,
                         saving: false,
                     };
+                    clientPageNlacConfirmModalState = {
+                        ...clientPageNlacConfirmModalState,
+                        submitting: false,
+                    };
+                    renderClientRegisterNlacConfirmModal();
                     renderClientRegisterClientPage();
                     showToast(error?.message || "Unable to mark client as NLAC.", "error");
                 }
@@ -123906,6 +123988,7 @@
                 if (toolbar) toolbar.hidden = false;
                 closeClientRegisterHmrc648ServiceModal();
                 closeClientRegisterXeroMatchModal();
+                closeClientRegisterNlacConfirmModal();
                 closeClientRegisterVatNoVatModal();
                 setClientRegisterClientPageTab("client-info");
                 syncActiveViewShell();
@@ -125126,6 +125209,54 @@
                 if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
                     document.body.classList.remove("is-modal-open");
                 }
+            }
+
+            function renderClientRegisterNlacConfirmModal() {
+                const modal = document.getElementById("chRegisterClientPageNlacConfirmModal");
+                const meta = document.getElementById("chRegisterClientPageNlacConfirmMeta");
+                const status = document.getElementById("chRegisterClientPageNlacConfirmStatus");
+                const applyButton = document.getElementById("chRegisterClientPageNlacConfirmApplyButton");
+                if (!modal || !meta || !status || !applyButton) return;
+                const state = clientPageNlacConfirmModalState || {};
+                modal.hidden = !state.open;
+                const name = String(state.clientName || "this client record").trim();
+                meta.textContent = `Are you sure you want to mark ${name} as NO LONGER A CLIENT?`;
+                status.textContent = "This action will disable all services, mark all linked tasks completed, and archive this client as NLAC.";
+                applyButton.disabled = !!state.submitting;
+                applyButton.textContent = state.submitting ? "Marking NLAC..." : "Yes, Mark NLAC";
+            }
+
+            function closeClientRegisterNlacConfirmModal() {
+                clientPageNlacConfirmModalState = {
+                    ...clientPageNlacConfirmModalState,
+                    open: false,
+                    submitting: false,
+                };
+                renderClientRegisterNlacConfirmModal();
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function openClientRegisterNlacConfirmModal(clientName = "") {
+                clientPageNlacConfirmModalState = {
+                    ...clientPageNlacConfirmModalState,
+                    open: true,
+                    clientName: String(clientName || "this client record").trim(),
+                    submitting: false,
+                };
+                renderClientRegisterNlacConfirmModal();
+                document.body.classList.add("is-modal-open");
+            }
+
+            async function confirmClientRegisterNlacFromModal() {
+                if (clientPageNlacConfirmModalState?.submitting) return;
+                clientPageNlacConfirmModalState = {
+                    ...clientPageNlacConfirmModalState,
+                    submitting: true,
+                };
+                renderClientRegisterNlacConfirmModal();
+                await markClientRegisterClientPageAsNlac({ confirmed: true });
             }
 
             function closeClientRegisterIgnitionMatchModal() {
@@ -127968,6 +128099,8 @@
                 }
                 const isNlac = clientRegisterRowIsNlac(row);
                 if (topbar) topbar.classList.toggle("is-nlac", isNlac);
+                const nlacBanner = document.getElementById("chRegisterClientPageNlacBanner");
+                if (nlacBanner) nlacBanner.hidden = !isNlac;
                 const markNlacButtonText = isNlac ? "Already NLAC" : "Mark NLAC";
                 const markNlacButton = document.getElementById("chRegisterClientPageMarkNlacButton");
                 if (markNlacButton) {
@@ -130239,6 +130372,12 @@
                     if (event.target?.id === "chRegisterRegisteredOfficeClientsModal") closeRegisteredOfficeClientsModal();
                 });
                 document.getElementById("chRegisterClientPageMarkNlacButton")?.addEventListener("click", markClientRegisterClientPageAsNlac);
+                document.getElementById("chRegisterClientPageNlacConfirmCloseButton")?.addEventListener("click", closeClientRegisterNlacConfirmModal);
+                document.getElementById("chRegisterClientPageNlacConfirmCancelButton")?.addEventListener("click", closeClientRegisterNlacConfirmModal);
+                document.getElementById("chRegisterClientPageNlacConfirmApplyButton")?.addEventListener("click", confirmClientRegisterNlacFromModal);
+                document.getElementById("chRegisterClientPageNlacConfirmModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "chRegisterClientPageNlacConfirmModal") closeClientRegisterNlacConfirmModal();
+                });
                 document.getElementById("chRegisterClientPageMatchXeroButton")?.addEventListener("click", openClientRegisterXeroMatchModal);
                 document.getElementById("chRegisterClientPageMatchXeroLogoButton")?.addEventListener("click", openClientRegisterXeroMatchModal);
                 document.getElementById("chRegisterClientPageXeroStatusBadge")?.addEventListener("click", openClientRegisterXeroMatchModal);
