@@ -1265,7 +1265,11 @@ def _payroll_headcount_employee_is_active(employee: dict) -> bool:
 def _payroll_headcount_payrun_date(payrun: dict) -> date | None:
     return (
         _parse_any_date(payrun.get("PaymentDate"))
+        or _parse_any_date(payrun.get("paymentDate"))
+        or _parse_any_date(payrun.get("PayDate"))
         or _parse_any_date(payrun.get("PayRunPeriodEndDate"))
+        or _parse_any_date(payrun.get("PayPeriodEndDate"))
+        or _parse_any_date(payrun.get("PeriodEndDate"))
         or _parse_any_date(payrun.get("Date"))
     )
 
@@ -1351,6 +1355,106 @@ def _payroll_overview_decimal(value) -> Decimal:
         return Decimal(str(value))
     except Exception:
         return Decimal("0")
+
+
+def _payroll_overview_numeric_decimal(value) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        text = value.strip().replace(",", "")
+        if not text:
+            return Decimal("0")
+        text = re.sub(r"[^0-9\.\-]", "", text)
+        if not text or text in {"-", ".", "-."}:
+            return Decimal("0")
+        try:
+            return Decimal(text)
+        except Exception:
+            return Decimal("0")
+    return Decimal("0")
+
+
+def _payroll_overview_find_numeric_value(payload, candidate_keys: list[str]) -> Decimal:
+    wanted = {str(key or "").strip().lower() for key in candidate_keys if str(key or "").strip()}
+    if not wanted:
+        return Decimal("0")
+    queue = [payload]
+    visited: set[int] = set()
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        for key, value in node.items():
+            normalised = str(key or "").strip().lower()
+            if normalised in wanted:
+                numeric = _payroll_overview_numeric_decimal(value)
+                if numeric != Decimal("0"):
+                    return abs(numeric)
+            if isinstance(value, (dict, list)):
+                queue.append(value)
+    return Decimal("0")
+
+
+def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
+    total = _payroll_overview_find_numeric_value(
+        payrun,
+        [
+            "P32TaxAmount",
+            "P32TaxEstimate",
+            "PayeNicAmount",
+            "PayeNicEstimate",
+            "PayeNiDue",
+            "TaxPayable",
+            "Tax",
+        ],
+    )
+    if total > Decimal("0"):
+        return total
+    paye_component = _payroll_overview_find_numeric_value(
+        payrun,
+        [
+            "PayeAmount",
+            "PAYE",
+            "EmployeeTax",
+            "EmployerTax",
+            "IncomeTax",
+        ],
+    )
+    nic_component = _payroll_overview_find_numeric_value(
+        payrun,
+        [
+            "NicAmount",
+            "NationalInsurance",
+            "EmployerNic",
+            "EmployeeNic",
+        ],
+    )
+    combined = paye_component + nic_component
+    return combined if combined > Decimal("0") else Decimal("0")
+
+
+def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
+    return _payroll_overview_find_numeric_value(
+        payrun,
+        [
+            "PensionPayable",
+            "PensionAmount",
+            "EmployerPension",
+            "EmployerPensionContribution",
+            "PensionContribution",
+            "PensionTotal",
+            "Super",
+        ],
+    )
 
 
 def _payroll_overview_text(value) -> str:
@@ -1499,16 +1603,28 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     for row in payruns:
         run_date = _payroll_headcount_payrun_date(row)
         run_status = _payroll_overview_status(row)
+        p32_estimate = _payroll_overview_estimate_p32_tax(row)
+        pension_estimate = _payroll_overview_estimate_pension(row)
         payrun_rows.append(
             {
                 "payRunId": _payroll_headcount_payrun_id(row),
                 "status": run_status,
-                "payRunPeriodStartDate": (_parse_any_date(row.get("PayRunPeriodStartDate")) or _parse_any_date(row.get("PeriodStartDate"))),
-                "payRunPeriodEndDate": (_parse_any_date(row.get("PayRunPeriodEndDate")) or _parse_any_date(row.get("PeriodEndDate"))),
+                "payRunPeriodStartDate": (
+                    _parse_any_date(row.get("PayRunPeriodStartDate"))
+                    or _parse_any_date(row.get("PayPeriodStartDate"))
+                    or _parse_any_date(row.get("PeriodStartDate"))
+                ),
+                "payRunPeriodEndDate": (
+                    _parse_any_date(row.get("PayRunPeriodEndDate"))
+                    or _parse_any_date(row.get("PayPeriodEndDate"))
+                    or _parse_any_date(row.get("PeriodEndDate"))
+                ),
                 "paymentDate": run_date,
                 "updatedDateUtc": _parse_any_date(row.get("UpdatedDateUTC")) or _parse_any_date(row.get("UpdatedDate")),
                 "payslipCount": _payroll_overview_payrun_count(row),
                 "wages": float(_payroll_overview_decimal(row.get("Wages"))),
+                "estimatedP32Tax": float(p32_estimate),
+                "estimatedPensionPayable": float(pension_estimate),
             }
         )
     payrun_rows.sort(
@@ -1525,6 +1641,12 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
 
     draft_statuses = {"DRAFT", "POSTED"}
     draft_payruns = [row for row in payrun_rows if str(row.get("status") or "").upper() in draft_statuses]
+    submitted_statuses = {"POSTED", "PAID", "SUBMITTED", "COMPLETED", "PROCESSED"}
+    submitted_payrun = next(
+        (row for row in payrun_rows if str(row.get("status") or "").upper() in submitted_statuses),
+        None,
+    )
+    reference_payrun = submitted_payrun or (payrun_rows[0] if payrun_rows else None)
     today = utcnow().date()
     next_due = None
     for run in sorted(payrun_rows, key=lambda row: _parse_any_date(row.get("paymentDate")) or date.max):
@@ -1579,6 +1701,24 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     pension_payable_balance = float(
         sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in pension_rows)
     )
+    latest_payrun_date = ""
+    if reference_payrun:
+        latest_payrun_date = str(
+            reference_payrun.get("paymentDate")
+            or reference_payrun.get("payRunPeriodEndDate")
+            or reference_payrun.get("payRunPeriodStartDate")
+            or ""
+        ).strip()
+    estimated_p32_tax_balance = float(
+        _payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax")) if reference_payrun else Decimal("0")
+    )
+    estimated_pension_payable_balance = float(
+        _payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable")) if reference_payrun else Decimal("0")
+    )
+    if estimated_p32_tax_balance <= 0:
+        estimated_p32_tax_balance = outstanding_tax_balance
+    if estimated_pension_payable_balance <= 0:
+        estimated_pension_payable_balance = pension_payable_balance
 
     return {
         "tenantId": clean_tenant_id,
@@ -1589,11 +1729,11 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "activeEmployeeCount": len(active_employees),
             "payRunCount": len(payrun_rows),
             "draftPayRunCount": len(draft_payruns),
-            "latestPayRunDate": payrun_rows[0].get("paymentDate") if payrun_rows else "",
+            "latestPayRunDate": latest_payrun_date,
             "nextPayRunDate": next_due.isoformat() if isinstance(next_due, date) else "",
             "outstandingTaxBalance": outstanding_tax_balance,
-            "estimatedP32TaxBalance": outstanding_tax_balance,
-            "pensionPayableBalance": pension_payable_balance,
+            "estimatedP32TaxBalance": estimated_p32_tax_balance,
+            "pensionPayableBalance": estimated_pension_payable_balance,
         },
         "payRuns": payrun_rows[:12],
         "draftPayRuns": draft_payruns[:6],
