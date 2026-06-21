@@ -27209,6 +27209,19 @@
                 color: var(--muted);
                 font-size: 0.8rem;
             }
+            .submitted-employee-preview-fill-status.is-error {
+                border-color: color-mix(in srgb, var(--red) 45%, white);
+                background: color-mix(in srgb, var(--red-soft) 78%, white);
+            }
+            .submitted-employee-preview-fill-status.is-error .sync-inline-spinner {
+                display: none;
+            }
+            .submitted-employee-preview-fill-status.is-error strong {
+                color: var(--red);
+            }
+            .submitted-employee-preview-fill-status.is-error p {
+                color: color-mix(in srgb, var(--red) 72%, black);
+            }
             .submitted-employee-preview-confirm {
                 border: 1px solid var(--line);
                 border-radius: 14px;
@@ -50119,6 +50132,39 @@
                 return { ...draft };
             }
 
+            function submittedEmployeeFormsDraftFilledFieldCount(draft = {}) {
+                const value = draft && typeof draft === "object" ? draft : {};
+                let filledCount = 0;
+                submittedEmployeeFormsXeroFieldBlueprint.forEach((field) => {
+                    if (field.key === "missingOrUnclear") return;
+                    if (String(value[field.key] || "").trim()) filledCount += 1;
+                });
+                return filledCount;
+            }
+
+            function submittedEmployeeFormsExtractionFailureReason(row = null, draft = {}) {
+                const targetRow = row && typeof row === "object" ? row : {};
+                const status = String(targetRow?.xeroStatus || "").trim().toLowerCase();
+                const note = String(targetRow?.xeroNote || "").trim();
+                const matchedWorkspace = String(targetRow?.xeroTenantId || "").trim()
+                    || String(targetRow?.xeroTenantName || "").trim()
+                    || String(submittedEmployeeFormsMatchedClientName(targetRow) || "").trim();
+                const filledFieldCount = submittedEmployeeFormsDraftFilledFieldCount(draft);
+
+                if (status === "failed") return note || "The extraction workflow failed for this submission.";
+                if (status === "needs-review" && note) return note;
+                if (!matchedWorkspace && !isXeroConnected()) {
+                    return "No Xero organisation is connected, so this submission cannot be matched to a payroll workspace.";
+                }
+                if (!matchedWorkspace) {
+                    return note || "No Xero-connected client workspace matched this submitted employee form.";
+                }
+                if (filledFieldCount === 0) {
+                    return note || "No employee values were extracted from the submitted email.";
+                }
+                return "";
+            }
+
             function submittedEmployeeFormsPreviewStopAutofill() {
                 if (submittedEmployeeFormsPreviewAutofillState.timer) {
                     window.clearInterval(submittedEmployeeFormsPreviewAutofillState.timer);
@@ -58696,6 +58742,8 @@
                 const currentAutofillKey = autofilling
                     ? (submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index - 1]?.key || "")
                     : "";
+                const extractionFailureReason = submittedEmployeeFormsExtractionFailureReason(row, draft);
+                const extractionFailed = !autofilling && Boolean(extractionFailureReason);
                 confirmSection.hidden = !isConfirmStep;
                 const formLayout = previewForm.closest(".submitted-employee-preview-form-layout");
                 if (formLayout) formLayout.hidden = isConfirmStep;
@@ -58731,7 +58779,8 @@
                         if (fieldChip) fieldChip.classList.toggle("is-filled", Boolean(current[key]));
                     });
                 });
-                autofillStatus.hidden = !autofilling;
+                autofillStatus.hidden = !(autofilling || extractionFailed);
+                autofillStatus.classList.toggle("is-error", extractionFailed);
                 if (autofilling) {
                     const currentField = submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index]
                         || submittedEmployeeFormsXeroFieldBlueprint[Math.max(0, submittedEmployeeFormsPreviewAutofillState.index - 1)];
@@ -58739,6 +58788,9 @@
                     autofillStatusMeta.textContent = currentField
                         ? `Populating ${currentField.label} from the submitted email.`
                         : "Finalising extracted values.";
+                } else if (extractionFailed) {
+                    autofillStatusTitle.textContent = "Extraction failed";
+                    autofillStatusMeta.textContent = extractionFailureReason;
                 }
                 if (isConfirmStep) {
                     const summaryRows = [
@@ -58766,7 +58818,7 @@
                 continueButton.hidden = isConfirmStep;
                 backButton.hidden = !isConfirmStep;
                 publishButton.hidden = !isConfirmStep;
-                continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling;
+                continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || extractionFailed;
                 backButton.disabled = submittedEmployeeFormsPreviewPublishing;
                 publishButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || !isConfirmStep;
                 publishButton.textContent = submittedEmployeeFormsPreviewPublishing ? "Publishing..." : "Publish to Xero Payroll";
@@ -123447,6 +123499,33 @@
                 return dueDate.toISOString().slice(0, 10);
             }
 
+            function payrollPayRunIsSubmitted(statusRaw = "") {
+                const status = String(statusRaw || "").trim().toUpperCase();
+                return status === "POSTED" || status === "PAID" || status === "SUBMITTED" || status === "COMPLETED";
+            }
+
+            function payrollSelectedPayRunLabel(payRun = {}) {
+                const periodStart = String(payRun?.payRunPeriodStartDate || "").trim();
+                const periodEnd = String(payRun?.payRunPeriodEndDate || "").trim();
+                const paymentDate = String(payRun?.paymentDate || "").trim();
+                const status = String(payRun?.status || "").trim();
+                const periodLabel = (periodStart && periodEnd)
+                    ? `${formatDate(periodStart)} to ${formatDate(periodEnd)}`
+                    : (periodStart ? `From ${formatDate(periodStart)}` : (periodEnd ? `To ${formatDate(periodEnd)}` : "Period not set"));
+                const paymentLabel = paymentDate ? `Paid ${formatDate(paymentDate)}` : "Payment date not set";
+                return [periodLabel, paymentLabel, status].filter(Boolean).join(" · ");
+            }
+
+            function payrollSelectReferencePayRun(payRuns = []) {
+                const runs = Array.isArray(payRuns) ? payRuns.filter((row) => row && typeof row === "object") : [];
+                const submittedRun = runs.find((row) => payrollPayRunIsSubmitted(row?.status));
+                const selected = submittedRun || runs[0] || {};
+                const source = submittedRun
+                    ? "Most recent submitted pay run auto-selected"
+                    : (runs.length ? "Most recent pay run auto-selected" : "No pay run returned from Xero");
+                return { selected, source };
+            }
+
             function composePayrollPostedEmailDraft({
                 clientName = "",
                 paymentDate = "",
@@ -123490,6 +123569,8 @@
                 tenantId = "",
                 registerRow = {},
                 resolvedTask = {},
+                selectedPayRun = {},
+                selectedPayRunSource = "",
             } = {}) {
                 const rows = [
                     {
@@ -123505,9 +123586,11 @@
                 if (!String(modalResult?.payeReference || "").trim()) warnings.push("PAYE reference missing");
                 if (!String(modalResult?.accountsOfficeReference || "").trim()) warnings.push("Accounts Office reference missing");
                 if (!String(modalResult?.hmrcDueDate || "").trim()) warnings.push("HMRC due date missing");
+                const selectedPayRunLabel = payrollSelectedPayRunLabel(selectedPayRun);
+                const paymentDateTitle = modalResult?.paymentDate ? formatDate(modalResult.paymentDate) : "";
                 return await showOperationReviewDialog({
                     eyebrow: "Payroll task",
-                    title: "Confirmation",
+                    title: paymentDateTitle ? `Confirmation · ${paymentDateTitle}` : "Confirmation",
                     subtitle: "Confirm these payroll values before completing the task and opening the client email draft.",
                     confirmLabel: "Confirm and continue",
                     cancelLabel: "Back",
@@ -123523,6 +123606,7 @@
                     summaryChips: [
                         tenantId ? "Xero payroll data linked" : "No Xero payroll match",
                         registerRow?.id ? "Client register linked" : "Client register not linked",
+                        selectedPayRunLabel ? `Selected pay run: ${selectedPayRunLabel}` : selectedPayRunSource,
                         warnings.length ? warnings.join(" · ") : "All required payment references present",
                     ],
                     onRender: ({ body }) => {
@@ -123562,9 +123646,12 @@
                 const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId) : null;
                 const summary = overview?.summary || {};
                 const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
-                const latestPayRun = payRuns[0] || {};
+                const selectedPayRunMeta = payrollSelectReferencePayRun(payRuns);
+                const selectedPayRun = selectedPayRunMeta.selected || {};
+                const selectedPayRunSource = String(selectedPayRunMeta.source || "").trim();
+                const selectedPayRunLabel = payrollSelectedPayRunLabel(selectedPayRun);
                 const paymentDateRaw = String(
-                    latestPayRun?.paymentDate
+                    selectedPayRun?.paymentDate
                     || summary?.latestPayRunDate
                     || payrollDetails?.rtiDeadline
                     || ""
@@ -123607,7 +123694,7 @@
 
                 const modalResult = await showOperationReviewDialog({
                     eyebrow: "Payroll task",
-                    title: "Payroll email workflow",
+                    title: paymentDate ? `Payroll email workflow · ${formatDate(paymentDate)}` : "Payroll email workflow",
                     subtitle: "Step 1 of 2. AI extraction is filling payroll details now, then review and amend before confirmation.",
                     confirmLabel: "Continue to confirmation",
                     cancelLabel: "Cancel",
@@ -123616,6 +123703,7 @@
                     summaryChips: [
                         tenantId ? "Xero payroll data linked" : "No Xero payroll match",
                         registerRow?.id ? "Client register linked" : "Client register not linked",
+                        selectedPayRunLabel ? `Selected pay run: ${selectedPayRunLabel}` : selectedPayRunSource,
                     ],
                     onRender: ({ body }) => {
                         body.innerHTML = `
@@ -123758,6 +123846,8 @@
                     tenantId,
                     registerRow,
                     resolvedTask,
+                    selectedPayRun,
+                    selectedPayRunSource,
                 });
                 if (!confirmed) return;
                 completeTaskRowFromButton({ rowId, match: resolvedTask, button, rowNode, mode, notifyAfter: false });
