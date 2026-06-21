@@ -1647,6 +1647,23 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         None,
     )
     reference_payrun = submitted_payrun or (payrun_rows[0] if payrun_rows else None)
+    reference_payrun_id = _payroll_overview_text(reference_payrun.get("payRunId")) if reference_payrun else ""
+    if reference_payrun and reference_payrun_id:
+        try:
+            details_url = XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(reference_payrun_id, safe=""))
+            payrun_details_payload = await xero_api_get(connection_row, details_url)
+            detail_rows = _payroll_headcount_rows(payrun_details_payload, "PayRuns", "PayRun")
+            detail_payrun = detail_rows[0] if detail_rows else {}
+            if detail_payrun:
+                detailed_p32_estimate = _payroll_overview_estimate_p32_tax(detail_payrun)
+                detailed_pension_estimate = _payroll_overview_estimate_pension(detail_payrun)
+                if detailed_p32_estimate > Decimal("0"):
+                    reference_payrun["estimatedP32Tax"] = float(detailed_p32_estimate)
+                if detailed_pension_estimate > Decimal("0"):
+                    reference_payrun["estimatedPensionPayable"] = float(detailed_pension_estimate)
+        except Exception as exc:
+            errors.append(f"Pay run details: {_sync_error_message(exc)}")
+
     today = utcnow().date()
     next_due = None
     for run in sorted(payrun_rows, key=lambda row: _parse_any_date(row.get("paymentDate")) or date.max):

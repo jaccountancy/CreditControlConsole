@@ -40928,7 +40928,7 @@
                                     <table class="ch-table" aria-label="Task list table">
                                         <thead>
                                             <tr>
-                                                <th colspan="10">
+                                                <th colspan="9">
                                                     <div class="task-list-inline-controls">
                                                         <input id="taskListSearch" type="search" placeholder="Search client, task, status, manager...">
                                                         <select id="taskListManagerFilter" aria-label="Filter by manager">
@@ -40964,7 +40964,6 @@
                                                 <th class="task-list-select-col"><input id="taskListSelectAll" type="checkbox" aria-label="Select all visible tasks"></th>
                                                 <th>Client</th>
                                                 <th>Task</th>
-                                                <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
@@ -41381,7 +41380,6 @@
                                                 <th class="task-list-select-col">Select</th>
                                                 <th>Client</th>
                                                 <th>Task</th>
-                                                <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
@@ -41419,7 +41417,6 @@
                                                 <th class="task-list-select-col">Select</th>
                                                 <th>Client</th>
                                                 <th>Task</th>
-                                                <th>Period end</th>
                                                 <th>Deadline</th>
                                                 <th>Status</th>
                                                 <th data-task-col="assignee">Client Manager</th>
@@ -123501,7 +123498,7 @@
 
             function payrollPayRunIsSubmitted(statusRaw = "") {
                 const status = String(statusRaw || "").trim().toUpperCase();
-                return status === "POSTED" || status === "PAID" || status === "SUBMITTED" || status === "COMPLETED";
+                return status === "POSTED" || status === "PAID" || status === "SUBMITTED" || status === "COMPLETED" || status === "PROCESSED";
             }
 
             function payrollSelectedPayRunLabel(payRun = {}) {
@@ -123518,12 +123515,112 @@
 
             function payrollSelectReferencePayRun(payRuns = []) {
                 const runs = Array.isArray(payRuns) ? payRuns.filter((row) => row && typeof row === "object") : [];
-                const submittedRun = runs.find((row) => payrollPayRunIsSubmitted(row?.status));
-                const selected = submittedRun || runs[0] || {};
+                const payRunTimestamp = (row) => {
+                    const parsed = parseDateValue(
+                        row?.paymentDate
+                        || row?.payRunPeriodEndDate
+                        || row?.payRunPeriodStartDate
+                        || row?.updatedDateUtc
+                        || ""
+                    );
+                    return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+                };
+                const submittedRuns = runs
+                    .filter((row) => payrollPayRunIsSubmitted(row?.status))
+                    .sort((a, b) => payRunTimestamp(b) - payRunTimestamp(a));
+                const sortedRuns = [...runs].sort((a, b) => payRunTimestamp(b) - payRunTimestamp(a));
+                const submittedRun = submittedRuns[0] || null;
+                const selected = submittedRun || sortedRuns[0] || {};
                 const source = submittedRun
                     ? "Most recent submitted pay run auto-selected"
                     : (runs.length ? "Most recent pay run auto-selected" : "No pay run returned from Xero");
                 return { selected, source };
+            }
+
+            function payrollFirstUsefulNumber(...values) {
+                const numbers = values
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isFinite(value));
+                const positive = numbers.find((value) => value > 0);
+                if (typeof positive === "number") return positive;
+                return numbers.length ? numbers[0] : 0;
+            }
+
+            function payrollFindFirstReferenceValue(payload = {}, candidateKeys = []) {
+                const keySet = new Set((Array.isArray(candidateKeys) ? candidateKeys : [])
+                    .map((key) => String(key || "").trim().toLowerCase())
+                    .filter(Boolean));
+                if (!keySet.size) return "";
+                const visited = new Set();
+                const queue = [payload];
+                let matchedValue = "";
+                while (queue.length) {
+                    const node = queue.shift();
+                    if (!node || typeof node !== "object" || visited.has(node)) continue;
+                    visited.add(node);
+                    if (Array.isArray(node)) {
+                        node.forEach((item) => {
+                            if (item && typeof item === "object") queue.push(item);
+                        });
+                        continue;
+                    }
+                    Object.entries(node).forEach(([key, value]) => {
+                        const normalisedKey = String(key || "").trim().toLowerCase();
+                        if (!matchedValue && keySet.has(normalisedKey)) {
+                            const text = String(value ?? "").trim();
+                            if (text) matchedValue = text;
+                        }
+                        if (value && typeof value === "object") queue.push(value);
+                    });
+                    if (matchedValue) return matchedValue;
+                }
+                return "";
+            }
+
+            function payrollResolveReferencesFromRegister(registerRow = {}, payrollDetails = {}) {
+                const payeCandidates = [
+                    payrollDetails?.employersPayeReference,
+                    registerRow?.payeReference,
+                    registerRow?.companiesHouse?.serviceDetails?.payroll?.employersPayeReference,
+                    payrollFindFirstReferenceValue(registerRow, [
+                        "employersPayeReference",
+                        "employerPayeReference",
+                        "payeReference",
+                        "taxOfficeReference",
+                        "payeTaxOfficeReference",
+                    ]),
+                ];
+                const payeReference = payeCandidates
+                    .map((value) => String(value || "").trim())
+                    .find(Boolean) || "";
+                const taxOfficeNumber = payrollFindFirstReferenceValue(registerRow, [
+                    "taxOfficeNumber",
+                    "payeTaxOfficeNumber",
+                ]);
+                const taxOfficeReference = payrollFindFirstReferenceValue(registerRow, [
+                    "taxOfficeReference",
+                    "payeTaxOfficeReference",
+                ]);
+                const combinedPayeReference = payeReference || ((taxOfficeNumber && taxOfficeReference) ? `${taxOfficeNumber}/${taxOfficeReference}` : "");
+                const officeCandidates = [
+                    payrollDetails?.accountsOfficeReference,
+                    registerRow?.accountsOfficeReference,
+                    registerRow?.companiesHouse?.serviceDetails?.payroll?.accountsOfficeReference,
+                    payrollFindFirstReferenceValue(registerRow, [
+                        "accountsOfficeReference",
+                        "accountOfficeReference",
+                        "payeAccountsOfficeReference",
+                        "officeReference",
+                    ]),
+                ];
+                const accountsOfficeReference = officeCandidates
+                    .map((value) => String(value || "").trim())
+                    .find(Boolean) || "";
+                return {
+                    payeReference: combinedPayeReference,
+                    accountsOfficeReference,
+                    referencesFoundInRegister: Boolean(combinedPayeReference && accountsOfficeReference),
+                };
             }
 
             function composePayrollPostedEmailDraft({
@@ -123543,21 +123640,35 @@
                 const periodLine = cleanPaymentDate
                     ? `Payroll has now been posted in Xero for payment date ${formatDate(cleanPaymentDate)}.`
                     : "Payroll has now been posted in Xero.";
-                const dueLine = cleanHmrcDueDate
-                    ? `Please ensure HMRC PAYE/NIC is paid by BACS by ${formatDate(cleanHmrcDueDate)}.`
-                    : "Please ensure HMRC PAYE/NIC is paid by BACS by the 22nd of the next tax month.";
+                const dueDateLine = cleanHmrcDueDate
+                    ? `Payment deadline: HMRC must receive PAYE/NIC by ${formatDate(cleanHmrcDueDate)}.`
+                    : "Payment deadline: HMRC PAYE/NIC is typically due by the 22nd of the following tax month when paying electronically (or 19th if paying by post).";
+                const submissionTimingLine = cleanHmrcDueDate
+                    ? `Please submit your BACS payment at least 3 working days before ${formatDate(cleanHmrcDueDate)} to allow bank processing time.`
+                    : "Please submit your BACS payment at least 3 working days before the deadline to allow bank processing time.";
                 return [
                     `Hi ${cleanClientName},`,
                     "",
                     periodLine,
                     "",
-                    "Summary:",
+                    "Payroll summary:",
                     `- HMRC PAYE/NIC (P32 estimate): ${formatCurrency(Number(p32TaxAmount || 0))}`,
                     `- Pension payable: ${formatCurrency(Number(pensionPayableAmount || 0))}`,
                     `- Employer PAYE reference: ${cleanPayeReference}`,
                     `- Accounts Office reference: ${cleanOfficeReference}`,
                     "",
-                    dueLine,
+                    dueDateLine,
+                    submissionTimingLine,
+                    "",
+                    "How to pay HMRC (PAYE/NIC):",
+                    "- Payment method: BACS/online bank transfer to HMRC.",
+                    "- Payment reference: use your 13-character Accounts Office reference exactly, with no spaces.",
+                    "- Payment timing: schedule the payment to clear in HMRC's account on or before the deadline above.",
+                    "",
+                    "Pension payment:",
+                    "- Please pay the pension amount to your pension provider using your normal provider payment process and deadlines.",
+                    "",
+                    "If you would like us to review the final payment details before you submit, reply to this email and we can confirm them.",
                     "",
                     "Kind regards,",
                     "Jaccountancy Payroll Team",
@@ -123586,6 +123697,8 @@
                 if (!String(modalResult?.payeReference || "").trim()) warnings.push("PAYE reference missing");
                 if (!String(modalResult?.accountsOfficeReference || "").trim()) warnings.push("Accounts Office reference missing");
                 if (!String(modalResult?.hmrcDueDate || "").trim()) warnings.push("HMRC due date missing");
+                if (Number(modalResult?.p32TaxAmount || 0) <= 0) warnings.push("P32 / PAYE-NIC is £0");
+                if (Number(modalResult?.pensionPayableAmount || 0) <= 0) warnings.push("Pension payable is £0");
                 const selectedPayRunLabel = payrollSelectedPayRunLabel(selectedPayRun);
                 const paymentDateTitle = modalResult?.paymentDate ? formatDate(modalResult.paymentDate) : "";
                 return await showOperationReviewDialog({
@@ -123611,6 +123724,16 @@
                     ],
                     onRender: ({ body }) => {
                         const preview = String(modalResult?.emailBody || "").trim();
+                        const confirmButton = document.getElementById("confirmOperationReviewButton");
+                        if (confirmButton) confirmButton.disabled = warnings.length > 0;
+                        if (warnings.length) {
+                            body.insertAdjacentHTML("beforeend", `
+                                <article class="task-detail-modal-card" style="margin-top: 12px;">
+                                    <h5>Blocked</h5>
+                                    <p class="task-detail-modal-hint">Fix required in previous step: ${escapeHTML(warnings.join(" · "))}.</p>
+                                </article>
+                            `);
+                        }
                         if (!preview) return;
                         const snippet = preview.length > 1200 ? `${preview.slice(0, 1200)}\n…` : preview;
                         body.insertAdjacentHTML("beforeend", `
@@ -123652,6 +123775,8 @@
                 const selectedPayRunLabel = payrollSelectedPayRunLabel(selectedPayRun);
                 const paymentDateRaw = String(
                     selectedPayRun?.paymentDate
+                    || selectedPayRun?.payRunPeriodEndDate
+                    || selectedPayRun?.payRunPeriodStartDate
                     || summary?.latestPayRunDate
                     || payrollDetails?.rtiDeadline
                     || ""
@@ -123660,25 +123785,25 @@
                     const parsed = parseDateValue(paymentDateRaw);
                     return parsed ? parsed.toISOString().slice(0, 10) : "";
                 })();
-                const initialP32Tax = Number(
-                    summary?.estimatedP32TaxBalance
-                    ?? summary?.outstandingTaxBalance
-                    ?? 0
+                const initialP32Tax = payrollFirstUsefulNumber(
+                    selectedPayRun?.estimatedP32Tax,
+                    selectedPayRun?.tax,
+                    selectedPayRun?.taxAmount,
+                    selectedPayRun?.payeNicAmount,
+                    summary?.estimatedP32TaxBalance,
+                    summary?.outstandingTaxBalance,
+                    0
                 );
-                const initialPension = Number(
-                    summary?.pensionPayableBalance
-                    ?? 0
+                const initialPension = payrollFirstUsefulNumber(
+                    selectedPayRun?.estimatedPensionPayable,
+                    selectedPayRun?.pensionPayable,
+                    selectedPayRun?.pensionAmount,
+                    summary?.pensionPayableBalance,
+                    0
                 );
-                let payeReference = String(
-                    payrollDetails?.employersPayeReference
-                    || registerRow?.payeReference
-                    || ""
-                ).trim();
-                let accountsOfficeReference = String(
-                    payrollDetails?.accountsOfficeReference
-                    || registerRow?.accountsOfficeReference
-                    || ""
-                ).trim();
+                const referenceLookup = payrollResolveReferencesFromRegister(registerRow, payrollDetails);
+                let payeReference = String(referenceLookup.payeReference || "").trim();
+                let accountsOfficeReference = String(referenceLookup.accountsOfficeReference || "").trim();
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
@@ -123704,6 +123829,9 @@
                         tenantId ? "Xero payroll data linked" : "No Xero payroll match",
                         registerRow?.id ? "Client register linked" : "Client register not linked",
                         selectedPayRunLabel ? `Selected pay run: ${selectedPayRunLabel}` : selectedPayRunSource,
+                        referenceLookup.referencesFoundInRegister
+                            ? "PAYE and Accounts Office refs auto-populated from client register"
+                            : "Client register references missing - manual entry required",
                     ],
                     onRender: ({ body }) => {
                         body.innerHTML = `
@@ -123762,6 +123890,17 @@
                             const officeInput = body.querySelector("#taskPayrollEmailAccountsOfficeRef");
                             const draftInput = body.querySelector("#taskPayrollEmailDraftBody");
                             const statusItems = Array.from(body.querySelectorAll("#taskPayrollExtractionStatus [data-step-index]"));
+                            const confirmButton = document.getElementById("confirmOperationReviewButton");
+                            const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
+                            const validationWrap = document.createElement("article");
+                            validationWrap.className = "task-detail-modal-card";
+                            validationWrap.style.marginTop = "12px";
+                            validationWrap.innerHTML = `
+                                <h5>Validation</h5>
+                                <p id="${validationHintId}" class="task-detail-modal-hint">Checking payroll figures and references…</p>
+                            `;
+                            body.appendChild(validationWrap);
+                            const validationHint = validationWrap.querySelector(`#${validationHintId}`);
                             const updateStatusState = (index, state) => {
                                 const item = statusItems[index];
                                 if (!item) return;
@@ -123784,9 +123923,28 @@
                                 });
                                 if (draftInput) draftInput.value = draft;
                             };
+                            const updateValidationState = () => {
+                                const p32Value = Number(p32Input?.value || 0);
+                                const pensionValue = Number(pensionInput?.value || 0);
+                                const payeValue = String(payeInput?.value || "").trim();
+                                const officeValue = String(officeInput?.value || "").trim();
+                                const reasons = [];
+                                if (!(p32Value > 0)) reasons.push("P32 / PAYE-NIC must be greater than £0");
+                                if (!(pensionValue > 0)) reasons.push("Pension payable must be greater than £0");
+                                if (!payeValue) reasons.push("Employer PAYE reference is required");
+                                if (!officeValue) reasons.push("Accounts Office reference is required");
+                                if (confirmButton) confirmButton.disabled = reasons.length > 0;
+                                if (validationHint) {
+                                    validationHint.textContent = reasons.length
+                                        ? `Cannot continue: ${reasons.join(" · ")}.`
+                                        : "Ready to continue.";
+                                }
+                            };
                             [p32Input, pensionInput, paymentInput, hmrcDueInput, payeInput, officeInput].forEach((input) => {
                                 input?.addEventListener("change", updateDraft);
                                 input?.addEventListener("input", updateDraft);
+                                input?.addEventListener("change", updateValidationState);
+                                input?.addEventListener("input", updateValidationState);
                             });
                             const startExtractionAnimation = () => {
                                 const assignments = [
@@ -123800,7 +123958,6 @@
                                     },
                                     () => { if (draftInput) draftInput.value = emailBody; },
                                 ];
-                                const confirmButton = document.getElementById("confirmOperationReviewButton");
                                 if (confirmButton) confirmButton.disabled = true;
                                 const stepDelay = 210;
                                 assignments.forEach((apply, index) => {
@@ -123809,9 +123966,10 @@
                                         window.setTimeout(() => {
                                             apply();
                                             updateDraft();
+                                            updateValidationState();
                                             updateStatusState(index, "is-complete");
                                             if (index + 1 < assignments.length) updateStatusState(index + 1, "is-active");
-                                            if (index === assignments.length - 1 && confirmButton) confirmButton.disabled = false;
+                                            if (index === assignments.length - 1) updateValidationState();
                                         }, 140);
                                     }, index * stepDelay);
                                 });

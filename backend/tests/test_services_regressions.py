@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import asyncio
 import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -126,6 +127,52 @@ class ServicesRegressionTests(unittest.TestCase):
         with patch.object(services, "get_connection", return_value=_Connection(rows=mapping_rows)):
             code = services._me_report_director_loan_account_code_for_client("client-1")
         self.assertEqual(code, "4550")
+
+    def test_payroll_overview_uses_latest_submitted_payrun_details_for_p32_estimate(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None):
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "PayRuns": [
+                        {"PayRunID": "draft-1", "PayRunStatus": "DRAFT", "PaymentDate": "2026-06-30"},
+                        {"PayRunID": "submitted-1", "PayRunStatus": "POSTED", "PaymentDate": "2026-06-22"},
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {
+                    "Accounts": [
+                        {
+                            "AccountID": "acc-1",
+                            "Code": "825",
+                            "Name": "PAYE Payable",
+                            "Type": "CURRLIAB",
+                            "Class": "LIABILITY",
+                            "CurrentBalance": "5000.00",
+                        }
+                    ]
+                }
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-1"):
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-1",
+                            "Totals": {"PayeAmount": "1000.00", "NicAmount": "250.00"},
+                        }
+                    ]
+                }
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 1250.0)
+        self.assertEqual(payload["summary"]["outstandingTaxBalance"], 5000.0)
+        submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-1"), {})
+        self.assertEqual(submitted.get("estimatedP32Tax"), 1250.0)
 
 
 if __name__ == "__main__":
