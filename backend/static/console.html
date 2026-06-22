@@ -28130,6 +28130,24 @@
                 text-align: left;
                 cursor: pointer;
             }
+            .task-list-client-copy {
+                display: grid;
+                gap: 3px;
+            }
+            .task-client-id-badge {
+                display: inline-flex;
+                align-items: center;
+                width: fit-content;
+                padding: 2px 8px;
+                border-radius: 999px;
+                border: 1px solid #d8dfea;
+                background: #f7f9fc;
+                color: #4a5e7b;
+                font-size: 10.5px;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+            }
             .task-list-client-link:hover,
             .task-list-client-link:focus-visible {
                 text-decoration: underline;
@@ -125103,6 +125121,7 @@
                     const rowId = bmTaskIdentitySafe(row);
                     const clientKey = bmTaskClientTimelineKey(row);
                     const clientName = bmTaskClientDisplayName(row.clientName);
+                    const clientId = String(row?.clientId || register?.clientId || register?.id || "").trim();
                     const taskName = bmTaskDisplayName(row);
                     const registerLabel = register?.id
                         ? `${register.displayName || clientName || "Matched"}${register.companyNumber ? ` · ${register.companyNumber}` : ""}`
@@ -125287,7 +125306,12 @@
                             <td>
                                 <div class="task-list-client-cell">
                                     <button class="task-client-timeline-button" type="button" title="Open client timeline" data-task-open-client-timeline="${escapeHTML(clientKey)}" data-task-open-client-name="${escapeHTML(clientName)}">◷</button>
-                                    <button class="task-list-client-link" type="button" title="Open client page" data-task-open-client-page="${escapeHTML(rowId)}"><span class="task-list-client-label">${escapeHTML(clientName)}</span></button>
+                                    <button class="task-list-client-link" type="button" title="Open client page" data-task-open-client-page="${escapeHTML(rowId)}">
+                                        <span class="task-list-client-copy">
+                                            <span class="task-list-client-label">${escapeHTML(clientName)}</span>
+                                            ${clientId ? `<span class="task-client-id-badge">Client ID ${escapeHTML(clientId)}</span>` : ""}
+                                        </span>
+                                    </button>
                                 </div>
                             </td>
                             <td>
