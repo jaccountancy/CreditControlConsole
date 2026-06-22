@@ -3359,11 +3359,32 @@ async def _payroll_overview_nominal_transaction_context(
         return bucket_total, applicable_total
     tax_payroll_total, _ = await _collect(tax_accounts, context["taxAccountTransactions"], "Tax")
     pension_payroll_total, pension_applicable_total = await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension")
+    tax_transaction_count = sum(
+        int(item.get("allTransactionLineCount") or 0)
+        for item in context["taxAccountTransactions"]
+        if isinstance(item, dict)
+    )
+    pension_transaction_count = sum(
+        int(item.get("allTransactionLineCount") or 0)
+        for item in context["pensionAccountTransactions"]
+        if isinstance(item, dict)
+    )
     context["taxPayrollExpenseNet"] = float(tax_payroll_total)
     context["pensionPayrollExpenseNet"] = float(pension_payroll_total)
     context["pensionApplicableNet"] = float(pension_applicable_total)
+    context["taxNominalTransactionCount"] = int(tax_transaction_count)
+    context["pensionNominalTransactionCount"] = int(pension_transaction_count)
+    context["hasNominalTransactions"] = bool(tax_transaction_count > 0 or pension_transaction_count > 0)
     context["payeRunReferences"] = sorted(paye_run_reference_keys)
     context["payeRunDates"] = sorted(paye_run_dates)
+    if isinstance(context.get("accountSelectionDiagnostics"), dict):
+        missing_nominal_transactions = (tax_transaction_count <= 0) or (pension_transaction_count <= 0)
+        context["accountSelectionDiagnostics"]["requiresUserSelection"] = bool(
+            context["accountSelectionDiagnostics"].get("requiresUserSelection")
+            or missing_nominal_transactions
+        )
+        if missing_nominal_transactions:
+            context["accountSelectionDiagnostics"]["selectionIssue"] = "no_nominal_transactions_for_selected_codes"
     return context
 
 
@@ -3847,10 +3868,7 @@ async def payroll_tenant_overview_payload(
         isinstance(nominal_transaction_context, dict)
         and str(nominal_transaction_context.get("engine") or "").strip() == "nominal_account_transactions"
         and not str(nominal_transaction_context.get("error") or "").strip()
-        and (
-            bool(nominal_transaction_context.get("taxAccountTransactions"))
-            or bool(nominal_transaction_context.get("pensionAccountTransactions"))
-        )
+        and bool(nominal_transaction_context.get("hasNominalTransactions"))
     )
     if nominal_context_ready_for_ai:
         openai_p32_tax, openai_pension_payable, openai_payable_diagnostics = await _payroll_overview_openai_liability_inference(
@@ -3979,24 +3997,28 @@ async def payroll_tenant_overview_payload(
     )
     pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
     selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
-    # Prefer OpenAI inference over the full nominal transaction context for
-    # monthly liability generation, then deterministic nominal rules, then payroll API.
-    if openai_p32_tax > Decimal("0"):
+    tax_nominal_count = int((nominal_transaction_context or {}).get("taxNominalTransactionCount") or 0) if isinstance(nominal_transaction_context, dict) else 0
+    pension_nominal_count = int((nominal_transaction_context or {}).get("pensionNominalTransactionCount") or 0) if isinstance(nominal_transaction_context, dict) else 0
+    has_tax_nominal_evidence = tax_nominal_count > 0
+    has_pension_nominal_evidence = pension_nominal_count > 0
+    # Only use OpenAI when nominal account transactions were actually fetched.
+    # Do not fall back to payroll API amounts for final monthly liabilities.
+    if has_tax_nominal_evidence and openai_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(openai_p32_tax)
-    elif nominal_tx_p32_tax > Decimal("0"):
+    elif has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(nominal_tx_p32_tax)
-    elif payroll_api_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(payroll_api_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
-    if openai_pension_payable > Decimal("0"):
+    if has_pension_nominal_evidence and openai_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(openai_pension_payable)
-    elif nominal_tx_pension_payable > Decimal("0"):
+    elif has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
-    elif payroll_api_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(payroll_api_pension_payable)
     else:
         estimated_pension_payable_balance = 0.0
+    if selected_payrun_id and (not has_tax_nominal_evidence or not has_pension_nominal_evidence):
+        errors.append(
+            "Exact payroll liability extraction unavailable: no nominal account transactions were returned for selected PAYE/pension codes in the selected period."
+        )
     if selected_payrun_id and (estimated_p32_tax_balance <= 0 or estimated_pension_payable_balance <= 0):
         payslips_status = int(pay_slips_diag.get("statusCode") or 0)
         details_status = int(selected_details_diag.get("statusCode") or 0)
@@ -4024,20 +4046,16 @@ async def payroll_tenant_overview_payload(
     estimated_balances_source = {
         "p32Tax": (
             "openai_nominal_inference"
-            if openai_p32_tax > Decimal("0")
+            if has_tax_nominal_evidence and openai_p32_tax > Decimal("0")
             else "nominal_account_transactions"
-            if nominal_tx_p32_tax > Decimal("0")
-            else "payroll_api_payslips"
-            if payroll_api_p32_tax > Decimal("0")
+            if has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
             "openai_nominal_inference"
-            if openai_pension_payable > Decimal("0")
+            if has_pension_nominal_evidence and openai_pension_payable > Decimal("0")
             else "nominal_account_transactions"
-            if nominal_tx_pension_payable > Decimal("0")
-            else "payroll_api_payslips"
-            if payroll_api_pension_payable > Decimal("0")
+            if has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0")
             else "none"
         ),
     }
