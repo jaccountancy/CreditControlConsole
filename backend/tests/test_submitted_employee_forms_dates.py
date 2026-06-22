@@ -83,6 +83,26 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
         self.assertEqual(extracted.get("dateOfBirth"), "1988-11-02")
         self.assertEqual(extracted.get("jobTitle"), "Senior Accountant")
 
+    def test_normalized_employee_name_collapses_spaces_and_case(self):
+        self.assertEqual(
+            services._submitted_forms_normalized_employee_name("  Sarah   Chapman "),
+            "sarah chapman",
+        )
+
+    def test_xero_payroll_employee_identity_prefers_first_and_last_name(self):
+        employee_id, email, full_name = services._xero_payroll_employee_identity(
+            {
+                "EmployeeID": "abc-123",
+                "Email": "Sarah.Chapman@Example.com",
+                "FirstName": "Sarah",
+                "LastName": "Chapman",
+                "Name": "Ignored Fallback Name",
+            }
+        )
+        self.assertEqual(employee_id, "abc-123")
+        self.assertEqual(email, "sarah.chapman@example.com")
+        self.assertEqual(full_name, "sarah chapman")
+
 
 if __name__ == "__main__":
     unittest.main()

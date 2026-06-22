@@ -17149,6 +17149,10 @@ def _xero_payroll_employee_identity(row: dict) -> tuple[str, str, str]:
     return employee_id, email_value, full_name
 
 
+def _submitted_forms_normalized_employee_name(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
 def _canonical_xero_employee_id(value: str | None) -> str:
     return str(value or "").strip().strip("{}").lower()
 
@@ -18665,32 +18669,7 @@ async def sync_submitted_employee_forms(
         inactive_duplicate_names = tenant_employee_index.get("inactiveDuplicateNames") or set()
         existing_employee_id = ""
         existing_match_method = ""
-        if employee_email:
-            existing_employee_id = existing_by_email.get(employee_email) or ""
-            if existing_employee_id:
-                existing_match_method = "email"
-            else:
-                inactive_employee_id = inactive_by_email.get(employee_email) or ""
-                if inactive_employee_id:
-                    needs_review += 1
-                    update_row_state(
-                        tenant_id=clean_tenant_id,
-                        tenant_name=clean_tenant_name,
-                        xero_employee_id=inactive_employee_id,
-                        xero_status="needs-review",
-                        xero_note=(
-                            f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
-                            "and found an inactive Xero Payroll employee with the same email. "
-                            "Open Xero Payroll and reactivate or confirm that employee before retrying Step 2."
-                        ),
-                        debug_lines=row_debug_base + [
-                            f"tenantId={clean_tenant_id}",
-                            f"inactiveEmployeeId={inactive_employee_id}",
-                            "existingMatchMethod=email-inactive",
-                        ],
-                    )
-                    continue
-        if not existing_employee_id and not employee_email and employee_name:
+        if employee_name:
             if employee_name in duplicate_names:
                 needs_review += 1
                 update_row_state(
@@ -18750,6 +18729,47 @@ async def sync_submitted_employee_forms(
             existing_employee_id = existing_by_name_unique.get(employee_name) or ""
             if existing_employee_id:
                 existing_match_method = "name"
+        elif employee_email:
+            inactive_employee_id = inactive_by_email.get(employee_email) or ""
+            if inactive_employee_id:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_employee_id=inactive_employee_id,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "and found an inactive Xero Payroll employee with the same email. "
+                        "Open Xero Payroll and reactivate or confirm that employee before retrying Step 2."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"inactiveEmployeeId={inactive_employee_id}",
+                        "existingMatchMethod=email-inactive",
+                    ],
+                )
+                continue
+            email_only_existing_id = existing_by_email.get(employee_email) or ""
+            if email_only_existing_id:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_employee_id=email_only_existing_id,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "and found an existing Xero Payroll employee by email only. "
+                        "Confirm employee first and last name in Preview before retrying Step 2."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"existingEmployeeId={email_only_existing_id}",
+                        "existingMatchMethod=email-only-needs-review",
+                    ],
+                )
+                continue
 
         if existing_employee_id:
             verify_existing_ok = True
@@ -18757,6 +18777,7 @@ async def sync_submitted_employee_forms(
             verify_existing_row: dict = {}
             verified_existing_id = ""
             verified_existing_email = ""
+            verified_existing_name = ""
             verified_existing_status = ""
             verified_existing_active = False
             try:
@@ -18764,7 +18785,7 @@ async def sync_submitted_employee_forms(
                 verify_existing_payload = await xero_api_get(connection_row, verify_existing_url)
                 verify_existing_rows = _payroll_headcount_rows(verify_existing_payload, "Employees", "Employee")
                 verify_existing_row = verify_existing_rows[0] if verify_existing_rows else {}
-                verified_existing_id, verified_existing_email, _ = _xero_payroll_employee_identity(
+                verified_existing_id, verified_existing_email, verified_existing_name = _xero_payroll_employee_identity(
                     verify_existing_row if isinstance(verify_existing_row, dict) else {}
                 )
                 expected_employee_id = _canonical_xero_employee_id(existing_employee_id)
@@ -18793,6 +18814,14 @@ async def sync_submitted_employee_forms(
                         "Matched EmployeeID email did not match expected email "
                         f"(expected={employee_email}, actual={verified_existing_email})."
                     )
+                if employee_name:
+                    expected_employee_name = _submitted_forms_normalized_employee_name(employee_name)
+                    actual_employee_name = _submitted_forms_normalized_employee_name(verified_existing_name)
+                    if actual_employee_name and actual_employee_name != expected_employee_name:
+                        raise ValueError(
+                            "Matched EmployeeID name did not match expected employee name "
+                            f"(expected={employee_name}, actual={verified_existing_name})."
+                        )
             except Exception as verify_existing_exc:
                 verify_existing_ok = False
                 verify_existing_error = _sync_error_message(verify_existing_exc)
@@ -18812,32 +18841,11 @@ async def sync_submitted_employee_forms(
                         f"existingEmployeeId={existing_employee_id}",
                         f"existingMatchMethod={existing_match_method or 'identity'}",
                         f"verifiedEmployeeId={verified_existing_id or '-'}",
+                        f"verifiedEmployeeName={verified_existing_name or '-'}",
                         f"verifiedEmployeeEmail={verified_existing_email or '-'}",
                         f"verifiedEmployeeStatus={verified_existing_status or '-'}",
                         f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
                         f"verifyExistingError={verify_existing_error or '-'}",
-                    ],
-                )
-                continue
-            if existing_match_method == "name":
-                needs_review += 1
-                update_row_state(
-                    tenant_id=clean_tenant_id,
-                    tenant_name=clean_tenant_name,
-                    xero_employee_id=verified_existing_id or existing_employee_id,
-                    xero_status="needs-review",
-                    xero_note=(
-                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
-                        "and found a possible Xero Payroll match by name only. "
-                        "Confirm the employee email in Preview, then retry Step 2."
-                    ),
-                    debug_lines=row_debug_base + [
-                        f"tenantId={clean_tenant_id}",
-                        f"existingEmployeeId={verified_existing_id or existing_employee_id or '-'}",
-                        f"verifiedEmployeeEmail={verified_existing_email or '-'}",
-                        f"verifiedEmployeeStatus={verified_existing_status or '-'}",
-                        f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
-                        "existingMatchMethod=name-only-needs-review",
                     ],
                 )
                 continue
@@ -18856,6 +18864,7 @@ async def sync_submitted_employee_forms(
                     f"tenantId={clean_tenant_id}",
                     f"existingEmployeeId={verified_existing_id or existing_employee_id or '-'}",
                     f"existingMatchMethod={existing_match_method or 'identity'}",
+                    f"verifiedEmployeeName={verified_existing_name or '-'}",
                     f"verifiedEmployeeEmail={verified_existing_email or '-'}",
                     f"verifiedEmployeeStatus={verified_existing_status or '-'}",
                     f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
