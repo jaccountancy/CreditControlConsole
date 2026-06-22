@@ -93,6 +93,7 @@ logger = logging.getLogger(__name__)
 CH_API_KEY_LABEL = "ch:api_key"
 CODE_BREAKER_CH_DOCUMENT_CACHE_TTL = timedelta(hours=24)
 CODE_BREAKER_MAX_JOURNAL_BATCHES = 10
+CODE_BREAKER_JOURNAL_DETAIL_ENRICH_LIMIT = 30
 CODE_BREAKER_MAX_VARIANCE_CANDIDATES = 120
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
@@ -31094,6 +31095,43 @@ async def _code_breaker_fetch_xero_journals(connection_row: dict) -> tuple[list[
             break
         offset += len(batch)
     if journals:
+        # Enrich most-recent journals with detail payloads; the list endpoint can omit
+        # line-level account metadata needed for payroll-liability matching.
+        try:
+            sortable = []
+            for row in journals:
+                if not isinstance(row, dict):
+                    continue
+                journal_date = _parse_any_date(row.get("JournalDate") or row.get("Date") or row.get("DateString")) or date.min
+                sortable.append((journal_date, row))
+            sortable.sort(key=lambda item: item[0], reverse=True)
+            enrich_rows = [row for _, row in sortable[:CODE_BREAKER_JOURNAL_DETAIL_ENRICH_LIMIT]]
+            for row in enrich_rows:
+                journal_id = str(row.get("JournalID") or row.get("JournalNumber") or row.get("Id") or "").strip()
+                if not journal_id:
+                    continue
+                detail_payload = await _me_xero_optional_get(
+                    connection_row,
+                    f"https://api.xero.com/api.xro/2.0/Journals/{quote(journal_id, safe='')}",
+                    None,
+                )
+                if not isinstance(detail_payload, dict):
+                    continue
+                if str(detail_payload.get("_error") or "").strip():
+                    continue
+                detail_rows = detail_payload.get("Journals") if isinstance(detail_payload.get("Journals"), list) else []
+                detail_row = detail_rows[0] if detail_rows else {}
+                if not isinstance(detail_row, dict):
+                    continue
+                detail_lines = detail_row.get("JournalLines") if isinstance(detail_row.get("JournalLines"), list) else []
+                if detail_lines:
+                    row["JournalLines"] = detail_lines
+                for key in ("SourceType", "Reference", "Narration", "JournalDate", "CreatedDateUTC"):
+                    if detail_row.get(key) not in (None, ""):
+                        row[key] = detail_row.get(key)
+        except Exception:
+            # Best-effort enrichment only; preserve already-fetched journals.
+            pass
         return journals, ""
 
     if request_error and _xero_connection_has_manual_journal_scope(connection_row):
