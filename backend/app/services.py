@@ -17856,7 +17856,22 @@ async def sync_submitted_employee_forms(
         last_tenant_id = clean_tenant_id
         last_tenant_name = clean_tenant_name
         if clean_tenant_id not in employee_index_by_tenant:
-            employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+            try:
+                employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+            except Exception as exc:
+                failed += 1
+                error_message = _sync_error_message(exc)
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_status="failed",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        f"but could not load existing Xero Payroll employees: {error_message}"
+                        f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
+                    ),
+                )
+                continue
             existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
             existing_by_email: dict[str, str] = {}
             existing_name_candidates: dict[str, set[str]] = {}
@@ -17983,7 +17998,13 @@ async def sync_submitted_employee_forms(
                 ),
             )
 
-    payload = submitted_employee_forms_payload(user)
+    try:
+        payload = submitted_employee_forms_payload(user)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Setup run finished processing but failed while refreshing results: {_sync_error_message(exc)}",
+        ) from exc
     payload["sync"] = {
         "mode": "process",
         "imported": 0,
