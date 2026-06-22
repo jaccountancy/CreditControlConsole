@@ -124405,23 +124405,37 @@
                     const parsed = parseDateValue(paymentDateRaw);
                     return parsed ? parsed.toISOString().slice(0, 10) : "";
                 })();
+                const figureSources = summary?.figureSources && typeof summary.figureSources === "object" ? summary.figureSources : {};
+                const selectedRunPayeComponent = Number(selectedPayRun?.payeAmount || selectedPayRun?.paye || 0);
+                const selectedRunNicComponent = Number(
+                    selectedPayRun?.nicAmount
+                    || selectedPayRun?.niAmount
+                    || selectedPayRun?.nationalInsuranceAmount
+                    || 0
+                );
+                const selectedRunCombinedPayeNic = Number.isFinite(selectedRunPayeComponent + selectedRunNicComponent)
+                    ? (selectedRunPayeComponent + selectedRunNicComponent)
+                    : 0;
+                const summaryP32FromReferenceRun = String(figureSources?.p32Tax || "").trim() === "reference_payrun"
+                    ? Number(summary?.estimatedP32TaxBalance || 0)
+                    : 0;
+                const summaryPensionFromReferenceRun = String(figureSources?.pensionPayable || "").trim() === "reference_payrun"
+                    ? Number(summary?.pensionPayableBalance || 0)
+                    : 0;
                 const initialP32Tax = payrollFirstUsefulNumber(
                     selectedPayRun?.estimatedP32Tax,
-                    selectedPayRun?.tax,
-                    selectedPayRun?.taxAmount,
                     selectedPayRun?.payeNicAmount,
-                    summary?.estimatedP32TaxBalance,
-                    summary?.outstandingTaxBalance,
+                    selectedRunCombinedPayeNic,
+                    summaryP32FromReferenceRun,
                     0
                 );
                 const initialPension = payrollFirstUsefulNumber(
                     selectedPayRun?.estimatedPensionPayable,
                     selectedPayRun?.pensionPayable,
                     selectedPayRun?.pensionAmount,
-                    summary?.pensionPayableBalance,
+                    summaryPensionFromReferenceRun,
                     0
                 );
-                const figureSources = summary?.figureSources && typeof summary.figureSources === "object" ? summary.figureSources : {};
                 const payrunDiagnostics = summary?.payrunDetailDiagnostics && typeof summary.payrunDetailDiagnostics === "object"
                     ? summary.payrunDetailDiagnostics
                     : {};
@@ -124431,7 +124445,9 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const lockExtractedFigureInputs = Boolean(tenantId);
+                const hasReliableReferenceExtraction = String(figureSources?.p32Tax || "").trim() === "reference_payrun"
+                    || String(figureSources?.pensionPayable || "").trim() === "reference_payrun";
+                const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
                     paymentDate,
