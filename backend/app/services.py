@@ -2331,26 +2331,28 @@ async def _payroll_overview_extract_posted_journal_payables(
             )
             if credit_amount <= Decimal("0"):
                 continue
-            if explicit_paye_payable_account_codes or explicit_pension_payable_account_codes:
-                is_tax_liability = (
-                    (bool(line_account_id_key) and line_account_id_key in explicit_paye_payable_account_ids)
-                    or (bool(canonical_line_code) and canonical_line_code in explicit_paye_payable_account_codes)
-                )
-                is_pension_liability = (
-                    (bool(line_account_id_key) and line_account_id_key in explicit_pension_payable_account_ids)
-                    or (bool(canonical_line_code) and canonical_line_code in explicit_pension_payable_account_codes)
-                )
-            else:
-                is_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
-                    bool(line_account_id_key) and line_account_id_key in tax_liability_account_ids
-                ) or (
-                    bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
-                )
-                is_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
-                    bool(line_account_id_key) and line_account_id_key in pension_liability_account_ids
-                ) or (
-                    bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
-                )
+            heuristic_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
+                bool(line_account_id_key) and line_account_id_key in tax_liability_account_ids
+            ) or (
+                bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
+            )
+            heuristic_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
+                bool(line_account_id_key) and line_account_id_key in pension_liability_account_ids
+            ) or (
+                bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
+            )
+            explicit_tax_liability = (
+                (bool(line_account_id_key) and line_account_id_key in explicit_paye_payable_account_ids)
+                or (bool(canonical_line_code) and canonical_line_code in explicit_paye_payable_account_codes)
+            )
+            explicit_pension_liability = (
+                (bool(line_account_id_key) and line_account_id_key in explicit_pension_payable_account_ids)
+                or (bool(canonical_line_code) and canonical_line_code in explicit_pension_payable_account_codes)
+            )
+            # Keep explicit nominal-code matching as a strong signal, but do not suppress
+            # heuristic matching when explicit sets are incomplete or formatted differently.
+            is_tax_liability = explicit_tax_liability or heuristic_tax_liability
+            is_pension_liability = explicit_pension_liability or heuristic_pension_liability
             if is_tax_liability:
                 p32_credit_total += credit_amount
                 matched_credit_lines += 1
@@ -2413,6 +2415,7 @@ async def _payroll_overview_extract_posted_journal_payables(
     if not isinstance(journal_line_rows, list):
         journal_line_rows = []
     diagnostics["matchedCreditLines"] = matched_credit_lines
+    diagnostics["selectedJournalLines"] = journal_line_rows[:30]
 
     deterministic_paye = abs(p32_credit_total)
     deterministic_pension = abs(pension_credit_total)
@@ -2425,6 +2428,123 @@ async def _payroll_overview_extract_posted_journal_payables(
 
     diagnostics["engine"] = "rules"
     return deterministic_paye, deterministic_pension, diagnostics
+
+
+async def _payroll_overview_openai_liability_inference(
+    *,
+    reference_payrun: dict | None,
+    payrun_rows: list[dict],
+    journal_payable_diagnostics: dict,
+    trial_balance_report_date: date | None,
+    trial_balance_delta_p32_tax: Decimal,
+    trial_balance_delta_pension_payable: Decimal,
+    user_id: str | None = None,
+) -> tuple[Decimal, Decimal, dict]:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return Decimal("0"), Decimal("0"), {"engine": "disabled", "used": False, "reason": "openai_not_configured"}
+
+    reference = reference_payrun if isinstance(reference_payrun, dict) else {}
+    recent_runs = []
+    for row in (payrun_rows or [])[:8]:
+        if not isinstance(row, dict):
+            continue
+        recent_runs.append(
+            {
+                "payRunId": _payroll_overview_text(row.get("payRunId")),
+                "status": _payroll_overview_text(row.get("status")),
+                "periodStart": _payroll_overview_text(row.get("payRunPeriodStartDate")),
+                "periodEnd": _payroll_overview_text(row.get("payRunPeriodEndDate")),
+                "paymentDate": _payroll_overview_text(row.get("paymentDate")),
+                "estimatedP32Tax": float(_payroll_overview_numeric_decimal(row.get("estimatedP32Tax"))),
+                "estimatedPensionPayable": float(_payroll_overview_numeric_decimal(row.get("estimatedPensionPayable"))),
+                "payslipCount": int(row.get("payslipCount") or 0),
+            }
+        )
+
+    ai_context = {
+        "selectedPayrun": {
+            "payRunId": _payroll_overview_text(reference.get("payRunId")),
+            "status": _payroll_overview_text(reference.get("status")),
+            "periodStart": _payroll_overview_text(reference.get("payRunPeriodStartDate")),
+            "periodEnd": _payroll_overview_text(reference.get("payRunPeriodEndDate")),
+            "paymentDate": _payroll_overview_text(reference.get("paymentDate")),
+            "estimatedP32Tax": float(_payroll_overview_numeric_decimal(reference.get("estimatedP32Tax"))),
+            "estimatedPensionPayable": float(_payroll_overview_numeric_decimal(reference.get("estimatedPensionPayable"))),
+        },
+        "recentPayruns": recent_runs,
+        "journalDiagnostics": {
+            "selectedJournalId": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalId")),
+            "selectedJournalDate": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalDate")),
+            "selectedJournalReference": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalReference")),
+            "matchedCreditLines": int((journal_payable_diagnostics or {}).get("matchedCreditLines") or 0),
+            "selectedJournalLines": (journal_payable_diagnostics or {}).get("selectedJournalLines")
+            if isinstance((journal_payable_diagnostics or {}).get("selectedJournalLines"), list)
+            else [],
+            "journalTaxLineTotal": float(_payroll_overview_numeric_decimal((journal_payable_diagnostics or {}).get("journalTaxLineTotal"))),
+            "journalPensionLineTotal": float(_payroll_overview_numeric_decimal((journal_payable_diagnostics or {}).get("journalPensionLineTotal"))),
+        },
+        "trialBalance": {
+            "reportDate": trial_balance_report_date.isoformat() if isinstance(trial_balance_report_date, date) else "",
+            "taxDeltaFromPreviousDay": float(trial_balance_delta_p32_tax),
+            "pensionDeltaFromPreviousDay": float(trial_balance_delta_pension_payable),
+        },
+    }
+
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a UK payroll accounting analyst. Determine PAYE/NIC and pension liabilities for the most "
+                    "recent posted payroll run using journal lines first, then trial-balance deltas and payrun totals. "
+                    "Return conservative numeric estimates and short notes."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Context JSON: {json.dumps(ai_context, default=_json_default)}\n"
+                    "Return only JSON matching the schema."
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "payroll_journal_figures",
+                "schema": PAYROLL_JOURNAL_FIGURES_AI_SCHEMA,
+                "strict": True,
+            }
+        },
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "payroll liability inference",
+            preferred_model=settings.openai_model,
+            timeout_seconds=PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS,
+            user_id=user_id,
+            feature="openai-core",
+            page="payroll-headcount",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid payroll liability extraction JSON.")
+        paye = abs(_payroll_overview_numeric_decimal(parsed.get("payePayable")))
+        pension = abs(_payroll_overview_numeric_decimal(parsed.get("pensionPayable")))
+        confidence = float(parsed.get("confidence") or 0)
+        diagnostics = {
+            "engine": "openai",
+            "used": False,
+            "confidence": confidence,
+            "notes": str(parsed.get("notes") or "").strip(),
+            "periodDate": str(parsed.get("periodDate") or "").strip(),
+            "payePayable": float(paye),
+            "pensionPayable": float(pension),
+        }
+        return paye, pension, diagnostics
+    except Exception as exc:
+        logger.exception("Payroll liability OpenAI inference failed: %s", exc)
+        return Decimal("0"), Decimal("0"), {"engine": "openai_error", "used": False, "reason": _sync_error_message(exc)}
 
 
 def _payroll_overview_trial_balance_pension_rows(trial_balance_payload: dict) -> list[dict]:
@@ -2468,6 +2588,84 @@ def _payroll_overview_trial_balance_pension_rows(trial_balance_payload: dict) ->
         )
     rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
     return rows
+
+
+def _payroll_overview_trial_balance_line_balance_map(trial_balance_payload: dict) -> dict[str, Decimal]:
+    lines = _xero_report_lines(trial_balance_payload if isinstance(trial_balance_payload, dict) else {})
+    balances: dict[str, Decimal] = {}
+    for line in lines:
+        label = str(line.get("label") or "").strip()
+        label_norm = _payroll_overview_normalise_key(label)
+        if not label_norm or label_norm in {"total", "totals"}:
+            continue
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not amounts:
+            continue
+        balances[label_norm] = _money(amounts[-1])
+    return balances
+
+
+def _payroll_overview_trial_balance_label_is_tax_liability(label_norm: str) -> bool:
+    if not label_norm:
+        return False
+    if "pension" in label_norm or "nest" in label_norm:
+        return False
+    includes_tax = any(
+        token in label_norm
+        for token in (
+            "payepayable",
+            "payenicpayable",
+            "paye",
+            "nicpayable",
+            "nationalinsurance",
+            "hmrc",
+            "payrollpayable",
+            "taxpayable",
+        )
+    )
+    includes_liability_hint = any(token in label_norm for token in ("payable", "liability", "creditor"))
+    return includes_tax and (includes_liability_hint or "paye" in label_norm or "nic" in label_norm or "hmrc" in label_norm)
+
+
+def _payroll_overview_trial_balance_label_is_pension_liability(label_norm: str) -> bool:
+    if not label_norm:
+        return False
+    includes_pension = ("pension" in label_norm) or ("nest" in label_norm) or ("autoenrolment" in label_norm)
+    includes_liability_hint = any(token in label_norm for token in ("payable", "liability", "creditor"))
+    return includes_pension and (includes_liability_hint or "pensionpayable" in label_norm)
+
+
+def _payroll_overview_trial_balance_liability_delta(
+    current_payload: dict,
+    previous_payload: dict,
+) -> tuple[Decimal, Decimal, dict]:
+    current = _payroll_overview_trial_balance_line_balance_map(current_payload)
+    previous = _payroll_overview_trial_balance_line_balance_map(previous_payload)
+    keys = set(current.keys()) | set(previous.keys())
+    tax_delta = Decimal("0")
+    pension_delta = Decimal("0")
+    tax_labels: list[str] = []
+    pension_labels: list[str] = []
+    for key in sorted(keys):
+        current_value = _money(current.get(key, Decimal("0")))
+        previous_value = _money(previous.get(key, Decimal("0")))
+        delta = _money(current_value - previous_value)
+        if delta == Decimal("0"):
+            continue
+        if _payroll_overview_trial_balance_label_is_tax_liability(key):
+            tax_delta += abs(delta)
+            tax_labels.append(key)
+            continue
+        if _payroll_overview_trial_balance_label_is_pension_liability(key):
+            pension_delta += abs(delta)
+            pension_labels.append(key)
+    diagnostics = {
+        "taxDelta": float(abs(tax_delta)),
+        "pensionDelta": float(abs(pension_delta)),
+        "taxLabels": tax_labels[:20],
+        "pensionLabels": pension_labels[:20],
+    }
+    return abs(tax_delta), abs(pension_delta), diagnostics
 
 
 async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
@@ -2703,10 +2901,49 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "Trial balance",
         {"date": trial_balance_report_date.isoformat()},
     )
+    trial_balance_previous_date = trial_balance_report_date - timedelta(days=1)
+    trial_balance_previous_payload = await _fetch(
+        XERO_REPORTS_TRIAL_BALANCE_URL,
+        "Trial balance previous day",
+        {"date": trial_balance_previous_date.isoformat()},
+    )
+    trial_balance_delta_p32_tax = Decimal("0")
+    trial_balance_delta_pension_payable = Decimal("0")
+    trial_balance_delta_diagnostics: dict = {}
+    try:
+        (
+            trial_balance_delta_p32_tax,
+            trial_balance_delta_pension_payable,
+            trial_balance_delta_diagnostics,
+        ) = _payroll_overview_trial_balance_liability_delta(
+            trial_balance_payload,
+            trial_balance_previous_payload,
+        )
+    except Exception:
+        trial_balance_delta_p32_tax = Decimal("0")
+        trial_balance_delta_pension_payable = Decimal("0")
+        trial_balance_delta_diagnostics = {}
     trial_balance_pension_rows = _payroll_overview_trial_balance_pension_rows(trial_balance_payload)
     trial_balance_pension_payable_balance = float(
         sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in trial_balance_pension_rows)
     )
+    openai_p32_tax = Decimal("0")
+    openai_pension_payable = Decimal("0")
+    openai_payable_diagnostics: dict = {}
+    try:
+        if posted_journal_p32_tax <= Decimal("0") or posted_journal_pension_payable <= Decimal("0"):
+            openai_p32_tax, openai_pension_payable, openai_payable_diagnostics = await _payroll_overview_openai_liability_inference(
+                reference_payrun=reference_payrun,
+                payrun_rows=payrun_rows,
+                journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
+                trial_balance_report_date=trial_balance_report_date,
+                trial_balance_delta_p32_tax=trial_balance_delta_p32_tax,
+                trial_balance_delta_pension_payable=trial_balance_delta_pension_payable,
+                user_id=str(user.get("id") or "").strip() or None,
+            )
+    except Exception as exc:
+        errors.append(f"OpenAI payroll inference: {_sync_error_message(exc)}")
+        openai_payable_diagnostics = {}
 
     logger.info(
         "payroll_overview_fetch_diagnostics user_id=%s tenant_id=%s employees_attempted=%s employees_status=%s employees_ok=%s payruns_attempted=%s payruns_status=%s payruns_ok=%s accounts_attempted=%s accounts_status=%s accounts_ok=%s payruns_returned=%s errors=%s",
@@ -2821,10 +3058,18 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     )
     if posted_journal_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(posted_journal_p32_tax)
+    elif openai_p32_tax > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
+        estimated_p32_tax_balance = float(openai_p32_tax)
+    elif trial_balance_delta_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
     if estimated_p32_tax_balance <= 0:
         estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
     if posted_journal_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(posted_journal_pension_payable)
+    elif openai_pension_payable > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
+        estimated_pension_payable_balance = float(openai_pension_payable)
+    elif trial_balance_delta_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(trial_balance_delta_pension_payable)
     if estimated_pension_payable_balance <= 0:
         estimated_pension_payable_balance = (
             latest_payrun_pension_balance
@@ -2836,6 +3081,12 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "posted_payroll_journal"
             if posted_journal_p32_tax > Decimal("0")
             else (
+            "openai_payroll_inference"
+            if (openai_p32_tax > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6)
+            else (
+            "trial_balance_delta"
+            if trial_balance_delta_p32_tax > Decimal("0")
+            else (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax"))) > 0
             else (
@@ -2843,10 +3094,16 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 if latest_payrun_p32_balance > 0
                 else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
             )
-        )) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
+        )))) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
         "pensionPayable": (
             "posted_payroll_journal"
             if posted_journal_pension_payable > Decimal("0")
+            else (
+            "openai_payroll_inference"
+            if (openai_pension_payable > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6)
+            else (
+            "trial_balance_delta"
+            if trial_balance_delta_pension_payable > Decimal("0")
             else (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable"))) > 0
@@ -2859,7 +3116,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
                 )
             )
-        )) if reference_payrun else (
+        )))) if reference_payrun else (
             "trial_balance_report"
             if trial_balance_pension_payable_balance > 0
             else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
@@ -2895,7 +3152,12 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "pensionPayableBalance": estimated_pension_payable_balance,
             "figureSources": estimated_balances_source,
             "trialBalanceReportDate": trial_balance_report_date.isoformat() if isinstance(trial_balance_report_date, date) else "",
+            "trialBalancePreviousReportDate": trial_balance_previous_date.isoformat() if isinstance(trial_balance_previous_date, date) else "",
+            "trialBalanceDeltaP32Tax": float(trial_balance_delta_p32_tax),
+            "trialBalanceDeltaPensionPayable": float(trial_balance_delta_pension_payable),
+            "trialBalanceDeltaDiagnostics": trial_balance_delta_diagnostics if isinstance(trial_balance_delta_diagnostics, dict) else {},
             "trialBalancePensionPayableBalance": trial_balance_pension_payable_balance,
+            "openAiPayrollInferenceDiagnostics": openai_payable_diagnostics if isinstance(openai_payable_diagnostics, dict) else {},
             "payrunDetailDiagnostics": {
                 "attempted": details_fetch_attempted,
                 "succeeded": details_fetch_succeeded,
@@ -2911,6 +3173,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 "payRuns": fetch_diagnostics.get("payruns") or {},
                 "accounts": fetch_diagnostics.get("chartofaccounts") or {},
                 "trialBalance": fetch_diagnostics.get("trialbalance") or {},
+                "trialBalancePreviousDay": fetch_diagnostics.get("trialbalancepreviousday") or {},
             },
         },
         "payRuns": payrun_rows[:12],

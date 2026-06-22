@@ -10273,6 +10273,19 @@
                 color: #506384;
                 line-height: 1.3;
             }
+            .insights-status-tick {
+                display: inline-grid;
+                place-items: center;
+                width: 22px;
+                height: 22px;
+                border-radius: 999px;
+                border: 1px solid rgba(40, 159, 98, 0.36);
+                background: rgba(231, 250, 240, 0.95);
+                color: #1b8e56;
+                font-size: 0.9rem;
+                font-weight: 900;
+                line-height: 1;
+            }
             .insights-xero-hero-actions {
                 margin-top: auto;
                 display: flex;
@@ -98503,6 +98516,14 @@
                 return `${days} day${days === 1 ? "" : "s"} ago`;
             }
 
+            function insightsSyncDetailShowsCompleted(value = "") {
+                const detail = String(value || "").trim().toLowerCase();
+                if (!detail) return false;
+                if (detail === "completed" || detail === "complete") return true;
+                if (detail.startsWith("completed") || detail.startsWith("complete")) return true;
+                return detail.includes("has been completed") || detail.includes("sync completed") || detail.includes("import completed");
+            }
+
             function insightsXeroWarningMessage() {
                 const run = latestSyncRun || null;
                 const status = String(run?.status || "").trim().toLowerCase();
@@ -98533,6 +98554,8 @@
                     ? `${connectedCount.toLocaleString("en-GB")} organisation tenant${connectedCount === 1 ? "" : "s"} linked to Jenius`
                     : "No Xero organisation tenants linked yet";
                 const syncDetail = insightsFullSyncRelativeDetail(lastFullSync);
+                const syncLiveDetail = syncRunLiveDetail(run) || "Sync is currently running in the background.";
+                const syncLiveCompleted = syncRunning && insightsSyncDetailShowsCompleted(syncLiveDetail);
 
                 const cards = [
                     {
@@ -98549,8 +98572,9 @@
                         title: "Last Full Sync",
                         value: syncRunning ? "In progress" : lastFullSyncValue,
                         detail: syncRunning
-                            ? (syncRunLiveDetail(run) || "Sync is currently running in the background.")
+                            ? syncLiveDetail
                             : syncDetail,
+                        detailTick: syncLiveCompleted,
                         warning: syncStale ? "Warning: full sync is overdue (older than 24 hours)." : "",
                         tone: syncFailed ? "error" : (syncStale ? "warn" : "good"),
                         icon: syncRunning ? "refresh" : (syncFailed ? "notice" : "check-circle"),
@@ -98588,7 +98612,10 @@
                                     <span class="insights-xero-hero-title">${escapeHTML(card.title || "Status")}</span>
                                 </div>
                                 <strong class="insights-xero-hero-value">${escapeHTML(card.value || "--")}</strong>
-                                <p class="insights-xero-hero-detail">${escapeHTML(card.detail || "")}</p>
+                                ${card.detailTick
+                                    ? `<p class="insights-xero-hero-detail"><span class="insights-status-tick" role="img" aria-label="Completed">✓</span></p>`
+                                    : `<p class="insights-xero-hero-detail">${escapeHTML(card.detail || "")}</p>`
+                                }
                                 ${card.warning ? `<p class="insights-xero-hero-alert is-warning">${escapeHTML(card.warning)}</p>` : ""}
                                 <div class="insights-xero-hero-actions${(Array.isArray(card.actions) ? card.actions.length : 0) > 1 ? " is-dual" : ""}">
                                     ${(Array.isArray(card.actions) ? card.actions : []).map((action) => (
