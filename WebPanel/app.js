@@ -26,6 +26,8 @@ let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
 let selectedClientId = null;
 let activeView = "ledger";
+let taskSidebarOpen = false;
+let taskSidebarTab = "task";
 let searchTerm = "";
 let matchingSearchTerm = "";
 let clientFilter = "all";
@@ -103,6 +105,61 @@ installNonBlockingBrowserDialogOverrides();
 
 const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
 const filterLabels = { all: "All invoices", action: "Needs action", current: "Current only" };
+const taskSidebarTabs = ["task", "notes", "history"];
+
+function normaliseTaskSidebarTab(value) {
+    return taskSidebarTabs.includes(value) ? value : "task";
+}
+
+function renderTaskSidebarTabs() {
+    const activeTab = normaliseTaskSidebarTab(taskSidebarTab);
+    taskSidebarTab = activeTab;
+    document.querySelectorAll("[data-sidebar-tab]").forEach((button) => {
+        const isActive = button.dataset.sidebarTab === activeTab;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-selected", String(isActive));
+    });
+    const panelByTab = {
+        task: document.getElementById("sidebarPanelTask"),
+        notes: document.getElementById("sidebarPanelNotes"),
+        history: document.getElementById("sidebarPanelHistory")
+    };
+    Object.entries(panelByTab).forEach(([tab, panel]) => {
+        if (!panel) return;
+        panel.hidden = tab !== activeTab;
+    });
+}
+
+function applyTaskSidebarState() {
+    const sidebar = document.getElementById("taskSidebar");
+    const backdrop = document.getElementById("taskSidebarBackdrop");
+    const toggleButton = document.getElementById("openTaskSidebarButton");
+    const shouldShow = activeView === "client" && taskSidebarOpen;
+    if (sidebar) {
+        sidebar.classList.toggle("is-open", shouldShow);
+        sidebar.setAttribute("aria-hidden", String(!shouldShow));
+    }
+    if (backdrop) {
+        backdrop.classList.toggle("is-visible", shouldShow);
+        backdrop.setAttribute("aria-hidden", String(!shouldShow));
+    }
+    if (toggleButton) {
+        toggleButton.textContent = shouldShow ? "Hide task sidebar" : "Open task sidebar";
+        toggleButton.setAttribute("aria-expanded", String(shouldShow));
+    }
+}
+
+function setTaskSidebarOpen(nextOpen) {
+    taskSidebarOpen = Boolean(nextOpen);
+    applyTaskSidebarState();
+}
+
+function setTaskSidebarTab(nextTab, options = {}) {
+    taskSidebarTab = normaliseTaskSidebarTab(nextTab);
+    if (options.open !== false) taskSidebarOpen = true;
+    renderTaskSidebarTabs();
+    applyTaskSidebarState();
+}
 
 function normaliseAPI(config) {
     return {
@@ -1111,7 +1168,7 @@ function renderInvoiceTable(invoices = allInvoices()) {
                     <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
                     <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
                     <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
-                    <td><button class="row-menu" type="button">⋮</button></td>
+                    <td><button class="row-action-button" type="button" data-open-sidebar-tab="history" aria-label="Open task history sidebar" title="Open task history">⧉</button></td>
                 `;
                 fragment.appendChild(row);
             });
@@ -1179,7 +1236,10 @@ function renderClientScreen() {
     clientScreen.hidden = activeView !== "client";
     settingsScreen.hidden = activeView !== "settings";
     hmrcSettingsScreen.hidden = activeView !== "hmrcSettings";
-    if (activeView !== "client") return;
+    if (activeView !== "client") {
+        applyTaskSidebarState();
+        return;
+    }
 
     const invoice = findInvoiceById(selectedInvoiceId);
     const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
@@ -1231,6 +1291,8 @@ function renderClientScreen() {
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
     renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
     renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+    renderTaskSidebarTabs();
+    applyTaskSidebarState();
 }
 
 function toDateInputValue(value) {
@@ -1997,11 +2059,14 @@ function wireFilters() {
         renderInvoiceTable();
     });
     document.getElementById("invoiceTableBody").addEventListener("click", (event) => {
+        const requestedTab = event.target.closest("[data-open-sidebar-tab]")?.dataset.openSidebarTab;
         const row = event.target.closest("tr[data-invoice-id]");
         if (!row) return;
         selectedInvoiceId = row.dataset.invoiceId || null;
         selectedClientId = row.dataset.customerId || null;
         if (!selectedInvoiceId || !selectedClientId) return;
+        taskSidebarTab = normaliseTaskSidebarTab(requestedTab || "task");
+        taskSidebarOpen = true;
         activeView = "client";
         renderAll();
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2072,26 +2137,48 @@ function wireSyncButtons() {
 
 function wireForms() {
     document.getElementById("openSettingsButton").addEventListener("click", () => {
+        setTaskSidebarOpen(false);
         activeView = "settings";
         renderAll();
     });
     document.getElementById("openHmrcSettingsButton").addEventListener("click", async () => {
+        setTaskSidebarOpen(false);
         activeView = "hmrcSettings";
         await refreshHmrcOauthStatus();
         await refreshHmrc64Tracker();
         renderAll();
     });
     document.getElementById("backToSettingsFromHmrcButton").addEventListener("click", () => {
+        setTaskSidebarOpen(false);
         activeView = "settings";
         renderAll();
     });
     document.getElementById("backToLedgerFromSettingsButton").addEventListener("click", () => {
+        setTaskSidebarOpen(false);
         activeView = "ledger";
         renderAll();
     });
     document.getElementById("backToLedgerButton").addEventListener("click", () => {
+        setTaskSidebarOpen(false);
         activeView = "ledger";
         renderAll();
+    });
+    document.getElementById("openTaskSidebarButton")?.addEventListener("click", () => {
+        setTaskSidebarOpen(!taskSidebarOpen);
+    });
+    document.getElementById("closeTaskSidebarButton")?.addEventListener("click", () => {
+        setTaskSidebarOpen(false);
+    });
+    document.getElementById("taskSidebarBackdrop")?.addEventListener("click", () => {
+        setTaskSidebarOpen(false);
+    });
+    document.getElementById("sidebarGoHistoryButton")?.addEventListener("click", () => {
+        setTaskSidebarTab("history", { open: true });
+    });
+    document.querySelectorAll("[data-sidebar-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+            setTaskSidebarTab(button.dataset.sidebarTab || "task", { open: true });
+        });
     });
     document.getElementById("matchingSearch").addEventListener("input", (event) => {
         matchingSearchTerm = event.target.value || "";

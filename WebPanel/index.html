@@ -117,52 +117,95 @@
                     </div>
                     <button class="primary-button save-client-button" id="saveClientChangesButton" type="button" hidden>Save Changes</button>
                     <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
-                    <aside class="task-sidebar">
+                    <button class="ghost-button sidebar-toggle-button" id="openTaskSidebarButton" type="button" aria-controls="taskSidebar" aria-expanded="false">Open task sidebar</button>
+                    <div class="task-sidebar-backdrop" id="taskSidebarBackdrop" aria-hidden="true"></div>
+                    <aside class="task-sidebar task-sidebar-drawer" id="taskSidebar" aria-hidden="true">
                         <div class="task-sidebar-head">
-                            <p class="eyebrow">Task sidebar</p>
-                            <h3>Task controls</h3>
-                            <p class="detail-meta" id="sidebarTaskMeta">Select a task to manage status and ownership.</p>
+                            <div>
+                                <p class="eyebrow">Task sidebar</p>
+                                <h3>Task controls</h3>
+                                <p class="detail-meta" id="sidebarTaskMeta">Select a task to manage status and ownership.</p>
+                            </div>
+                            <div class="task-sidebar-head-actions">
+                                <button class="ghost-button sidebar-mini-button" id="sidebarGoHistoryButton" type="button">Client timeline</button>
+                                <button class="ghost-button sidebar-mini-button" id="closeTaskSidebarButton" type="button">Close</button>
+                            </div>
                         </div>
-                        <div class="task-sidebar-grid">
-                            <label class="profile-field">Client manager
-                                <select id="sidebarManagerSelect"></select>
-                            </label>
-                            <label class="profile-field">Custom manager
-                                <input id="sidebarManagerCustomInput" type="text" placeholder="Type a manager name">
-                            </label>
-                            <div class="confirmation-actions">
-                                <button class="ghost-button" id="sidebarSaveManagerButton" type="button">Save manager</button>
+                        <nav class="task-sidebar-tabs" aria-label="Task sidebar tabs">
+                            <button class="task-sidebar-tab is-active" type="button" data-sidebar-tab="task">Task</button>
+                            <button class="task-sidebar-tab" type="button" data-sidebar-tab="notes">Notes</button>
+                            <button class="task-sidebar-tab" type="button" data-sidebar-tab="history">History</button>
+                        </nav>
+                        <section class="task-sidebar-panel" id="sidebarPanelTask">
+                            <div class="task-sidebar-grid">
+                                <label class="profile-field">Client manager
+                                    <select id="sidebarManagerSelect"></select>
+                                </label>
+                                <label class="profile-field">Custom manager
+                                    <input id="sidebarManagerCustomInput" type="text" placeholder="Type a manager name">
+                                </label>
+                                <div class="confirmation-actions">
+                                    <button class="ghost-button" id="sidebarSaveManagerButton" type="button">Save manager</button>
+                                </div>
+                                <label class="profile-field">Task status
+                                    <select id="sidebarStatusSelect">
+                                        <option value="Paid">Paid</option>
+                                        <option value="Outstanding">Outstanding</option>
+                                        <option value="Query">Query</option>
+                                        <option value="Overdue">Overdue</option>
+                                        <option value="Legal">Legal</option>
+                                        <option value="Bad debt">Bad debt</option>
+                                        <option value="Promise Received">Promise Received</option>
+                                    </select>
+                                </label>
+                                <label class="profile-field profile-field-address">Status note
+                                    <textarea id="sidebarStatusNote" rows="3" placeholder="Status context for this task"></textarea>
+                                </label>
+                                <label class="confirmation-checkbox">
+                                    <input id="sidebarApplyAllOpenCheck" type="checkbox">
+                                    <span>Apply status to all open client tasks</span>
+                                </label>
+                                <div class="confirmation-actions">
+                                    <button class="primary-button" id="sidebarApplyStatusButton" type="button">Apply status</button>
+                                </div>
+                                <label class="profile-field">Promised payment date
+                                    <input id="sidebarPromiseDateInput" type="date">
+                                </label>
+                                <div class="confirmation-actions">
+                                    <button class="ghost-button" id="sidebarSavePromiseButton" type="button">Save promise date</button>
+                                </div>
+                                <div class="task-sidebar-summary" id="sidebarQuickStats"></div>
                             </div>
-                            <label class="profile-field">Task status
-                                <select id="sidebarStatusSelect">
-                                    <option value="Paid">Paid</option>
-                                    <option value="Outstanding">Outstanding</option>
-                                    <option value="Query">Query</option>
-                                    <option value="Overdue">Overdue</option>
-                                    <option value="Legal">Legal</option>
-                                    <option value="Bad debt">Bad debt</option>
-                                    <option value="Promise Received">Promise Received</option>
-                                </select>
-                            </label>
-                            <label class="profile-field profile-field-address">Status note
-                                <textarea id="sidebarStatusNote" rows="3" placeholder="Status context for this task"></textarea>
-                            </label>
-                            <label class="confirmation-checkbox">
-                                <input id="sidebarApplyAllOpenCheck" type="checkbox">
-                                <span>Apply status to all open client tasks</span>
-                            </label>
-                            <div class="confirmation-actions">
-                                <button class="primary-button" id="sidebarApplyStatusButton" type="button">Apply status</button>
-                            </div>
-                            <label class="profile-field">Promised payment date
-                                <input id="sidebarPromiseDateInput" type="date">
-                            </label>
-                            <div class="confirmation-actions">
-                                <button class="ghost-button" id="sidebarSavePromiseButton" type="button">Save promise date</button>
-                            </div>
-                            <div class="task-sidebar-summary" id="sidebarQuickStats"></div>
-                        </div>
-                        <div class="mini-timeline" id="statusTimeline"></div>
+                        </section>
+                        <section class="task-sidebar-panel" id="sidebarPanelNotes" hidden>
+                            <section class="detail-panel">
+                                <div class="panel-heading">
+                                    <p class="eyebrow">Notes</p>
+                                    <h3>Internal notes</h3>
+                                </div>
+                                <form class="stack-form" id="clientNoteForm">
+                                    <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, chasing updates, or payment context"></textarea>
+                                    <button class="primary-button" type="submit">Add client note</button>
+                                </form>
+                                <div class="mini-timeline" id="clientNotesTimeline"></div>
+                            </section>
+                            <section class="detail-panel">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Invoice note</p>
+                                        <h3>Attach to invoice</h3>
+                                    </div>
+                                </div>
+                                <form class="stack-form" id="invoiceNoteForm">
+                                    <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
+                                    <button class="primary-button" type="submit">Add invoice note</button>
+                                </form>
+                                <div class="mini-timeline" id="invoiceNotesTimeline"></div>
+                            </section>
+                        </section>
+                        <section class="task-sidebar-panel" id="sidebarPanelHistory" hidden>
+                            <div class="mini-timeline" id="statusTimeline"></div>
+                        </section>
                     </aside>
                 </div>
             </div>
@@ -302,33 +345,6 @@
                 </div>
             </section>
 
-            <div class="detail-grid client-action-grid">
-                <section class="detail-panel">
-                    <div class="panel-heading">
-                        <p class="eyebrow">Notes</p>
-                        <h3>Internal notes</h3>
-                    </div>
-                    <form class="stack-form" id="clientNoteForm">
-                        <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, chasing updates, or payment context"></textarea>
-                        <button class="primary-button" type="submit">Add client note</button>
-                    </form>
-                    <div class="mini-timeline" id="clientNotesTimeline"></div>
-                </section>
-
-                <section class="detail-panel">
-                    <div class="panel-heading">
-                        <div>
-                            <p class="eyebrow">Invoice note</p>
-                            <h3>Attach to invoice</h3>
-                        </div>
-                    </div>
-                    <form class="stack-form" id="invoiceNoteForm">
-                        <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
-                        <button class="primary-button" type="submit">Add invoice note</button>
-                    </form>
-                    <div class="mini-timeline" id="invoiceNotesTimeline"></div>
-                </section>
-            </div>
         </section>
 
         <section class="settings-screen detail-card" id="settingsScreen" hidden>
