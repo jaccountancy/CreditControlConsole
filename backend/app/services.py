@@ -278,6 +278,7 @@ XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/
 XERO_PAYROLL_PAYSLIP_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips/{payslip_id}"
 XERO_PAYROLL_PAYSLIPS_BY_PAYRUN_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips"
 XERO_REPORTS_TRIAL_BALANCE_URL = "https://api.xero.com/api.xro/2.0/Reports/TrialBalance"
+XERO_REPORTS_ACCOUNT_TRANSACTIONS_URL = "https://api.xero.com/api.xro/2.0/Reports/AccountTransactions"
 SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE = "1257L"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
@@ -2454,6 +2455,7 @@ async def _payroll_overview_openai_liability_inference(
     reference_payrun: dict | None,
     payrun_rows: list[dict],
     payroll_api_context: dict | None,
+    nominal_transaction_context: dict | None,
     journal_payable_diagnostics: dict,
     trial_balance_report_date: date | None,
     trial_balance_comparison_date: date | None,
@@ -2495,6 +2497,7 @@ async def _payroll_overview_openai_liability_inference(
         },
         "recentPayruns": recent_runs,
         "payrollApiContext": payroll_api_context if isinstance(payroll_api_context, dict) else {},
+        "nominalTransactionContext": nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {},
         "journalDiagnostics": {
             "selectedJournalId": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalId")),
             "selectedJournalDate": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalDate")),
@@ -2520,7 +2523,8 @@ async def _payroll_overview_openai_liability_inference(
                 "role": "system",
                 "content": (
                     "You are a UK payroll accounting analyst. Determine PAYE/NIC and pension liabilities for the most "
-                    "recent posted payroll run using payroll API data (payrun details + payslips) first, then trial-balance deltas. "
+                    "recent posted payroll run using payroll API data (payrun details + payslips) first, then nominal "
+                    "account-transaction evidence, then trial-balance deltas. "
                     "Return conservative numeric estimates and short notes."
                 ),
             },
@@ -2827,6 +2831,98 @@ def _payroll_overview_payslip_pension_from_payload(payroll_payload: dict) -> Dec
         if row_total > Decimal("0"):
             total += row_total
     return _money(total)
+
+
+def _payroll_overview_nominal_accounts(accounts: list[dict]) -> tuple[list[dict], list[dict]]:
+    tax_accounts: list[dict] = []
+    pension_accounts: list[dict] = []
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        account_id = _payroll_overview_text(account.get("AccountID") or account.get("ID"))
+        code = _payroll_overview_text(account.get("Code"))
+        name = _payroll_overview_text(account.get("Name"))
+        if not account_id and not code and not name:
+            continue
+        entry = {
+            "accountId": account_id,
+            "code": code,
+            "name": name,
+        }
+        if _payroll_overview_account_is_tax_liability(account):
+            tax_accounts.append(entry)
+        if _payroll_overview_account_is_pension_liability(account):
+            pension_accounts.append(entry)
+    tax_accounts.sort(key=lambda row: (_payroll_overview_normalise_key(row.get("code")), _payroll_overview_normalise_key(row.get("name"))))
+    pension_accounts.sort(key=lambda row: (_payroll_overview_normalise_key(row.get("code")), _payroll_overview_normalise_key(row.get("name"))))
+    return tax_accounts[:6], pension_accounts[:6]
+
+
+def _payroll_overview_account_transaction_lines(payload: dict) -> list[dict]:
+    lines = _xero_report_lines(payload if isinstance(payload, dict) else {})
+    rows: list[dict] = []
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        label = _payroll_overview_text(line.get("label"))
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not label and not amounts:
+            continue
+        rows.append(
+            {
+                "label": label,
+                "amounts": [float(_money(value)) for value in amounts[:6]],
+            }
+        )
+    return rows
+
+
+async def _payroll_overview_nominal_transaction_context(
+    *,
+    fetcher,
+    accounts: list[dict],
+    period_start: date,
+    period_end: date,
+) -> dict:
+    tax_accounts, pension_accounts = _payroll_overview_nominal_accounts(accounts)
+    context = {
+        "engine": "nominal_account_transactions",
+        "periodStart": period_start.isoformat() if isinstance(period_start, date) else "",
+        "periodEnd": period_end.isoformat() if isinstance(period_end, date) else "",
+        "taxAccounts": tax_accounts,
+        "pensionAccounts": pension_accounts,
+        "taxAccountTransactions": [],
+        "pensionAccountTransactions": [],
+    }
+    async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
+        for account in account_rows[:4]:
+            if not isinstance(account, dict):
+                continue
+            account_id = _payroll_overview_text(account.get("accountId"))
+            if not account_id:
+                continue
+            payload = await fetcher(
+                XERO_REPORTS_ACCOUNT_TRANSACTIONS_URL,
+                f"{label_prefix} {account.get('code') or account_id} transactions",
+                {
+                    "accountID": account_id,
+                    "fromDate": period_start.isoformat(),
+                    "toDate": period_end.isoformat(),
+                },
+            )
+            rows = _payroll_overview_account_transaction_lines(payload)
+            bucket.append(
+                {
+                    "accountId": account_id,
+                    "code": _payroll_overview_text(account.get("code")),
+                    "name": _payroll_overview_text(account.get("name")),
+                    "lineCount": len(rows),
+                    "lines": rows[:80],
+                }
+            )
+    await _collect(tax_accounts, context["taxAccountTransactions"], "Tax")
+    await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension")
+    return context
 
 
 def _payroll_overview_payrun_tax_from_payload(payrun_payload: dict) -> Decimal:
@@ -3197,6 +3293,31 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     trial_balance_pension_payable_balance = float(
         sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in trial_balance_pension_rows)
     )
+    nominal_transaction_context: dict = {}
+    try:
+        if payroll_api_p32_tax <= Decimal("0") or payroll_api_pension_payable <= Decimal("0"):
+            nominal_period_start = (
+                _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
+                or _parse_any_date((reference_payrun or {}).get("paymentDate"))
+                or trial_balance_report_date
+            )
+            nominal_period_end = (
+                _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
+                or _parse_any_date((reference_payrun or {}).get("paymentDate"))
+                or trial_balance_report_date
+            )
+            if isinstance(nominal_period_start, date) and isinstance(nominal_period_end, date):
+                if nominal_period_start > nominal_period_end:
+                    nominal_period_start, nominal_period_end = nominal_period_end, nominal_period_start
+                nominal_transaction_context = await _payroll_overview_nominal_transaction_context(
+                    fetcher=_fetch,
+                    accounts=accounts,
+                    period_start=nominal_period_start,
+                    period_end=nominal_period_end,
+                )
+    except Exception as exc:
+        errors.append(f"Nominal account transactions: {_sync_error_message(exc)}")
+        nominal_transaction_context = {}
     openai_p32_tax = Decimal("0")
     openai_pension_payable = Decimal("0")
     openai_payable_diagnostics: dict = {}
@@ -3210,6 +3331,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     "selectedPayrunPayslips": selected_payrun_payslips_payload if isinstance(selected_payrun_payslips_payload, dict) else {},
                     "payrollApiDiagnostics": payroll_api_diagnostics if isinstance(payroll_api_diagnostics, dict) else {},
                 },
+                nominal_transaction_context=nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {},
                 journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
                 trial_balance_report_date=trial_balance_report_date,
                 trial_balance_comparison_date=trial_balance_previous_date,
@@ -3444,6 +3566,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "trialBalanceDeltaDiagnostics": trial_balance_delta_diagnostics if isinstance(trial_balance_delta_diagnostics, dict) else {},
             "trialBalancePensionPayableBalance": trial_balance_pension_payable_balance,
             "payrollApiDiagnostics": payroll_api_diagnostics if isinstance(payroll_api_diagnostics, dict) else {},
+            "nominalTransactionDiagnostics": nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {},
             "openAiPayrollInferenceDiagnostics": openai_payable_diagnostics if isinstance(openai_payable_diagnostics, dict) else {},
             "payrunDetailDiagnostics": {
                 "attempted": details_fetch_attempted,
