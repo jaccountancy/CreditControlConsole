@@ -18448,6 +18448,9 @@ async def sync_submitted_employee_forms(
             verify_existing_error = ""
             verify_existing_row: dict = {}
             verified_existing_id = ""
+            verified_existing_email = ""
+            verified_existing_status = ""
+            verified_existing_active = False
             try:
                 verify_existing_url = f"{XERO_PAYROLL_EMPLOYEES_URL}/{quote(existing_employee_id, safe='')}"
                 verify_existing_payload = await xero_api_get(connection_row, verify_existing_url)
@@ -18463,7 +18466,16 @@ async def sync_submitted_employee_forms(
                         "EmployeeID did not match verification response "
                         f"(expected={existing_employee_id}, actual={verified_existing_id or '-'})"
                     )
-                if not _payroll_headcount_employee_is_active(verify_existing_row if isinstance(verify_existing_row, dict) else {}):
+                verified_existing_status = str(
+                    (verify_existing_row or {}).get("EmployeeStatus")
+                    or (verify_existing_row or {}).get("Status")
+                    or (verify_existing_row or {}).get("status")
+                    or ""
+                ).strip()
+                verified_existing_active = _payroll_headcount_employee_is_active(
+                    verify_existing_row if isinstance(verify_existing_row, dict) else {}
+                )
+                if not verified_existing_active:
                     raise ValueError(
                         "Matched EmployeeID is not active in payroll "
                         f"(employee_id={verified_existing_id or existing_employee_id})."
@@ -18491,6 +18503,10 @@ async def sync_submitted_employee_forms(
                         f"tenantId={clean_tenant_id}",
                         f"existingEmployeeId={existing_employee_id}",
                         f"existingMatchMethod={existing_match_method or 'identity'}",
+                        f"verifiedEmployeeId={verified_existing_id or '-'}",
+                        f"verifiedEmployeeEmail={verified_existing_email or '-'}",
+                        f"verifiedEmployeeStatus={verified_existing_status or '-'}",
+                        f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
                         f"verifyExistingError={verify_existing_error or '-'}",
                     ],
                 )
@@ -18510,6 +18526,9 @@ async def sync_submitted_employee_forms(
                     debug_lines=row_debug_base + [
                         f"tenantId={clean_tenant_id}",
                         f"existingEmployeeId={verified_existing_id or existing_employee_id or '-'}",
+                        f"verifiedEmployeeEmail={verified_existing_email or '-'}",
+                        f"verifiedEmployeeStatus={verified_existing_status or '-'}",
+                        f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
                         "existingMatchMethod=name-only-needs-review",
                     ],
                 )
@@ -18518,7 +18537,7 @@ async def sync_submitted_employee_forms(
             update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
-                xero_employee_id=existing_employee_id,
+                xero_employee_id=verified_existing_id or existing_employee_id,
                 xero_status="exists",
                 xero_note=(
                     f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
@@ -18527,8 +18546,11 @@ async def sync_submitted_employee_forms(
                 ),
                 debug_lines=row_debug_base + [
                     f"tenantId={clean_tenant_id}",
-                    f"existingEmployeeId={existing_employee_id or '-'}",
+                    f"existingEmployeeId={verified_existing_id or existing_employee_id or '-'}",
                     f"existingMatchMethod={existing_match_method or 'identity'}",
+                    f"verifiedEmployeeEmail={verified_existing_email or '-'}",
+                    f"verifiedEmployeeStatus={verified_existing_status or '-'}",
+                    f"verifiedEmployeeActive={str(bool(verified_existing_active)).lower()}",
                 ],
             )
             continue
