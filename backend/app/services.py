@@ -3246,7 +3246,13 @@ async def _payroll_overview_nominal_transaction_context(
 
     def _is_payroll_expense_journal_entry(row: dict) -> bool:
         reference_norm = _reference_key(row.get("reference"))
-        return "payrollexpensejournal" in reference_norm
+        source_norm = _reference_key(row.get("source"))
+        description_norm = _reference_key(row.get("description"))
+        return (
+            "payrollexpensejournal" in reference_norm
+            or "payrollexpensejournal" in description_norm
+            or "payrollexpense" in source_norm
+        )
 
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
