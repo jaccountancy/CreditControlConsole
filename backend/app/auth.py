@@ -180,9 +180,6 @@ def xero_scope_string_all_available(configured_scopes: str) -> str:
     for default_scope in DEFAULT_XERO_CONNECTION_SCOPES:
         _append_scope(default_scope)
 
-    for payroll_scope in ("payroll.employees.read", "payroll.payruns.read", "payroll.payslip.read"):
-        _append_scope(payroll_scope)
-
     for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
         _append_scope(required_scope)
 

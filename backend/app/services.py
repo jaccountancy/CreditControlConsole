@@ -3615,11 +3615,15 @@ async def payroll_tenant_overview_payload(
             errors.append(f"{label}: {diagnostics['error']}")
             return {}
 
-    employees_payload, payruns_payload, accounts_payload = await asyncio.gather(
-        _fetch(XERO_PAYROLL_EMPLOYEES_URL, "Employees"),
-        _fetch(XERO_PAYROLL_PAYRUNS_URL, "Pay runs"),
-        _fetch(ACCOUNTS_URL, "Chart of accounts"),
+    _register_fetch_diagnostic("Employees", url=XERO_PAYROLL_EMPLOYEES_URL).update(
+        {"attempted": False, "ok": False, "error": "disabled_in_nominal_only_mode"}
     )
+    _register_fetch_diagnostic("Pay runs", url=XERO_PAYROLL_PAYRUNS_URL).update(
+        {"attempted": False, "ok": False, "error": "disabled_in_nominal_only_mode"}
+    )
+    accounts_payload = await _fetch(ACCOUNTS_URL, "Chart of accounts")
+    employees_payload: dict = {}
+    payruns_payload: dict = {}
 
     employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
     payruns = _payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
@@ -3750,6 +3754,19 @@ async def payroll_tenant_overview_payload(
         None,
     )
     reference_payrun = submitted_payrun or (payrun_rows[0] if payrun_rows else None)
+    if not isinstance(reference_payrun, dict):
+        today_date = utcnow().date()
+        synthetic_period_end = today_date.replace(day=1) - timedelta(days=1)
+        synthetic_period_start = synthetic_period_end.replace(day=1)
+        reference_payrun = {
+            "payRunId": "",
+            "status": "POSTED",
+            "payRunPeriodStartDate": synthetic_period_start.isoformat(),
+            "payRunPeriodEndDate": synthetic_period_end.isoformat(),
+            "paymentDate": synthetic_period_end.isoformat(),
+            "estimatedP32Tax": 0.0,
+            "estimatedPensionPayable": 0.0,
+        }
     payrun_rows_by_id = {
         _payroll_overview_text(item.get("payRunId")): item
         for item in payrun_rows
@@ -3823,11 +3840,13 @@ async def payroll_tenant_overview_payload(
     else:
         payroll_api_diagnostics = {"engine": "payroll_api", "selectedPayRunId": "", "reason": "no_selected_payrun"}
 
+    today_date = utcnow().date()
+    previous_month_end = today_date.replace(day=1) - timedelta(days=1)
     trial_balance_report_date = (
         _parse_any_date((reference_payrun or {}).get("paymentDate"))
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
-        or utcnow().date()
+        or previous_month_end
     )
     trial_balance_payload = await _fetch(
         XERO_REPORTS_TRIAL_BALANCE_URL,
@@ -4173,8 +4192,7 @@ async def payroll_tenant_overview_payload(
         details_status = int(selected_details_diag.get("statusCode") or 0)
         if payslips_status in (401, 403) or details_status in (401, 403):
             errors.append(
-                "Exact payroll liability extraction unavailable: missing payroll permission scope. "
-                "Reconnect Xero and approve payroll.payslip.read and payroll.payruns.read."
+                "Exact payroll liability extraction unavailable: missing required Xero permissions."
             )
         elif not bool(pay_slips_diag.get("ok")) and not bool(selected_details_diag.get("ok")):
             errors.append(
