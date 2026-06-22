@@ -176,6 +176,236 @@ class ServicesRegressionTests(unittest.TestCase):
         submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-1"), {})
         self.assertEqual(submitted.get("estimatedP32Tax"), 1250.0)
 
+    def test_payroll_overview_prefers_journal_with_stronger_payroll_liability_lines(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
+            if callable(on_response):
+                on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-journal-1",
+                            "PayRunStatus": "POSTED",
+                            "PayRunPeriodStartDate": "2026-05-01",
+                            "PayRunPeriodEndDate": "2026-05-31",
+                            "PaymentDate": "2026-05-31",
+                        },
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {
+                    "Accounts": [
+                        {
+                            "AccountID": "acc-825",
+                            "Code": "825",
+                            "Name": "PAYE Payable",
+                            "Type": "CURRLIAB",
+                            "Class": "LIABILITY",
+                            "CurrentBalance": "0.00",
+                        },
+                        {
+                            "AccountID": "acc-858",
+                            "Code": "858",
+                            "Name": "Pensions Payable",
+                            "Type": "CURRLIAB",
+                            "Class": "LIABILITY",
+                            "CurrentBalance": "0.00",
+                        },
+                    ]
+                }
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-journal-1"):
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-journal-1",
+                            "Totals": {"PayeAmount": "3000.00", "NicAmount": "1151.67"},
+                        }
+                    ]
+                }
+            if url == services.XERO_REPORTS_TRIAL_BALANCE_URL:
+                return {}
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        async def _fake_fetch_journals(_connection_row):
+            return (
+                [
+                    {
+                        "JournalID": "jrnl-low",
+                        "JournalDate": "2026-05-31",
+                        "Reference": "Manual adjustment",
+                        "JournalLines": [
+                            {"AccountID": "acc-825", "Credit": "4151.67", "Description": "Tax"},
+                        ],
+                    },
+                    {
+                        "JournalID": "jrnl-payroll",
+                        "JournalDate": "2026-05-31",
+                        "Reference": "Payroll journal",
+                        "JournalLines": [
+                            {"AccountID": "acc-825", "Credit": "11676.94", "Description": "Tax"},
+                            {"AccountID": "acc-858", "Credit": "1198.10", "Description": "Pension"},
+                        ],
+                    },
+                ],
+                "",
+            )
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get), \
+             patch.object(services, "_code_breaker_fetch_xero_journals", side_effect=_fake_fetch_journals):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 11676.94)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1198.1)
+        self.assertEqual(
+            payload["summary"]["journalPayableDiagnostics"].get("selectedJournalId"),
+            "jrnl-payroll",
+        )
+
+    def test_payroll_overview_uses_signed_journal_lines_when_account_metadata_missing(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
+            if callable(on_response):
+                on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-journal-signed-1",
+                            "PayRunStatus": "POSTED",
+                            "PayRunPeriodStartDate": "2026-05-01",
+                            "PayRunPeriodEndDate": "2026-05-31",
+                            "PaymentDate": "2026-05-31",
+                        },
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {"Accounts": []}
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-journal-signed-1"):
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-journal-signed-1",
+                            "Totals": {"PayeAmount": "3000.00", "NicAmount": "1151.67"},
+                        }
+                    ]
+                }
+            if url == services.XERO_REPORTS_TRIAL_BALANCE_URL:
+                return {}
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        async def _fake_fetch_journals(_connection_row):
+            return (
+                [
+                    {
+                        "JournalID": "jrnl-payroll-signed",
+                        "JournalDate": "2026-05-31",
+                        "Reference": "Payroll journal",
+                        "JournalLines": [
+                            {"AccountCode": "825", "Description": "Tax", "NetAmount": "-11676.94"},
+                            {"AccountCode": "858", "Description": "Pension", "NetAmount": "-1198.10"},
+                            {"AccountCode": "477", "Description": "Earnings", "NetAmount": "52641.89"},
+                        ],
+                    },
+                ],
+                "",
+            )
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get), \
+             patch.object(services, "_code_breaker_fetch_xero_journals", side_effect=_fake_fetch_journals):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 11676.94)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1198.1)
+        self.assertEqual(
+            payload["summary"]["journalPayableDiagnostics"].get("selectedJournalId"),
+            "jrnl-payroll-signed",
+        )
+
+    def test_payroll_overview_nets_debits_against_tax_liability_in_payroll_journal(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
+            if callable(on_response):
+                on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-journal-net-1",
+                            "PayRunStatus": "POSTED",
+                            "PayRunPeriodStartDate": "2026-05-01",
+                            "PayRunPeriodEndDate": "2026-05-31",
+                            "PaymentDate": "2026-05-31",
+                        },
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {
+                    "Accounts": [
+                        {
+                            "AccountID": "acc-825",
+                            "Code": "825",
+                            "Name": "PAYE Payable",
+                            "Type": "CURRLIAB",
+                            "Class": "LIABILITY",
+                            "CurrentBalance": "0.00",
+                        },
+                        {
+                            "AccountID": "acc-858",
+                            "Code": "858",
+                            "Name": "Pensions Payable",
+                            "Type": "CURRLIAB",
+                            "Class": "LIABILITY",
+                            "CurrentBalance": "0.00",
+                        },
+                    ]
+                }
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-journal-net-1"):
+                return {"PayRuns": [{"PayRunID": "submitted-journal-net-1", "Totals": {"PayeAmount": "4151.67"}}]}
+            if url == services.XERO_REPORTS_TRIAL_BALANCE_URL:
+                return {}
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        async def _fake_fetch_journals(_connection_row):
+            return (
+                [
+                    {
+                        "JournalID": "jrnl-payroll-net",
+                        "JournalDate": "2026-05-31",
+                        "Reference": "Payroll journal",
+                        "JournalLines": [
+                            {"AccountID": "acc-825", "Credit": "11676.94", "Description": "Tax"},
+                            {"AccountID": "acc-825", "Credit": "9150.77", "Description": "National Insurance Contribution"},
+                            {"AccountID": "acc-825", "Credit": "1165.00", "Description": "Deductions"},
+                            {"AccountID": "acc-825", "Debit": "3773.26", "Description": "Employment Allowance"},
+                            {"AccountID": "acc-825", "Debit": "762.32", "Description": "Statutory Recovery - Maternity Pay"},
+                            {"AccountID": "acc-858", "Credit": "1086.12", "Description": "Benefits"},
+                            {"AccountID": "acc-858", "Credit": "1198.10", "Description": "Deductions"},
+                        ],
+                    },
+                ],
+                "",
+            )
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get), \
+             patch.object(services, "_code_breaker_fetch_xero_journals", side_effect=_fake_fetch_journals):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 11676.94)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1198.1)
+
     def test_payroll_overview_sums_pension_from_submitted_payrun_payslips(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
             if callable(on_response):

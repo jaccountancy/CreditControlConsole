@@ -29177,6 +29177,56 @@
                 font-weight: 700;
                 color: var(--muted);
             }
+            .task-payroll-diagnostics-trigger-wrap {
+                margin-top: 10px;
+            }
+            .task-payroll-diagnostics-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 1200;
+                display: grid;
+                place-items: center;
+                padding: 20px;
+                background: rgba(10, 21, 39, 0.44);
+                backdrop-filter: blur(2px);
+            }
+            .task-payroll-diagnostics-modal[hidden] {
+                display: none !important;
+            }
+            .task-payroll-diagnostics-modal-card {
+                width: min(760px, 100%);
+                max-height: min(78vh, 720px);
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 28px 60px rgba(10, 21, 39, 0.24);
+                padding: 14px;
+                display: grid;
+                gap: 10px;
+            }
+            .task-payroll-diagnostics-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .task-payroll-diagnostics-title {
+                margin: 0;
+                font-size: 13px;
+                font-weight: 900;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+            .task-payroll-diagnostics-list {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 5px;
+                font-size: 12px;
+                color: var(--ink);
+            }
             .task-detail-modal-card .task-detail-extraction-status {
                 margin: 0;
                 padding: 2px 2px 4px;
@@ -124779,6 +124829,18 @@
                                         </label>
                                     </div>
                                     <p class="task-detail-modal-hint">${lockExtractedFigureInputs ? "Pulled from Xero payroll and locked for consistency." : "No Xero payroll match detected, so values can be entered manually."}</p>
+                                    <div class="task-payroll-diagnostics-trigger-wrap">
+                                        <button id="taskPayrollDiagnosticsButton" class="ghost-button" type="button">View extraction diagnostics</button>
+                                    </div>
+                                    <div id="taskPayrollDiagnosticsModal" class="task-payroll-diagnostics-modal" hidden>
+                                        <article class="task-payroll-diagnostics-modal-card" role="dialog" aria-modal="true" aria-labelledby="taskPayrollDiagnosticsTitle">
+                                            <div class="task-payroll-diagnostics-head">
+                                                <h5 id="taskPayrollDiagnosticsTitle" class="task-payroll-diagnostics-title">Payroll extraction diagnostics</h5>
+                                                <button id="taskPayrollDiagnosticsClose" class="ghost-button" type="button">Close</button>
+                                            </div>
+                                            <ul id="taskPayrollDiagnosticsList" class="task-payroll-diagnostics-list"></ul>
+                                        </article>
+                                    </div>
                                 </article>
                             </div>
                         `;
@@ -124806,6 +124868,10 @@
                             const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
                             const payeInput = panel?.querySelector("#taskPayrollEmailPayeRef");
                             const officeInput = panel?.querySelector("#taskPayrollEmailAccountsOfficeRef");
+                            const diagnosticsOpenButton = body.querySelector("#taskPayrollDiagnosticsButton");
+                            const diagnosticsModal = body.querySelector("#taskPayrollDiagnosticsModal");
+                            const diagnosticsCloseButton = body.querySelector("#taskPayrollDiagnosticsClose");
+                            const diagnosticsList = body.querySelector("#taskPayrollDiagnosticsList");
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
                             const validationWrap = document.createElement("article");
@@ -124843,6 +124909,35 @@
                                 emailBody = draft;
                                 emailBodyHtml = draftHtml;
                             };
+                            const diagnosticsItems = [
+                                `Tenant: ${String(tenantId || "Unavailable")}`,
+                                `Selected pay run: ${String(selectedPayRunLabel || "Unavailable")}`,
+                                `Selected source: ${String(selectedPayRunSource || "unknown")}`,
+                                `P32 source: ${String(figureSources?.p32Tax || "none")}`,
+                                `Pension source: ${String(figureSources?.pensionPayable || "none")}`,
+                                `Estimated P32 used: ${formatCurrency(Number(initialP32Tax || 0))}`,
+                                `Estimated pension used: ${formatCurrency(Number(initialPension || 0))}`,
+                                `Journal selected: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`,
+                                `Journal date: ${String(summary?.journalPayableDiagnostics?.selectedJournalDate || "unknown")}`,
+                                `Journal matched liability lines: ${Number(summary?.journalPayableDiagnostics?.matchedCreditLines || 0).toLocaleString("en-GB")}`,
+                                `Pay run detail fetch: ${Number(payrunDiagnostics?.succeeded || 0)}/${Number(payrunDiagnostics?.attempted || 0)} succeeded`,
+                                `Pay runs fetch status: ${String(payRunsFetch?.statusCode ?? "n/a")} (ok: ${payRunsFetch?.ok ? "yes" : "no"})`,
+                                `Accounts fetch status: ${String(fetchDiagnostics?.accounts?.statusCode ?? "n/a")} (ok: ${fetchDiagnostics?.accounts?.ok ? "yes" : "no"})`,
+                                `Overview errors: ${Array.isArray(overview?.errors) && overview.errors.length ? overview.errors.join(" · ") : "none"}`,
+                            ];
+                            if (diagnosticsList) {
+                                diagnosticsList.innerHTML = diagnosticsItems.map((item) => `<li>${escapeHTML(item)}</li>`).join("");
+                            }
+                            const closeDiagnostics = () => {
+                                if (diagnosticsModal) diagnosticsModal.hidden = true;
+                            };
+                            diagnosticsOpenButton?.addEventListener("click", () => {
+                                if (diagnosticsModal) diagnosticsModal.hidden = false;
+                            });
+                            diagnosticsCloseButton?.addEventListener("click", closeDiagnostics);
+                            diagnosticsModal?.addEventListener("click", (event) => {
+                                if (event.target === diagnosticsModal) closeDiagnostics();
+                            });
                             const updateValidationState = () => {
                                 const p32Value = Number(p32Input?.value || 0);
                                 const pensionValue = Number(pensionInput?.value || 0);
