@@ -124771,18 +124771,18 @@
                                             ${taxCandidates.length
                                                 ? `<select id="taskPayrollManualTaxCodeSelect">
                                                     <option value="">Select PAYE payable code…</option>
-                                                    ${taxCandidates.map((account) => `<option value="${escapeHTML(account.code)}">${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
+                                                    ${taxCandidates.map((account) => `<option value="${escapeHTML(account.code)}" ${String(account.code || "").trim() === "825" ? "selected" : ""}>${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
                                                 </select>`
-                                                : `<input id="taskPayrollManualTaxCodeInput" type="text" placeholder="Enter PAYE nominal code">`
+                                                : `<input id="taskPayrollManualTaxCodeInput" type="text" placeholder="Enter PAYE nominal code" value="825">`
                                             }
                                         </label>
                                         <label>Pensions payable nominal code
                                             ${pensionCandidates.length
                                                 ? `<select id="taskPayrollManualPensionCodeSelect">
                                                     <option value="">Select pensions payable code…</option>
-                                                    ${pensionCandidates.map((account) => `<option value="${escapeHTML(account.code)}">${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
+                                                    ${pensionCandidates.map((account) => `<option value="${escapeHTML(account.code)}" ${String(account.code || "").trim() === "858" ? "selected" : ""}>${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
                                                 </select>`
-                                                : `<input id="taskPayrollManualPensionCodeInput" type="text" placeholder="Enter pension nominal code">`
+                                                : `<input id="taskPayrollManualPensionCodeInput" type="text" placeholder="Enter pension nominal code" value="858">`
                                             }
                                         </label>
                                     </div>
@@ -124793,9 +124793,13 @@
                             const taxInput = body.querySelector("#taskPayrollManualTaxCodeInput");
                             const pensionSelect = body.querySelector("#taskPayrollManualPensionCodeSelect");
                             const pensionInput = body.querySelector("#taskPayrollManualPensionCodeInput");
+                            if (taxSelect && !String(taxSelect.value || "").trim()) taxSelect.value = "825";
+                            if (pensionSelect && !String(pensionSelect.value || "").trim()) pensionSelect.value = "858";
+                            if (taxInput && !String(taxInput.value || "").trim()) taxInput.value = "825";
+                            if (pensionInput && !String(pensionInput.value || "").trim()) pensionInput.value = "858";
                             const syncState = () => {
-                                const taxCode = String(taxSelect?.value || taxInput?.value || "").trim();
-                                const pensionCode = String(pensionSelect?.value || pensionInput?.value || "").trim();
+                                const taxCode = String(taxSelect?.value || taxInput?.value || "825").trim() || "825";
+                                const pensionCode = String(pensionSelect?.value || pensionInput?.value || "858").trim() || "858";
                                 if (confirmButton) confirmButton.disabled = !(taxCode && pensionCode);
                             };
                             taxSelect?.addEventListener("change", syncState);
@@ -124809,9 +124813,8 @@
                             const taxInput = document.getElementById("taskPayrollManualTaxCodeInput");
                             const pensionSelect = document.getElementById("taskPayrollManualPensionCodeSelect");
                             const pensionInput = document.getElementById("taskPayrollManualPensionCodeInput");
-                            const taxCode = String(taxSelect?.value || taxInput?.value || "").trim();
-                            const pensionCode = String(pensionSelect?.value || pensionInput?.value || "").trim();
-                            if (!taxCode || !pensionCode) return null;
+                            const taxCode = String(taxSelect?.value || taxInput?.value || "825").trim() || "825";
+                            const pensionCode = String(pensionSelect?.value || pensionInput?.value || "858").trim() || "858";
                             return {
                                 taxCodes: [taxCode],
                                 pensionCodes: [pensionCode],
@@ -124923,6 +124926,10 @@
                                 taxCodes: selection.taxCodes,
                                 pensionCodes: selection.pensionCodes,
                             });
+                            if (!overview || typeof overview !== "object") {
+                                showToast("Unable to reload payroll overview after selecting nominal codes.", "error");
+                                return;
+                            }
                         }
                     }
                     const summary = overview?.summary || {};

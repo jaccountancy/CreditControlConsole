@@ -3785,6 +3785,10 @@ async def payroll_tenant_overview_payload(
         or _parse_any_date((reference_payrun or {}).get("paymentDate"))
         or trial_balance_report_date
     )
+    # Payroll liabilities are fixed to PAYE nominal 825 and pension nominal 858.
+    # Keep these defaults enforced even when no explicit overrides are passed.
+    effective_tax_code_overrides = ["825"]
+    effective_pension_code_overrides = ["858"]
     if isinstance(nominal_period_start, date) and isinstance(nominal_period_end, date):
         try:
             nominal_transaction_context = await _payroll_overview_nominal_transaction_context(
@@ -3794,8 +3798,8 @@ async def payroll_tenant_overview_payload(
                 period_end=nominal_period_end,
                 reference_payrun=reference_payrun,
                 user_id=str(user.get("id") or "").strip() or None,
-                tax_code_overrides=tax_code_overrides,
-                pension_code_overrides=pension_code_overrides,
+                tax_code_overrides=effective_tax_code_overrides,
+                pension_code_overrides=effective_pension_code_overrides,
             )
             nominal_transaction_fetch_errors = [
                 message
