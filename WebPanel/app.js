@@ -32,6 +32,9 @@ let clientFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+const ALL_TASKS_INITIAL_LOAD = 10;
+const ALL_TASKS_LOAD_STEP = 10;
+let visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
 let searchRenderFrame = null;
 let invoiceStateVersion = 0;
 let decoratedInvoicesCache = null;
@@ -388,6 +391,7 @@ function clearSensitiveState() {
     selectedClientId = null;
     activeView = "ledger";
     currentPage = 1;
+    visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
     searchTerm = "";
     invalidateInvoiceCaches();
     clearSensitiveStorage();
@@ -757,6 +761,11 @@ function statusSelectValue(invoice) {
     return `${value}`.toLowerCase().includes("court") ? "Legal" : value;
 }
 
+function normaliseStatusSelectValue(value) {
+    const allowed = new Set(["Paid", "Outstanding", "Query", "Overdue", "Legal", "Bad debt", "Promise Received"]);
+    return allowed.has(value) ? value : "Outstanding";
+}
+
 function profileFallbackAddress(client) {
     if (client?.clientProfile?.address) return client.clientProfile.address;
     const addresses = Array.isArray(client?.addresses) ? client.addresses : [];
@@ -1017,12 +1026,14 @@ function renderToolbarControls() {
 function renderInvoiceTable(invoices = allInvoices()) {
     const tbody = document.getElementById("invoiceTableBody");
     const filtered = filteredInvoices(invoices);
+    const loadMoreMode = selectedFilter === "all";
     const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
     currentPage = Math.min(currentPage, pages);
-    const start = (currentPage - 1) * pageSize;
-    const paged = filtered.slice(start, start + pageSize);
+    const start = loadMoreMode ? 0 : (currentPage - 1) * pageSize;
+    const pageLimit = loadMoreMode ? visibleAllTasksCount : pageSize;
+    const paged = filtered.slice(start, start + pageLimit);
     const pageInvoiceIds = paged.map((invoice) => invoice.id || "").join("|");
-    const signature = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTerm.trim().toLowerCase()}|${currentPage}|${selectedInvoiceId || ""}|${filtered.length}|${pageInvoiceIds}`;
+    const signature = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTerm.trim().toLowerCase()}|${currentPage}|${selectedInvoiceId || ""}|${filtered.length}|${pageInvoiceIds}|${loadMoreMode ? visibleAllTasksCount : pageSize}`;
     if (signature !== tableRenderSignature) {
         tbody.innerHTML = "";
         if (!paged.length) {
@@ -1059,14 +1070,40 @@ function renderInvoiceTable(invoices = allInvoices()) {
         }
         tableRenderSignature = signature;
     }
-    renderPagination(filtered.length, pages, start, paged.length);
+    renderPagination({
+        totalResults: filtered.length,
+        totalPages: pages,
+        start,
+        count: paged.length,
+        loadMoreMode
+    });
 }
 
-function renderPagination(totalResults, totalPages, start, count) {
+function renderPagination({ totalResults, totalPages, start, count, loadMoreMode }) {
     document.getElementById("resultsText").textContent = totalResults ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results` : "Showing 0 results";
-    document.getElementById("previousPageButton").disabled = currentPage <= 1;
-    document.getElementById("nextPageButton").disabled = currentPage >= totalPages;
+    const previousPageButton = document.getElementById("previousPageButton");
+    const nextPageButton = document.getElementById("nextPageButton");
     const target = document.getElementById("pagePills");
+    const pagination = document.querySelector(".pagination");
+    const loadMoreWrap = document.getElementById("loadMoreWrap");
+    const loadMoreButton = document.getElementById("loadMoreButton");
+    if (loadMoreMode) {
+        if (pagination) pagination.hidden = true;
+        target.innerHTML = "";
+        if (loadMoreWrap && loadMoreButton) {
+            const hasMore = count < totalResults;
+            loadMoreWrap.hidden = !hasMore;
+            loadMoreButton.disabled = !hasMore;
+            loadMoreButton.textContent = hasMore ? "Load more" : "All tasks loaded";
+        }
+        previousPageButton.disabled = true;
+        nextPageButton.disabled = true;
+        return;
+    }
+    if (pagination) pagination.hidden = false;
+    if (loadMoreWrap) loadMoreWrap.hidden = true;
+    previousPageButton.disabled = currentPage <= 1;
+    nextPageButton.disabled = currentPage >= totalPages;
     target.innerHTML = "";
     const fragment = document.createDocumentFragment();
     const pages = [];
@@ -1137,6 +1174,7 @@ function renderClientScreen() {
         ? `For ${selectedInvoice.invoiceNumber || "this invoice"}, court costs would be £${Number(selectedInvoice.latePayment?.court_cost || selectedInvoice.latePayment?.courtCost || 35).toFixed(0)} and statutory interest so far is £${Number(selectedInvoice.latePayment?.interest || 0).toFixed(2)}.`
         : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
 
+    renderTaskSidebar(client, selectedInvoice, invoices);
     renderClientProfilePanel(client);
     renderClientInvoicePicker(invoices);
     renderClientInvoiceList(invoices);
@@ -1144,6 +1182,68 @@ function renderClientScreen() {
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
     renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
     renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+}
+
+function toDateInputValue(value) {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function renderTaskSidebar(client, selectedInvoice, invoices) {
+    const managerSelect = document.getElementById("sidebarManagerSelect");
+    const managerCustomInput = document.getElementById("sidebarManagerCustomInput");
+    const statusSelect = document.getElementById("sidebarStatusSelect");
+    const statusNote = document.getElementById("sidebarStatusNote");
+    const applyAllCheck = document.getElementById("sidebarApplyAllOpenCheck");
+    const promiseDateInput = document.getElementById("sidebarPromiseDateInput");
+    const quickStats = document.getElementById("sidebarQuickStats");
+    const taskMeta = document.getElementById("sidebarTaskMeta");
+    const hasContext = Boolean(client && selectedInvoice);
+    if (!managerSelect || !managerCustomInput || !statusSelect || !statusNote || !applyAllCheck || !promiseDateInput || !quickStats || !taskMeta) return;
+
+    managerSelect.innerHTML = "";
+    const allManagers = managerValues().filter(Boolean);
+    const currentManager = String(client?.manager || "").trim();
+    const uniqueManagers = [...new Set([...allManagers, currentManager].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const unassignedOption = document.createElement("option");
+    unassignedOption.value = "";
+    unassignedOption.textContent = "Unassigned";
+    managerSelect.appendChild(unassignedOption);
+    uniqueManagers.forEach((manager) => {
+        const option = document.createElement("option");
+        option.value = manager;
+        option.textContent = manager;
+        managerSelect.appendChild(option);
+    });
+    const customOption = document.createElement("option");
+    customOption.value = "__custom";
+    customOption.textContent = "Custom...";
+    managerSelect.appendChild(customOption);
+
+    const selectedManagerMatchesPreset = currentManager && uniqueManagers.includes(currentManager);
+    managerSelect.value = selectedManagerMatchesPreset ? currentManager : (currentManager ? "__custom" : "");
+    managerCustomInput.value = selectedManagerMatchesPreset ? "" : currentManager;
+    managerCustomInput.disabled = managerSelect.value !== "__custom";
+
+    statusSelect.value = normaliseStatusSelectValue(hasContext ? statusSelectValue(selectedInvoice) : "Outstanding");
+    statusNote.value = "";
+    applyAllCheck.checked = true;
+    promiseDateInput.value = hasContext ? toDateInputValue(selectedInvoice.promisedDate || "") : "";
+
+    const openInvoices = (invoices || []).filter((item) => (item.category || invoiceCategory(item)) !== "paid");
+    const overdueInvoices = (invoices || []).filter((item) => (item.category || invoiceCategory(item)) === "overdue");
+    const selectedDue = Number(selectedInvoice?.amountDue || 0);
+    taskMeta.textContent = hasContext
+        ? `${selectedInvoice.invoiceNumber || selectedInvoice.id || "Selected task"} · manager ${client?.manager || "Unassigned"}`
+        : "Select a task to manage status and ownership.";
+    quickStats.innerHTML = hasContext
+        ? `<p><strong>${openInvoices.length}</strong> open tasks</p><p><strong>${overdueInvoices.length}</strong> overdue</p><p><strong>${formatCurrency(selectedDue)}</strong> selected due</p>`
+        : "<p>No task selected.</p>";
 }
 
 function reviewerStatusLabel(status) {
@@ -1794,12 +1894,14 @@ function wireFilters() {
         button.addEventListener("click", () => {
             selectedFilter = button.dataset.filter;
             currentPage = 1;
+            visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
             renderAll();
         });
     });
     document.getElementById("ledgerSearch").addEventListener("input", (event) => {
         searchTerm = event.target.value;
         currentPage = 1;
+        visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
         scheduleLedgerTableRender();
     });
     document.getElementById("sortButton").addEventListener("click", () => toggleToolbarMenu("sortMenu", "sortButton"));
@@ -1808,6 +1910,7 @@ function wireFilters() {
         button.addEventListener("click", () => {
             sortMode = button.dataset.sortMode;
             currentPage = 1;
+            visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
             closeToolbarMenus();
             renderAll();
         });
@@ -1816,6 +1919,7 @@ function wireFilters() {
         button.addEventListener("click", () => {
             clientFilter = button.dataset.filterMode;
             currentPage = 1;
+            visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
             closeToolbarMenus();
             renderAll();
         });
@@ -1837,6 +1941,10 @@ function wireFilters() {
         const page = Number(button.dataset.page);
         if (!Number.isFinite(page) || page < 1) return;
         currentPage = page;
+        renderInvoiceTable();
+    });
+    document.getElementById("loadMoreButton").addEventListener("click", () => {
+        visibleAllTasksCount += ALL_TASKS_LOAD_STEP;
         renderInvoiceTable();
     });
     document.getElementById("invoiceTableBody").addEventListener("click", (event) => {
@@ -2355,22 +2463,62 @@ function wireForms() {
         }
     });
 
-    document.getElementById("bulkStatusForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
+    document.getElementById("sidebarManagerSelect").addEventListener("change", (event) => {
+        const customInput = document.getElementById("sidebarManagerCustomInput");
+        if (!customInput) return;
+        customInput.disabled = event.target.value !== "__custom";
+        if (customInput.disabled) customInput.value = "";
+    });
+    document.getElementById("sidebarSaveManagerButton").addEventListener("click", async () => {
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
-        const statusValue = document.getElementById("bulkStatusSelect").value;
-        const note = document.getElementById("bulkStatusNote").value.trim();
         if (!client) return;
-        const invoiceIds = (client.invoices || [])
-            .filter((invoice) => invoiceCategory(invoice) !== "paid")
-            .map((invoice) => invoice.id);
+        const managerSelect = document.getElementById("sidebarManagerSelect");
+        const managerCustomInput = document.getElementById("sidebarManagerCustomInput");
+        const selectedManager = managerSelect?.value === "__custom"
+            ? (managerCustomInput?.value || "").trim()
+            : (managerSelect?.value || "").trim();
+        client.manager = selectedManager || "Unassigned";
+        if (client.clientProfile && typeof client.clientProfile === "object") {
+            client.clientProfile.clientManager = client.manager;
+        }
+        if (clientProfileDraft && selectedClientId === clientProfileClientId) {
+            clientProfileDraft.clientManager = client.manager;
+        }
+        persistState();
+        renderAll();
+        try {
+            await requestJSON(
+                api.endpoints.customerProfile,
+                { method: "PATCH", body: JSON.stringify({ clientManager: client.manager }) },
+                { customerId: selectedClientId }
+            );
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save client manager", error);
+            if (error instanceof AuthRequiredError) {
+                markAuthenticationRequired(error.message);
+            }
+        }
+    });
+    document.getElementById("sidebarApplyStatusButton").addEventListener("click", async () => {
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const selectedInvoice = findInvoiceById(selectedInvoiceId);
+        if (!client || !selectedInvoice) return;
+        const statusValue = document.getElementById("sidebarStatusSelect")?.value || "Outstanding";
+        const noteInput = document.getElementById("sidebarStatusNote");
+        const note = (noteInput?.value || "").trim();
+        const applyToAllOpen = document.getElementById("sidebarApplyAllOpenCheck")?.checked === true;
+        const invoiceIds = applyToAllOpen
+            ? (client.invoices || []).filter((invoice) => invoiceCategory(invoice) !== "paid").map((invoice) => invoice.id)
+            : [selectedInvoice.id];
         invoiceIds.forEach((invoiceId) => {
             const match = mutableInvoiceById(invoiceId);
             if (!match) return;
             match.invoice.controlStatus = statusValue;
             match.invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
         });
-        document.getElementById("bulkStatusNote").value = "";
+        if (noteInput) noteInput.value = "";
         state.panelSummary = null;
         invalidateInvoiceCaches();
         persistState();
@@ -2384,6 +2532,36 @@ function wireForms() {
             renderAll();
         } catch (error) {
             console.error("Unable to save bulk status", error);
+            if (error instanceof AuthRequiredError) {
+                markAuthenticationRequired(error.message);
+            }
+        }
+    });
+    document.getElementById("sidebarSavePromiseButton").addEventListener("click", async () => {
+        const match = mutableInvoiceById(selectedInvoiceId);
+        const promiseInput = document.getElementById("sidebarPromiseDateInput");
+        const promisedDate = promiseInput?.value || "";
+        if (!match || !promisedDate) return;
+        match.invoice.promisedDate = promisedDate;
+        match.invoice.controlStatus = "Promise Received";
+        match.invoice.statuses = [{
+            title: "Promise Received",
+            body: `Promised payment date set to ${formatDate(promisedDate)}.`,
+            stamp: new Date().toISOString()
+        }, ...(match.invoice.statuses || [])];
+        invalidateInvoiceCaches();
+        persistState();
+        renderAll();
+        try {
+            await requestJSON(
+                api.endpoints.promise,
+                { method: "POST", body: JSON.stringify({ promisedDate }) },
+                { invoiceId: match.invoice.id }
+            );
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save promised payment date", error);
             if (error instanceof AuthRequiredError) {
                 markAuthenticationRequired(error.message);
             }

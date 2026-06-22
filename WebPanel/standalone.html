@@ -644,6 +644,38 @@ body.is-dense .note-snippet {
     color: var(--muted);
     font-size: 0.92rem;
 }
+.manager-cell {
+    width: 82px;
+}
+.manager-initials {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    background: rgba(52, 132, 197, 0.14);
+    color: var(--blue);
+    border: 1px solid rgba(52, 132, 197, 0.22);
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    cursor: help;
+}
+.client-id-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    margin-top: 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(52, 132, 197, 0.25);
+    background: rgba(52, 132, 197, 0.10);
+    color: var(--blue);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
 .description-cell { display: flex; gap: 14px; }
 .description-icon {
     width: 38px;
@@ -1252,6 +1284,7 @@ body.is-syncing .sync-dot {
                         <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
                         <label><input type="checkbox" data-column-toggle="paid" checked> Paid</label>
                         <label><input type="checkbox" data-column-toggle="status" checked> Status</label>
+                        <label><input type="checkbox" data-column-toggle="manager" checked> Manager</label>
                         <label><input type="checkbox" data-column-toggle="notes" checked> Notes</label>
                     </div>
                 </div>
@@ -1293,6 +1326,7 @@ body.is-syncing .sync-dot {
                             <th class="is-sticky">Amount</th>
                             <th class="is-sticky" data-column="paid">Paid</th>
                             <th class="is-sticky" data-column="status">Status</th>
+                            <th class="is-sticky manager-cell" data-column="manager">Manager</th>
                             <th class="is-sticky" data-column="notes">Notes</th>
                             <th class="is-sticky"></th>
                         </tr>
@@ -1557,6 +1591,7 @@ let visibleColumns = {
     description: true,
     paid: true,
     status: true,
+    manager: true,
     notes: true
 };
 
@@ -1701,6 +1736,7 @@ function decorateInvoice(customer, invoice) {
     return {
         ...invoice,
         customerId: customer.id,
+        registerClientId: customer?.clientProfile?.clientId || customer?.clientId || customer?.client_id || "",
         customerName: customer.name,
         customerContact: customer.contact || "",
         customerStatus: customer.status || "",
@@ -1784,6 +1820,15 @@ function escapeHTML(value) {
         .replace(/>/g, "&gt;")
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function initials(value) {
+    const source = String(value || "").trim();
+    if (!source) return "NA";
+    const tokens = source.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return "NA";
+    if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+    return `${tokens[0][0]}${tokens[tokens.length - 1][0]}`.toUpperCase();
 }
 
 function invoicePayments(invoice) {
@@ -2120,18 +2165,22 @@ function renderInvoiceTable() {
     if (isSyncing && !paged.length) {
         for (let index = 0; index < 5; index += 1) {
             const row = document.createElement("tr");
-            row.innerHTML = `<td colspan="9"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+            row.innerHTML = `<td colspan="10"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
             tbody.appendChild(row);
         }
     } else if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="9"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        row.innerHTML = `<td colspan="10"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((invoice) => {
             const category = invoiceCategory(invoice);
             const progress = paymentPercent(invoice);
             const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
+            const registerClientId = String(invoice.registerClientId || "").trim();
+            const clientIdBadge = /^j/i.test(registerClientId)
+                ? `<div><span class="client-id-badge" title="Client ID ${escapeHTML(registerClientId)}">${escapeHTML(registerClientId)}</span></div>`
+                : "";
             const paidDateLabel = category === "paid"
                 ? paidHoverText.replace(/^Paid on\s*/i, "")
                 : category === "overdue"
@@ -2141,12 +2190,13 @@ function renderInvoiceTable() {
             row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
                 <td class="select-cell"><input class="invoice-select" type="checkbox" aria-label="Select invoice ${invoice.invoiceNumber || invoice.id}" ${selectedInvoiceIds.has(invoice.id) ? "checked" : ""}></td>
-                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div>${clientIdBadge}</td>
                 <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
                 <td data-column="description"><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
                 <td data-column="paid"><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${paidDateLabel}</div></div></td>
                 <td data-column="status">${statusPill(invoice)}</td>
+                <td class="manager-cell" data-column="manager"><span class="manager-initials" title="${escapeHTML(invoice.manager || "Unassigned")}">${initials(invoice.manager)}</span></td>
                 <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                 <td><div class="row-actions" aria-label="Invoice quick actions">
                     <button class="row-action-button" type="button" data-row-action="call" title="Call client">${iconSVG("call")}</button>
