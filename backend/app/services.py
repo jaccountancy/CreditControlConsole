@@ -1748,8 +1748,11 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "PensionPayable",
             "PensionAmount",
             "EmployerPensionContributions",
+            "EmployeePensionContributions",
             "EmployerPensionContributionTotal",
+            "EmployeePensionContributionTotal",
             "TotalEmployerPensionContribution",
+            "TotalEmployeePensionContribution",
             "PensionContributions",
             "PensionTotal",
             "TotalPension",
@@ -1757,8 +1760,10 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "SuperAmount",
             "TotalSuper",
             "EmployerPensionAmount",
+            "EmployeePensionAmount",
             "PensionDue",
             "TotalEmployerPension",
+            "TotalEmployeePension",
         ],
     )
     if total > Decimal("0"):
@@ -1767,9 +1772,13 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
         payrun,
         [
             "EmployerPension",
+            "EmployeePension",
             "EmployerPensionContributions",
+            "EmployeePensionContributions",
             "EmployerPensionContribution",
+            "EmployeePensionContribution",
             "EmployerPensionContributionAmount",
+            "EmployeePensionContributionAmount",
             "PensionContribution",
             "PensionContributions",
             "PensionAmount",
@@ -1791,6 +1800,7 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
         include_hints=[
             "pension",
             "employerpension",
+            "employeepension",
             "workplacepension",
             "nest",
             "super",
@@ -1824,6 +1834,7 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
         include_hints=[
             "pension",
             "employer pension",
+            "employee pension",
             "workplace pension",
             "nest",
             "auto enrolment",
@@ -1850,7 +1861,7 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
         return described
     return _payroll_overview_find_numeric_value_by_hints(
         payrun,
-        include_hints=["pension", "employerpension", "pensionpayable", "workplacepension", "nest"],
+        include_hints=["pension", "employerpension", "employeepension", "pensionpayable", "workplacepension", "nest"],
         exclude_hints=[
             "scheme",
             "name",
