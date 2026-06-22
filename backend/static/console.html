@@ -124728,20 +124728,38 @@
                 const summaryPensionFromReferenceRun = ["reference_payrun", "posted_payroll_journal"].includes(pensionFigureSource)
                     ? Number(summary?.pensionPayableBalance || 0)
                     : 0;
-                const initialP32Tax = payrollFirstUsefulNumber(
-                    selectedPayRun?.estimatedP32Tax,
-                    selectedPayRun?.payeNicAmount,
-                    selectedRunCombinedPayeNic,
-                    summaryP32FromReferenceRun,
-                    0
-                );
-                const initialPension = payrollFirstUsefulNumber(
-                    selectedPayRun?.estimatedPensionPayable,
-                    selectedPayRun?.pensionPayable,
-                    selectedPayRun?.pensionAmount,
-                    summaryPensionFromReferenceRun,
-                    0
-                );
+                const preferPostedJournalP32 = p32FigureSource === "posted_payroll_journal";
+                const preferPostedJournalPension = pensionFigureSource === "posted_payroll_journal";
+                const initialP32Tax = preferPostedJournalP32
+                    ? payrollFirstUsefulNumber(
+                        summaryP32FromReferenceRun,
+                        selectedPayRun?.estimatedP32Tax,
+                        selectedPayRun?.payeNicAmount,
+                        selectedRunCombinedPayeNic,
+                        0
+                    )
+                    : payrollFirstUsefulNumber(
+                        selectedPayRun?.estimatedP32Tax,
+                        selectedPayRun?.payeNicAmount,
+                        selectedRunCombinedPayeNic,
+                        summaryP32FromReferenceRun,
+                        0
+                    );
+                const initialPension = preferPostedJournalPension
+                    ? payrollFirstUsefulNumber(
+                        summaryPensionFromReferenceRun,
+                        selectedPayRun?.estimatedPensionPayable,
+                        selectedPayRun?.pensionPayable,
+                        selectedPayRun?.pensionAmount,
+                        0
+                    )
+                    : payrollFirstUsefulNumber(
+                        selectedPayRun?.estimatedPensionPayable,
+                        selectedPayRun?.pensionPayable,
+                        selectedPayRun?.pensionAmount,
+                        summaryPensionFromReferenceRun,
+                        0
+                    );
                 const payrunDiagnostics = summary?.payrunDetailDiagnostics && typeof summary.payrunDetailDiagnostics === "object"
                     ? summary.payrunDetailDiagnostics
                     : {};
