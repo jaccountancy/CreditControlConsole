@@ -18284,13 +18284,23 @@ async def sync_submitted_employee_forms(
                 continue
             existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
             existing_by_email: dict[str, str] = {}
+            inactive_by_email: dict[str, str] = {}
             existing_name_candidates: dict[str, set[str]] = {}
+            inactive_name_candidates: dict[str, set[str]] = {}
             for employee in existing_employees:
                 employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
-                if employee_email and employee_email not in existing_by_email:
-                    existing_by_email[employee_email] = employee_id
+                employee_is_active = _payroll_headcount_employee_is_active(employee)
+                if employee_email:
+                    if employee_is_active:
+                        if employee_email not in existing_by_email:
+                            existing_by_email[employee_email] = employee_id
+                    elif employee_email not in inactive_by_email:
+                        inactive_by_email[employee_email] = employee_id
                 if employee_name and employee_id:
-                    existing_name_candidates.setdefault(employee_name, set()).add(employee_id)
+                    if employee_is_active:
+                        existing_name_candidates.setdefault(employee_name, set()).add(employee_id)
+                    else:
+                        inactive_name_candidates.setdefault(employee_name, set()).add(employee_id)
             existing_by_name_unique: dict[str, str] = {}
             duplicate_names: set[str] = set()
             for name_key, ids in existing_name_candidates.items():
@@ -18298,22 +18308,56 @@ async def sync_submitted_employee_forms(
                     existing_by_name_unique[name_key] = next(iter(ids))
                 elif len(ids) > 1:
                     duplicate_names.add(name_key)
+            inactive_by_name_unique: dict[str, str] = {}
+            inactive_duplicate_names: set[str] = set()
+            for name_key, ids in inactive_name_candidates.items():
+                if len(ids) == 1:
+                    inactive_by_name_unique[name_key] = next(iter(ids))
+                elif len(ids) > 1:
+                    inactive_duplicate_names.add(name_key)
             employee_index_by_tenant[clean_tenant_id] = {
                 "byEmail": existing_by_email,
+                "inactiveByEmail": inactive_by_email,
                 "byNameUnique": existing_by_name_unique,
                 "duplicateNames": duplicate_names,
+                "inactiveByNameUnique": inactive_by_name_unique,
+                "inactiveDuplicateNames": inactive_duplicate_names,
                 "nextEmployeeNumber": _submitted_forms_next_employee_number(existing_employees),
             }
         tenant_employee_index = employee_index_by_tenant.get(clean_tenant_id) or {}
         existing_by_email = tenant_employee_index.get("byEmail") or {}
+        inactive_by_email = tenant_employee_index.get("inactiveByEmail") or {}
         existing_by_name_unique = tenant_employee_index.get("byNameUnique") or {}
         duplicate_names = tenant_employee_index.get("duplicateNames") or set()
+        inactive_by_name_unique = tenant_employee_index.get("inactiveByNameUnique") or {}
+        inactive_duplicate_names = tenant_employee_index.get("inactiveDuplicateNames") or set()
         existing_employee_id = ""
         existing_match_method = ""
         if employee_email:
             existing_employee_id = existing_by_email.get(employee_email) or ""
             if existing_employee_id:
                 existing_match_method = "email"
+            else:
+                inactive_employee_id = inactive_by_email.get(employee_email) or ""
+                if inactive_employee_id:
+                    needs_review += 1
+                    update_row_state(
+                        tenant_id=clean_tenant_id,
+                        tenant_name=clean_tenant_name,
+                        xero_employee_id=inactive_employee_id,
+                        xero_status="needs-review",
+                        xero_note=(
+                            f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                            "and found an inactive Xero Payroll employee with the same email. "
+                            "Open Xero Payroll and reactivate or confirm that employee before retrying Step 2."
+                        ),
+                        debug_lines=row_debug_base + [
+                            f"tenantId={clean_tenant_id}",
+                            f"inactiveEmployeeId={inactive_employee_id}",
+                            "existingMatchMethod=email-inactive",
+                        ],
+                    )
+                    continue
         if not existing_employee_id and not employee_email and employee_name:
             if employee_name in duplicate_names:
                 needs_review += 1
@@ -18330,6 +18374,44 @@ async def sync_submitted_employee_forms(
                         f"tenantId={clean_tenant_id}",
                         "duplicateNameMatch=true",
                         "existingMatch=email-missing-name-ambiguous",
+                    ],
+                )
+                continue
+            if employee_name in inactive_duplicate_names:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "but multiple inactive Xero Payroll employees share the same name and no employee email was parsed. "
+                        "Open Preview, confirm email, then retry Step 2."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        "inactiveDuplicateNameMatch=true",
+                        "existingMatch=email-missing-name-inactive-ambiguous",
+                    ],
+                )
+                continue
+            inactive_employee_id = inactive_by_name_unique.get(employee_name) or ""
+            if inactive_employee_id:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_employee_id=inactive_employee_id,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "and found an inactive Xero Payroll employee with the same name. "
+                        "Open Xero Payroll and reactivate or confirm that employee before retrying Step 2."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"inactiveEmployeeId={inactive_employee_id}",
+                        "existingMatchMethod=name-inactive",
                     ],
                 )
                 continue

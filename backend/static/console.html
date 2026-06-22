@@ -10970,29 +10970,49 @@
             }
             .insights-refresh-overlay {
                 position: absolute;
-                inset: 12px;
-                border-radius: 14px;
-                border: 1px dashed color-mix(in srgb, var(--blue) 34%, white);
-                background: color-mix(in srgb, var(--blue-soft) 68%, white);
+                top: 12px;
+                left: 12px;
+                right: 12px;
+                padding: 8px 10px 0;
                 display: grid;
-                place-items: center;
+                gap: 8px;
                 z-index: 3;
+                pointer-events: none;
             }
             .insights-refresh-overlay[hidden] {
                 display: none;
             }
+            .insights-refresh-overlay-line {
+                position: relative;
+                height: 4px;
+                border-radius: 999px;
+                overflow: hidden;
+                background: color-mix(in srgb, var(--blue-soft) 74%, white);
+                border: 1px solid color-mix(in srgb, var(--blue) 24%, white);
+            }
+            .insights-refresh-overlay-line > span {
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100%;
+                width: 35%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 82%, white), color-mix(in srgb, var(--cyan) 84%, white));
+                box-shadow: 0 0 10px color-mix(in srgb, var(--blue) 35%, transparent);
+                animation: insightsRefreshLineSweep 1.2s ease-in-out infinite;
+            }
             .insights-refresh-overlay-copy {
-                display: grid;
-                grid-auto-flow: column;
-                gap: 10px;
+                display: flex;
+                justify-content: flex-end;
                 align-items: center;
                 color: var(--ink);
                 font-weight: 800;
+                font-size: 0.88rem;
                 letter-spacing: 0.01em;
             }
-            .insights-refresh-overlay-copy .sync-inline-spinner {
-                width: 18px;
-                height: 18px;
+            @keyframes insightsRefreshLineSweep {
+                0% { left: -38%; }
+                100% { left: 100%; }
             }
             .insights-home .insight-two-column {
                 gap: 14px;
@@ -25780,23 +25800,41 @@
                 bottom: max(124px, calc(env(safe-area-inset-bottom) + 88px));
                 z-index: 102;
                 display: grid;
-                gap: 10px;
-                width: min(360px, calc(100vw - 24px));
+                gap: 8px;
+                width: min(340px, calc(100vw - 24px));
             }
             .background-task-card {
-                background: linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.95));
-                border: 1px solid rgba(52, 132, 197, 0.2);
+                --task-accent: var(--blue);
+                --task-accent-rgb: 29, 103, 242;
+                position: relative;
+                overflow: hidden;
+                background:
+                    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.94)),
+                    linear-gradient(90deg, rgba(var(--task-accent-rgb), 0.14), rgba(39, 176, 95, 0.06));
+                border: 1px solid rgba(var(--task-accent-rgb), 0.25);
                 border-radius: 16px;
-                box-shadow: 0 18px 34px rgba(15, 34, 71, 0.16);
-                padding: 10px 12px;
+                box-shadow:
+                    0 12px 30px rgba(var(--task-accent-rgb), 0.12),
+                    0 6px 16px rgba(30, 47, 77, 0.09);
+                padding: 11px 11px 9px 11px;
                 display: grid;
-                gap: 8px;
+                gap: 7px;
+            }
+            .background-task-card::before {
+                content: "";
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 4px;
+                background: linear-gradient(180deg, var(--task-accent), rgba(39, 176, 95, 0.88));
+                pointer-events: none;
             }
             .background-task-card.is-failed {
-                border-color: rgba(255, 83, 83, 0.34);
+                --task-accent: var(--red);
+                --task-accent-rgb: 255, 83, 83;
             }
             .background-task-card.is-completed {
-                border-color: rgba(39, 176, 95, 0.32);
+                --task-accent: var(--green);
+                --task-accent-rgb: 39, 176, 95;
             }
             .background-task-head {
                 display: flex;
@@ -25805,60 +25843,64 @@
                 align-items: baseline;
             }
             .background-task-title {
-                font-size: 0.86rem;
+                font-size: 0.83rem;
                 font-weight: 900;
-                color: #162b4d;
+                color: #17294a;
             }
             .background-task-status {
-                font-size: 0.7rem;
+                font-size: 0.68rem;
                 font-weight: 900;
                 text-transform: uppercase;
-                letter-spacing: 0.04em;
-                color: #35598d;
+                letter-spacing: 0.05em;
+                color: rgb(var(--task-accent-rgb));
             }
             .background-task-message {
-                font-size: 0.82rem;
-                font-weight: 740;
+                font-size: 0.86rem;
+                font-weight: 760;
                 color: #27416d;
-                line-height: 1.32;
+                line-height: 1.26;
             }
             .background-task-meta {
-                font-size: 0.72rem;
+                font-size: 0.68rem;
                 font-weight: 800;
-                color: #5f789f;
+                color: #6b7f9f;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
             }
             .background-task-progress {
                 width: 100%;
-                height: 6px;
+                height: 4px;
                 border-radius: 999px;
-                background: rgba(58, 98, 164, 0.14);
+                background: rgba(var(--task-accent-rgb), 0.18);
                 overflow: hidden;
             }
             .background-task-progress > span {
                 display: block;
                 height: 100%;
-                background: linear-gradient(90deg, #3484c5, #27b05f);
+                background: linear-gradient(90deg, var(--task-accent), rgba(39, 176, 95, 0.95));
                 width: 0%;
                 transition: width 0.2s ease;
             }
             .background-task-actions {
                 display: flex;
                 justify-content: flex-end;
-                gap: 8px;
+                gap: 6px;
             }
             .background-task-action {
-                border: 1px solid rgba(42, 74, 122, 0.22);
-                background: rgba(255, 255, 255, 0.88);
-                color: #224271;
+                border: 1px solid rgba(var(--task-accent-rgb), 0.28);
+                background: rgba(255, 255, 255, 0.82);
+                color: rgb(var(--task-accent-rgb));
                 border-radius: 999px;
-                padding: 4px 10px;
-                font-size: 0.74rem;
-                font-weight: 800;
+                padding: 4px 9px;
+                font-size: 0.78rem;
+                font-weight: 900;
                 cursor: pointer;
             }
+            .background-task-action:hover {
+                background: rgba(var(--task-accent-rgb), 0.12);
+            }
             .background-task-action.is-cancel {
-                border-color: rgba(255, 83, 83, 0.34);
-                color: #9a2731;
+                border-style: dashed;
             }
             @media (max-width: 640px) {
                 .background-task-stack {
@@ -97533,7 +97575,7 @@
                 }
                 const homeMarkup = aiCopilotHomeInsights(analytics, ai);
                 const refreshOverlay = insightsLoading
-                    ? `<div class="insights-refresh-overlay" aria-live="polite"><div class="insights-refresh-overlay-copy"><span class="sync-inline-spinner" aria-hidden="true"></span><span>Refreshing insights cards...</span></div></div>`
+                    ? `<div class="insights-refresh-overlay" aria-live="polite"><div class="insights-refresh-overlay-line" aria-hidden="true"><span></span></div><div class="insights-refresh-overlay-copy"><span>Refreshing insights cards...</span></div></div>`
                     : "";
                 target.innerHTML = `<div class="insights-home-refresh-shell">${homeMarkup.replace('<div class="insights-home">', `<div class="insights-home${insightsLoading ? " is-refreshing" : ""}">`)}${refreshOverlay}</div>`;
                 renderInsightsQuickAccessMenu();
