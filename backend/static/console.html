@@ -50284,6 +50284,8 @@
             const submittedEmployeeFormsDefaultTaxCode = "1257L";
             const submittedEmployeeFormsXeroFieldBlueprint = [
                 { key: "employerName", label: "Employer name", wide: true },
+                { key: "title", label: "Title", mandatory: true },
+                { key: "gender", label: "Gender (M/F)", mandatory: true },
                 { key: "employeeFirstName", label: "First name", mandatory: true },
                 { key: "employeeLastName", label: "Last name", mandatory: true },
                 { key: "employeeFullName", label: "Full name", wide: true },
@@ -50322,6 +50324,8 @@
                 const nextDraft = draft && typeof draft === "object" ? { ...draft } : {};
                 const taxCode = String(nextDraft.taxCode || "").trim();
                 if (!taxCode) nextDraft.taxCode = submittedEmployeeFormsDefaultTaxCode;
+                const country = String(nextDraft.country || "").trim();
+                if (!country) nextDraft.country = "United Kingdom";
                 const payrollNumber = String(nextDraft.payrollNumber || "").trim();
                 if (!payrollNumber) {
                     const suggested = String(row?.suggestedPayrollNumber || "").trim();
@@ -59120,6 +59124,7 @@
                     const summaryRows = [
                         ["Employer", draft.employerName || "--", "Matched Xero workspace will be used for publish."],
                         ["Employee", `${draft.employeeFirstName || ""} ${draft.employeeLastName || ""}`.trim() || draft.employeeFullName || "--", draft.employeeEmail || "--"],
+                        ["Title / gender", draft.title || "--", draft.gender || "Gender not provided"],
                         ["Date of birth", draft.dateOfBirth || "--", draft.nationalInsuranceNumber ? `NI ${draft.nationalInsuranceNumber}` : "NI not provided"],
                         ["Start date", draft.startDate || "--", draft.jobTitle || "Job title not provided"],
                         ["Department", draft.department || "--", draft.employmentType || "Employment type not provided"],

@@ -16761,6 +16761,8 @@ SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA = {
         "employeeLastName": {"type": "string"},
         "employeeEmail": {"type": "string"},
         "employerName": {"type": "string"},
+        "title": {"type": "string"},
+        "gender": {"type": "string"},
         "employeePhone": {"type": "string"},
         "dateOfBirth": {"type": "string"},
         "nationalInsuranceNumber": {"type": "string"},
@@ -16788,6 +16790,8 @@ SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA = {
         "employeeLastName",
         "employeeEmail",
         "employerName",
+        "title",
+        "gender",
         "employeePhone",
         "dateOfBirth",
         "nationalInsuranceNumber",
@@ -17072,6 +17076,14 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         _next_line_after_label(["Phone", "Telephone", "Mobile", "Contact Number", "Phone Number"])
         or _find(r"(?:phone|telephone|mobile|contact\s*number|phone\s*number)\s*[:\-]\s*([^\n,;]+)")
     )
+    title = (
+        _next_line_after_label(["Title", "Employee Title"])
+        or _find(r"(?:title|employee\s*title)\s*[:\-]\s*([^\n,;]+)")
+    )
+    gender = (
+        _next_line_after_label(["Gender", "Sex"])
+        or _find(r"(?:gender|sex)\s*[:\-]\s*([^\n,;]+)")
+    )
     date_of_birth = (
         _next_line_after_label(["Date of Birth", "DOB", "Birth Date"])
         or _find(r"(?:date\s*of\s*birth|dob|birth\s*date)\s*[:\-]\s*([^\n,;]+)")
@@ -17148,6 +17160,8 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         "employeeLastName": last_name[:120],
         "employeeEmail": email_value.lower()[:160],
         "employerName": re.sub(r"\s+", " ", str(employer_name or "")).strip()[:180],
+        "title": _submitted_employee_forms_normalise_title(title),
+        "gender": _submitted_employee_forms_normalise_gender(gender, title=title),
         "employeePhone": re.sub(r"\s+", " ", str(employee_phone or "")).strip()[:80],
         "dateOfBirth": re.sub(r"\s+", " ", str(date_of_birth or "")).strip()[:32],
         "nationalInsuranceNumber": re.sub(r"\s+", "", str(ni_number or "")).strip().upper()[:20],
@@ -17163,7 +17177,7 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         "addressLine2": re.sub(r"\s+", " ", str(address_line_2 or "")).strip()[:160],
         "city": re.sub(r"\s+", " ", str(city or "")).strip()[:120],
         "postcode": re.sub(r"\s+", " ", str(postcode or "")).strip()[:32],
-        "country": re.sub(r"\s+", " ", str(country or "")).strip()[:80],
+        "country": _submitted_employee_forms_normalise_country_name(country),
         "bankAccountName": re.sub(r"\s+", " ", str(bank_account_name or "")).strip()[:120],
         "bankAccountNumber": re.sub(r"\s+", "", str(bank_account_number or "")).strip()[:34],
         "bankSortCode": re.sub(r"[^0-9A-Za-z\-]", "", str(bank_sort_code or "")).strip()[:20],
@@ -17272,6 +17286,61 @@ def _submitted_employee_forms_normalise_date(value: str) -> str:
     return ""
 
 
+def _submitted_employee_forms_normalise_title(value: str) -> str:
+    clean_value = re.sub(r"\s+", " ", str(value or "")).strip().strip(".")
+    if not clean_value:
+        return ""
+    normalised = clean_value.lower().replace(".", "")
+    if normalised in {"mr", "mister"}:
+        return "Mr"
+    if normalised in {"mrs"}:
+        return "Mrs"
+    if normalised in {"ms"}:
+        return "Ms"
+    if normalised in {"miss"}:
+        return "Miss"
+    if normalised in {"mx"}:
+        return "Mx"
+    return clean_value[:35]
+
+
+def _submitted_employee_forms_normalise_gender(value: str, *, title: str = "") -> str:
+    clean_value = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    if clean_value in {"m", "male", "man"}:
+        return "M"
+    if clean_value in {"f", "female", "woman"}:
+        return "F"
+    title_key = re.sub(r"\s+", "", str(title or "")).strip().lower().replace(".", "")
+    if title_key in {"mr", "mister"}:
+        return "M"
+    if title_key in {"mrs", "ms", "miss"}:
+        return "F"
+    return ""
+
+
+def _submitted_employee_forms_normalise_country_name(value: str) -> str:
+    clean_value = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not clean_value:
+        return ""
+    key = clean_value.lower().replace(".", "")
+    country_aliases = {
+        "gb": "United Kingdom",
+        "gbr": "United Kingdom",
+        "uk": "United Kingdom",
+        "england": "United Kingdom",
+        "scotland": "United Kingdom",
+        "wales": "United Kingdom",
+        "northern ireland": "United Kingdom",
+        "united kingdom": "United Kingdom",
+        "united kingdom of great britain and northern ireland": "United Kingdom",
+        "us": "United States",
+        "usa": "United States",
+        "united states": "United States",
+        "united states of america": "United States",
+    }
+    return str(country_aliases.get(key) or clean_value)[:50]
+
+
 def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity: dict) -> dict:
     merged: dict[str, str] = {}
     for key in SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA.get("required", []):
@@ -17290,6 +17359,12 @@ def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity:
             merged["employeeLastName"] = " ".join(parts[1:])
     merged["employeeEmail"] = str(merged.get("employeeEmail") or "").lower()
     merged["nationalInsuranceNumber"] = re.sub(r"\s+", "", str(merged.get("nationalInsuranceNumber") or "")).upper()
+    merged["title"] = _submitted_employee_forms_normalise_title(str(merged.get("title") or ""))
+    merged["gender"] = _submitted_employee_forms_normalise_gender(
+        str(merged.get("gender") or ""),
+        title=str(merged.get("title") or ""),
+    )
+    merged["country"] = _submitted_employee_forms_normalise_country_name(str(merged.get("country") or ""))
     for field_name in ("dateOfBirth", "startDate"):
         value = str(merged.get(field_name) or "").strip()
         normalised = _submitted_employee_forms_normalise_date(value)
@@ -18402,6 +18477,17 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
             break
     if date_of_birth:
         employee_row["DateOfBirth"] = date_of_birth
+
+    title_value = _submitted_employee_forms_normalise_title(str(extracted_fields.get("title") or ""))
+    if title_value:
+        employee_row["Title"] = title_value[:35]
+
+    gender_value = _submitted_employee_forms_normalise_gender(
+        str(extracted_fields.get("gender") or ""),
+        title=title_value,
+    )
+    if gender_value:
+        employee_row["Gender"] = gender_value
     extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
     employee_number_raw = re.sub(r"\s+", "", str(extracted_fields.get("payrollNumber") or "")).strip()
     if employee_number_raw:
@@ -18418,7 +18504,9 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
         address_line_2 = str(extracted_fields.get("addressLine2") or "").strip()
         if address_line_2:
             address_payload["AddressLine2"] = address_line_2[:50]
-        country_name = str(extracted_fields.get("country") or "").strip()
+        country_name = _submitted_employee_forms_normalise_country_name(str(extracted_fields.get("country") or ""))
+        if not country_name:
+            country_name = "United Kingdom"
         if country_name:
             address_payload["CountryName"] = country_name[:50]
         employee_row["Address"] = address_payload
@@ -18560,6 +18648,8 @@ def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
     required_map = [
         ("employee_first_name", "First name"),
         ("employee_last_name", "Last name"),
+        ("title", "Title"),
+        ("gender", "Gender"),
         ("dateOfBirth", "Date of birth"),
         ("addressLine1", "Address line 1"),
         ("city", "City"),
@@ -18577,6 +18667,9 @@ def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
     date_of_birth_value = str(extracted_fields.get("dateOfBirth") or "").strip()
     if date_of_birth_value and not _submitted_employee_forms_normalise_date(date_of_birth_value):
         missing.append("Date of birth")
+    gender_value = str(extracted_fields.get("gender") or "").strip()
+    if gender_value and not _submitted_employee_forms_normalise_gender(gender_value, title=str(extracted_fields.get("title") or "")):
+        missing.append("Gender")
     return missing
 
 
@@ -18613,6 +18706,14 @@ def _submitted_employee_forms_apply_field_overrides(form_row: dict, field_overri
         normalised = _submitted_employee_forms_normalise_date(str(merged_extracted.get(field_name) or ""))
         if normalised:
             merged_extracted[field_name] = normalised
+    merged_extracted["title"] = _submitted_employee_forms_normalise_title(str(merged_extracted.get("title") or ""))
+    merged_extracted["gender"] = _submitted_employee_forms_normalise_gender(
+        str(merged_extracted.get("gender") or ""),
+        title=str(merged_extracted.get("title") or ""),
+    )
+    merged_extracted["country"] = _submitted_employee_forms_normalise_country_name(
+        str(merged_extracted.get("country") or "")
+    )
 
     first_name = re.sub(r"\s+", " ", str(field_overrides.get("employeeFirstName") or merged_extracted.get("employeeFirstName") or row.get("employee_first_name") or "")).strip()
     last_name = re.sub(r"\s+", " ", str(field_overrides.get("employeeLastName") or merged_extracted.get("employeeLastName") or row.get("employee_last_name") or "")).strip()
@@ -19328,6 +19429,9 @@ async def sync_submitted_employee_forms(
                     f"tenantId={clean_tenant_id}",
                     f"payrollNumber={payroll_number or '-'}",
                     f"taxCode={tax_code or '-'}",
+                    f"title={str(extracted_fields.get('title') or '-')}",
+                    f"gender={str(extracted_fields.get('gender') or '-')}",
+                    f"country={str(extracted_fields.get('country') or '-')}",
                     f"missingMandatory={','.join(missing_required_fields)}",
                 ],
             )
@@ -19354,6 +19458,8 @@ async def sync_submitted_employee_forms(
                         f"xeroHttpStatus={response_http_status or '-'}",
                         f"requestedEmployeeNumber={payroll_number}",
                         f"requestedTaxCode={tax_code}",
+                        f"requestedTitle={str(extracted_fields.get('title') or '-')}",
+                        f"requestedGender={str(extracted_fields.get('gender') or '-')}",
                         f"requestedAddressLine1={str(extracted_fields.get('addressLine1') or '-')}",
                         f"requestedCity={str(extracted_fields.get('city') or '-')}",
                         f"requestedPostcode={str(extracted_fields.get('postcode') or '-')}",
@@ -19451,6 +19557,8 @@ async def sync_submitted_employee_forms(
                     f"tenantId={clean_tenant_id}",
                     f"requestedEmployeeNumber={payroll_number}",
                     f"requestedTaxCode={tax_code}",
+                    f"requestedTitle={str(extracted_fields.get('title') or '-')}",
+                    f"requestedGender={str(extracted_fields.get('gender') or '-')}",
                     f"requestedDateOfBirth={str(extracted_fields.get('dateOfBirth') or '-')}",
                     f"requestedAddressLine1={str(extracted_fields.get('addressLine1') or '-')}",
                     f"requestedCity={str(extracted_fields.get('city') or '-')}",
