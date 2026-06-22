@@ -125035,7 +125035,7 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions", "openai_nominal_inference", "journal_posted_liabilities"];
+                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions", "openai_nominal_inference"];
                 const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(resolvedP32FigureSource)
                     && reliablePayrollFigureSources.includes(resolvedPensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
@@ -125326,11 +125326,6 @@
                                             items.push(`${usedLabel} · ${code || "code?"} · ${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
                                         }
                                     }
-                                } else if (source === "journal_posted_liabilities") {
-                                    items.push(`Posted journal amount: ${formatCurrency(Number(isP32 ? summary?.journalPayableDiagnostics?.journalTaxLineTotal : summary?.journalPayableDiagnostics?.journalPensionLineTotal || 0))}`);
-                                    items.push(`Selected journal: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`);
-                                    items.push(`Journal date: ${String(summary?.journalPayableDiagnostics?.selectedJournalDate || "unknown")}`);
-                                    items.push(`Matched liability lines: ${Number(summary?.journalPayableDiagnostics?.matchedCreditLines || 0).toLocaleString("en-GB")}`);
                                 } else if (source === "nominal_trial_balance_delta") {
                                     const codeDelta = trialBalanceDeltaDiagnostics?.codeDelta && typeof trialBalanceDeltaDiagnostics.codeDelta === "object"
                                         ? trialBalanceDeltaDiagnostics.codeDelta

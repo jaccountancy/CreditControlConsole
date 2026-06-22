@@ -3772,9 +3772,7 @@ async def payroll_tenant_overview_payload(
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
 
-    journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_primary_mode"}
-    journal_p32_tax = Decimal("0")
-    journal_pension_payable = Decimal("0")
+    journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_required_mode"}
     payroll_api_p32_tax = Decimal("0")
     payroll_api_pension_payable = Decimal("0")
     payroll_api_diagnostics: dict = {}
@@ -3821,27 +3819,7 @@ async def payroll_tenant_overview_payload(
             "p32FromPayrunDetails": float(payrun_detail_p32_tax),
             "pensionFromPayrunDetails": float(payrun_detail_pension_payable),
         }
-        try:
-            journals_payload, journals_error = await _code_breaker_fetch_xero_journals(connection_row)
-        except Exception as exc:
-            journals_payload = []
-            journals_error = _sync_error_message(exc)
-        if journals_error:
-            journal_payable_diagnostics = {
-                "engine": "journals_unavailable",
-                "reason": journals_error,
-            }
-        else:
-            (
-                journal_p32_tax,
-                journal_pension_payable,
-                journal_payable_diagnostics,
-            ) = await _payroll_overview_extract_posted_journal_payables(
-                journals_payload if isinstance(journals_payload, list) else [],
-                accounts,
-                reference_payrun,
-                user_id=str(user.get("id") or "").strip() or None,
-            )
+        journal_payable_diagnostics = {"engine": "disabled", "reason": "nominal_required_mode"}
     else:
         payroll_api_diagnostics = {"engine": "payroll_api", "selectedPayRunId": "", "reason": "no_selected_payrun"}
 
@@ -4166,33 +4144,33 @@ async def payroll_tenant_overview_payload(
             + list(errors)
         )
     )
-    has_journal_liability_evidence = journal_p32_tax > Decimal("0") or journal_pension_payable > Decimal("0")
+    nominal_strict_ready = has_tax_nominal_evidence and has_pension_nominal_evidence
 
-    # Only use OpenAI when nominal account transactions were actually fetched.
-    # When nominal account transactions are permission-blocked, fall back to posted payroll journal liabilities.
-    if has_tax_nominal_evidence and openai_p32_tax > Decimal("0"):
+    # Payroll extraction must be nominal-transaction backed for both PAYE and pension.
+    # If either nominal side is missing, fail extraction instead of applying other fallbacks.
+    if nominal_strict_ready and has_tax_nominal_evidence and openai_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(openai_p32_tax)
-    elif has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0"):
+    elif nominal_strict_ready and has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(nominal_tx_p32_tax)
-    elif nominal_permission_blocked and journal_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(journal_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
-    if has_pension_nominal_evidence and openai_pension_payable > Decimal("0"):
+    if nominal_strict_ready and has_pension_nominal_evidence and openai_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(openai_pension_payable)
-    elif has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0"):
+    elif nominal_strict_ready and has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
-    elif nominal_permission_blocked and journal_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(journal_pension_payable)
     else:
         estimated_pension_payable_balance = 0.0
     if selected_payrun_id and (not has_tax_nominal_evidence or not has_pension_nominal_evidence):
         errors.append(
             "Exact payroll liability extraction unavailable: no nominal account transactions were returned for selected PAYE/pension codes in the selected period."
         )
-    if nominal_permission_blocked and not has_journal_liability_evidence:
+    if not nominal_strict_ready:
         errors.append(
-            "Exact payroll liability extraction unavailable: nominal transactions are permission-blocked and no posted payroll journal liabilities were available. Reconnect Xero and approve the required scopes."
+            "Exact payroll liability extraction failed: nominal account transactions are required for both PAYE and pension in the selected period."
+        )
+    if nominal_permission_blocked:
+        errors.append(
+            "Nominal transaction permissions appear incomplete. Reconnect Xero and approve required accounting/journal/report scopes."
         )
     if selected_payrun_id and (estimated_p32_tax_balance <= 0 or estimated_pension_payable_balance <= 0):
         payslips_status = int(pay_slips_diag.get("statusCode") or 0)
@@ -4221,20 +4199,16 @@ async def payroll_tenant_overview_payload(
     estimated_balances_source = {
         "p32Tax": (
             "openai_nominal_inference"
-            if has_tax_nominal_evidence and openai_p32_tax > Decimal("0")
+            if nominal_strict_ready and has_tax_nominal_evidence and openai_p32_tax > Decimal("0")
             else "nominal_account_transactions"
-            if has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0")
-            else "journal_posted_liabilities"
-            if nominal_permission_blocked and journal_p32_tax > Decimal("0")
+            if nominal_strict_ready and has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
             "openai_nominal_inference"
-            if has_pension_nominal_evidence and openai_pension_payable > Decimal("0")
+            if nominal_strict_ready and has_pension_nominal_evidence and openai_pension_payable > Decimal("0")
             else "nominal_account_transactions"
-            if has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0")
-            else "journal_posted_liabilities"
-            if nominal_permission_blocked and journal_pension_payable > Decimal("0")
+            if nominal_strict_ready and has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0")
             else "none"
         ),
     }
