@@ -16408,6 +16408,7 @@ GMAIL_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 GMAIL_MESSAGES_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
 GMAIL_MESSAGE_DETAIL_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+GMAIL_MESSAGE_ATTACHMENT_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
 GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
 GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
@@ -17199,6 +17200,46 @@ def _gmail_decode_body_data(value: str) -> str:
             return ""
 
 
+def _gmail_decode_body_bytes(value: str) -> bytes:
+    raw = str(value or "").strip()
+    if not raw:
+        return b""
+    padding = "=" * ((4 - (len(raw) % 4)) % 4)
+    try:
+        return base64.urlsafe_b64decode(f"{raw}{padding}".encode("utf-8"))
+    except Exception:
+        return b""
+
+
+def _gmail_collect_attachment_candidates(message_payload: dict) -> list[dict]:
+    payload = message_payload.get("payload") if isinstance(message_payload.get("payload"), dict) else {}
+
+    def _walk_parts(part: dict) -> list[dict]:
+        if not isinstance(part, dict):
+            return []
+        outputs: list[dict] = []
+        filename = str(part.get("filename") or "").strip()
+        mime_type = str(part.get("mimeType") or "").strip().lower()
+        body = part.get("body") if isinstance(part.get("body"), dict) else {}
+        attachment_id = str(body.get("attachmentId") or "").strip()
+        inline_data = str(body.get("data") or "").strip()
+        if filename and (attachment_id or inline_data):
+            outputs.append(
+                {
+                    "filename": filename[:200],
+                    "mimeType": mime_type or "application/octet-stream",
+                    "attachmentId": attachment_id,
+                    "inlineData": inline_data,
+                }
+            )
+        children = part.get("parts") if isinstance(part.get("parts"), list) else []
+        for child in children:
+            outputs.extend(_walk_parts(child if isinstance(child, dict) else {}))
+        return outputs
+
+    return _walk_parts(payload)
+
+
 def _gmail_message_body_text(message_payload: dict) -> str:
     payload = message_payload.get("payload") if isinstance(message_payload.get("payload"), dict) else {}
 
@@ -17495,6 +17536,7 @@ def _submitted_employee_forms_ai_request_text(subject: str, snippet: str, body_t
     return (
         "Extract employee onboarding form fields from this email content. "
         "Use only explicit values present in the text. "
+        "Attached files (if provided) are part of the same submission and should be used for extraction. "
         "Pay special attention to labels like 'Title *' and 'Gender (M/F) *' which may appear on separate lines from values. "
         "Set country to 'United Kingdom' when it is missing or listed as UK/GB/England/Scotland/Wales/Northern Ireland. "
         "Return empty strings where unknown.\n\n"
@@ -17509,22 +17551,26 @@ async def _submitted_employee_forms_extract_with_openai(
     snippet: str,
     body_text: str,
     *,
+    attachment_inputs: list[dict] | None = None,
     user_id: str | None = None,
 ) -> dict:
     if not str(get_settings().openai_api_key or "").strip():
         return {}
+    content_blocks: list[dict] = []
+    for block in attachment_inputs or []:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or "").strip()
+        if block_type in {"input_file", "input_image"}:
+            content_blocks.append(block)
+    content_blocks.append(
+        {
+            "type": "input_text",
+            "text": _submitted_employee_forms_ai_request_text(subject, snippet, body_text),
+        }
+    )
     request_body = {
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": _submitted_employee_forms_ai_request_text(subject, snippet, body_text),
-                    }
-                ],
-            }
-        ],
+        "input": [{"role": "user", "content": content_blocks}],
         "text": {
             "format": {
                 "type": "json_schema",
@@ -18208,6 +18254,53 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
 
         semaphore = asyncio.Semaphore(8)
         extraction_semaphore = asyncio.Semaphore(3)
+        attachment_semaphore = asyncio.Semaphore(4)
+
+        async def _build_attachment_inputs(message_id: str, payload: dict) -> list[dict]:
+            candidates = _gmail_collect_attachment_candidates(payload)
+            if not candidates:
+                return []
+            inputs: list[dict] = []
+            for candidate in candidates[:4]:
+                mime_type = str(candidate.get("mimeType") or "").strip().lower()
+                if not (mime_type.startswith("image/") or mime_type == "application/pdf"):
+                    continue
+                file_bytes = b""
+                inline_data = str(candidate.get("inlineData") or "").strip()
+                if inline_data:
+                    file_bytes = _gmail_decode_body_bytes(inline_data)
+                attachment_id = str(candidate.get("attachmentId") or "").strip()
+                if not file_bytes and attachment_id:
+                    async with attachment_semaphore:
+                        attachment_response = await client.get(
+                            GMAIL_MESSAGE_ATTACHMENT_URL.format(
+                                message_id=quote(message_id, safe=""),
+                                attachment_id=quote(attachment_id, safe=""),
+                            ),
+                            headers=headers,
+                        )
+                    if attachment_response.is_error:
+                        continue
+                    attachment_payload = attachment_response.json() if attachment_response.content else {}
+                    attachment_data = str(attachment_payload.get("data") or "").strip() if isinstance(attachment_payload, dict) else ""
+                    file_bytes = _gmail_decode_body_bytes(attachment_data)
+                if not file_bytes or len(file_bytes) > 8 * 1024 * 1024:
+                    continue
+                encoded = base64.b64encode(file_bytes).decode("ascii")
+                filename = str(candidate.get("filename") or "attachment").strip()[:120] or "attachment"
+                if mime_type.startswith("image/"):
+                    inputs.append({"type": "input_image", "image_url": f"data:{mime_type};base64,{encoded}"})
+                else:
+                    inputs.append(
+                        {
+                            "type": "input_file",
+                            "filename": filename,
+                            "file_data": f"data:{mime_type};base64,{encoded}",
+                        }
+                    )
+                if len(inputs) >= 3:
+                    break
+            return inputs
 
         async def _fetch_message(message_id: str) -> dict | None:
             async with semaphore:
@@ -18233,11 +18326,13 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             body_text = _gmail_message_body_text(payload)
             snippet = str(payload.get("snippet") or "").strip()
             local_identity = _extract_employee_identity(subject, snippet, body_text)
+            attachment_inputs = await _build_attachment_inputs(message_id, payload)
             async with extraction_semaphore:
                 ai_identity = await _submitted_employee_forms_extract_with_openai(
                     subject,
                     snippet,
                     body_text,
+                    attachment_inputs=attachment_inputs,
                     user_id=str(user.get("id") or ""),
                 )
             identity = _submitted_employee_forms_merged_identity(local_identity, ai_identity)
