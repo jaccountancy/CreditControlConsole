@@ -2127,6 +2127,14 @@ async def _payroll_overview_extract_posted_journal_payables(
     *,
     user_id: str | None = None,
 ) -> tuple[Decimal, Decimal, dict]:
+    def _canonical_account_code(value) -> str:
+        raw = _payroll_overview_text(value)
+        if not raw:
+            return ""
+        token_match = re.match(r"[A-Za-z0-9]+", raw)
+        token = token_match.group(0) if token_match else raw
+        return _payroll_overview_normalise_key(token)
+
     reference_payment_date = (
         _parse_any_date((reference_payrun or {}).get("paymentDate"))
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
@@ -2147,15 +2155,31 @@ async def _payroll_overview_extract_posted_journal_payables(
     account_by_id: dict[str, dict] = {}
     account_by_code: dict[str, dict] = {}
     account_by_name: dict[str, dict] = {}
+    tax_liability_account_ids: set[str] = set()
+    pension_liability_account_ids: set[str] = set()
+    tax_liability_account_codes: set[str] = set()
+    pension_liability_account_codes: set[str] = set()
     for account in accounts or []:
         if not isinstance(account, dict):
             continue
         account_id = _payroll_overview_text(account.get("AccountID") or account.get("ID") or account.get("accountId"))
         if account_id:
             account_by_id[account_id] = account
+        if _payroll_overview_account_is_tax_liability(account):
+            if account_id:
+                tax_liability_account_ids.add(account_id)
+        if _payroll_overview_account_is_pension_liability(account):
+            if account_id:
+                pension_liability_account_ids.add(account_id)
         account_code = _payroll_overview_text(account.get("Code") or account.get("code"))
         if account_code:
             account_by_code[_payroll_overview_normalise_key(account_code)] = account
+            canonical_code = _canonical_account_code(account_code)
+            if canonical_code:
+                if _payroll_overview_account_is_tax_liability(account):
+                    tax_liability_account_codes.add(canonical_code)
+                if _payroll_overview_account_is_pension_liability(account):
+                    pension_liability_account_codes.add(canonical_code)
         account_name = _payroll_overview_text(account.get("Name") or account.get("name"))
         if account_name:
             account_by_name[_payroll_overview_normalise_key(account_name)] = account
@@ -2232,6 +2256,8 @@ async def _payroll_overview_extract_posted_journal_payables(
             account = _resolve_line_account(line)
             account_code = _payroll_overview_text(account.get("Code") or line.get("AccountCode") or line.get("code"))
             account_name = _payroll_overview_text(account.get("Name") or line.get("AccountName") or line.get("name"))
+            line_account_id = _payroll_overview_text(line.get("AccountID") or line.get("accountID") or line.get("accountId"))
+            canonical_line_code = _canonical_account_code(account_code)
             description = _payroll_overview_text(line.get("Description") or line.get("description"))
             net_amount = _payroll_overview_numeric_decimal(
                 line.get("NetAmount")
@@ -2254,13 +2280,23 @@ async def _payroll_overview_extract_posted_journal_payables(
             )
             if liability_amount == Decimal("0"):
                 continue
-            if _payroll_overview_journal_line_is_tax_liability(line, account):
+            is_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
+                bool(line_account_id) and line_account_id in tax_liability_account_ids
+            ) or (
+                bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
+            )
+            is_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
+                bool(line_account_id) and line_account_id in pension_liability_account_ids
+            ) or (
+                bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
+            )
+            if is_tax_liability:
                 p32_credit_total += liability_amount
                 if liability_amount > p32_peak_credit:
                     p32_peak_credit = liability_amount
                 matched_credit_lines += 1
                 continue
-            if _payroll_overview_journal_line_is_pension_liability(line, account):
+            if is_pension_liability:
                 pension_credit_total += liability_amount
                 if liability_amount > pension_peak_credit:
                     pension_peak_credit = liability_amount
