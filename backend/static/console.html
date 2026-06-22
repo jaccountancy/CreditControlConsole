@@ -29042,6 +29042,48 @@
                 font-size: 13px;
                 line-height: 1.4;
             }
+            .task-email-rich-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }
+            .task-email-rich-toolbar .ghost-button {
+                min-width: 0;
+                padding: 7px 10px;
+                font-size: 12px;
+            }
+            .task-email-rich-editor {
+                min-height: 250px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+                font: inherit;
+                overflow: auto;
+            }
+            .task-email-rich-editor:focus-visible {
+                outline: 2px solid rgba(52, 132, 197, 0.45);
+                outline-offset: 1px;
+            }
+            .task-email-rich-editor p {
+                margin: 0 0 10px;
+            }
+            .task-email-rich-editor p:last-child {
+                margin-bottom: 0;
+            }
+            .task-email-rich-editor ul,
+            .task-email-rich-editor ol {
+                margin: 0 0 10px 20px;
+                padding: 0;
+            }
+            .task-email-rich-editor a {
+                color: #1f5f8d;
+            }
+            .task-email-rich-source {
+                margin-top: 10px;
+            }
             .task-detail-note-entry {
                 margin-top: 8px;
                 display: grid;
@@ -123756,8 +123798,9 @@
             }
 
             function payrollFindFirstReferenceValue(payload = {}, candidateKeys = []) {
+                const normaliseKey = (key) => String(key || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
                 const keySet = new Set((Array.isArray(candidateKeys) ? candidateKeys : [])
-                    .map((key) => String(key || "").trim().toLowerCase())
+                    .map((key) => normaliseKey(key))
                     .filter(Boolean));
                 if (!keySet.size) return "";
                 const visited = new Set();
@@ -123774,7 +123817,7 @@
                         continue;
                     }
                     Object.entries(node).forEach(([key, value]) => {
-                        const normalisedKey = String(key || "").trim().toLowerCase();
+                        const normalisedKey = normaliseKey(key);
                         if (!matchedValue && keySet.has(normalisedKey)) {
                             const text = String(value ?? "").trim();
                             if (text) matchedValue = text;
@@ -123787,15 +123830,25 @@
             }
 
             function payrollResolveReferencesFromRegister(registerRow = {}, payrollDetails = {}) {
+                const serviceDetails = registerRow?.companiesHouse?.serviceDetails || registerRow?.serviceDetails || {};
+                const hmrc648Details = serviceDetails?.hmrc648 || {};
                 const payeCandidates = [
                     payrollDetails?.employersPayeReference,
+                    payrollDetails?.employerPayeReference,
+                    payrollDetails?.payeReference,
                     registerRow?.payeReference,
+                    hmrc648Details?.payeReference,
+                    hmrc648Details?.employersPayeReference,
                     registerRow?.companiesHouse?.serviceDetails?.payroll?.employersPayeReference,
                     payrollFindFirstReferenceValue(registerRow, [
                         "employersPayeReference",
                         "employerPayeReference",
                         "payeReference",
+                        "paye_reference",
                         "taxOfficeReference",
+                        "tax_office_reference",
+                        "payeTaxOfficeNumber",
+                        "taxOfficeNumber",
                         "payeTaxOfficeReference",
                     ]),
                 ];
@@ -123813,10 +123866,15 @@
                 const combinedPayeReference = payeReference || ((taxOfficeNumber && taxOfficeReference) ? `${taxOfficeNumber}/${taxOfficeReference}` : "");
                 const officeCandidates = [
                     payrollDetails?.accountsOfficeReference,
+                    payrollDetails?.accountOfficeReference,
+                    payrollDetails?.officeReference,
                     registerRow?.accountsOfficeReference,
+                    hmrc648Details?.accountsOfficeReference,
+                    hmrc648Details?.accountOfficeReference,
                     registerRow?.companiesHouse?.serviceDetails?.payroll?.accountsOfficeReference,
                     payrollFindFirstReferenceValue(registerRow, [
                         "accountsOfficeReference",
+                        "accounts_office_reference",
                         "accountOfficeReference",
                         "payeAccountsOfficeReference",
                         "officeReference",
@@ -123884,6 +123942,200 @@
                 ].join("\n");
             }
 
+            function composePayrollPostedEmailDraftHtml({
+                clientName = "",
+                paymentDate = "",
+                payeReference = "",
+                accountsOfficeReference = "",
+                p32TaxAmount = 0,
+                pensionPayableAmount = 0,
+                hmrcDueDate = "",
+            } = {}) {
+                const cleanClientName = String(clientName || "").trim() || "Client";
+                const cleanPaymentDate = String(paymentDate || "").trim();
+                const cleanPayeReference = String(payeReference || "").trim() || "Not provided";
+                const cleanOfficeReference = String(accountsOfficeReference || "").trim() || "Not provided";
+                const cleanHmrcDueDate = String(hmrcDueDate || "").trim();
+                const periodLine = cleanPaymentDate
+                    ? `Payroll has now been posted in Xero for payment date ${formatDate(cleanPaymentDate)}.`
+                    : "Payroll has now been posted in Xero.";
+                const dueDateLine = cleanHmrcDueDate
+                    ? `Payment deadline: HMRC must receive PAYE/NIC by ${formatDate(cleanHmrcDueDate)}.`
+                    : "Payment deadline: HMRC PAYE/NIC is typically due by the 22nd of the following tax month when paying electronically (or 19th if paying by post).";
+                const submissionTimingLine = cleanHmrcDueDate
+                    ? `Please submit your BACS payment at least 3 working days before ${formatDate(cleanHmrcDueDate)} to allow bank processing time.`
+                    : "Please submit your BACS payment at least 3 working days before the deadline to allow bank processing time.";
+                return [
+                    `<p>Hi ${escapeHTML(cleanClientName)},</p>`,
+                    `<p>${escapeHTML(periodLine)}</p>`,
+                    "<p><strong>Payroll summary:</strong></p>",
+                    "<ul>",
+                    `<li>HMRC PAYE/NIC (P32 estimate): ${escapeHTML(formatCurrency(Number(p32TaxAmount || 0)))}</li>`,
+                    `<li>Pension payable: ${escapeHTML(formatCurrency(Number(pensionPayableAmount || 0)))}</li>`,
+                    `<li>Employer PAYE reference: ${escapeHTML(cleanPayeReference)}</li>`,
+                    `<li>Accounts Office reference: ${escapeHTML(cleanOfficeReference)}</li>`,
+                    "</ul>",
+                    `<p>${escapeHTML(dueDateLine)}<br>${escapeHTML(submissionTimingLine)}</p>`,
+                    "<p><strong>How to pay HMRC (PAYE/NIC):</strong></p>",
+                    "<ul>",
+                    "<li>Payment method: BACS/online bank transfer to HMRC.</li>",
+                    "<li>Payment reference: use your 13-character Accounts Office reference exactly, with no spaces.</li>",
+                    "<li>Payment timing: schedule the payment to clear in HMRC's account on or before the deadline above.</li>",
+                    "</ul>",
+                    "<p><strong>Pension payment:</strong></p>",
+                    "<ul>",
+                    "<li>Please pay the pension amount to your pension provider using your normal provider payment process and deadlines.</li>",
+                    "</ul>",
+                    "<p>If you would like us to review the final payment details before you submit, reply to this email and we can confirm them.</p>",
+                    "<p>Kind regards,<br>Jaccountancy Payroll Team</p>",
+                ].join("");
+            }
+
+            function payrollHtmlDraftToText(value = "") {
+                const source = sanitizeClientRichNoteHTML(value);
+                if (!source) return "";
+                const withTextBreaks = source
+                    .replace(/<li\b[^>]*>/gi, "- ")
+                    .replace(/<\/li>/gi, "\n")
+                    .replace(/<br\s*\/?>/gi, "\n")
+                    .replace(/<\/p>/gi, "\n\n")
+                    .replace(/<\/(ul|ol)>/gi, "\n");
+                const template = document.createElement("template");
+                template.innerHTML = withTextBreaks;
+                return String(template.content.textContent || "")
+                    .replace(/\u00A0/g, " ")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim();
+            }
+
+            async function openPayrollTaskEmailDraftPage({
+                draftSeed = {},
+                resolvedTask = {},
+                registerRow = {},
+                selectedPayRunLabel = "",
+                selectedPayRunSource = "",
+                tenantId = "",
+            } = {}) {
+                const paymentDate = String(draftSeed?.paymentDate || "").trim();
+                const titleDate = paymentDate ? formatDate(paymentDate) : "";
+                let emailHtml = sanitizeClientRichNoteHTML(
+                    String(draftSeed?.emailBodyHtml || "").trim()
+                    || composePayrollPostedEmailDraftHtml({
+                        clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                        paymentDate: draftSeed?.paymentDate || "",
+                        payeReference: draftSeed?.payeReference || "",
+                        accountsOfficeReference: draftSeed?.accountsOfficeReference || "",
+                        p32TaxAmount: draftSeed?.p32TaxAmount || 0,
+                        pensionPayableAmount: draftSeed?.pensionPayableAmount || 0,
+                        hmrcDueDate: draftSeed?.hmrcDueDate || "",
+                    })
+                );
+                return await showOperationReviewDialog({
+                    eyebrow: "Payroll task",
+                    title: titleDate ? `Payroll email workflow · ${titleDate}` : "Payroll email workflow",
+                    subtitle: "Step 2 of 2. Draft the client email with rich HTML formatting, then continue to confirmation.",
+                    confirmLabel: "Continue to confirmation",
+                    cancelLabel: "Back",
+                    columns: [],
+                    rows: [{}],
+                    summaryChips: [
+                        tenantId ? "Xero payroll data linked" : "No Xero payroll match",
+                        registerRow?.id ? "Client register linked" : "Client register not linked",
+                        selectedPayRunLabel ? `Selected pay run: ${selectedPayRunLabel}` : selectedPayRunSource,
+                        "Rich HTML editor enabled",
+                    ],
+                    onRender: ({ body, confirmButton }) => {
+                        body.innerHTML = `
+                            <div class="task-detail-modal-grid">
+                                <article class="task-detail-modal-card">
+                                    <h5>Email draft (rich HTML)</h5>
+                                    <div class="task-email-rich-toolbar" role="toolbar" aria-label="Email formatting tools">
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="bold"><strong>B</strong></button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="italic"><em>I</em></button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="underline"><u>U</u></button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="insertUnorderedList">Bullets</button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="insertOrderedList">Numbers</button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="createLink">Link</button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-command="removeFormat">Clear</button>
+                                        <button class="ghost-button" type="button" data-payroll-rich-toggle="source">HTML source</button>
+                                    </div>
+                                    <div id="taskPayrollEmailRichEditor" class="task-email-rich-editor" contenteditable="true" role="textbox" aria-multiline="true"></div>
+                                    <label id="taskPayrollEmailRichSourceWrap" class="task-email-rich-source" hidden>
+                                        HTML source
+                                        <textarea id="taskPayrollEmailRichSource"></textarea>
+                                    </label>
+                                    <p id="taskPayrollEmailRichHint" class="task-detail-modal-hint">Use the toolbar for formatting. Links are sanitised to safe protocols only.</p>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Plain text copy</h5>
+                                    <textarea id="taskPayrollEmailPlainTextPreview" readonly></textarea>
+                                    <p class="task-detail-modal-hint">This plain-text version is generated automatically for systems that do not support rich HTML.</p>
+                                </article>
+                            </div>
+                        `;
+                        const editor = body.querySelector("#taskPayrollEmailRichEditor");
+                        const sourceWrap = body.querySelector("#taskPayrollEmailRichSourceWrap");
+                        const sourceInput = body.querySelector("#taskPayrollEmailRichSource");
+                        const plainPreview = body.querySelector("#taskPayrollEmailPlainTextPreview");
+                        const hint = body.querySelector("#taskPayrollEmailRichHint");
+                        if (!editor || !sourceInput || !plainPreview || !hint) return;
+                        editor.innerHTML = emailHtml || "<p><br></p>";
+                        sourceInput.value = emailHtml;
+                        const refresh = ({ fromSource = false } = {}) => {
+                            const incoming = fromSource ? sourceInput.value : editor.innerHTML;
+                            const sanitised = sanitizeClientRichNoteHTML(incoming);
+                            emailHtml = sanitised;
+                            if (!fromSource) sourceInput.value = sanitised;
+                            if (fromSource) editor.innerHTML = sanitised || "<p><br></p>";
+                            const plainText = payrollHtmlDraftToText(sanitised);
+                            plainPreview.value = plainText;
+                            if (confirmButton) confirmButton.disabled = !plainText.trim();
+                            hint.textContent = plainText.trim()
+                                ? "Ready to continue."
+                                : "Email content is required before continuing.";
+                        };
+                        const applyCommand = (command) => {
+                            editor.focus();
+                            if (command === "createLink") {
+                                let url = window.prompt("Enter link URL", "https://");
+                                if (url == null) return;
+                                url = String(url).trim();
+                                if (!url) return;
+                                if (!/^(https?:|mailto:|tel:)/i.test(url)) {
+                                    url = `https://${url}`;
+                                }
+                                if (/^(javascript|data|vbscript):/i.test(url)) {
+                                    showToast("Unsupported link format.", "error");
+                                    return;
+                                }
+                                document.execCommand("createLink", false, url);
+                            } else {
+                                document.execCommand(command, false, null);
+                            }
+                            refresh();
+                        };
+                        body.querySelectorAll("[data-payroll-rich-command]").forEach((button) => {
+                            button.addEventListener("click", () => applyCommand(button.getAttribute("data-payroll-rich-command")));
+                        });
+                        body.querySelector("[data-payroll-rich-toggle='source']")?.addEventListener("click", () => {
+                            const currentlyHidden = sourceWrap.hidden;
+                            sourceWrap.hidden = !currentlyHidden;
+                            if (!currentlyHidden) refresh({ fromSource: true });
+                        });
+                        editor.addEventListener("input", () => refresh());
+                        sourceInput.addEventListener("input", () => refresh({ fromSource: true }));
+                        refresh();
+                    },
+                    resultProvider: () => {
+                        const cleanHtml = sanitizeClientRichNoteHTML(emailHtml);
+                        return {
+                            emailBodyHtml: cleanHtml,
+                            emailBody: payrollHtmlDraftToText(cleanHtml),
+                        };
+                    },
+                });
+            }
+
             async function confirmPayrollTaskCompletionEmailWorkflow({
                 modalResult = {},
                 tenantId = "",
@@ -123913,7 +124165,7 @@
                 return await showOperationReviewDialog({
                     eyebrow: "Payroll task",
                     title: paymentDateTitle ? `Confirmation · ${paymentDateTitle}` : "Confirmation",
-                    subtitle: "Confirm these payroll values before completing the task and opening the client email draft.",
+                    subtitle: "Confirm these payroll values before completing the task.",
                     confirmLabel: "Confirm and continue",
                     cancelLabel: "Back",
                     columns: [
@@ -123949,7 +124201,7 @@
                             <article class="task-detail-modal-card" style="margin-top: 12px;">
                                 <h5>Email preview</h5>
                                 <textarea readonly>${escapeHTML(snippet)}</textarea>
-                                <p class="task-detail-modal-hint">You can make final edits after this step in the notification composer.</p>
+                                <p class="task-detail-modal-hint">Draft prepared in step 2 and ready to send via notifications.</p>
                             </article>
                         `);
                     },
@@ -124052,6 +124304,15 @@
                     pensionPayableAmount,
                     hmrcDueDate,
                 });
+                let emailBodyHtml = composePayrollPostedEmailDraftHtml({
+                    clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                    paymentDate,
+                    payeReference,
+                    accountsOfficeReference,
+                    p32TaxAmount,
+                    pensionPayableAmount,
+                    hmrcDueDate,
+                });
                 if (tenantId && initialP32Tax <= 0) {
                     pushSystemActivity({
                         type: "error",
@@ -124083,7 +124344,7 @@
                     eyebrow: "Payroll task",
                     title: paymentDate ? `Payroll email workflow · ${formatDate(paymentDate)}` : "Payroll email workflow",
                     subtitle: "Step 1 of 2. AI extraction is filling payroll details now, then review and amend before confirmation.",
-                    confirmLabel: "Continue to confirmation",
+                    confirmLabel: "Continue to email draft",
                     cancelLabel: "Cancel",
                     columns: [],
                     rows: [{}],
@@ -124105,7 +124366,7 @@
                                         <li data-step-index="1">Extracting P32 PAYE/NIC estimate</li>
                                         <li data-step-index="2">Extracting pension payable figure</li>
                                         <li data-step-index="3">Extracting HMRC payment references</li>
-                                        <li data-step-index="4">Drafting payroll posted email</li>
+                                        <li data-step-index="4">Preparing email draft seed</li>
                                     </ul>
                                     <p class="task-detail-modal-hint">Fields are populated one-by-one so the review path is clear.</p>
                                 </article>
@@ -124147,10 +124408,6 @@
                                         </label>
                                     </div>
                                 </article>
-                                <article class="task-detail-modal-card">
-                                    <h5>Email draft</h5>
-                                    <textarea id="taskPayrollEmailDraftBody"></textarea>
-                                </article>
                             </div>
                         `;
                         const bindRegenerate = () => {
@@ -124160,7 +124417,6 @@
                             const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
                             const payeInput = body.querySelector("#taskPayrollEmailPayeRef");
                             const officeInput = body.querySelector("#taskPayrollEmailAccountsOfficeRef");
-                            const draftInput = body.querySelector("#taskPayrollEmailDraftBody");
                             const statusItems = Array.from(body.querySelectorAll("#taskPayrollExtractionStatus [data-step-index]"));
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
@@ -124193,7 +124449,17 @@
                                     pensionPayableAmount: Number(pensionInput?.value || 0),
                                     hmrcDueDate: dueValue,
                                 });
-                                if (draftInput) draftInput.value = draft;
+                                const draftHtml = composePayrollPostedEmailDraftHtml({
+                                    clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                    paymentDate: paymentDateValue,
+                                    payeReference: String(payeInput?.value || "").trim(),
+                                    accountsOfficeReference: String(officeInput?.value || "").trim(),
+                                    p32TaxAmount: Number(p32Input?.value || 0),
+                                    pensionPayableAmount: Number(pensionInput?.value || 0),
+                                    hmrcDueDate: dueValue,
+                                });
+                                emailBody = draft;
+                                emailBodyHtml = draftHtml;
                             };
                             const updateValidationState = () => {
                                 const p32Value = Number(p32Input?.value || 0);
@@ -124230,7 +124496,26 @@
                                         if (officeInput) officeInput.value = accountsOfficeReference;
                                         if (hmrcDueInput && !hmrcDueInput.value) hmrcDueInput.value = hmrcDueDate;
                                     },
-                                    () => { if (draftInput) draftInput.value = emailBody; },
+                                    () => {
+                                        emailBody = composePayrollPostedEmailDraft({
+                                            clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                            paymentDate: String(paymentInput?.value || "").trim(),
+                                            payeReference: String(payeInput?.value || "").trim(),
+                                            accountsOfficeReference: String(officeInput?.value || "").trim(),
+                                            p32TaxAmount: Number(p32Input?.value || 0),
+                                            pensionPayableAmount: Number(pensionInput?.value || 0),
+                                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
+                                        });
+                                        emailBodyHtml = composePayrollPostedEmailDraftHtml({
+                                            clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                            paymentDate: String(paymentInput?.value || "").trim(),
+                                            payeReference: String(payeInput?.value || "").trim(),
+                                            accountsOfficeReference: String(officeInput?.value || "").trim(),
+                                            p32TaxAmount: Number(p32Input?.value || 0),
+                                            pensionPayableAmount: Number(pensionInput?.value || 0),
+                                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
+                                        });
+                                    },
                                 ];
                                 if (confirmButton) confirmButton.disabled = true;
                                 const stepDelay = 210;
@@ -124260,21 +124545,57 @@
                         const hmrcDueInput = document.getElementById("taskPayrollEmailHmrcDueDate");
                         const payeInput = document.getElementById("taskPayrollEmailPayeRef");
                         const officeInput = document.getElementById("taskPayrollEmailAccountsOfficeRef");
-                        const draftInput = document.getElementById("taskPayrollEmailDraftBody");
+                        const finalPaymentDate = String(paymentInput?.value || "").trim();
+                        const finalHmrcDueDate = String(hmrcDueInput?.value || "").trim();
+                        const finalPayeReference = String(payeInput?.value || "").trim();
+                        const finalOfficeReference = String(officeInput?.value || "").trim();
+                        const finalP32 = Number(p32Input?.value || 0);
+                        const finalPension = Number(pensionInput?.value || 0);
                         return {
-                            p32TaxAmount: Number(p32Input?.value || 0),
-                            pensionPayableAmount: Number(pensionInput?.value || 0),
-                            paymentDate: String(paymentInput?.value || "").trim(),
-                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
-                            payeReference: String(payeInput?.value || "").trim(),
-                            accountsOfficeReference: String(officeInput?.value || "").trim(),
-                            emailBody: String(draftInput?.value || "").trim(),
+                            p32TaxAmount: finalP32,
+                            pensionPayableAmount: finalPension,
+                            paymentDate: finalPaymentDate,
+                            hmrcDueDate: finalHmrcDueDate,
+                            payeReference: finalPayeReference,
+                            accountsOfficeReference: finalOfficeReference,
+                            emailBody: composePayrollPostedEmailDraft({
+                                clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                paymentDate: finalPaymentDate,
+                                payeReference: finalPayeReference,
+                                accountsOfficeReference: finalOfficeReference,
+                                p32TaxAmount: finalP32,
+                                pensionPayableAmount: finalPension,
+                                hmrcDueDate: finalHmrcDueDate,
+                            }),
+                            emailBodyHtml: composePayrollPostedEmailDraftHtml({
+                                clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
+                                paymentDate: finalPaymentDate,
+                                payeReference: finalPayeReference,
+                                accountsOfficeReference: finalOfficeReference,
+                                p32TaxAmount: finalP32,
+                                pensionPayableAmount: finalPension,
+                                hmrcDueDate: finalHmrcDueDate,
+                            }),
                         };
                     },
                 });
                 if (!modalResult || typeof modalResult !== "object") return;
+                const draftedEmail = await openPayrollTaskEmailDraftPage({
+                    draftSeed: modalResult,
+                    resolvedTask,
+                    registerRow,
+                    selectedPayRunLabel,
+                    selectedPayRunSource,
+                    tenantId,
+                });
+                if (!draftedEmail || typeof draftedEmail !== "object") return;
+                const finalModalResult = {
+                    ...modalResult,
+                    emailBody: String(draftedEmail?.emailBody || modalResult?.emailBody || "").trim(),
+                    emailBodyHtml: String(draftedEmail?.emailBodyHtml || modalResult?.emailBodyHtml || "").trim(),
+                };
                 const confirmed = await confirmPayrollTaskCompletionEmailWorkflow({
-                    modalResult,
+                    modalResult: finalModalResult,
                     tenantId,
                     registerRow,
                     resolvedTask,
@@ -124283,14 +124604,14 @@
                 });
                 if (!confirmed) return;
                 completeTaskRowFromButton({ rowId, match: resolvedTask, button, rowNode, mode, notifyAfter: false });
-                const subjectDate = modalResult?.paymentDate ? ` · ${formatDate(modalResult.paymentDate)}` : "";
+                const subjectDate = finalModalResult?.paymentDate ? ` · ${formatDate(finalModalResult.paymentDate)}` : "";
                 const subject = `Payroll posted confirmation${subjectDate}`;
                 openSidebarNotifyModal({
                     category: "Payroll",
                     clientId: String(registerRow?.clientId || resolvedTask?.clientId || "").trim(),
                     taskReference: bmTaskDisplayName(resolvedTask),
                     subject,
-                    message: modalResult.emailBody || "",
+                    message: finalModalResult.emailBody || "",
                     urgent: false,
                 });
                 showToast("Payroll task completed and email workflow drafted.", "success");
