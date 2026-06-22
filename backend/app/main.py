@@ -4949,7 +4949,39 @@ async def api_sync_payroll_headcount_ignition(request: Request, user: dict = Dep
 
 @app.get("/api/submitted-employee-forms")
 def api_submitted_employee_forms(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **submitted_employee_forms_payload(user)}
+    try:
+        return {"status": "ok", **submitted_employee_forms_payload(user)}
+    except Exception as exc:
+        error_id = str(uuid.uuid4())
+        logger.exception(
+            "submitted_employee_forms_payload_failed user_id=%s error_id=%s",
+            user.get("id"),
+            error_id,
+        )
+        return {
+            "status": "ok",
+            "submittedEmployeeForms": {
+                "gmail": {
+                    "status": "error",
+                    "message": "Submitted employee forms loaded in fallback mode due to a backend error.",
+                    "needsReconnect": False,
+                    "gmailEmail": "",
+                },
+                "rows": [],
+                "summary": {
+                    "total": 0,
+                    "created": 0,
+                    "exists": 0,
+                    "pending": 0,
+                    "failed": 0,
+                    "needsReview": 0,
+                },
+                "subjectPrefix": "New Employee Details:",
+                "managerDirectory": [],
+                "degraded": True,
+                "warnings": [f"route_fallback:{exc.__class__.__name__}:{str(exc)[:220]}", f"error_id:{error_id}"],
+            },
+        }
 
 
 @app.post("/api/submitted-employee-forms/sync")

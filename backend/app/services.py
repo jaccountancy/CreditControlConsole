@@ -16801,9 +16801,25 @@ def submitted_employee_forms_payload(user: dict) -> dict:
             gmail_message = "Reconnect Gmail and include read access to load submitted employee forms."
             needs_reconnect = True
 
-    manager_directory = _submitted_employee_forms_manager_directory()
-    rows = _submitted_employee_forms_query_rows(str(user.get("id") or ""))
-    rows = _submitted_employee_forms_attach_client_manager(rows, manager_directory)
+    warnings: list[str] = []
+    manager_directory: list[dict] = []
+    rows: list[dict] = []
+    try:
+        manager_directory = _submitted_employee_forms_manager_directory()
+    except Exception as exc:
+        logger.exception("submitted_employee_forms_manager_directory_failed")
+        warnings.append(f"manager_directory_failed:{_sync_error_message(exc)}")
+    try:
+        rows = _submitted_employee_forms_query_rows(str(user.get("id") or ""))
+    except Exception as exc:
+        logger.exception("submitted_employee_forms_rows_query_failed")
+        warnings.append(f"rows_query_failed:{_sync_error_message(exc)}")
+        rows = []
+    try:
+        rows = _submitted_employee_forms_attach_client_manager(rows, manager_directory)
+    except Exception as exc:
+        logger.exception("submitted_employee_forms_attach_client_manager_failed")
+        warnings.append(f"client_manager_attach_failed:{_sync_error_message(exc)}")
     return {
         "submittedEmployeeForms": {
             "gmail": {
@@ -16816,6 +16832,8 @@ def submitted_employee_forms_payload(user: dict) -> dict:
             "summary": _submitted_employee_forms_summary(rows),
             "subjectPrefix": SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX,
             "managerDirectory": manager_directory,
+            "degraded": bool(warnings),
+            "warnings": warnings,
         }
     }
 
