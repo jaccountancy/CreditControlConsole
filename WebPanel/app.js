@@ -31,6 +31,7 @@ let taskSidebarTab = "task";
 let searchTerm = "";
 let matchingSearchTerm = "";
 let clientFilter = "all";
+let taskFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
@@ -51,6 +52,7 @@ let clientProfileSaving = false;
 let persistStateTimer = null;
 let persistClientMatchesTimer = null;
 let searchDebounceTimer = null;
+let xeroMatchModalClientId = "";
 let hmrcWizardState = loadHmrcWizardState();
 let clientWorkflowStateByClient = loadClientWorkflowStateByClient();
 const appLoadingState = { visible: true, message: "Loading client profile..." };
@@ -673,9 +675,20 @@ async function hydrateFromAPI() {
     }
 }
 
+function resolveTaskLabel(invoice) {
+    return String(
+        invoice?.taskName
+        || invoice?.task
+        || invoice?.description
+        || invoice?.invoiceNumber
+        || "Unassigned task"
+    ).trim();
+}
+
 function decorateInvoice(customer, invoice) {
     const notesSummary = noteSnippet(invoice);
-    const description = invoice.description || invoice.invoiceNumber || "Xero invoice";
+    const taskLabel = resolveTaskLabel(invoice);
+    const description = invoice.description || taskLabel || "Xero invoice";
     const category = invoiceCategory(invoice);
     const dueSortValue = dateSortValue(invoice.dueDate);
     const searchableText = [
@@ -696,6 +709,8 @@ function decorateInvoice(customer, invoice) {
         manager: customer.manager || "Unassigned",
         category,
         dueSortValue,
+        taskLabel,
+        taskKey: taskLabel.toLowerCase(),
         description,
         notesSummary,
         searchableText,
@@ -1022,7 +1037,7 @@ function managerValues() {
 function filteredInvoices(invoices = allInvoices()) {
     const searchTermLower = searchTerm.trim().toLowerCase();
     const canUseCache = invoices === allInvoices();
-    const cacheKey = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTermLower}`;
+    const cacheKey = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${taskFilter}|${sortMode}|${searchTermLower}`;
     if (canUseCache && filteredInvoicesCache && filteredInvoicesCacheKey === cacheKey) {
         return filteredInvoicesCache;
     }
@@ -1032,7 +1047,9 @@ function filteredInvoices(invoices = allInvoices()) {
         const matchesSearch = (invoice.searchableText || "").includes(searchTermLower);
         const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(category);
         const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
-        return matchesFilter && matchesSearch && matchesClient;
+        const taskKey = invoice.taskKey || resolveTaskLabel(invoice).toLowerCase();
+        const matchesTask = taskFilter === "all" || taskKey === taskFilter;
+        return matchesFilter && matchesSearch && matchesClient && matchesTask;
     }).sort(compareInvoices);
     if (canUseCache) {
         filteredInvoicesCache = result;
@@ -1130,7 +1147,7 @@ function renderSummaryCounts(invoices = allInvoices()) {
     });
 }
 
-function renderToolbarControls() {
+function renderToolbarControls(invoices = allInvoices()) {
     document.getElementById("sortButton").textContent = `Sort: ${sortLabels[sortMode]}`;
     document.getElementById("filterButton").textContent = `Filter: ${filterLabels[clientFilter]}`;
     document.querySelectorAll("[data-sort-mode]").forEach((button) => {
@@ -1139,6 +1156,157 @@ function renderToolbarControls() {
     document.querySelectorAll("[data-filter-mode]").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.filterMode === clientFilter);
     });
+    renderTaskFilterOptions(invoices);
+}
+
+function renderTaskFilterOptions(invoices = allInvoices()) {
+    const select = document.getElementById("taskFilterSelect");
+    if (!select) return;
+    const taskCounts = new Map();
+    invoices.forEach((invoice) => {
+        const key = invoice.taskKey || resolveTaskLabel(invoice).toLowerCase();
+        const label = invoice.taskLabel || resolveTaskLabel(invoice);
+        const existing = taskCounts.get(key);
+        if (existing) existing.count += 1;
+        else taskCounts.set(key, { label, count: 1 });
+    });
+    const entries = [...taskCounts.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label));
+    const fragment = document.createDocumentFragment();
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = `All tasks (${invoices.length})`;
+    fragment.appendChild(allOption);
+    entries.forEach(([key, value]) => {
+        const option = document.createElement("option");
+        option.value = key;
+        option.textContent = `${value.label} (${value.count})`;
+        fragment.appendChild(option);
+    });
+    select.innerHTML = "";
+    select.appendChild(fragment);
+    if (taskFilter !== "all" && !taskCounts.has(taskFilter)) {
+        taskFilter = "all";
+    }
+    select.value = taskFilter;
+}
+
+function escapeCSV(value) {
+    const text = String(value ?? "");
+    if (/["\n,]/.test(text)) return `"${text.replace(/"/g, "\"\"")}"`;
+    return text;
+}
+
+function exportFilteredInvoicesToCSV() {
+    const filtered = filteredInvoices();
+    if (!filtered.length) {
+        window.alert("No rows match the current filters to export.");
+        return;
+    }
+    const headers = [
+        "Client",
+        "Task",
+        "Invoice Ref",
+        "Amount",
+        "Paid",
+        "Status",
+        "Xero Match",
+        "Notes",
+        "Due Date"
+    ];
+    const lines = [headers.join(",")];
+    filtered.forEach((invoice) => {
+        const client = findCustomerById(invoice.customerId);
+        const xeroMatch = client?.xeroOrganisationId || (resolveIntegrationConnection(client, "xero") ? "Connected" : "Not matched");
+        const paidAmount = Number(invoice.total || 0) - Number(invoice.amountDue || 0);
+        const row = [
+            invoice.customerName || "",
+            invoice.taskLabel || resolveTaskLabel(invoice),
+            invoice.invoiceNumber || invoice.id || "",
+            formatCurrency(invoice.total || invoice.amountDue || 0),
+            formatCurrency(paidAmount),
+            invoiceStatusLabel(invoice),
+            xeroMatch,
+            invoice.notesSummary || "",
+            formatDate(invoice.dueDate)
+        ];
+        lines.push(row.map((value) => escapeCSV(value)).join(","));
+    });
+    const content = lines.join("\n");
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `credit-control-tasks-${stamp}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+}
+
+function invoiceXeroCellMarkup(invoice) {
+    const client = findCustomerById(invoice.customerId);
+    const hasMatch = Boolean(client?.xeroOrganisationId);
+    if (hasMatch) {
+        return `<span class="xero-link-pill" title="${escapeHTML(client.xeroOrganisationId)}">${escapeHTML(client.xeroOrganisationId)}</span>`;
+    }
+    if (resolveIntegrationConnection(client, "xero")) {
+        return `<span class="xero-link-pill">Connected</span>`;
+    }
+    return `<button class="xero-unmatched-button" type="button" data-open-xero-match="1" aria-label="Match Xero organisation" title="No matched Xero organisation">X</button>`;
+}
+
+function connectedXeroOrganisationOptions() {
+    const optionsById = new Map();
+    state.customers.forEach((customer) => {
+        const xeroOrganisationId = String(customer?.xeroOrganisationId || "").trim();
+        if (!xeroOrganisationId) return;
+        if (!optionsById.has(xeroOrganisationId)) optionsById.set(xeroOrganisationId, []);
+        optionsById.get(xeroOrganisationId).push(customer.name || "Client");
+    });
+    return [...optionsById.entries()]
+        .map(([id, clientNames]) => ({ id, label: `${id} · ${clientNames.slice(0, 2).join(", ")}` }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function openXeroMatchModal(clientId) {
+    const modal = document.getElementById("xeroMatchModal");
+    const client = findCustomerById(clientId);
+    if (!modal || !client) return;
+    xeroMatchModalClientId = client.id;
+    const clientMeta = document.getElementById("xeroMatchModalClientMeta");
+    const select = document.getElementById("xeroMatchSelect");
+    const manualInput = document.getElementById("xeroMatchManualInput");
+    const statusText = document.getElementById("xeroMatchStatusText");
+    if (clientMeta) {
+        const currentMatch = client.xeroOrganisationId ? `Current match: ${client.xeroOrganisationId}` : "No Xero organisation matched yet.";
+        clientMeta.textContent = `${client.name || "Client"} · ${currentMatch}`;
+    }
+    if (select) {
+        const options = connectedXeroOrganisationOptions();
+        select.innerHTML = "";
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = options.length ? "Select organisation" : "No connected organisations found";
+        select.appendChild(empty);
+        options.forEach((option) => {
+            const element = document.createElement("option");
+            element.value = option.id;
+            element.textContent = option.label;
+            select.appendChild(element);
+        });
+        select.value = client.xeroOrganisationId || "";
+    }
+    if (manualInput) manualInput.value = "";
+    if (statusText) statusText.textContent = "Saving this match links future tasks for this client.";
+    modal.hidden = false;
+}
+
+function closeXeroMatchModal() {
+    const modal = document.getElementById("xeroMatchModal");
+    if (!modal) return;
+    modal.hidden = true;
+    xeroMatchModalClientId = "";
 }
 
 function renderInvoiceTable(invoices = allInvoices()) {
@@ -1151,12 +1319,12 @@ function renderInvoiceTable(invoices = allInvoices()) {
     const pageLimit = loadMoreMode ? visibleAllTasksCount : pageSize;
     const paged = filtered.slice(start, start + pageLimit);
     const pageInvoiceIds = paged.map((invoice) => invoice.id || "").join("|");
-    const signature = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${sortMode}|${searchTerm.trim().toLowerCase()}|${currentPage}|${selectedInvoiceId || ""}|${filtered.length}|${pageInvoiceIds}|${loadMoreMode ? visibleAllTasksCount : pageSize}`;
+    const signature = `${invoiceStateVersion}|${selectedFilter}|${clientFilter}|${taskFilter}|${sortMode}|${searchTerm.trim().toLowerCase()}|${currentPage}|${selectedInvoiceId || ""}|${filtered.length}|${pageInvoiceIds}|${loadMoreMode ? visibleAllTasksCount : pageSize}`;
     if (signature !== tableRenderSignature) {
         tbody.innerHTML = "";
         if (!paged.length) {
             const row = document.createElement("tr");
-            row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+            row.innerHTML = `<td colspan="9"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
             tbody.appendChild(row);
         } else {
             const fragment = document.createDocumentFragment();
@@ -1177,12 +1345,13 @@ function renderInvoiceTable(invoices = allInvoices()) {
                 row.dataset.invoiceId = invoice.id || "";
                 row.dataset.customerId = invoice.customerId || "";
                 row.innerHTML = `
-                    <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                    <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div><span class="client-id-badge">${invoice.customerContact || invoice.customerId || "--"}</span></div></td>
                     <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
                     <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div>${descriptionMeta}</div></div></td>
                     <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
                     <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
                     <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
+                    <td>${invoiceXeroCellMarkup(invoice)}</td>
                     <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                     <td><button class="row-action-button" type="button" data-open-sidebar-tab="history" aria-label="Open task history sidebar" title="Open task history">⧉</button></td>
                 `;
@@ -1969,7 +2138,7 @@ function renderAll() {
     if (activeView === "ledger") {
         const invoices = allInvoices();
         renderSummaryCounts(invoices);
-        renderToolbarControls();
+        renderToolbarControls(invoices);
         renderInvoiceTable(invoices);
     }
     renderClientScreen();
@@ -2057,6 +2226,15 @@ function wireFilters() {
             renderAll();
         });
     });
+    document.getElementById("taskFilterSelect")?.addEventListener("change", (event) => {
+        taskFilter = event.target.value || "all";
+        currentPage = 1;
+        visibleAllTasksCount = ALL_TASKS_INITIAL_LOAD;
+        renderInvoiceTable();
+    });
+    document.getElementById("exportTasksButton")?.addEventListener("click", () => {
+        exportFilteredInvoicesToCSV();
+    });
     document.addEventListener("click", (event) => {
         if (!event.target.closest(".toolbar-menu-wrap")) closeToolbarMenus();
     });
@@ -2081,6 +2259,13 @@ function wireFilters() {
         renderInvoiceTable();
     });
     document.getElementById("invoiceTableBody").addEventListener("click", (event) => {
+        const xeroButton = event.target.closest("[data-open-xero-match]");
+        if (xeroButton) {
+            const row = xeroButton.closest("tr[data-customer-id]");
+            const customerId = row?.dataset.customerId || "";
+            if (customerId) openXeroMatchModal(customerId);
+            return;
+        }
         const requestedTab = event.target.closest("[data-open-sidebar-tab]")?.dataset.openSidebarTab;
         const row = event.target.closest("tr[data-invoice-id]");
         if (!row) return;
@@ -2203,6 +2388,38 @@ function wireForms() {
     document.getElementById("matchingSearch").addEventListener("input", (event) => {
         matchingSearchTerm = event.target.value || "";
         renderSettingsScreen();
+    });
+    document.getElementById("closeXeroMatchModalButton")?.addEventListener("click", () => {
+        closeXeroMatchModal();
+    });
+    document.getElementById("xeroMatchModal")?.addEventListener("click", (event) => {
+        if (event.target.id === "xeroMatchModal") closeXeroMatchModal();
+    });
+    document.getElementById("xeroMatchForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const client = findCustomerById(xeroMatchModalClientId);
+        if (!client) {
+            closeXeroMatchModal();
+            return;
+        }
+        const selectedValue = (document.getElementById("xeroMatchSelect")?.value || "").trim();
+        const manualValue = (document.getElementById("xeroMatchManualInput")?.value || "").trim();
+        const xeroOrganisationId = manualValue || selectedValue;
+        if (!xeroOrganisationId) {
+            const status = document.getElementById("xeroMatchStatusText");
+            if (status) status.textContent = "Select an existing organisation or enter an organisation ID.";
+            return;
+        }
+        client.xeroOrganisationId = xeroOrganisationId;
+        client.xeroConnected = true;
+        invalidateInvoiceCaches();
+        persistState();
+        persistClientMatches();
+        renderAll();
+        closeXeroMatchModal();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeXeroMatchModal();
     });
     document.getElementById("saveHmrcGatewayClientIdButton").addEventListener("click", () => {
         currentHmrcWizardFormState();
