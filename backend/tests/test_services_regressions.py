@@ -1510,11 +1510,11 @@ class ServicesRegressionTests(unittest.TestCase):
                                                     {"Value": "Credit"},
                                                 ],
                                             },
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Tax"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "11,676.94"}]},
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Deductions"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "1,165.00"}]},
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Employment Allowance"}, {"Value": "PD-79"}, {"Value": "3,773.26"}, {"Value": ""}]},
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "National Insurance Contribution"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "9,150.77"}]},
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Statutory Recovery - Maternity Pay"}, {"Value": "PD-79"}, {"Value": "762.32"}, {"Value": ""}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Tax"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": ""}, {"Value": "11,676.94"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Deductions"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": ""}, {"Value": "1,165.00"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Employment Allowance"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": "3,773.26"}, {"Value": ""}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "National Insurance Contribution"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": ""}, {"Value": "9,150.77"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Statutory Recovery - Maternity Pay"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": "762.32"}, {"Value": ""}]},
                                         ],
                                     }
                                 ]
@@ -1541,8 +1541,8 @@ class ServicesRegressionTests(unittest.TestCase):
                                                     {"Value": "Credit"},
                                                 ],
                                             },
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Benefits"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "1,086.12"}]},
-                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Deductions"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "1,198.10"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Benefits"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": ""}, {"Value": "1,086.12"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Deductions"}, {"Value": "Payroll Expense Journal - PD-79"}, {"Value": ""}, {"Value": "1,198.10"}]},
                                             {"RowType": "Row", "Cells": [{"Value": "8 May 2026"}, {"Value": "Spend Money"}, {"Value": "NEST - pension contributions"}, {"Value": ""}, {"Value": "2,012.99"}, {"Value": ""}]},
                                         ],
                                     }

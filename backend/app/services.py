@@ -2993,6 +2993,10 @@ async def _payroll_overview_nominal_transaction_context(
     def _reference_key(value: str) -> str:
         return _payroll_overview_normalise_key(str(value or "").strip())
 
+    def _is_payroll_expense_journal_entry(row: dict) -> bool:
+        reference_norm = _reference_key(row.get("reference"))
+        return "payrollexpensejournal" in reference_norm
+
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
         applicable_total = Decimal("0")
@@ -3016,7 +3020,7 @@ async def _payroll_overview_nominal_transaction_context(
             payroll_expense_entries = [
                 row
                 for row in transaction_entries
-                if "payrollexpense" in _payroll_overview_normalise_key(row.get("source"))
+                if _is_payroll_expense_journal_entry(row)
             ]
             if str(label_prefix).strip().lower() == "tax":
                 for row in payroll_expense_entries:
