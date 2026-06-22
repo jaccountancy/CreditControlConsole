@@ -1309,6 +1309,71 @@ function closeXeroMatchModal() {
     xeroMatchModalClientId = "";
 }
 
+function renderManualTaskClientOptions() {
+    const select = document.getElementById("manualTaskClientSelect");
+    if (!select) return;
+    const customers = [...state.customers].sort((a, b) => `${a.name || ""}`.localeCompare(`${b.name || ""}`));
+    select.innerHTML = "";
+    customers.forEach((customer) => {
+        const option = document.createElement("option");
+        option.value = customer.id || "";
+        option.textContent = customer.name || customer.id || "Unnamed client";
+        select.appendChild(option);
+    });
+    const preferredClientId = selectedClientId || selectedInvoiceId ? (findCustomerByInvoiceId(selectedInvoiceId)?.id || selectedClientId) : "";
+    if (preferredClientId) select.value = preferredClientId;
+}
+
+function openManualTaskModal() {
+    const modal = document.getElementById("manualTaskModal");
+    if (!modal) return;
+    renderManualTaskClientOptions();
+    const titleInput = document.getElementById("manualTaskTitleInput");
+    const dueDateInput = document.getElementById("manualTaskDueDateInput");
+    const amountInput = document.getElementById("manualTaskAmountInput");
+    const statusSelect = document.getElementById("manualTaskStatusSelect");
+    const notesInput = document.getElementById("manualTaskNotesInput");
+    const statusText = document.getElementById("manualTaskStatusText");
+    if (titleInput) titleInput.value = "";
+    if (dueDateInput) dueDateInput.value = "";
+    if (amountInput) amountInput.value = "0";
+    if (statusSelect) statusSelect.value = "Outstanding";
+    if (notesInput) notesInput.value = "";
+    if (statusText) statusText.textContent = "New task will be added to the selected client.";
+    modal.hidden = false;
+    if (titleInput) titleInput.focus();
+}
+
+function closeManualTaskModal() {
+    const modal = document.getElementById("manualTaskModal");
+    if (!modal) return;
+    modal.hidden = true;
+}
+
+function createManualTaskInvoice(formValues) {
+    const now = new Date();
+    const idSuffix = `${now.getTime()}-${Math.floor(Math.random() * 100000)}`;
+    const amount = Number(formValues.amount || 0);
+    const amountDue = formValues.status === "Paid" ? 0 : Math.max(0, amount);
+    const notes = formValues.notes
+        ? [{ title: "Manual task note", body: formValues.notes, stamp: now.toISOString() }]
+        : [];
+    return {
+        id: `manual-${idSuffix}`,
+        invoiceNumber: `MAN-${idSuffix.slice(-6)}`,
+        description: formValues.title,
+        dueDate: formValues.dueDate || now.toISOString().slice(0, 10),
+        total: Math.max(0, amount),
+        amountDue,
+        controlStatus: formValues.status,
+        status: formValues.status,
+        notes,
+        statuses: [{ title: formValues.status, body: "Task created manually.", stamp: now.toISOString() }],
+        createdAt: now.toISOString(),
+        source: "manual"
+    };
+}
+
 function renderInvoiceTable(invoices = allInvoices()) {
     const tbody = document.getElementById("invoiceTableBody");
     const filtered = filteredInvoices(invoices);
@@ -2418,8 +2483,50 @@ function wireForms() {
         renderAll();
         closeXeroMatchModal();
     });
+    document.getElementById("openManualTaskModalButton")?.addEventListener("click", () => {
+        openManualTaskModal();
+    });
+    document.getElementById("closeManualTaskModalButton")?.addEventListener("click", () => {
+        closeManualTaskModal();
+    });
+    document.getElementById("manualTaskModal")?.addEventListener("click", (event) => {
+        if (event.target.id === "manualTaskModal") closeManualTaskModal();
+    });
+    document.getElementById("manualTaskForm")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const clientId = (document.getElementById("manualTaskClientSelect")?.value || "").trim();
+        const title = (document.getElementById("manualTaskTitleInput")?.value || "").trim();
+        const dueDate = (document.getElementById("manualTaskDueDateInput")?.value || "").trim();
+        const amount = (document.getElementById("manualTaskAmountInput")?.value || "0").trim();
+        const status = (document.getElementById("manualTaskStatusSelect")?.value || "Outstanding").trim();
+        const notes = (document.getElementById("manualTaskNotesInput")?.value || "").trim();
+        const statusText = document.getElementById("manualTaskStatusText");
+        const customer = findCustomerById(clientId);
+        if (!customer) {
+            if (statusText) statusText.textContent = "Select a valid client.";
+            return;
+        }
+        if (!title) {
+            if (statusText) statusText.textContent = "Task title is required.";
+            return;
+        }
+        const invoice = createManualTaskInvoice({ title, dueDate, amount, status, notes });
+        customer.invoices = [invoice, ...(Array.isArray(customer.invoices) ? customer.invoices : [])];
+        selectedClientId = customer.id || null;
+        selectedInvoiceId = invoice.id;
+        currentPage = 1;
+        visibleAllTasksCount = Math.max(visibleAllTasksCount, ALL_TASKS_INITIAL_LOAD);
+        state.panelSummary = null;
+        invalidateInvoiceCaches();
+        persistState();
+        renderAll();
+        closeManualTaskModal();
+    });
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") closeXeroMatchModal();
+        if (event.key === "Escape") {
+            closeXeroMatchModal();
+            closeManualTaskModal();
+        }
     });
     document.getElementById("saveHmrcGatewayClientIdButton").addEventListener("click", () => {
         currentHmrcWizardFormState();
