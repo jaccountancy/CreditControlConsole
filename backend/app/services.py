@@ -274,6 +274,7 @@ XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
+SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE = "1257L"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
@@ -17157,7 +17158,7 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
             schema_repaired = True
 
 
-async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> tuple[str, str]:
+async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> dict:
     refreshed_connection = await refresh_connection(str(connection_row.get("id") or ""))
     headers = {
         "Authorization": f"Bearer {refreshed_connection.get('access_token') or ''}",
@@ -17210,7 +17211,12 @@ async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> 
     employees = _payroll_headcount_rows(response_payload if isinstance(response_payload, dict) else {}, "Employees", "Employee")
     first_row = employees[0] if employees else {}
     employee_id, _, _ = _xero_payroll_employee_identity(first_row if isinstance(first_row, dict) else {})
-    return employee_id, str((first_row or {}).get("Status") or "").strip()
+    return {
+        "employeeId": employee_id,
+        "status": str((first_row or {}).get("Status") or "").strip(),
+        "httpStatusCode": int(response.status_code),
+        "responseSummary": str((response_payload or {}).get("providerName") or "").strip(),
+    }
 
 
 def _submitted_forms_target_connection(user: dict, tenant_id: str | None = None) -> dict:
@@ -17484,7 +17490,86 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
             break
     if date_of_birth:
         employee_row["DateOfBirth"] = date_of_birth
+    extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
+    employee_number_raw = re.sub(r"\s+", "", str(extracted_fields.get("payrollNumber") or "")).strip()
+    if employee_number_raw:
+        employee_row["EmployeeNumber"] = employee_number_raw[:35]
+    address_line_1 = str(extracted_fields.get("addressLine1") or "").strip()
+    city = str(extracted_fields.get("city") or "").strip()
+    post_code = str(extracted_fields.get("postcode") or "").strip()
+    if address_line_1 and city and post_code:
+        address_payload = {
+            "AddressLine1": address_line_1[:35],
+            "City": city[:50],
+            "PostCode": post_code[:8],
+        }
+        address_line_2 = str(extracted_fields.get("addressLine2") or "").strip()
+        if address_line_2:
+            address_payload["AddressLine2"] = address_line_2[:50]
+        country_name = str(extracted_fields.get("country") or "").strip()
+        if country_name:
+            address_payload["CountryName"] = country_name[:50]
+        employee_row["Address"] = address_payload
     return {"Employees": [employee_row]}
+
+
+def _submitted_forms_employee_number_as_int(value: str) -> int | None:
+    clean_value = re.sub(r"\s+", "", str(value or "")).strip()
+    if not clean_value or not clean_value.isdigit():
+        return None
+    try:
+        parsed = int(clean_value)
+    except ValueError:
+        return None
+    if parsed < 1:
+        return None
+    return parsed
+
+
+def _submitted_forms_next_employee_number(existing_employees: list[dict]) -> int:
+    highest = 0
+    for employee in existing_employees:
+        if not isinstance(employee, dict):
+            continue
+        candidate = _submitted_forms_employee_number_as_int(
+            str(employee.get("EmployeeNumber") or employee.get("employeeNumber") or "")
+        )
+        if candidate and candidate > highest:
+            highest = candidate
+    return max(1, highest + 1)
+
+
+def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
+    extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
+    missing: list[str] = []
+    required_map = [
+        ("employee_first_name", "First name"),
+        ("employee_last_name", "Last name"),
+        ("dateOfBirth", "Date of birth"),
+        ("addressLine1", "Address line 1"),
+        ("city", "City"),
+        ("postcode", "Postcode"),
+        ("payrollNumber", "Payroll number"),
+        ("taxCode", "Tax code"),
+    ]
+    for key, label in required_map:
+        if key in ("employee_first_name", "employee_last_name"):
+            value = str(form_row.get(key) or "").strip()
+        else:
+            value = str(extracted_fields.get(key) or "").strip()
+        if not value:
+            missing.append(label)
+    return missing
+
+
+def _submitted_forms_debug_note(base_note: str, lines: list[str]) -> str:
+    clean_base = str(base_note or "").strip()
+    clean_lines = [re.sub(r"\s+", " ", str(line or "")).strip() for line in (lines or []) if str(line or "").strip()]
+    if not clean_lines:
+        return clean_base
+    debug_block = "Debug: " + " | ".join(clean_lines)
+    merged = f"{clean_base}\n{debug_block}" if clean_base else debug_block
+    return merged[:3900]
 
 
 def _submitted_employee_forms_apply_field_overrides(form_row: dict, field_overrides: dict | None) -> dict:
@@ -17778,6 +17863,11 @@ async def sync_submitted_employee_forms(
         ).strip().lower()
         if not employee_name:
             employee_name = str(row.get("employee_full_name") or "").strip().lower()
+        row_debug_base = [
+            f"rowId={row_id}",
+            f"employeeEmail={employee_email or '-'}",
+            f"employeeName={employee_name or '-'}",
+        ]
 
         def update_row_state(
             *,
@@ -17786,14 +17876,16 @@ async def sync_submitted_employee_forms(
             xero_employee_id: str = "",
             xero_status: str = "pending",
             xero_note: str = "",
+            debug_lines: list[str] | None = None,
         ) -> None:
+            final_note = _submitted_forms_debug_note(xero_note, debug_lines or [])
             _update_submitted_employee_form_xero_status(
                 row_id,
                 tenant_id=tenant_id,
                 tenant_name=tenant_name,
                 xero_employee_id=xero_employee_id,
                 xero_status=xero_status,
-                xero_note=xero_note,
+                xero_note=final_note,
             )
             _record_submitted_employee_form_attempt(
                 row_id=row_id,
@@ -17803,7 +17895,7 @@ async def sync_submitted_employee_forms(
                 tenant_id=tenant_id,
                 tenant_name=tenant_name,
                 xero_employee_id=xero_employee_id,
-                note=xero_note,
+                note=final_note,
             )
 
         employer_name = _submitted_forms_employer_name(row)
@@ -17839,6 +17931,7 @@ async def sync_submitted_employee_forms(
                     if employer_name
                     else "Employer name missing on submitted form; unable to match a client workspace."
                 ),
+                debug_lines=row_debug_base + [f"employerName={employer_name or '-'}", "workspaceMatch=none"],
             )
             continue
         connection_row = target_workspace.get("connection") or {}
@@ -17851,6 +17944,7 @@ async def sync_submitted_employee_forms(
                 tenant_name="",
                 xero_status="needs-review",
                 xero_note=f"Matched employer '{employer_name or 'unknown'}' but workspace tenant ID is unavailable.",
+                debug_lines=row_debug_base + [f"employerName={employer_name or '-'}", "workspaceMatch=missing-tenant-id"],
             )
             continue
         last_tenant_id = clean_tenant_id
@@ -17870,6 +17964,13 @@ async def sync_submitted_employee_forms(
                         f"but could not load existing Xero Payroll employees: {error_message}"
                         f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                     ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"tenantName={clean_tenant_name}",
+                        f"workspaceMatchConfidence={ai_match_confidence}",
+                        f"workspaceMatchReason={ai_match_reason or '-'}",
+                        "stage=load-existing-employees",
+                    ],
                 )
                 continue
             existing_employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
@@ -17892,6 +17993,7 @@ async def sync_submitted_employee_forms(
                 "byEmail": existing_by_email,
                 "byNameUnique": existing_by_name_unique,
                 "duplicateNames": duplicate_names,
+                "nextEmployeeNumber": _submitted_forms_next_employee_number(existing_employees),
             }
         tenant_employee_index = employee_index_by_tenant.get(clean_tenant_id) or {}
         existing_by_email = tenant_employee_index.get("byEmail") or {}
@@ -17915,6 +18017,11 @@ async def sync_submitted_employee_forms(
                         "but multiple Xero Payroll employees share the same name and no employee email was parsed. "
                         "Open Preview, confirm email, then retry Step 2."
                     ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        "duplicateNameMatch=true",
+                        "existingMatch=email-missing-name-ambiguous",
+                    ],
                 )
                 continue
             existing_employee_id = existing_by_name_unique.get(employee_name) or ""
@@ -17922,6 +18029,40 @@ async def sync_submitted_employee_forms(
                 existing_match_method = "name"
 
         if existing_employee_id:
+            verify_existing_ok = True
+            verify_existing_error = ""
+            try:
+                verify_existing_url = f"{XERO_PAYROLL_EMPLOYEES_URL}/{quote(existing_employee_id, safe='')}"
+                verify_existing_payload = await xero_api_get(connection_row, verify_existing_url)
+                verify_existing_rows = _payroll_headcount_rows(verify_existing_payload, "Employees", "Employee")
+                verify_existing_row = verify_existing_rows[0] if verify_existing_rows else {}
+                verified_existing_id, _, _ = _xero_payroll_employee_identity(
+                    verify_existing_row if isinstance(verify_existing_row, dict) else {}
+                )
+                if str(verified_existing_id or "").strip() != existing_employee_id:
+                    raise ValueError("EmployeeID not found on verification response.")
+            except Exception as verify_existing_exc:
+                verify_existing_ok = False
+                verify_existing_error = _sync_error_message(verify_existing_exc)
+            if not verify_existing_ok:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_employee_id=existing_employee_id,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Matched an existing employee candidate in {clean_tenant_name}, but verification failed. "
+                        "Open Xero employee list and confirm manually."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"existingEmployeeId={existing_employee_id}",
+                        f"existingMatchMethod={existing_match_method or 'identity'}",
+                        f"verifyExistingError={verify_existing_error or '-'}",
+                    ],
+                )
+                continue
             existing += 1
             update_row_state(
                 tenant_id=clean_tenant_id,
@@ -17933,6 +18074,11 @@ async def sync_submitted_employee_forms(
                     f"Employee already exists in Xero Payroll (matched by {existing_match_method or 'identity'})."
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
+                debug_lines=row_debug_base + [
+                    f"tenantId={clean_tenant_id}",
+                    f"existingEmployeeId={existing_employee_id or '-'}",
+                    f"existingMatchMethod={existing_match_method or 'identity'}",
+                ],
             )
             continue
 
@@ -17946,6 +18092,7 @@ async def sync_submitted_employee_forms(
                     "Employee not found in Xero Payroll."
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
+                debug_lines=row_debug_base + [f"tenantId={clean_tenant_id}", "createMissing=false"],
             )
             continue
 
@@ -17956,12 +18103,115 @@ async def sync_submitted_employee_forms(
                 tenant_name=clean_tenant_name,
                 xero_status="needs-review",
                 xero_note="Employee details missing from submitted form email.",
+                debug_lines=row_debug_base + [f"tenantId={clean_tenant_id}", "identity=missing"],
+            )
+            continue
+
+        extracted_fields = row.get("extracted_fields") if isinstance(row.get("extracted_fields"), dict) else {}
+        extracted_fields = dict(extracted_fields)
+        tax_code = re.sub(r"\s+", "", str(extracted_fields.get("taxCode") or "")).strip().upper()
+        if not tax_code:
+            tax_code = SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE
+        extracted_fields["taxCode"] = tax_code
+        payroll_number = re.sub(r"\s+", "", str(extracted_fields.get("payrollNumber") or "")).strip()
+        parsed_existing_number = _submitted_forms_employee_number_as_int(payroll_number)
+        if parsed_existing_number is None:
+            next_number = max(1, int(tenant_employee_index.get("nextEmployeeNumber") or 1))
+            parsed_existing_number = next_number
+            payroll_number = f"{next_number:05d}"
+        else:
+            payroll_number = f"{parsed_existing_number:05d}"
+        tenant_employee_index["nextEmployeeNumber"] = max(
+            int(tenant_employee_index.get("nextEmployeeNumber") or 1),
+            parsed_existing_number + 1,
+        )
+        extracted_fields["payrollNumber"] = payroll_number
+        row["extracted_fields"] = extracted_fields
+        _update_submitted_employee_form_override_fields(
+            row_id,
+            user_id,
+            employee_full_name=str(row.get("employee_full_name") or ""),
+            employee_first_name=str(row.get("employee_first_name") or ""),
+            employee_last_name=str(row.get("employee_last_name") or ""),
+            employee_email=str(row.get("employee_email") or ""),
+            employer_name=str(row.get("employer_name") or ""),
+            extracted_fields=extracted_fields,
+        )
+
+        missing_required_fields = _submitted_forms_missing_xero_required_fields(row)
+        if missing_required_fields:
+            needs_review += 1
+            update_row_state(
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                xero_status="needs-review",
+                xero_note=(
+                    f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                    f"but missing Xero mandatory fields: {', '.join(missing_required_fields)}."
+                ),
+                debug_lines=row_debug_base + [
+                    f"tenantId={clean_tenant_id}",
+                    f"payrollNumber={payroll_number or '-'}",
+                    f"taxCode={tax_code or '-'}",
+                    f"missingMandatory={','.join(missing_required_fields)}",
+                ],
             )
             continue
 
         create_payload = _submitted_forms_employee_create_payload(row)
         try:
-            created_employee_id, created_status = await _xero_payroll_create_employee(connection_row, create_payload)
+            create_result = await _xero_payroll_create_employee(connection_row, create_payload)
+            created_employee_id = str(create_result.get("employeeId") or "").strip()
+            created_status = str(create_result.get("status") or "").strip()
+            response_http_status = int(create_result.get("httpStatusCode") or 0)
+            if not created_employee_id:
+                failed += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_status="failed",
+                    xero_note=(
+                        f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
+                        "but Xero did not return an EmployeeID for the create request."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"xeroHttpStatus={response_http_status or '-'}",
+                        f"requestedEmployeeNumber={payroll_number}",
+                        f"requestedTaxCode={tax_code}",
+                        f"requestedAddressLine1={str(extracted_fields.get('addressLine1') or '-')}",
+                        f"requestedCity={str(extracted_fields.get('city') or '-')}",
+                        f"requestedPostcode={str(extracted_fields.get('postcode') or '-')}",
+                    ],
+                )
+                continue
+            verify_url = f"{XERO_PAYROLL_EMPLOYEES_URL}/{quote(created_employee_id, safe='')}"
+            try:
+                verify_payload = await xero_api_get(connection_row, verify_url)
+                verified_rows = _payroll_headcount_rows(verify_payload, "Employees", "Employee")
+                verified_row = verified_rows[0] if verified_rows else {}
+                verified_employee_id, _, _ = _xero_payroll_employee_identity(verified_row if isinstance(verified_row, dict) else {})
+                if str(verified_employee_id or "").strip() != created_employee_id:
+                    raise ValueError("Verification call returned no matching EmployeeID.")
+            except Exception as verify_exc:
+                needs_review += 1
+                update_row_state(
+                    tenant_id=clean_tenant_id,
+                    tenant_name=clean_tenant_name,
+                    xero_employee_id=created_employee_id,
+                    xero_status="needs-review",
+                    xero_note=(
+                        f"Xero returned EmployeeID {created_employee_id}, but verification did not confirm it in "
+                        f"{clean_tenant_name}. Review in Xero and retry if needed."
+                    ),
+                    debug_lines=row_debug_base + [
+                        f"tenantId={clean_tenant_id}",
+                        f"createdEmployeeId={created_employee_id}",
+                        f"xeroHttpStatus={response_http_status or '-'}",
+                        f"verifyError={_sync_error_message(verify_exc)}",
+                    ],
+                )
+                continue
             created += 1
             if employee_email and created_employee_id:
                 existing_by_email[employee_email] = created_employee_id
@@ -17983,6 +18233,14 @@ async def sync_submitted_employee_forms(
                     f"Employee created in Xero Payroll{f' ({created_status})' if created_status else ''}."
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
+                debug_lines=row_debug_base + [
+                    f"tenantId={clean_tenant_id}",
+                    f"createdEmployeeId={created_employee_id}",
+                    f"xeroHttpStatus={response_http_status or '-'}",
+                    f"requestedEmployeeNumber={payroll_number}",
+                    f"requestedTaxCode={tax_code}",
+                    "verifyCreate=confirmed",
+                ],
             )
         except Exception as exc:
             failed += 1
@@ -17996,6 +18254,15 @@ async def sync_submitted_employee_forms(
                     f"but employee creation failed: {error_message}"
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
+                debug_lines=row_debug_base + [
+                    f"tenantId={clean_tenant_id}",
+                    f"requestedEmployeeNumber={payroll_number}",
+                    f"requestedTaxCode={tax_code}",
+                    f"requestedAddressLine1={str(extracted_fields.get('addressLine1') or '-')}",
+                    f"requestedCity={str(extracted_fields.get('city') or '-')}",
+                    f"requestedPostcode={str(extracted_fields.get('postcode') or '-')}",
+                    "stage=create-employee",
+                ],
             )
 
     try:

@@ -27131,7 +27131,23 @@
                 font-size: 0.83rem;
                 color: var(--ink);
                 font-weight: 700;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
                 transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+            }
+            .submitted-employee-required-chip {
+                border-radius: 999px;
+                border: 1px solid color-mix(in srgb, var(--orange) 42%, white);
+                background: color-mix(in srgb, var(--orange-soft) 80%, white);
+                color: #9a5b00;
+                padding: 2px 8px;
+                font-size: 0.68rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                white-space: nowrap;
             }
             .submitted-employee-preview-xero-fields li.is-filled {
                 border-color: rgba(27, 168, 86, 0.42);
@@ -58833,15 +58849,17 @@
                 if (!row) return;
                 const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
                 previewTitle.textContent = `${employeeName} · Employee form preview`;
-                previewMeta.textContent = `${formatDateTime(row?.receivedAt || row?.createdAt || "") || "--"} · ${String(row?.subject || "").trim() || "Submitted employee form"}`;
+                previewMeta.textContent = `${formatDateTime(row?.receivedAt || row?.createdAt || "") || "--"} · ${String(row?.subject || "").trim() || "Submitted employee form"} · Fields marked * are mandatory in Xero.`;
                 const rowId = String(row?.id || "").trim();
                 const draft = submittedEmployeeFormsPreviewCurrentDraft(row);
+                const missingMandatoryFields = submittedEmployeeFormsMandatoryFieldsMissing(draft);
                 const autofilling = submittedEmployeeFormsPreviewAutofillState.running && submittedEmployeeFormsPreviewAutofillState.rowId === rowId;
                 const isConfirmStep = submittedEmployeeFormsPreviewStep === "confirm";
                 const currentAutofillKey = autofilling
                     ? (submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index - 1]?.key || "")
                     : "";
-                const extractionFailureReason = submittedEmployeeFormsExtractionFailureReason(row, draft);
+                const extractionFailureReason = submittedEmployeeFormsExtractionFailureReason(row, draft)
+                    || (missingMandatoryFields.length ? `Missing Xero mandatory fields: ${missingMandatoryFields.join(", ")}.` : "");
                 const extractionFailed = !autofilling && Boolean(extractionFailureReason);
                 confirmSection.hidden = !isConfirmStep;
                 const formLayout = previewForm.closest(".submitted-employee-preview-form-layout");
@@ -58849,7 +58867,7 @@
                 xeroFieldList.innerHTML = submittedEmployeeFormsXeroFieldBlueprint.map((field) => {
                     const value = String(draft?.[field.key] || "").trim();
                     const isFilled = Boolean(value);
-                    return `<li class="${isFilled ? "is-filled" : ""}" data-submitted-employee-xero-field="${escapeHTML(field.key)}">${escapeHTML(field.label)}</li>`;
+                    return `<li class="${isFilled ? "is-filled" : ""}" data-submitted-employee-xero-field="${escapeHTML(field.key)}"><span>${escapeHTML(field.label)}${field.mandatory ? " *" : ""}</span>${field.mandatory ? '<span class="submitted-employee-required-chip">Required</span>' : ""}</li>`;
                 }).join("");
                 previewForm.innerHTML = submittedEmployeeFormsXeroFieldBlueprint.map((field) => {
                     const key = field.key;
@@ -58859,7 +58877,7 @@
                     const commonAttrs = `data-submitted-employee-preview-input="${escapeHTML(key)}" ${field.multiline ? "" : `type="${escapeHTML(inputType)}"`} value="${field.multiline ? "" : escapeHTML(value)}" ${submittedEmployeeFormsPreviewPublishing ? "disabled" : ""}`;
                     return `
                         <label class="${field.wide ? "is-wide" : ""}">
-                            <span>${escapeHTML(field.label)}</span>
+                            <span>${escapeHTML(field.label)}${field.mandatory ? " *" : ""}</span>
                             ${field.multiline
                                 ? `<textarea ${commonAttrs}>${escapeHTML(value)}</textarea>`
                                 : `<input ${commonAttrs} class="${isCurrent ? "is-autofilled" : ""}">`
@@ -58902,7 +58920,9 @@
                         ["Payroll", draft.payrollNumber || "--", draft.taxCode ? `Tax code ${draft.taxCode}` : "Tax code not provided"],
                         ["Bank details", draft.bankAccountName || "--", [draft.bankSortCode, draft.bankAccountNumber].filter(Boolean).join(" · ") || "Bank details not provided"],
                     ];
-                    confirmMeta.textContent = `Confirm ${employeeName} before creating the Xero Payroll employee record.`;
+                    confirmMeta.textContent = missingMandatoryFields.length
+                        ? `Missing Xero mandatory fields: ${missingMandatoryFields.join(", ")}.`
+                        : `Confirm ${employeeName} before creating the Xero Payroll employee record.`;
                     confirmGrid.innerHTML = summaryRows.map(([label, value, detail]) => `
                         <article>
                             <span>${escapeHTML(label)}</span>
@@ -58919,7 +58939,7 @@
                 publishButton.hidden = !isConfirmStep;
                 continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || extractionFailed;
                 backButton.disabled = submittedEmployeeFormsPreviewPublishing;
-                publishButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || !isConfirmStep;
+                publishButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || !isConfirmStep || Boolean(missingMandatoryFields.length);
                 publishButton.textContent = submittedEmployeeFormsPreviewPublishing ? "Publishing..." : "Publish to Xero Payroll";
                 const attempts = Array.isArray(row?.attemptHistory) ? row.attemptHistory : [];
                 previewAuditBody.innerHTML = attempts.length
@@ -58971,6 +58991,12 @@
                 if (!rowId) return;
                 const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === rowId);
                 if (!row) return;
+                const draft = submittedEmployeeFormsPreviewCurrentDraft(row);
+                const missingMandatoryFields = submittedEmployeeFormsMandatoryFieldsMissing(draft);
+                if (missingMandatoryFields.length) {
+                    showToast(`Complete Xero mandatory fields: ${missingMandatoryFields.join(", ")}.`, "warning");
+                    return;
+                }
                 const overrides = submittedEmployeeFormsPreviewOverridePayload(row);
                 if (!overrides) return;
                 submittedEmployeeFormsPreviewPublishing = true;
