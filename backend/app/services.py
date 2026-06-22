@@ -2522,9 +2522,9 @@ async def _payroll_overview_openai_liability_inference(
             {
                 "role": "system",
                 "content": (
-                    "You are a UK payroll accounting analyst. Determine PAYE/NIC and pension liabilities for the most "
-                    "recent posted payroll run using payroll API data (payrun details + payslips) first, then nominal "
-                    "account-transaction evidence, then trial-balance deltas. "
+                    "You are a UK payroll accounting analyst. Determine PAYE/NIC and pension liabilities generated for "
+                    "the current payroll month by analysing nominal account-transaction evidence first (PAYE payable and "
+                    "pension payable), then payroll API data, then trial-balance deltas. "
                     "Return conservative numeric estimates and short notes."
                 ),
             },
@@ -3000,7 +3000,7 @@ async def _payroll_overview_nominal_transaction_context(
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
         applicable_total = Decimal("0")
-        for account in account_rows[:4]:
+        for account in account_rows:
             if not isinstance(account, dict):
                 continue
             account_id = _payroll_overview_text(account.get("accountId"))
@@ -3017,6 +3017,7 @@ async def _payroll_overview_nominal_transaction_context(
             )
             rows = _payroll_overview_account_transaction_lines(payload)
             transaction_entries = _payroll_overview_account_transaction_entries(payload)
+            all_transaction_net = _payroll_overview_account_transaction_net(transaction_entries)
             payroll_expense_entries = [
                 row
                 for row in transaction_entries
@@ -3072,6 +3073,8 @@ async def _payroll_overview_nominal_transaction_context(
                     "name": _payroll_overview_text(account.get("name")),
                     "lineCount": len(rows),
                     "lines": rows[:80],
+                    "allTransactionLineCount": len(transaction_entries),
+                    "allTransactionNet": float(all_transaction_net),
                     "payrollExpenseLineCount": len(payroll_expense_entries),
                     "payrollExpenseNet": float(payroll_expense_net),
                     "applicableLineCount": len(applicable_entries),
@@ -3494,6 +3497,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     }
     nominal_tx_p32_tax = Decimal("0")
     nominal_tx_pension_payable = Decimal("0")
+    nominal_transaction_fetch_errors: list[str] = []
     nominal_period_start = (
         _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
         or _parse_any_date((reference_payrun or {}).get("paymentDate"))
@@ -3512,14 +3516,32 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 period_start=nominal_period_start,
                 period_end=nominal_period_end,
             )
-            nominal_tx_p32_tax = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("taxPayrollExpenseNet")))
-            nominal_tx_pension_payable = abs(
-                _payroll_overview_numeric_decimal(
-                    nominal_transaction_context.get("pensionApplicableNet")
-                    if nominal_transaction_context.get("pensionApplicableNet") not in (None, "")
-                    else nominal_transaction_context.get("pensionPayrollExpenseNet")
+            nominal_transaction_fetch_errors = [
+                message
+                for message in errors
+                if isinstance(message, str)
+                and "transactions:" in message.lower()
+                and (
+                    message.lower().startswith("tax ")
+                    or message.lower().startswith("pension ")
                 )
-            )
+            ]
+            if nominal_transaction_fetch_errors:
+                nominal_transaction_context = {
+                    **(nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {}),
+                    "degraded": True,
+                    "degradedReason": "partial_account_transaction_fetch_failure",
+                    "errors": nominal_transaction_fetch_errors[:12],
+                }
+            else:
+                nominal_tx_p32_tax = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("taxPayrollExpenseNet")))
+                nominal_tx_pension_payable = abs(
+                    _payroll_overview_numeric_decimal(
+                        nominal_transaction_context.get("pensionApplicableNet")
+                        if nominal_transaction_context.get("pensionApplicableNet") not in (None, "")
+                        else nominal_transaction_context.get("pensionPayrollExpenseNet")
+                    )
+                )
         except Exception as exc:
             nominal_transaction_context = {
                 "engine": "nominal_account_transactions",
@@ -3529,7 +3551,30 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             }
     openai_p32_tax = Decimal("0")
     openai_pension_payable = Decimal("0")
-    openai_payable_diagnostics: dict = {"engine": "disabled", "reason": "exact_payroll_values_only"}
+    openai_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_context_unavailable"}
+    nominal_context_ready_for_ai = (
+        isinstance(nominal_transaction_context, dict)
+        and str(nominal_transaction_context.get("engine") or "").strip() == "nominal_account_transactions"
+        and nominal_transaction_context.get("degraded") is not True
+        and not str(nominal_transaction_context.get("error") or "").strip()
+        and (
+            bool(nominal_transaction_context.get("taxAccountTransactions"))
+            or bool(nominal_transaction_context.get("pensionAccountTransactions"))
+        )
+    )
+    if nominal_context_ready_for_ai:
+        openai_p32_tax, openai_pension_payable, openai_payable_diagnostics = await _payroll_overview_openai_liability_inference(
+            reference_payrun=reference_payrun,
+            payrun_rows=payrun_rows,
+            payroll_api_context=payroll_api_diagnostics,
+            nominal_transaction_context=nominal_transaction_context,
+            journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
+            trial_balance_report_date=trial_balance_report_date if isinstance(trial_balance_report_date, date) else None,
+            trial_balance_comparison_date=trial_balance_previous_date if isinstance(trial_balance_previous_date, date) else None,
+            trial_balance_delta_p32_tax=trial_balance_delta_p32_tax,
+            trial_balance_delta_pension_payable=trial_balance_delta_pension_payable,
+            user_id=str(user.get("id") or "").strip() or None,
+        )
 
     logger.info(
         "payroll_overview_fetch_diagnostics user_id=%s tenant_id=%s employees_attempted=%s employees_status=%s employees_ok=%s payruns_attempted=%s payruns_status=%s payruns_ok=%s accounts_attempted=%s accounts_status=%s accounts_ok=%s payruns_returned=%s errors=%s",
@@ -3644,16 +3689,19 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     )
     pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
     selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
-    # For payroll-run extraction, avoid trial-balance deltas as the displayed
-    # figure source because those include opening balances and can overstate
-    # the current run amount. Prefer nominal transactions, then payroll API.
-    if nominal_tx_p32_tax > Decimal("0"):
+    # Prefer OpenAI inference over the full nominal transaction context for
+    # monthly liability generation, then deterministic nominal rules, then payroll API.
+    if openai_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(openai_p32_tax)
+    elif nominal_tx_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(nominal_tx_p32_tax)
     elif payroll_api_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(payroll_api_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
-    if nominal_tx_pension_payable > Decimal("0"):
+    if openai_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(openai_pension_payable)
+    elif nominal_tx_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
     elif payroll_api_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(payroll_api_pension_payable)
@@ -3679,16 +3727,24 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             errors.append(
                 "Exact payroll liability extraction unavailable: could not read pension payable from Xero payroll data."
             )
+    if isinstance(openai_payable_diagnostics, dict):
+        openai_payable_diagnostics["used"] = bool(
+            openai_p32_tax > Decimal("0") or openai_pension_payable > Decimal("0")
+        )
     estimated_balances_source = {
         "p32Tax": (
-            "nominal_account_transactions"
+            "openai_nominal_inference"
+            if openai_p32_tax > Decimal("0")
+            else "nominal_account_transactions"
             if nominal_tx_p32_tax > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
-            "nominal_account_transactions"
+            "openai_nominal_inference"
+            if openai_pension_payable > Decimal("0")
+            else "nominal_account_transactions"
             if nominal_tx_pension_payable > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_pension_payable > Decimal("0")

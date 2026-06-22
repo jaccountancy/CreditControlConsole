@@ -124870,14 +124870,17 @@
                     ? summary.nominalTransactionDiagnostics
                     : {};
                 const nominalDiagnosticsEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
+                const nominalDiagnosticsHealthy = nominalDiagnosticsEngine === "nominal_account_transactions"
+                    && nominalTransactionDiagnostics?.degraded !== true
+                    && !String(nominalTransactionDiagnostics?.error || "").trim();
                 const normaliseFigureSource = (source) => {
                     const value = String(source || "").trim();
                     if (!value || value === "none") {
-                        return nominalDiagnosticsEngine === "nominal_account_transactions"
+                        return nominalDiagnosticsHealthy
                             ? "nominal_account_transactions"
                             : "none";
                     }
-                    if (value === "payroll_api_payslips" && nominalDiagnosticsEngine === "nominal_account_transactions") {
+                    if (value === "payroll_api_payslips" && nominalDiagnosticsHealthy) {
                         return "nominal_account_transactions";
                     }
                     return value;
@@ -124896,7 +124899,7 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions"];
+                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions", "openai_nominal_inference"];
                 const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(resolvedP32FigureSource)
                     && reliablePayrollFigureSources.includes(resolvedPensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
@@ -125169,6 +125172,22 @@
                                     items.push(`Payroll API amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrollApi : payrollApiDiagnostics?.pensionFromPayrollApi || 0))}`);
                                     items.push(`Pay run details amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrunDetails : payrollApiDiagnostics?.pensionFromPayrunDetails || 0))}`);
                                     items.push(`Payslips analysed: ${Number(payrollApiDiagnostics?.payslipCount || 0).toLocaleString("en-GB")}`);
+                                } else if (source === "openai_nominal_inference") {
+                                    items.push(`OpenAI inferred amount: ${formatCurrency(Number(isP32 ? openAiPayrollInferenceDiagnostics?.payePayable : openAiPayrollInferenceDiagnostics?.pensionPayable || 0))}`);
+                                    items.push(`OpenAI confidence: ${Number(openAiPayrollInferenceDiagnostics?.confidence || 0).toFixed(2)}`);
+                                    if (nominalTransactionDiagnostics && typeof nominalTransactionDiagnostics === "object") {
+                                        const taxRows = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
+                                            ? nominalTransactionDiagnostics.taxAccountTransactions
+                                            : [];
+                                        const pensionRows = Array.isArray(nominalTransactionDiagnostics?.pensionAccountTransactions)
+                                            ? nominalTransactionDiagnostics.pensionAccountTransactions
+                                            : [];
+                                        const accountRows = isP32 ? taxRows : pensionRows;
+                                        const accountCodes = accountRows
+                                            .map((row) => String(row?.code || "").trim())
+                                            .filter(Boolean);
+                                        if (accountCodes.length) items.push(`Nominal codes sent to OpenAI: ${accountCodes.slice(0, 12).join(", ")}`);
+                                    }
                                 } else {
                                     items.push("No extraction source is currently attached to this figure.");
                                 }
