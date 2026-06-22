@@ -18814,20 +18814,20 @@ async def sync_submitted_employee_forms(
             existing_name_candidates: dict[str, set[str]] = {}
             inactive_name_candidates: dict[str, set[str]] = {}
             for employee in existing_employees:
-                employee_id, employee_email, _ = _xero_payroll_employee_identity(employee)
-                employee_name = _submitted_forms_xero_employee_name_strict(employee if isinstance(employee, dict) else {})
+                employee_id, indexed_employee_email, _ = _xero_payroll_employee_identity(employee)
+                indexed_employee_name = _submitted_forms_xero_employee_name_strict(employee if isinstance(employee, dict) else {})
                 employee_is_active = _payroll_headcount_employee_is_active(employee)
-                if employee_email:
+                if indexed_employee_email:
                     if employee_is_active:
-                        if employee_email not in existing_by_email:
-                            existing_by_email[employee_email] = employee_id
-                    elif employee_email not in inactive_by_email:
-                        inactive_by_email[employee_email] = employee_id
-                if employee_name and employee_id:
+                        if indexed_employee_email not in existing_by_email:
+                            existing_by_email[indexed_employee_email] = employee_id
+                    elif indexed_employee_email not in inactive_by_email:
+                        inactive_by_email[indexed_employee_email] = employee_id
+                if indexed_employee_name and employee_id:
                     if employee_is_active:
-                        existing_name_candidates.setdefault(employee_name, set()).add(employee_id)
+                        existing_name_candidates.setdefault(indexed_employee_name, set()).add(employee_id)
                     else:
-                        inactive_name_candidates.setdefault(employee_name, set()).add(employee_id)
+                        inactive_name_candidates.setdefault(indexed_employee_name, set()).add(employee_id)
             existing_by_name_unique: dict[str, str] = {}
             duplicate_names: set[str] = set()
             for name_key, ids in existing_name_candidates.items():
