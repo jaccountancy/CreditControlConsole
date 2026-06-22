@@ -2039,6 +2039,136 @@ def _payroll_overview_account_balance(account: dict) -> Decimal:
     return Decimal("0")
 
 
+def _payroll_overview_journal_line_credit_amount(line: dict) -> Decimal:
+    if not isinstance(line, dict):
+        return Decimal("0")
+    for key in ("Credit", "credit", "CreditAmount", "creditAmount"):
+        amount = _payroll_overview_numeric_decimal(line.get(key))
+        if amount > Decimal("0"):
+            return amount
+    for key in ("NetAmount", "netAmount", "LineAmount", "lineAmount", "Amount", "amount", "GrossAmount", "grossAmount"):
+        amount = _payroll_overview_numeric_decimal(line.get(key))
+        if amount > Decimal("0"):
+            return amount
+    return Decimal("0")
+
+
+def _payroll_overview_extract_posted_journal_payables(
+    journals: list[dict],
+    accounts: list[dict],
+    reference_payrun: dict | None,
+) -> tuple[Decimal, Decimal, dict]:
+    reference_payment_date = (
+        _parse_any_date((reference_payrun or {}).get("paymentDate"))
+        or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
+        or _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
+    )
+    reference_period_start = _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
+    reference_period_end = _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate")) or reference_payment_date
+
+    diagnostics = {
+        "fetchedJournalCount": len(journals or []),
+        "candidateJournalCount": 0,
+        "usedPayrollSourceHint": False,
+        "matchedCreditLines": 0,
+    }
+    if not journals or not reference_period_end:
+        return Decimal("0"), Decimal("0"), diagnostics
+
+    account_by_id: dict[str, dict] = {}
+    account_by_code: dict[str, dict] = {}
+    account_by_name: dict[str, dict] = {}
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        account_id = _payroll_overview_text(account.get("AccountID") or account.get("ID") or account.get("accountId"))
+        if account_id:
+            account_by_id[account_id] = account
+        account_code = _payroll_overview_text(account.get("Code") or account.get("code"))
+        if account_code:
+            account_by_code[_payroll_overview_normalise_key(account_code)] = account
+        account_name = _payroll_overview_text(account.get("Name") or account.get("name"))
+        if account_name:
+            account_by_name[_payroll_overview_normalise_key(account_name)] = account
+
+    def _resolve_line_account(line: dict) -> dict:
+        account_id = _payroll_overview_text(line.get("AccountID") or line.get("accountID") or line.get("accountId"))
+        if account_id and account_id in account_by_id:
+            return account_by_id[account_id]
+        account_code = _payroll_overview_text(line.get("AccountCode") or line.get("accountCode") or line.get("Code") or line.get("code"))
+        code_key = _payroll_overview_normalise_key(account_code)
+        if code_key and code_key in account_by_code:
+            return account_by_code[code_key]
+        account_name = _payroll_overview_text(line.get("AccountName") or line.get("accountName") or line.get("Name") or line.get("name"))
+        name_key = _payroll_overview_normalise_key(account_name)
+        if name_key and name_key in account_by_name:
+            return account_by_name[name_key]
+        return {
+            "Code": account_code,
+            "Name": account_name,
+            "Type": _payroll_overview_text(line.get("AccountType") or line.get("accountType")),
+            "Class": _payroll_overview_text(line.get("AccountClass") or line.get("accountClass")),
+        }
+
+    def _is_payroll_journal(journal: dict) -> bool:
+        source_text = _payroll_overview_normalise_key(
+            _payroll_overview_text(journal.get("SourceType") or journal.get("sourceType"))
+        )
+        reference_text = _payroll_overview_normalise_key(
+            _payroll_overview_text(journal.get("Reference") or journal.get("Narration") or journal.get("reference"))
+        )
+        payroll_tokens = ("payroll", "payrun", "pay run", "payslip", "wages")
+        return any(token in source_text for token in payroll_tokens) or any(token in reference_text for token in payroll_tokens)
+
+    strict_candidates: list[dict] = []
+    loose_candidates: list[dict] = []
+    for journal in journals:
+        if not isinstance(journal, dict):
+            continue
+        journal_date = _parse_any_date(journal.get("JournalDate") or journal.get("Date") or journal.get("DateString"))
+        if journal_date is None:
+            continue
+        in_window = (
+            bool(reference_payment_date and journal_date == reference_payment_date)
+            or bool(reference_period_start and reference_period_end and reference_period_start <= journal_date <= reference_period_end)
+            or bool(not reference_period_start and reference_period_end and journal_date == reference_period_end)
+        )
+        if not in_window:
+            continue
+        if _is_payroll_journal(journal):
+            strict_candidates.append(journal)
+        else:
+            loose_candidates.append(journal)
+
+    candidate_journals = strict_candidates if strict_candidates else loose_candidates
+    diagnostics["candidateJournalCount"] = len(candidate_journals)
+    diagnostics["usedPayrollSourceHint"] = bool(strict_candidates)
+    if not candidate_journals:
+        return Decimal("0"), Decimal("0"), diagnostics
+
+    p32_credit_total = Decimal("0")
+    pension_credit_total = Decimal("0")
+    matched_credit_lines = 0
+    for journal in candidate_journals:
+        lines = journal.get("JournalLines") if isinstance(journal.get("JournalLines"), list) else []
+        for line in lines:
+            if not isinstance(line, dict):
+                continue
+            credit_amount = _payroll_overview_journal_line_credit_amount(line)
+            if credit_amount <= Decimal("0"):
+                continue
+            account = _resolve_line_account(line)
+            if _payroll_overview_account_is_tax_liability(account):
+                p32_credit_total += credit_amount
+                matched_credit_lines += 1
+                continue
+            if _payroll_overview_account_is_pension_liability(account):
+                pension_credit_total += credit_amount
+                matched_credit_lines += 1
+    diagnostics["matchedCreditLines"] = matched_credit_lines
+    return abs(p32_credit_total), abs(pension_credit_total), diagnostics
+
+
 def _payroll_overview_trial_balance_pension_rows(trial_balance_payload: dict) -> list[dict]:
     lines = _xero_report_lines(trial_balance_payload if isinstance(trial_balance_payload, dict) else {})
     rows: list[dict] = []
@@ -2303,6 +2433,22 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
 
+    posted_journal_p32_tax = Decimal("0")
+    posted_journal_pension_payable = Decimal("0")
+    journal_payable_diagnostics: dict = {}
+    try:
+        journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
+        if journals_reason:
+            errors.append(f"Journals: {journals_reason}")
+        posted_journal_p32_tax, posted_journal_pension_payable, journal_payable_diagnostics = _payroll_overview_extract_posted_journal_payables(
+            journals,
+            accounts,
+            reference_payrun,
+        )
+    except Exception as exc:
+        errors.append(f"Journals: {_sync_error_message(exc)}")
+        journal_payable_diagnostics = {}
+
     trial_balance_report_date = (
         _parse_any_date((reference_payrun or {}).get("paymentDate"))
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
@@ -2430,8 +2576,12 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     latest_payrun_pension_balance = float(
         _payroll_overview_numeric_decimal((latest_payrun_with_pension or {}).get("estimatedPensionPayable"))
     )
+    if posted_journal_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(posted_journal_p32_tax)
     if estimated_p32_tax_balance <= 0:
         estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
+    if posted_journal_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(posted_journal_pension_payable)
     if estimated_pension_payable_balance <= 0:
         estimated_pension_payable_balance = (
             latest_payrun_pension_balance
@@ -2440,6 +2590,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         )
     estimated_balances_source = {
         "p32Tax": (
+            "posted_payroll_journal"
+            if posted_journal_p32_tax > Decimal("0")
+            else (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax"))) > 0
             else (
@@ -2447,8 +2600,11 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 if latest_payrun_p32_balance > 0
                 else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
             )
-        ) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
+        )) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
         "pensionPayable": (
+            "posted_payroll_journal"
+            if posted_journal_pension_payable > Decimal("0")
+            else (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable"))) > 0
             else (
@@ -2460,7 +2616,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
                 )
             )
-        ) if reference_payrun else (
+        )) if reference_payrun else (
             "trial_balance_report"
             if trial_balance_pension_payable_balance > 0
             else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
@@ -2506,6 +2662,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     for pay_run_id in list(payrun_rows_by_id.keys())[:12]
                 ],
             },
+            "journalPayableDiagnostics": journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
             "fetchDiagnostics": {
                 "employees": fetch_diagnostics.get("employees") or {},
                 "payRuns": fetch_diagnostics.get("payruns") or {},

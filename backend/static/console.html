@@ -124456,10 +124456,12 @@
                 const selectedRunCombinedPayeNic = Number.isFinite(selectedRunPayeComponent + selectedRunNicComponent)
                     ? (selectedRunPayeComponent + selectedRunNicComponent)
                     : 0;
-                const summaryP32FromReferenceRun = String(figureSources?.p32Tax || "").trim() === "reference_payrun"
+                const p32FigureSource = String(figureSources?.p32Tax || "").trim();
+                const pensionFigureSource = String(figureSources?.pensionPayable || "").trim();
+                const summaryP32FromReferenceRun = ["reference_payrun", "posted_payroll_journal"].includes(p32FigureSource)
                     ? Number(summary?.estimatedP32TaxBalance || 0)
                     : 0;
-                const summaryPensionFromReferenceRun = String(figureSources?.pensionPayable || "").trim() === "reference_payrun"
+                const summaryPensionFromReferenceRun = ["reference_payrun", "posted_payroll_journal"].includes(pensionFigureSource)
                     ? Number(summary?.pensionPayableBalance || 0)
                     : 0;
                 const initialP32Tax = payrollFirstUsefulNumber(
@@ -124485,8 +124487,8 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const hasReliableReferenceExtraction = String(figureSources?.p32Tax || "").trim() === "reference_payrun"
-                    || String(figureSources?.pensionPayable || "").trim() === "reference_payrun";
+                const hasReliableReferenceExtraction = ["reference_payrun", "posted_payroll_journal"].includes(p32FigureSource)
+                    || ["reference_payrun", "posted_payroll_journal"].includes(pensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
@@ -124563,16 +124565,6 @@
                                         <li data-step-index="4">Email draft seed</li>
                                     </ul>
                                     <p class="task-detail-modal-hint">Extraction runs left-to-right with animated status cards.</p>
-                                </article>
-                                <article class="task-detail-modal-card">
-                                    <h5>Xero extraction trace</h5>
-                                    <p class="task-detail-modal-hint">
-                                        P32 source: ${escapeHTML(String(figureSources?.p32Tax || "none"))}
-                                        · Pension source: ${escapeHTML(String(figureSources?.pensionPayable || "none"))}
-                                    </p>
-                                    <p class="task-detail-modal-hint">
-                                        Pay run detail fetch: ${escapeHTML(String(Number(payrunDiagnostics?.succeeded || 0)))} / ${escapeHTML(String(Number(payrunDiagnostics?.attempted || 0)))} succeeded
-                                    </p>
                                 </article>
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
