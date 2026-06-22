@@ -124556,15 +124556,14 @@
                         body.innerHTML = `
                             <div class="task-detail-modal-grid">
                                 <article class="task-detail-modal-card">
-                                    <h5>AI extraction status</h5>
-                                    <ul id="taskPayrollExtractionStatus" class="task-detail-extraction-status">
-                                        <li data-step-index="0">Payment date</li>
-                                        <li data-step-index="1">P32 PAYE/NIC estimate</li>
-                                        <li data-step-index="2">Pension payable</li>
-                                        <li data-step-index="3">HMRC references</li>
-                                        <li data-step-index="4">Email draft seed</li>
+                                    <h5>Payroll summary</h5>
+                                    <ul class="task-detail-extraction-status">
+                                        <li class="is-complete" id="taskPayrollSummaryPaye">PAYE owed: ${escapeHTML(formatCurrency(Number(p32TaxAmount || 0)))}</li>
+                                        <li class="is-complete" id="taskPayrollSummaryPension">Pensions owed: ${escapeHTML(formatCurrency(Number(pensionPayableAmount || 0)))}</li>
+                                        <li class="is-complete" id="taskPayrollSummaryPeriod">Period date: ${escapeHTML(selectedPayRunLabel || "Not set")}</li>
+                                        <li class="is-complete" id="taskPayrollSummaryDeadline">Deadline: ${escapeHTML(paymentDate ? formatDate(payrollHmrcDueDateFromPaymentDate(paymentDate)) : "Not set")}</li>
                                     </ul>
-                                    <p class="task-detail-modal-hint">Extraction runs left-to-right with animated status cards.</p>
+                                    <p class="task-detail-modal-hint">Summary values update as you edit payroll figures and dates below.</p>
                                 </article>
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
@@ -124610,7 +124609,10 @@
                             const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
                             const payeInput = panel?.querySelector("#taskPayrollEmailPayeRef");
                             const officeInput = panel?.querySelector("#taskPayrollEmailAccountsOfficeRef");
-                            const statusItems = Array.from(body.querySelectorAll("#taskPayrollExtractionStatus [data-step-index]"));
+                            const summaryPaye = body.querySelector("#taskPayrollSummaryPaye");
+                            const summaryPension = body.querySelector("#taskPayrollSummaryPension");
+                            const summaryPeriod = body.querySelector("#taskPayrollSummaryPeriod");
+                            const summaryDeadline = body.querySelector("#taskPayrollSummaryDeadline");
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
                             const validationWrap = document.createElement("article");
@@ -124622,17 +124624,25 @@
                             `;
                             body.appendChild(validationWrap);
                             const validationHint = validationWrap.querySelector(`#${validationHintId}`);
-                            const updateStatusState = (index, state) => {
-                                const item = statusItems[index];
-                                if (!item) return;
-                                item.classList.remove("is-active", "is-complete");
-                                if (state) item.classList.add(state);
+                            const updateSummaryBubbles = () => {
+                                const paymentDateValue = String(paymentInput?.value || "").trim();
+                                const periodStart = String(selectedPayRun?.payRunPeriodStartDate || "").trim();
+                                const periodEnd = String(selectedPayRun?.payRunPeriodEndDate || "").trim();
+                                const periodDateLabel = periodStart && periodEnd
+                                    ? `${formatDate(periodStart)} to ${formatDate(periodEnd)}`
+                                    : (paymentDateValue ? formatDate(paymentDateValue) : "Not set");
+                                const deadlineValue = String(hmrcDueInput?.value || "").trim();
+                                if (summaryPaye) summaryPaye.textContent = `PAYE owed: ${formatCurrency(Number(p32Input?.value || 0))}`;
+                                if (summaryPension) summaryPension.textContent = `Pensions owed: ${formatCurrency(Number(pensionInput?.value || 0))}`;
+                                if (summaryPeriod) summaryPeriod.textContent = `Period date: ${periodDateLabel}`;
+                                if (summaryDeadline) summaryDeadline.textContent = `Deadline: ${deadlineValue ? formatDate(deadlineValue) : "Not set"}`;
                             };
                             const updateDraft = () => {
                                 const paymentDateValue = String(paymentInput?.value || "").trim();
                                 const dueValue = String(hmrcDueInput?.value || "").trim()
                                     || payrollHmrcDueDateFromPaymentDate(paymentDateValue);
                                 if (hmrcDueInput && dueValue) hmrcDueInput.value = dueValue;
+                                updateSummaryBubbles();
                                 const draft = composePayrollPostedEmailDraft({
                                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
                                     paymentDate: paymentDateValue,
@@ -124679,55 +124689,14 @@
                                 input?.addEventListener("change", updateValidationState);
                                 input?.addEventListener("input", updateValidationState);
                             });
-                            const startExtractionAnimation = () => {
-                                const assignments = [
-                                    () => { if (paymentInput) paymentInput.value = paymentDate; },
-                                    () => { if (p32Input) p32Input.value = String(p32TaxAmount.toFixed(2)); },
-                                    () => { if (pensionInput) pensionInput.value = String(pensionPayableAmount.toFixed(2)); },
-                                    () => {
-                                        if (payeInput) payeInput.value = payeReference;
-                                        if (officeInput) officeInput.value = accountsOfficeReference;
-                                        if (hmrcDueInput && !hmrcDueInput.value) hmrcDueInput.value = hmrcDueDate;
-                                    },
-                                    () => {
-                                        emailBody = composePayrollPostedEmailDraft({
-                                            clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
-                                            paymentDate: String(paymentInput?.value || "").trim(),
-                                            payeReference: String(payeInput?.value || "").trim(),
-                                            accountsOfficeReference: String(officeInput?.value || "").trim(),
-                                            p32TaxAmount: Number(p32Input?.value || 0),
-                                            pensionPayableAmount: Number(pensionInput?.value || 0),
-                                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
-                                        });
-                                        emailBodyHtml = composePayrollPostedEmailDraftHtml({
-                                            clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
-                                            paymentDate: String(paymentInput?.value || "").trim(),
-                                            payeReference: String(payeInput?.value || "").trim(),
-                                            accountsOfficeReference: String(officeInput?.value || "").trim(),
-                                            p32TaxAmount: Number(p32Input?.value || 0),
-                                            pensionPayableAmount: Number(pensionInput?.value || 0),
-                                            hmrcDueDate: String(hmrcDueInput?.value || "").trim(),
-                                        });
-                                    },
-                                ];
-                                if (confirmButton) confirmButton.disabled = true;
-                                const stepDelay = 210;
-                                assignments.forEach((apply, index) => {
-                                    window.setTimeout(() => {
-                                        updateStatusState(index, "is-active");
-                                        window.setTimeout(() => {
-                                            apply();
-                                            updateDraft();
-                                            updateValidationState();
-                                            updateStatusState(index, "is-complete");
-                                            if (index + 1 < assignments.length) updateStatusState(index + 1, "is-active");
-                                            if (index === assignments.length - 1) updateValidationState();
-                                        }, 140);
-                                    }, index * stepDelay);
-                                });
-                                if (statusItems.length) updateStatusState(0, "is-active");
-                            };
-                            startExtractionAnimation();
+                            if (paymentInput) paymentInput.value = paymentDate;
+                            if (p32Input) p32Input.value = String(p32TaxAmount.toFixed(2));
+                            if (pensionInput) pensionInput.value = String(pensionPayableAmount.toFixed(2));
+                            if (payeInput) payeInput.value = payeReference;
+                            if (officeInput) officeInput.value = accountsOfficeReference;
+                            if (hmrcDueInput && !hmrcDueInput.value) hmrcDueInput.value = hmrcDueDate;
+                            updateDraft();
+                            updateValidationState();
                         };
                         bindRegenerate();
                     },

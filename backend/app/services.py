@@ -282,6 +282,19 @@ PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
 PI_CLEARING_OPENAI_TIMEOUT_SECONDS = 18
+PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS = 20
+PAYROLL_JOURNAL_FIGURES_AI_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["payePayable", "pensionPayable", "periodDate", "confidence", "notes"],
+    "properties": {
+        "payePayable": {"type": "number"},
+        "pensionPayable": {"type": "number"},
+        "periodDate": {"type": "string"},
+        "confidence": {"type": "number"},
+        "notes": {"type": "string"},
+    },
+}
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -2053,10 +2066,12 @@ def _payroll_overview_journal_line_credit_amount(line: dict) -> Decimal:
     return Decimal("0")
 
 
-def _payroll_overview_extract_posted_journal_payables(
+async def _payroll_overview_extract_posted_journal_payables(
     journals: list[dict],
     accounts: list[dict],
     reference_payrun: dict | None,
+    *,
+    user_id: str | None = None,
 ) -> tuple[Decimal, Decimal, dict]:
     reference_payment_date = (
         _parse_any_date((reference_payrun or {}).get("paymentDate"))
@@ -2146,27 +2161,136 @@ def _payroll_overview_extract_posted_journal_payables(
     if not candidate_journals:
         return Decimal("0"), Decimal("0"), diagnostics
 
+    candidate_journals.sort(
+        key=lambda item: _parse_any_date(item.get("JournalDate") or item.get("Date") or item.get("DateString")) or date.min,
+        reverse=True,
+    )
+    latest_journal = candidate_journals[0] if candidate_journals else {}
+    latest_journal_id = _payroll_overview_text(
+        latest_journal.get("JournalID") or latest_journal.get("JournalNumber") or latest_journal.get("Id")
+    )
+    latest_journal_date = _parse_any_date(
+        latest_journal.get("JournalDate") or latest_journal.get("Date") or latest_journal.get("DateString")
+    )
+    diagnostics["selectedJournalId"] = latest_journal_id
+    diagnostics["selectedJournalDate"] = latest_journal_date.isoformat() if isinstance(latest_journal_date, date) else ""
+    diagnostics["selectedJournalReference"] = _payroll_overview_text(
+        latest_journal.get("Reference") or latest_journal.get("Narration")
+    )
+
+    lines = latest_journal.get("JournalLines") if isinstance(latest_journal.get("JournalLines"), list) else []
     p32_credit_total = Decimal("0")
     pension_credit_total = Decimal("0")
     matched_credit_lines = 0
-    for journal in candidate_journals:
-        lines = journal.get("JournalLines") if isinstance(journal.get("JournalLines"), list) else []
-        for line in lines:
-            if not isinstance(line, dict):
-                continue
-            credit_amount = _payroll_overview_journal_line_credit_amount(line)
-            if credit_amount <= Decimal("0"):
-                continue
-            account = _resolve_line_account(line)
-            if _payroll_overview_account_is_tax_liability(account):
-                p32_credit_total += credit_amount
-                matched_credit_lines += 1
-                continue
-            if _payroll_overview_account_is_pension_liability(account):
-                pension_credit_total += credit_amount
-                matched_credit_lines += 1
+    journal_line_rows: list[dict] = []
+    for line_index, line in enumerate(lines):
+        if not isinstance(line, dict):
+            continue
+        credit_amount = _payroll_overview_journal_line_credit_amount(line)
+        account = _resolve_line_account(line)
+        account_code = _payroll_overview_text(account.get("Code") or line.get("AccountCode") or line.get("code"))
+        account_name = _payroll_overview_text(account.get("Name") or line.get("AccountName") or line.get("name"))
+        description = _payroll_overview_text(line.get("Description") or line.get("description"))
+        net_amount = _payroll_overview_numeric_decimal(
+            line.get("NetAmount")
+            or line.get("netAmount")
+            or line.get("LineAmount")
+            or line.get("lineAmount")
+            or line.get("Amount")
+            or line.get("amount")
+        )
+        journal_line_rows.append(
+            {
+                "lineIndex": line_index + 1,
+                "accountCode": account_code,
+                "accountName": account_name,
+                "description": description,
+                "creditAmount": float(credit_amount),
+                "netAmount": float(net_amount),
+            }
+        )
+        if credit_amount <= Decimal("0"):
+            continue
+        if _payroll_overview_account_is_tax_liability(account):
+            p32_credit_total += credit_amount
+            matched_credit_lines += 1
+            continue
+        if _payroll_overview_account_is_pension_liability(account):
+            pension_credit_total += credit_amount
+            matched_credit_lines += 1
     diagnostics["matchedCreditLines"] = matched_credit_lines
-    return abs(p32_credit_total), abs(pension_credit_total), diagnostics
+
+    deterministic_paye = abs(p32_credit_total)
+    deterministic_pension = abs(pension_credit_total)
+    diagnostics["deterministicPaye"] = float(deterministic_paye)
+    diagnostics["deterministicPension"] = float(deterministic_pension)
+
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip() or not journal_line_rows:
+        diagnostics["engine"] = "rules"
+        return deterministic_paye, deterministic_pension, diagnostics
+
+    period_hint = ""
+    if reference_period_start and reference_period_end:
+        period_hint = f"{reference_period_start.isoformat()} to {reference_period_end.isoformat()}"
+    elif reference_period_end:
+        period_hint = reference_period_end.isoformat()
+
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You are extracting UK payroll liability totals from a single posted payroll journal.\n"
+                            "Return PAYE payable and pension payable amounts for the payroll period using journal lines.\n"
+                            "Use credit-side liabilities only; ignore wages/salary expense lines and balance-sheet lines unrelated to payroll liabilities.\n"
+                            "PAYE payable should include PAYE/NIC/HMRC payroll liability lines.\n"
+                            "Pension payable should include pension payable/workplace pension/NEST liability lines.\n"
+                            f"Reference payroll period: {period_hint or 'unknown'}\n"
+                            f"Journal date: {diagnostics.get('selectedJournalDate') or 'unknown'}\n"
+                            f"Journal reference: {diagnostics.get('selectedJournalReference') or 'unknown'}\n"
+                            f"Journal lines JSON:\n{json.dumps(journal_line_rows[:220], default=_json_default)}"
+                        ),
+                    }
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "payroll_journal_liability_extraction",
+                "schema": PAYROLL_JOURNAL_FIGURES_AI_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1200,
+    }
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "payroll journal liability extraction",
+            preferred_model=settings.openai_model,
+            timeout_seconds=PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS,
+            user_id=user_id,
+            feature="payroll-headcount",
+            page="payroll-headcount",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for payroll journal extraction.")
+        paye_ai = abs(_payroll_overview_numeric_decimal((parsed or {}).get("payePayable")))
+        pension_ai = abs(_payroll_overview_numeric_decimal((parsed or {}).get("pensionPayable")))
+        diagnostics["engine"] = "openai"
+        diagnostics["confidence"] = float(_payroll_overview_numeric_decimal((parsed or {}).get("confidence")))
+        diagnostics["notes"] = _payroll_overview_text((parsed or {}).get("notes"))
+        if paye_ai > Decimal("0") or pension_ai > Decimal("0"):
+            return paye_ai, pension_ai, diagnostics
+    except Exception as exc:
+        diagnostics["engine"] = "rules"
+        diagnostics["openAiError"] = _sync_error_message(exc)
+
+    return deterministic_paye, deterministic_pension, diagnostics
 
 
 def _payroll_overview_trial_balance_pension_rows(trial_balance_payload: dict) -> list[dict]:
@@ -2440,10 +2564,11 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
         if journals_reason:
             errors.append(f"Journals: {journals_reason}")
-        posted_journal_p32_tax, posted_journal_pension_payable, journal_payable_diagnostics = _payroll_overview_extract_posted_journal_payables(
+        posted_journal_p32_tax, posted_journal_pension_payable, journal_payable_diagnostics = await _payroll_overview_extract_posted_journal_payables(
             journals,
             accounts,
             reference_payrun,
+            user_id=str(user.get("id") or "").strip() or None,
         )
     except Exception as exc:
         errors.append(f"Journals: {_sync_error_message(exc)}")
