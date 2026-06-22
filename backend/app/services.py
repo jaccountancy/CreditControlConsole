@@ -1335,16 +1335,45 @@ def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -
     if isinstance(candidate, list):
         return [row for row in candidate if isinstance(row, dict)]
     if isinstance(candidate, dict):
-        nested = (
-            candidate.get(plural_key)
-            or candidate.get(plural_key.lower())
-            or candidate.get(singular_key)
-            or candidate.get(singular_key.lower())
-            or []
-        )
-        if isinstance(nested, list):
-            return [row for row in nested if isinstance(row, dict)]
-        if any(key in candidate for key in ("EmployeeID", "PayRunID", "Status", "EmployeeStatus")):
+        for nested in (
+            candidate.get(plural_key),
+            candidate.get(plural_key.lower()),
+            candidate.get(singular_key),
+            candidate.get(singular_key.lower()),
+        ):
+            if isinstance(nested, list):
+                return [row for row in nested if isinstance(row, dict)]
+            if isinstance(nested, dict) and any(
+                key in nested
+                for key in (
+                    "EmployeeID",
+                    "employeeID",
+                    "EmployeeId",
+                    "employeeId",
+                    "PayRunID",
+                    "payRunID",
+                    "PayRunId",
+                    "payRunId",
+                    "EmployeeStatus",
+                    "employeeStatus",
+                )
+            ):
+                return [nested]
+        if any(
+            key in candidate
+            for key in (
+                "EmployeeID",
+                "employeeID",
+                "EmployeeId",
+                "employeeId",
+                "PayRunID",
+                "payRunID",
+                "PayRunId",
+                "payRunId",
+                "EmployeeStatus",
+                "employeeStatus",
+            )
+        ):
             return [candidate]
     return []
 

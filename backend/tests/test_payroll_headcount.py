@@ -81,6 +81,11 @@ class PayrollHeadcountTests(unittest.TestCase):
         self.assertEqual(len(employees), 2)
         self.assertEqual(len(payruns), 1)
 
+    def test_payroll_rows_ignores_wrapper_status_when_single_employee_is_nested(self):
+        payload = {"Employees": {"Status": "OK", "Employee": {"EmployeeID": "emp-1"}}}
+        rows = services._payroll_headcount_rows(payload, "Employees", "Employee")
+        self.assertEqual(rows, [{"EmployeeID": "emp-1"}])
+
     def test_effective_headcount_keeps_highest_active_or_latest_payrun_count(self):
         self.assertEqual(services._payroll_headcount_effective_count(40, 10), 40)
         self.assertEqual(services._payroll_headcount_effective_count(10, 25), 25)
