@@ -18790,6 +18790,7 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
         if not country_name:
             country_name = "United Kingdom"
         if country_name:
+            address_payload["Country"] = country_name[:50]
             address_payload["CountryName"] = country_name[:50]
         employee_row["Address"] = address_payload
     return {"Employees": [employee_row]}
@@ -18936,6 +18937,7 @@ def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
         ("addressLine1", "Address line 1"),
         ("city", "City"),
         ("postcode", "Postcode"),
+        ("country", "Country"),
         ("payrollNumber", "Payroll number"),
         ("taxCode", "Tax code"),
     ]
@@ -18949,9 +18951,16 @@ def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
     date_of_birth_value = str(extracted_fields.get("dateOfBirth") or "").strip()
     if date_of_birth_value and not _submitted_employee_forms_normalise_date(date_of_birth_value):
         missing.append("Date of birth")
+    normalised_title = _submitted_employee_forms_normalise_title(str(extracted_fields.get("title") or ""))
+    if not normalised_title and "Title" not in missing:
+        missing.append("Title")
     gender_value = str(extracted_fields.get("gender") or "").strip()
-    if gender_value and not _submitted_employee_forms_normalise_gender(gender_value, title=str(extracted_fields.get("title") or "")):
+    normalised_gender = _submitted_employee_forms_normalise_gender(gender_value, title=normalised_title)
+    if not normalised_gender and "Gender" not in missing:
         missing.append("Gender")
+    normalised_country = _submitted_employee_forms_normalise_country_name(str(extracted_fields.get("country") or ""))
+    if not normalised_country and "Country" not in missing:
+        missing.append("Country")
     return missing
 
 
