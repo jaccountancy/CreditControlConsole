@@ -29227,6 +29227,64 @@
                 font-size: 12px;
                 color: var(--ink);
             }
+            .task-payroll-loading-shell {
+                display: grid;
+                gap: 12px;
+            }
+            .task-payroll-loading-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .task-payroll-loading-spinner {
+                width: 18px;
+                height: 18px;
+                border: 2px solid rgba(62, 108, 160, 0.2);
+                border-top-color: #2b6aa5;
+                border-radius: 999px;
+                animation: taskPayrollSpin 0.8s linear infinite;
+            }
+            .task-payroll-loading-progress {
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(62, 108, 160, 0.12);
+                overflow: hidden;
+                position: relative;
+            }
+            .task-payroll-loading-progress::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                width: 46%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #3b79b1 0%, #6ea6d6 100%);
+                animation: taskPayrollProgress 1.4s ease-in-out infinite;
+            }
+            .task-payroll-loading-steps {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                display: grid;
+                gap: 7px;
+            }
+            .task-payroll-loading-steps li {
+                font-size: 12px;
+                color: var(--muted);
+                font-weight: 700;
+                opacity: 0.6;
+                transition: opacity 0.2s ease, color 0.2s ease;
+            }
+            .task-payroll-loading-steps li.is-active {
+                color: #1d5486;
+                opacity: 1;
+            }
+            @keyframes taskPayrollSpin {
+                to { transform: rotate(360deg); }
+            }
+            @keyframes taskPayrollProgress {
+                0% { transform: translateX(-120%); }
+                100% { transform: translateX(260%); }
+            }
             .task-detail-modal-card .task-detail-extraction-status {
                 margin: 0;
                 padding: 2px 2px 4px;
@@ -124618,7 +124676,12 @@
                 const resolvedTask = bmTaskRowWithOverrides(row);
                 if (!resolvedTask || bmTaskWorkflowType(resolvedTask) !== "payroll") return;
                 let loadingModalVisible = false;
+                let loadingStatusTimer = null;
                 const closeLoadingModal = () => {
+                    if (loadingStatusTimer) {
+                        clearInterval(loadingStatusTimer);
+                        loadingStatusTimer = null;
+                    }
                     if (!loadingModalVisible) return;
                     loadingModalVisible = false;
                     const panel = document.getElementById("operationReviewPanel");
@@ -124648,12 +124711,39 @@
                         if (actions) actions.hidden = true;
                         const closeButton = panel?.querySelector("#closeOperationReviewButton");
                         if (closeButton instanceof HTMLButtonElement) closeButton.disabled = true;
+                        const loadingSteps = [
+                            "Connecting securely to Xero payroll",
+                            "Fetching submitted pay run and period",
+                            "Extracting P32 and pension payable values",
+                            "Preparing references and validation checks",
+                        ];
                         body.innerHTML = `
                             <article class="task-detail-modal-card">
                                 <h5>Loading</h5>
-                                <p class="task-detail-modal-hint">Pulling latest pay run, P32, pension and HMRC references from Xero. Please wait...</p>
+                                <div class="task-payroll-loading-shell">
+                                    <div class="task-payroll-loading-head">
+                                        <span class="task-payroll-loading-spinner" aria-hidden="true"></span>
+                                        <p id="taskPayrollLoadingStatusText" class="task-detail-modal-hint">Pulling latest pay run, P32, pension and HMRC references from Xero. Please wait...</p>
+                                    </div>
+                                    <div class="task-payroll-loading-progress" aria-hidden="true"></div>
+                                    <ul id="taskPayrollLoadingSteps" class="task-payroll-loading-steps">
+                                        ${loadingSteps.map((step, index) => `<li class="${index === 0 ? "is-active" : ""}">${escapeHTML(step)}</li>`).join("")}
+                                    </ul>
+                                </div>
                             </article>
                         `;
+                        const stepNodes = Array.from(body.querySelectorAll("#taskPayrollLoadingSteps li"));
+                        const statusText = body.querySelector("#taskPayrollLoadingStatusText");
+                        if (stepNodes.length) {
+                            let stepIndex = 0;
+                            loadingStatusTimer = setInterval(() => {
+                                stepIndex = (stepIndex + 1) % stepNodes.length;
+                                stepNodes.forEach((node, idx) => node.classList.toggle("is-active", idx === stepIndex));
+                                if (statusText) {
+                                    statusText.textContent = `${loadingSteps[stepIndex]}...`;
+                                }
+                            }, 1200);
+                        }
                     },
                 }).catch(() => {});
                 try {
