@@ -124864,6 +124864,21 @@
                 const nominalTransactionDiagnostics = summary?.nominalTransactionDiagnostics && typeof summary.nominalTransactionDiagnostics === "object"
                     ? summary.nominalTransactionDiagnostics
                     : {};
+                const nominalDiagnosticsEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
+                const normaliseFigureSource = (source) => {
+                    const value = String(source || "").trim();
+                    if (!value || value === "none") {
+                        return nominalDiagnosticsEngine === "nominal_account_transactions"
+                            ? "nominal_account_transactions"
+                            : "none";
+                    }
+                    if (value === "payroll_api_payslips" && nominalDiagnosticsEngine === "nominal_account_transactions") {
+                        return "nominal_account_transactions";
+                    }
+                    return value;
+                };
+                const resolvedP32FigureSource = normaliseFigureSource(p32FigureSource);
+                const resolvedPensionFigureSource = normaliseFigureSource(pensionFigureSource);
                 const openAiPayrollInferenceDiagnostics = summary?.openAiPayrollInferenceDiagnostics && typeof summary.openAiPayrollInferenceDiagnostics === "object"
                     ? summary.openAiPayrollInferenceDiagnostics
                     : {};
@@ -124877,8 +124892,8 @@
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
                 const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions"];
-                const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(p32FigureSource)
-                    && reliablePayrollFigureSources.includes(pensionFigureSource);
+                const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(resolvedP32FigureSource)
+                    && reliablePayrollFigureSources.includes(resolvedPensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
@@ -125042,8 +125057,8 @@
                                 `Tenant: ${String(tenantId || "Unavailable")}`,
                                 `Selected pay run: ${String(selectedPayRunLabel || "Unavailable")}`,
                                 `Selected source: ${String(selectedPayRunSource || "unknown")}`,
-                                `P32 source: ${String(figureSources?.p32Tax || "none")}`,
-                                `Pension source: ${String(figureSources?.pensionPayable || "none")}`,
+                                `P32 source: ${resolvedP32FigureSource}`,
+                                `Pension source: ${resolvedPensionFigureSource}`,
                                 `Extracted P32: ${formatCurrency(Number(initialP32Tax || 0))}`,
                                 `Extracted pension: ${formatCurrency(Number(initialPension || 0))}`,
                                 `Journal selected: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`,
@@ -125064,7 +125079,7 @@
                             };
                             const buildFigureBreakdownItems = (kind) => {
                                 const isP32 = kind === "p32";
-                                const source = String(isP32 ? figureSources?.p32Tax : figureSources?.pensionPayable || "none").trim() || "none";
+                                const source = isP32 ? resolvedP32FigureSource : resolvedPensionFigureSource;
                                 const value = Number(isP32 ? (p32Input?.value || initialP32Tax || 0) : (pensionInput?.value || initialPension || 0));
                                 const items = [
                                     `Figure: ${formatCurrency(value)}`,
@@ -125153,13 +125168,15 @@
                                     items.push("No extraction source is currently attached to this figure.");
                                 }
                                 if (openAiPayrollInferenceDiagnostics && typeof openAiPayrollInferenceDiagnostics === "object") {
-                                    const aiEngine = String(openAiPayrollInferenceDiagnostics?.engine || "disabled");
+                                    const aiEngine = String(openAiPayrollInferenceDiagnostics?.engine || "").trim();
                                     const aiNote = String(openAiPayrollInferenceDiagnostics?.notes || "").trim();
-                                    items.push(`OpenAI inference engine: ${aiEngine}`);
+                                    if (aiEngine && aiEngine.toLowerCase() !== "disabled") {
+                                        items.push(`OpenAI inference engine: ${aiEngine}`);
+                                    }
                                     if (aiNote) items.push(`OpenAI note: ${aiNote}`);
                                 }
                                 if (nominalTransactionDiagnostics && typeof nominalTransactionDiagnostics === "object") {
-                                    const nominalEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
+                                    const nominalEngine = nominalDiagnosticsEngine;
                                     if (nominalEngine) items.push(`Nominal diagnostics engine: ${nominalEngine}`);
                                 }
                                 return items;
