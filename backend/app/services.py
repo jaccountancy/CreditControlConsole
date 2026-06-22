@@ -2127,6 +2127,12 @@ async def _payroll_overview_extract_posted_journal_payables(
     *,
     user_id: str | None = None,
 ) -> tuple[Decimal, Decimal, dict]:
+    def _canonical_account_id(value) -> str:
+        raw = _payroll_overview_text(value)
+        if not raw:
+            return ""
+        return raw.strip().strip("{}").lower()
+
     def _canonical_account_code(value) -> str:
         raw = _payroll_overview_text(value)
         if not raw:
@@ -2163,14 +2169,15 @@ async def _payroll_overview_extract_posted_journal_payables(
         if not isinstance(account, dict):
             continue
         account_id = _payroll_overview_text(account.get("AccountID") or account.get("ID") or account.get("accountId"))
-        if account_id:
-            account_by_id[account_id] = account
+        account_id_key = _canonical_account_id(account_id)
+        if account_id_key:
+            account_by_id[account_id_key] = account
         if _payroll_overview_account_is_tax_liability(account):
-            if account_id:
-                tax_liability_account_ids.add(account_id)
+            if account_id_key:
+                tax_liability_account_ids.add(account_id_key)
         if _payroll_overview_account_is_pension_liability(account):
-            if account_id:
-                pension_liability_account_ids.add(account_id)
+            if account_id_key:
+                pension_liability_account_ids.add(account_id_key)
         account_code = _payroll_overview_text(account.get("Code") or account.get("code"))
         if account_code:
             account_by_code[_payroll_overview_normalise_key(account_code)] = account
@@ -2191,8 +2198,9 @@ async def _payroll_overview_extract_posted_journal_payables(
             or line.get("accountId")
             or line.get("account_id")
         )
-        if account_id and account_id in account_by_id:
-            return account_by_id[account_id]
+        account_id_key = _canonical_account_id(account_id)
+        if account_id_key and account_id_key in account_by_id:
+            return account_by_id[account_id_key]
         account_code = _payroll_overview_text(
             line.get("AccountCode")
             or line.get("accountCode")
@@ -2291,6 +2299,7 @@ async def _payroll_overview_extract_posted_journal_payables(
                 or line.get("accountId")
                 or line.get("account_id")
             )
+            line_account_id_key = _canonical_account_id(line_account_id)
             canonical_line_code = _canonical_account_code(account_code)
             description = _payroll_overview_text(line.get("Description") or line.get("description") or line.get("line_description"))
             net_amount = _payroll_overview_numeric_decimal(
@@ -2317,12 +2326,12 @@ async def _payroll_overview_extract_posted_journal_payables(
             if liability_amount == Decimal("0"):
                 continue
             is_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
-                bool(line_account_id) and line_account_id in tax_liability_account_ids
+                bool(line_account_id_key) and line_account_id_key in tax_liability_account_ids
             ) or (
                 bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
             )
             is_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
-                bool(line_account_id) and line_account_id in pension_liability_account_ids
+                bool(line_account_id_key) and line_account_id_key in pension_liability_account_ids
             ) or (
                 bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
             )
@@ -2687,12 +2696,19 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         if not payslip_ids:
             return
         pension_from_payslips = Decimal("0")
+        payslip_permissions_blocked = False
         for payslip_id in payslip_ids[:80]:
+            if payslip_permissions_blocked:
+                break
             payslip_url = XERO_PAYROLL_PAYSLIP_DETAILS_URL.format(payslip_id=quote(payslip_id, safe=""))
             try:
                 payslip_payload = await xero_api_get(connection_row, payslip_url)
             except Exception as exc:
-                errors.append(f"Payslip {payslip_id}: {_sync_error_message(exc)}")
+                error_text = _sync_error_message(exc)
+                errors.append(f"Payslip {payslip_id}: {error_text}")
+                lowered = error_text.lower()
+                if "permissions need updating" in lowered or "reconnect xero" in lowered:
+                    payslip_permissions_blocked = True
                 continue
             payslip_rows = _payroll_overview_payslip_rows(payslip_payload if isinstance(payslip_payload, dict) else {})
             if payslip_rows:
