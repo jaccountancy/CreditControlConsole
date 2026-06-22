@@ -3136,7 +3136,7 @@ def _payroll_overview_account_transaction_entries(payload: dict) -> list[dict]:
                     for idx, value in enumerate(values)
                     if str(value or "").strip()
                 }
-            elif row_type == "row":
+            elif row_type != "header":
                 if len(values) == 1 and first_value and first_value.lower() not in {"opening balance", "closing balance"} and not first_value.lower().startswith("total "):
                     current_account = first_value
                 else:
@@ -3146,19 +3146,26 @@ def _payroll_overview_account_transaction_entries(payload: dict) -> list[dict]:
                     ref_idx = header_map.get("reference")
                     debit_idx = header_map.get("debit")
                     credit_idx = header_map.get("credit")
-                    if date_idx is not None and source_idx is not None and debit_idx is not None and credit_idx is not None:
+                    if date_idx is not None and debit_idx is not None and credit_idx is not None:
                         date_text = values[date_idx] if date_idx < len(values) else ""
                         debit = _money(_money_from_report_cell(values[debit_idx] if debit_idx < len(values) else ""))
                         credit = _money(_money_from_report_cell(values[credit_idx] if credit_idx < len(values) else ""))
-                        source_text = values[source_idx] if source_idx < len(values) else ""
-                        if (date_text or source_text) and (debit != Decimal("0.00") or credit != Decimal("0.00")):
+                        source_text = values[source_idx] if source_idx is not None and source_idx < len(values) else ""
+                        description_text = values[desc_idx] if desc_idx is not None and desc_idx < len(values) else ""
+                        reference_text = values[ref_idx] if ref_idx is not None and ref_idx < len(values) else ""
+                        first_col_date = _parse_any_date(date_text)
+                        first_value_date = _parse_any_date(first_value)
+                        effective_date = date_text if isinstance(first_col_date, date) else (first_value if isinstance(first_value_date, date) else "")
+                        is_balance_row = str((description_text or first_value or "")).strip().lower() in {"opening balance", "closing balance"}
+                        is_total_row = str((description_text or first_value or "")).strip().lower().startswith("total ")
+                        if effective_date and not is_balance_row and not is_total_row and (debit != Decimal("0.00") or credit != Decimal("0.00")):
                             entries.append(
                                 {
                                     "accountName": current_account,
-                                    "date": date_text,
+                                    "date": effective_date,
                                     "source": source_text,
-                                    "description": values[desc_idx] if desc_idx is not None and desc_idx < len(values) else "",
-                                    "reference": values[ref_idx] if ref_idx is not None and ref_idx < len(values) else "",
+                                    "description": description_text,
+                                    "reference": reference_text,
                                     "debit": debit,
                                     "credit": credit,
                                     "net": _money(credit - debit),
