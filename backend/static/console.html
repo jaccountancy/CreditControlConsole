@@ -10963,56 +10963,77 @@
                 position: relative;
             }
             .insights-home-refresh-shell .insights-home.is-refreshing {
-                opacity: 0.68;
-                filter: saturate(0.92);
+                opacity: 0.72;
+                filter: saturate(0.94);
                 pointer-events: none;
                 transition: opacity 220ms ease, filter 220ms ease;
             }
             .insights-refresh-overlay {
                 position: absolute;
-                top: 12px;
-                left: 12px;
-                right: 12px;
-                padding: 8px 10px 0;
-                display: grid;
-                gap: 8px;
-                z-index: 3;
+                top: 14px;
+                right: 14px;
+                display: flex;
+                justify-content: flex-end;
+                z-index: 4;
                 pointer-events: none;
             }
             .insights-refresh-overlay[hidden] {
                 display: none;
             }
-            .insights-refresh-overlay-line {
-                position: relative;
-                height: 4px;
-                border-radius: 999px;
-                overflow: hidden;
-                background: color-mix(in srgb, var(--blue-soft) 74%, white);
-                border: 1px solid color-mix(in srgb, var(--blue) 24%, white);
+            .insights-refresh-overlay-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 40px;
+                padding: 8px 12px;
+                border-radius: 14px;
+                border: 1px solid color-mix(in srgb, var(--blue) 18%, white);
+                background: color-mix(in srgb, white 78%, var(--blue-soft));
+                box-shadow: 0 12px 24px rgba(20, 44, 88, 0.16);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
             }
-            .insights-refresh-overlay-line > span {
-                position: absolute;
-                top: 0;
-                left: 0;
-                height: 100%;
-                width: 35%;
-                border-radius: inherit;
-                background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 82%, white), color-mix(in srgb, var(--cyan) 84%, white));
-                box-shadow: 0 0 10px color-mix(in srgb, var(--blue) 35%, transparent);
-                animation: insightsRefreshLineSweep 1.2s ease-in-out infinite;
+            .insights-refresh-overlay-spinner {
+                width: 16px;
+                height: 16px;
+                border-radius: 999px;
+                border: 2px solid color-mix(in srgb, var(--blue) 18%, white);
+                border-top-color: var(--blue);
+                animation: insightsRefreshSpinner 0.82s linear infinite;
+                flex: 0 0 auto;
             }
             .insights-refresh-overlay-copy {
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                color: var(--ink);
-                font-weight: 800;
-                font-size: 0.88rem;
-                letter-spacing: 0.01em;
+                display: grid;
+                gap: 1px;
+                min-width: 0;
             }
-            @keyframes insightsRefreshLineSweep {
-                0% { left: -38%; }
-                100% { left: 100%; }
+            .insights-refresh-overlay-copy strong {
+                font-size: 0.8rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+                color: color-mix(in srgb, var(--ink) 84%, var(--blue));
+                text-transform: uppercase;
+                line-height: 1.2;
+            }
+            .insights-refresh-overlay-copy span {
+                font-size: 0.75rem;
+                color: color-mix(in srgb, var(--ink) 72%, var(--blue));
+                font-weight: 650;
+                line-height: 1.2;
+            }
+            @keyframes insightsRefreshSpinner {
+                to { transform: rotate(360deg); }
+            }
+            @media (max-width: 760px) {
+                .insights-refresh-overlay {
+                    right: 10px;
+                    left: 10px;
+                    justify-content: stretch;
+                }
+                .insights-refresh-overlay-status {
+                    width: 100%;
+                    justify-content: center;
+                }
             }
             .insights-home .insight-two-column {
                 gap: 14px;
@@ -97587,7 +97608,7 @@
                 }
                 const homeMarkup = aiCopilotHomeInsights(analytics, ai);
                 const refreshOverlay = insightsLoading
-                    ? `<div class="insights-refresh-overlay" aria-live="polite"><div class="insights-refresh-overlay-line" aria-hidden="true"><span></span></div><div class="insights-refresh-overlay-copy"><span>Refreshing insights cards...</span></div></div>`
+                    ? `<div class="insights-refresh-overlay" role="status" aria-live="polite"><div class="insights-refresh-overlay-status"><span class="insights-refresh-overlay-spinner" aria-hidden="true"></span><div class="insights-refresh-overlay-copy"><strong>Refreshing insights</strong><span>Updating dashboard metrics and status</span></div></div></div>`
                     : "";
                 target.innerHTML = `<div class="insights-home-refresh-shell">${homeMarkup.replace('<div class="insights-home">', `<div class="insights-home${insightsLoading ? " is-refreshing" : ""}">`)}${refreshOverlay}</div>`;
                 renderInsightsQuickAccessMenu();
