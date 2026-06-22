@@ -50534,9 +50534,15 @@
                     submittedEmployeeFormsSetupState.running = false;
                     submittedEmployeeFormsSetupState.stage = "complete";
                     submittedEmployeeFormsSetupState.currentLabel = "Completed";
+                    const createdCount = Number(submittedEmployeeFormsSetupState.created || 0);
+                    const existsCount = Number(submittedEmployeeFormsSetupState.exists || 0);
+                    const failedCount = Number(submittedEmployeeFormsSetupState.failed || 0);
+                    const completionTone = failedCount
+                        ? "warning"
+                        : (createdCount > 0 ? "success" : (existsCount > 0 ? "info" : "success"));
                     showToast(
-                        `Setup complete. ${submittedEmployeeFormsSetupState.created.toLocaleString("en-GB")} created, ${submittedEmployeeFormsSetupState.exists.toLocaleString("en-GB")} already exist, ${submittedEmployeeFormsSetupState.failed.toLocaleString("en-GB")} failed.`,
-                        submittedEmployeeFormsSetupState.failed ? "warning" : "success"
+                        `Setup complete. ${createdCount.toLocaleString("en-GB")} created, ${existsCount.toLocaleString("en-GB")} already exist, ${failedCount.toLocaleString("en-GB")} failed.`,
+                        completionTone
                     );
                 } catch (error) {
                     console.error("Unable to run submitted employee forms setup flow", error);
@@ -59061,7 +59067,13 @@
                         submittedEmployeeFormsPreviewStep = "edit";
                         submittedEmployeeFormsPreviewRowId = "";
                     } else if (statusLabel === "exists") {
-                        showToast("Employee already exists in Xero Payroll.", "info");
+                        const workspaceName = String(updated?.xeroTenantName || updated?.xeroTenantId || "").trim();
+                        showToast(
+                            workspaceName
+                                ? `Employee already exists in Xero Payroll (${workspaceName}).`
+                                : "Employee already exists in Xero Payroll.",
+                            "info"
+                        );
                         submittedEmployeeFormsPreviewStep = "edit";
                         submittedEmployeeFormsPreviewRowId = "";
                     }
