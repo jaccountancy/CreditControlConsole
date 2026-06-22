@@ -298,6 +298,19 @@ PAYROLL_JOURNAL_FIGURES_AI_SCHEMA = {
         "notes": {"type": "string"},
     },
 }
+PAYROLL_NOMINAL_ACCOUNT_SELECTION_AI_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["taxAccountIds", "taxAccountCodes", "pensionAccountIds", "pensionAccountCodes", "confidence", "notes"],
+    "properties": {
+        "taxAccountIds": {"type": "array", "items": {"type": "string"}},
+        "taxAccountCodes": {"type": "array", "items": {"type": "string"}},
+        "pensionAccountIds": {"type": "array", "items": {"type": "string"}},
+        "pensionAccountCodes": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"},
+        "notes": {"type": "string"},
+    },
+}
 PI_CLEARING_AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -2859,6 +2872,172 @@ def _payroll_overview_nominal_accounts(accounts: list[dict]) -> tuple[list[dict]
     return selected_tax_accounts[:6], pension_accounts[:6]
 
 
+async def _payroll_overview_openai_nominal_account_selection(
+    *,
+    accounts: list[dict],
+    period_start: date,
+    period_end: date,
+    reference_payrun: dict | None = None,
+    user_id: str | None = None,
+) -> tuple[list[dict], list[dict], dict]:
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        return [], [], {"engine": "disabled", "reason": "openai_not_configured"}
+
+    account_catalog: list[dict] = []
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        account_id = _payroll_overview_text(account.get("AccountID") or account.get("ID"))
+        code = _payroll_overview_text(account.get("Code"))
+        name = _payroll_overview_text(account.get("Name"))
+        if not account_id and not code and not name:
+            continue
+        account_catalog.append(
+            {
+                "accountId": account_id,
+                "code": code,
+                "name": name,
+                "type": _payroll_overview_text(account.get("Type")),
+                "status": _payroll_overview_text(account.get("Status")),
+            }
+        )
+    account_catalog = account_catalog[:400]
+
+    candidate_tax_accounts = [
+        row
+        for row in account_catalog
+        if _payroll_overview_account_is_tax_liability(
+            {
+                "Code": row.get("code"),
+                "Name": row.get("name"),
+                "Type": row.get("type"),
+                "Class": "",
+            }
+        )
+    ][:40]
+    candidate_pension_accounts = [
+        row
+        for row in account_catalog
+        if _payroll_overview_account_is_pension_liability(
+            {
+                "Code": row.get("code"),
+                "Name": row.get("name"),
+                "Type": row.get("type"),
+                "Class": "",
+            }
+        )
+    ][:40]
+
+    context_payload = {
+        "periodStart": period_start.isoformat() if isinstance(period_start, date) else "",
+        "periodEnd": period_end.isoformat() if isinstance(period_end, date) else "",
+        "selectedPayrun": {
+            "payRunId": _payroll_overview_text((reference_payrun or {}).get("payRunId")),
+            "periodStart": _payroll_overview_text((reference_payrun or {}).get("payRunPeriodStartDate")),
+            "periodEnd": _payroll_overview_text((reference_payrun or {}).get("payRunPeriodEndDate")),
+            "paymentDate": _payroll_overview_text((reference_payrun or {}).get("paymentDate")),
+            "status": _payroll_overview_text((reference_payrun or {}).get("status")),
+        },
+        "accounts": account_catalog,
+    }
+
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a UK payroll accounting analyst. From chart-of-accounts entries, choose liability nominal "
+                    "accounts for PAYE/NIC payable and workplace pension payable for the provided payroll period. "
+                    "Prefer current liability/control accounts, not payroll expense accounts."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Context JSON: {json.dumps(context_payload, default=_json_default)}\n"
+                    "Return only JSON matching the schema."
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "payroll_nominal_account_selection",
+                "schema": PAYROLL_NOMINAL_ACCOUNT_SELECTION_AI_SCHEMA,
+                "strict": True,
+            }
+        },
+    }
+
+    try:
+        payload = await _post_openai_responses(
+            request_body,
+            "payroll nominal account selection",
+            preferred_model=settings.openai_model,
+            timeout_seconds=PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS,
+            user_id=user_id,
+            feature="openai-core",
+            page="payroll-headcount",
+        )
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid payroll nominal account selection JSON.")
+        tax_ids = {_payroll_overview_text(value) for value in (parsed.get("taxAccountIds") or []) if str(value or "").strip()}
+        pension_ids = {_payroll_overview_text(value) for value in (parsed.get("pensionAccountIds") or []) if str(value or "").strip()}
+        tax_codes = {
+            _payroll_overview_normalise_key(str(value or ""))
+            for value in (parsed.get("taxAccountCodes") or [])
+            if str(value or "").strip()
+        }
+        pension_codes = {
+            _payroll_overview_normalise_key(str(value or ""))
+            for value in (parsed.get("pensionAccountCodes") or [])
+            if str(value or "").strip()
+        }
+
+        def _match_selected(selection_ids: set[str], selection_codes: set[str]) -> list[dict]:
+            matched: list[dict] = []
+            for row in account_catalog:
+                account_id = _payroll_overview_text(row.get("accountId"))
+                code_key = _payroll_overview_normalise_key(row.get("code"))
+                if (account_id and account_id in selection_ids) or (code_key and code_key in selection_codes):
+                    matched.append(
+                        {
+                            "accountId": account_id,
+                            "code": _payroll_overview_text(row.get("code")),
+                            "name": _payroll_overview_text(row.get("name")),
+                        }
+                    )
+            return matched
+
+        tax_accounts = _match_selected(tax_ids, tax_codes)
+        pension_accounts = _match_selected(pension_ids, pension_codes)
+        diagnostics = {
+            "engine": "openai_nominal_account_selection",
+            "used": True,
+            "confidence": float(parsed.get("confidence") or 0),
+            "notes": str(parsed.get("notes") or "").strip(),
+            "taxAccountIds": sorted(tax_ids),
+            "taxAccountCodes": sorted(tax_codes),
+            "pensionAccountIds": sorted(pension_ids),
+            "pensionAccountCodes": sorted(pension_codes),
+            "matchedTaxAccounts": tax_accounts,
+            "matchedPensionAccounts": pension_accounts,
+            "candidateTaxAccounts": candidate_tax_accounts,
+            "candidatePensionAccounts": candidate_pension_accounts,
+            "requiresUserSelection": not bool(tax_accounts and pension_accounts),
+        }
+        return tax_accounts, pension_accounts, diagnostics
+    except Exception as exc:
+        logger.exception("Payroll nominal account selection OpenAI inference failed: %s", exc)
+        return [], [], {
+            "engine": "openai_nominal_account_selection_error",
+            "reason": _sync_error_message(exc),
+            "candidateTaxAccounts": candidate_tax_accounts,
+            "candidatePensionAccounts": candidate_pension_accounts,
+            "requiresUserSelection": True,
+        }
+
+
 def _payroll_overview_account_transaction_lines(payload: dict) -> list[dict]:
     lines = _xero_report_lines(payload if isinstance(payload, dict) else {})
     rows: list[dict] = []
@@ -2970,14 +3149,75 @@ async def _payroll_overview_nominal_transaction_context(
     accounts: list[dict],
     period_start: date,
     period_end: date,
+    reference_payrun: dict | None = None,
+    user_id: str | None = None,
+    tax_code_overrides: list[str] | None = None,
+    pension_code_overrides: list[str] | None = None,
 ) -> dict:
-    tax_accounts, pension_accounts = _payroll_overview_nominal_accounts(accounts)
+    heuristic_tax_accounts, heuristic_pension_accounts = _payroll_overview_nominal_accounts(accounts)
+    ai_tax_accounts, ai_pension_accounts, account_selection_diagnostics = await _payroll_overview_openai_nominal_account_selection(
+        accounts=accounts,
+        period_start=period_start,
+        period_end=period_end,
+        reference_payrun=reference_payrun,
+        user_id=user_id,
+    )
+    override_tax_keys = {
+        _payroll_overview_normalise_key(code)
+        for code in (tax_code_overrides or [])
+        if str(code or "").strip()
+    }
+    override_pension_keys = {
+        _payroll_overview_normalise_key(code)
+        for code in (pension_code_overrides or [])
+        if str(code or "").strip()
+    }
+
+    def _match_overrides(keys: set[str]) -> list[dict]:
+        if not keys:
+            return []
+        matches: list[dict] = []
+        for account in accounts or []:
+            if not isinstance(account, dict):
+                continue
+            code = _payroll_overview_text(account.get("Code") or account.get("code"))
+            code_key = _payroll_overview_normalise_key(code)
+            if not code_key or code_key not in keys:
+                continue
+            matches.append(
+                {
+                    "accountId": _payroll_overview_text(account.get("AccountID") or account.get("ID")),
+                    "code": code,
+                    "name": _payroll_overview_text(account.get("Name") or account.get("name")),
+                }
+            )
+        return matches
+
+    override_tax_accounts = _match_overrides(override_tax_keys)
+    override_pension_accounts = _match_overrides(override_pension_keys)
+    using_manual_selection = bool(override_tax_accounts or override_pension_accounts)
+
+    tax_accounts = (
+        override_tax_accounts
+        if override_tax_accounts
+        else ai_tax_accounts
+        if ai_tax_accounts
+        else heuristic_tax_accounts
+    )
+    pension_accounts = (
+        override_pension_accounts
+        if override_pension_accounts
+        else ai_pension_accounts
+        if ai_pension_accounts
+        else heuristic_pension_accounts
+    )
     context = {
         "engine": "nominal_account_transactions",
         "periodStart": period_start.isoformat() if isinstance(period_start, date) else "",
         "periodEnd": period_end.isoformat() if isinstance(period_end, date) else "",
         "taxAccounts": tax_accounts,
         "pensionAccounts": pension_accounts,
+        "accountSelectionDiagnostics": account_selection_diagnostics if isinstance(account_selection_diagnostics, dict) else {},
         "taxAccountTransactions": [],
         "pensionAccountTransactions": [],
         "taxPayrollExpenseNet": 0.0,
@@ -2986,6 +3226,17 @@ async def _payroll_overview_nominal_transaction_context(
         "payeRunReferences": [],
         "payeRunDates": [],
     }
+    if isinstance(context.get("accountSelectionDiagnostics"), dict):
+        context["accountSelectionDiagnostics"]["selectionSource"] = (
+            "manual_user_override"
+            if using_manual_selection
+            else "openai"
+            if ai_tax_accounts or ai_pension_accounts
+            else "heuristic_fallback"
+        )
+        context["accountSelectionDiagnostics"]["selectedTaxAccounts"] = tax_accounts
+        context["accountSelectionDiagnostics"]["selectedPensionAccounts"] = pension_accounts
+        context["accountSelectionDiagnostics"]["requiresUserSelection"] = bool(not tax_accounts or not pension_accounts)
 
     paye_run_reference_keys: set[str] = set()
     paye_run_dates: set[str] = set()
@@ -3177,7 +3428,12 @@ def _payroll_overview_payrun_pension_from_payload(payrun_payload: dict) -> Decim
     return _money(max(direct, described, estimated))
 
 
-async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
+async def payroll_tenant_overview_payload(
+    user: dict,
+    tenant_id: str,
+    tax_code_overrides: list[str] | None = None,
+    pension_code_overrides: list[str] | None = None,
+) -> dict:
     clean_tenant_id = str(tenant_id or "").strip()
     if not clean_tenant_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant id is required.")
@@ -3515,6 +3771,10 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 accounts=accounts,
                 period_start=nominal_period_start,
                 period_end=nominal_period_end,
+                reference_payrun=reference_payrun,
+                user_id=str(user.get("id") or "").strip() or None,
+                tax_code_overrides=tax_code_overrides,
+                pension_code_overrides=pension_code_overrides,
             )
             nominal_transaction_fetch_errors = [
                 message

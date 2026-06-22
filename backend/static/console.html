@@ -124731,6 +124731,94 @@
             } = {}) {
                 const resolvedTask = bmTaskRowWithOverrides(row);
                 if (!resolvedTask || bmTaskWorkflowType(resolvedTask) !== "payroll") return;
+                const normaliseNominalCandidates = (items) => {
+                    if (!Array.isArray(items)) return [];
+                    const seen = new Set();
+                    return items
+                        .map((item) => {
+                            const code = String(item?.code || "").trim();
+                            const name = String(item?.name || "").trim();
+                            const accountId = String(item?.accountId || "").trim();
+                            const key = `${code.toLowerCase()}::${accountId.toLowerCase()}`;
+                            if (!code || seen.has(key)) return null;
+                            seen.add(key);
+                            return { code, name, accountId };
+                        })
+                        .filter(Boolean);
+                };
+                const promptPayrollNominalCodeSelection = async ({
+                    tenantId = "",
+                    accountSelectionDiagnostics = {},
+                } = {}) => {
+                    const taxCandidates = normaliseNominalCandidates(accountSelectionDiagnostics?.candidateTaxAccounts);
+                    const pensionCandidates = normaliseNominalCandidates(accountSelectionDiagnostics?.candidatePensionAccounts);
+                    return await showOperationReviewDialog({
+                        eyebrow: "Payroll task",
+                        title: "Select nominal codes",
+                        subtitle: "Choose PAYE payable and pension payable nominal codes to continue extraction.",
+                        confirmLabel: "Use selected codes",
+                        cancelLabel: "Cancel",
+                        columns: [],
+                        rows: [{}],
+                        summaryChips: ["Manual selection required"],
+                        onRender: ({ body, confirmButton }) => {
+                            body.innerHTML = `
+                                <article class="task-detail-modal-card">
+                                    <h5>Manual nominal code selection</h5>
+                                    <p class="task-detail-modal-hint">OpenAI could not confidently select both liability codes from chart of accounts. Pick one code for each liability.</p>
+                                    <div class="task-detail-modal-grid">
+                                        <label>PAYE payable nominal code
+                                            ${taxCandidates.length
+                                                ? `<select id="taskPayrollManualTaxCodeSelect">
+                                                    <option value="">Select PAYE payable code…</option>
+                                                    ${taxCandidates.map((account) => `<option value="${escapeHTML(account.code)}">${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
+                                                </select>`
+                                                : `<input id="taskPayrollManualTaxCodeInput" type="text" placeholder="Enter PAYE nominal code">`
+                                            }
+                                        </label>
+                                        <label>Pensions payable nominal code
+                                            ${pensionCandidates.length
+                                                ? `<select id="taskPayrollManualPensionCodeSelect">
+                                                    <option value="">Select pensions payable code…</option>
+                                                    ${pensionCandidates.map((account) => `<option value="${escapeHTML(account.code)}">${escapeHTML(account.code)}${account.name ? ` · ${escapeHTML(account.name)}` : ""}</option>`).join("")}
+                                                </select>`
+                                                : `<input id="taskPayrollManualPensionCodeInput" type="text" placeholder="Enter pension nominal code">`
+                                            }
+                                        </label>
+                                    </div>
+                                    <p class="task-detail-modal-hint">Tenant: ${escapeHTML(String(tenantId || "Unknown"))}</p>
+                                </article>
+                            `;
+                            const taxSelect = body.querySelector("#taskPayrollManualTaxCodeSelect");
+                            const taxInput = body.querySelector("#taskPayrollManualTaxCodeInput");
+                            const pensionSelect = body.querySelector("#taskPayrollManualPensionCodeSelect");
+                            const pensionInput = body.querySelector("#taskPayrollManualPensionCodeInput");
+                            const syncState = () => {
+                                const taxCode = String(taxSelect?.value || taxInput?.value || "").trim();
+                                const pensionCode = String(pensionSelect?.value || pensionInput?.value || "").trim();
+                                if (confirmButton) confirmButton.disabled = !(taxCode && pensionCode);
+                            };
+                            taxSelect?.addEventListener("change", syncState);
+                            taxInput?.addEventListener("input", syncState);
+                            pensionSelect?.addEventListener("change", syncState);
+                            pensionInput?.addEventListener("input", syncState);
+                            syncState();
+                        },
+                        resultProvider: () => {
+                            const taxSelect = document.getElementById("taskPayrollManualTaxCodeSelect");
+                            const taxInput = document.getElementById("taskPayrollManualTaxCodeInput");
+                            const pensionSelect = document.getElementById("taskPayrollManualPensionCodeSelect");
+                            const pensionInput = document.getElementById("taskPayrollManualPensionCodeInput");
+                            const taxCode = String(taxSelect?.value || taxInput?.value || "").trim();
+                            const pensionCode = String(pensionSelect?.value || pensionInput?.value || "").trim();
+                            if (!taxCode || !pensionCode) return null;
+                            return {
+                                taxCodes: [taxCode],
+                                pensionCodes: [pensionCode],
+                            };
+                        },
+                    });
+                };
                 let loadingModalVisible = false;
                 let loadingStatusTimer = null;
                 const closeLoadingModal = () => {
@@ -124813,7 +124901,30 @@
                     const payrollDetails = serviceDetails?.payroll || {};
                     const resolvedXero = bmTaskResolvedXeroMatch(resolvedTask);
                     const tenantId = String(resolvedXero?.tenantId || "").trim();
-                    const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
+                    let overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
+                    let manualNominalSelection = null;
+                    if (tenantId) {
+                        for (let attempt = 0; attempt < 2; attempt += 1) {
+                            const accountSelectionDiagnostics = overview?.summary?.nominalTransactionDiagnostics?.accountSelectionDiagnostics;
+                            const needsUserSelection = !!accountSelectionDiagnostics?.requiresUserSelection;
+                            if (!needsUserSelection) break;
+                            closeLoadingModal();
+                            const selection = await promptPayrollNominalCodeSelection({
+                                tenantId,
+                                accountSelectionDiagnostics,
+                            });
+                            if (!selection) {
+                                showToast("Payroll extraction cancelled: select PAYE and pension nominal codes to continue.", "info");
+                                return;
+                            }
+                            manualNominalSelection = selection;
+                            overview = await ensureClientPagePayrollOverview(tenantId, {
+                                force: true,
+                                taxCodes: selection.taxCodes,
+                                pensionCodes: selection.pensionCodes,
+                            });
+                        }
+                    }
                     const summary = overview?.summary || {};
                     const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
                     const fetchDiagnostics = summary?.fetchDiagnostics && typeof summary.fetchDiagnostics === "object"
@@ -124868,6 +124979,9 @@
                     : {};
                 const nominalTransactionDiagnostics = summary?.nominalTransactionDiagnostics && typeof summary.nominalTransactionDiagnostics === "object"
                     ? summary.nominalTransactionDiagnostics
+                    : {};
+                const accountSelectionDiagnostics = nominalTransactionDiagnostics?.accountSelectionDiagnostics && typeof nominalTransactionDiagnostics.accountSelectionDiagnostics === "object"
+                    ? nominalTransactionDiagnostics.accountSelectionDiagnostics
                     : {};
                 const nominalDiagnosticsEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
                 const nominalTaxTransactions = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
@@ -125072,6 +125186,11 @@
                                 `Selected source: ${String(selectedPayRunSource || "unknown")}`,
                                 `P32 source: ${resolvedP32FigureSource}`,
                                 `Pension source: ${resolvedPensionFigureSource}`,
+                                `Nominal account selection source: ${String(accountSelectionDiagnostics?.selectionSource || "unknown")}`,
+                                `Requires nominal code selection: ${accountSelectionDiagnostics?.requiresUserSelection ? "yes" : "no"}`,
+                                `Selected PAYE nominal codes: ${Array.isArray(accountSelectionDiagnostics?.selectedTaxAccounts) && accountSelectionDiagnostics.selectedTaxAccounts.length ? accountSelectionDiagnostics.selectedTaxAccounts.map((item) => String(item?.code || "").trim()).filter(Boolean).join(", ") : "none"}`,
+                                `Selected pension nominal codes: ${Array.isArray(accountSelectionDiagnostics?.selectedPensionAccounts) && accountSelectionDiagnostics.selectedPensionAccounts.length ? accountSelectionDiagnostics.selectedPensionAccounts.map((item) => String(item?.code || "").trim()).filter(Boolean).join(", ") : "none"}`,
+                                `Manual override used: ${manualNominalSelection ? "yes" : "no"}`,
                                 `Extracted P32: ${formatCurrency(Number(initialP32Tax || 0))}`,
                                 `Extracted pension: ${formatCurrency(Number(initialPension || 0))}`,
                                 `Journal selected: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`,
@@ -125100,6 +125219,15 @@
                                     `Selected pay run: ${String(selectedPayRunLabel || "Unavailable")}`,
                                 ];
                                 if (source === "nominal_account_transactions") {
+                                    const selectedAccounts = isP32
+                                        ? (Array.isArray(accountSelectionDiagnostics?.selectedTaxAccounts) ? accountSelectionDiagnostics.selectedTaxAccounts : [])
+                                        : (Array.isArray(accountSelectionDiagnostics?.selectedPensionAccounts) ? accountSelectionDiagnostics.selectedPensionAccounts : []);
+                                    const selectedCodes = selectedAccounts
+                                        .map((row) => String(row?.code || "").trim())
+                                        .filter(Boolean);
+                                    if (selectedCodes.length) {
+                                        items.push(`Selected nominal codes: ${selectedCodes.join(", ")}`);
+                                    }
                                     const taxRows = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
                                         ? nominalTransactionDiagnostics.taxAccountTransactions
                                         : [];
@@ -127594,6 +127722,38 @@
                 const cleanTenantId = String(tenantId || "").trim();
                 if (!cleanTenantId) return null;
                 const force = !!options.force;
+                const normaliseCodes = (input) => {
+                    if (Array.isArray(input)) {
+                        return input.map((value) => String(value || "").trim()).filter(Boolean);
+                    }
+                    if (typeof input === "string") {
+                        return input.split(",").map((value) => String(value || "").trim()).filter(Boolean);
+                    }
+                    return [];
+                };
+                const taxCodes = normaliseCodes(options.taxCodes);
+                const pensionCodes = normaliseCodes(options.pensionCodes);
+                const hasCodeOverrides = taxCodes.length > 0 || pensionCodes.length > 0;
+                const overrideQuery = new URLSearchParams();
+                if (taxCodes.length) overrideQuery.set("taxCodes", taxCodes.join(","));
+                if (pensionCodes.length) overrideQuery.set("pensionCodes", pensionCodes.join(","));
+                const endpointTemplate = hasCodeOverrides && overrideQuery.toString()
+                    ? `${api.endpoints.payrollTenantOverview}?${overrideQuery.toString()}`
+                    : api.endpoints.payrollTenantOverview;
+                if (hasCodeOverrides) {
+                    try {
+                        const payload = await requestJSON(endpointTemplate, {}, { tenantId: cleanTenantId });
+                        return payload?.payroll || null;
+                    } catch (error) {
+                        pushSystemActivity({
+                            type: "error",
+                            label: "Payroll overview",
+                            message: "Unable to load payroll overview with selected nominal codes.",
+                            detail: `Tenant: ${cleanTenantId} | Tax codes: ${taxCodes.join(", ") || "none"} | Pension codes: ${pensionCodes.join(", ") || "none"} | Error: ${String(error?.message || "Unknown error")}`,
+                        });
+                        return null;
+                    }
+                }
                 const existing = clientPagePayrollOverviewCache.get(cleanTenantId);
                 if (!force && existing?.data) return existing.data;
                 if (!force && existing?.loading && existing?.promise) return existing.promise;
@@ -127605,7 +127765,7 @@
                     loadedAt: "",
                     promise: null,
                 };
-                next.promise = requestJSON(api.endpoints.payrollTenantOverview, {}, { tenantId: cleanTenantId })
+                next.promise = requestJSON(endpointTemplate, {}, { tenantId: cleanTenantId })
                     .then((payload) => {
                         const data = payload?.payroll || null;
                         clientPagePayrollOverviewCache.set(cleanTenantId, {

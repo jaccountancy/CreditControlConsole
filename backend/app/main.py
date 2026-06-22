@@ -4893,8 +4893,23 @@ def api_payroll_headcount(user: dict = Depends(require_panel_user)):
 
 
 @app.get("/api/payroll/tenants/{tenant_id}/overview")
-async def api_payroll_tenant_overview(tenant_id: str, user: dict = Depends(require_panel_user)):
-    return {"status": "ok", "payroll": await payroll_tenant_overview_payload(user, tenant_id)}
+async def api_payroll_tenant_overview(
+    tenant_id: str,
+    taxCodes: str | None = Query(default=None),
+    pensionCodes: str | None = Query(default=None),
+    user: dict = Depends(require_panel_user),
+):
+    tax_code_overrides = [str(item or "").strip() for item in str(taxCodes or "").split(",") if str(item or "").strip()]
+    pension_code_overrides = [str(item or "").strip() for item in str(pensionCodes or "").split(",") if str(item or "").strip()]
+    return {
+        "status": "ok",
+        "payroll": await payroll_tenant_overview_payload(
+            user,
+            tenant_id,
+            tax_code_overrides=tax_code_overrides,
+            pension_code_overrides=pension_code_overrides,
+        ),
+    }
 
 
 @app.get("/api/juk-equity")
