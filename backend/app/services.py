@@ -275,6 +275,7 @@ XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
 XERO_PAYROLL_PAYSLIP_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips/{payslip_id}"
+XERO_REPORTS_TRIAL_BALANCE_URL = "https://api.xero.com/api.xro/2.0/Reports/TrialBalance"
 SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE = "1257L"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
@@ -2038,6 +2039,49 @@ def _payroll_overview_account_balance(account: dict) -> Decimal:
     return Decimal("0")
 
 
+def _payroll_overview_trial_balance_pension_rows(trial_balance_payload: dict) -> list[dict]:
+    lines = _xero_report_lines(trial_balance_payload if isinstance(trial_balance_payload, dict) else {})
+    rows: list[dict] = []
+    seen_labels: set[str] = set()
+    for line in lines:
+        label = str(line.get("label") or "").strip()
+        if not label:
+            continue
+        label_norm = _payroll_overview_normalise_key(label)
+        if not label_norm or label_norm in {"total", "totals"}:
+            continue
+        includes_pension = ("pension" in label_norm) or ("nest" in label_norm)
+        includes_liability_hint = any(
+            token in label_norm
+            for token in ("payable", "creditor", "liability", "workplace", "autoenrolment", "autoenrollment")
+        )
+        if not includes_pension or not includes_liability_hint:
+            continue
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not amounts:
+            continue
+        balance = abs(_money(amounts[-1]))
+        if balance <= Decimal("0.00"):
+            continue
+        if label_norm in seen_labels:
+            continue
+        seen_labels.add(label_norm)
+        rows.append(
+            {
+                "accountId": "",
+                "code": "",
+                "name": label,
+                "type": "REPORT",
+                "status": "",
+                "balance": float(balance),
+                "isPayable": True,
+                "source": "Xero Trial Balance",
+            }
+        )
+    rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
+    return rows
+
+
 async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     clean_tenant_id = str(tenant_id or "").strip()
     if not clean_tenant_id:
@@ -2259,6 +2303,22 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
 
+    trial_balance_report_date = (
+        _parse_any_date((reference_payrun or {}).get("paymentDate"))
+        or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
+        or _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
+        or utcnow().date()
+    )
+    trial_balance_payload = await _fetch(
+        XERO_REPORTS_TRIAL_BALANCE_URL,
+        "Trial balance",
+        {"date": trial_balance_report_date.isoformat()},
+    )
+    trial_balance_pension_rows = _payroll_overview_trial_balance_pension_rows(trial_balance_payload)
+    trial_balance_pension_payable_balance = float(
+        sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in trial_balance_pension_rows)
+    )
+
     logger.info(
         "payroll_overview_fetch_diagnostics user_id=%s tenant_id=%s employees_attempted=%s employees_status=%s employees_ok=%s payruns_attempted=%s payruns_status=%s payruns_ok=%s accounts_attempted=%s accounts_status=%s accounts_ok=%s payruns_returned=%s errors=%s",
         user.get("id"),
@@ -2374,7 +2434,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
     if estimated_pension_payable_balance <= 0:
         estimated_pension_payable_balance = (
-            latest_payrun_pension_balance if latest_payrun_pension_balance > 0 else pension_payable_balance
+            latest_payrun_pension_balance
+            if latest_payrun_pension_balance > 0
+            else (trial_balance_pension_payable_balance if trial_balance_pension_payable_balance > 0 else pension_payable_balance)
         )
     estimated_balances_source = {
         "p32Tax": (
@@ -2392,9 +2454,17 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             else (
                 "latest_payrun_with_value"
                 if latest_payrun_pension_balance > 0
-                else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+                else (
+                    "trial_balance_report"
+                    if trial_balance_pension_payable_balance > 0
+                    else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+                )
             )
-        ) if reference_payrun else ("account_balance_fallback" if pension_payable_balance > 0 else "none"),
+        ) if reference_payrun else (
+            "trial_balance_report"
+            if trial_balance_pension_payable_balance > 0
+            else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+        ),
     }
     if details_fetch_attempted:
         logger.info(
@@ -2425,6 +2495,8 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "estimatedP32TaxBalance": estimated_p32_tax_balance,
             "pensionPayableBalance": estimated_pension_payable_balance,
             "figureSources": estimated_balances_source,
+            "trialBalanceReportDate": trial_balance_report_date.isoformat() if isinstance(trial_balance_report_date, date) else "",
+            "trialBalancePensionPayableBalance": trial_balance_pension_payable_balance,
             "payrunDetailDiagnostics": {
                 "attempted": details_fetch_attempted,
                 "succeeded": details_fetch_succeeded,
@@ -2438,6 +2510,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 "employees": fetch_diagnostics.get("employees") or {},
                 "payRuns": fetch_diagnostics.get("payruns") or {},
                 "accounts": fetch_diagnostics.get("chartofaccounts") or {},
+                "trialBalance": fetch_diagnostics.get("trialbalance") or {},
             },
         },
         "payRuns": payrun_rows[:12],
@@ -2445,6 +2518,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "employees": employee_rows[:60],
         "outstandingTaxes": tax_rows[:20],
         "outstandingPensions": pension_rows[:20],
+        "outstandingPensionsFromTrialBalance": trial_balance_pension_rows[:20],
         "errors": errors,
     }
 
@@ -17157,8 +17231,16 @@ def _submitted_employee_forms_normalise_date(value: str) -> str:
     raw_value = re.sub(r"\s+", " ", str(value or "")).strip().strip("\"'")
     if not raw_value:
         return ""
+    raw_value = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]", "-", raw_value)
+    raw_value = re.sub(r"[./]", "-", raw_value)
+    raw_value = raw_value.strip()
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value):
         return raw_value
+    if re.fullmatch(r"\d{8}", raw_value):
+        try:
+            return datetime.strptime(raw_value, "%Y%m%d").date().isoformat()
+        except Exception:
+            pass
     iso_prefix = re.match(r"(\d{4}-\d{2}-\d{2})[T\s]", raw_value)
     if iso_prefix:
         return iso_prefix.group(1)
@@ -17170,6 +17252,12 @@ def _submitted_employee_forms_normalise_date(value: str) -> str:
         "%d.%m.%Y",
         "%d %b %Y",
         "%d %B %Y",
+        "%b %d %Y",
+        "%B %d %Y",
+        "%d %b, %Y",
+        "%d %B, %Y",
+        "%b %d, %Y",
+        "%B %d, %Y",
         "%Y/%m/%d",
         "%Y.%m.%d",
         "%d/%m/%y",
@@ -18209,10 +18297,14 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
         employee_row["Email"] = email_value[:160]
     extracted_fields = form_row.get("extracted_fields") if isinstance(form_row.get("extracted_fields"), dict) else {}
     date_of_birth_candidates = (
+        extracted_fields.get("DateOfBirth"),
         extracted_fields.get("dateOfBirth"),
         extracted_fields.get("date_of_birth"),
         extracted_fields.get("dob"),
+        extracted_fields.get("DOB"),
+        extracted_fields.get("birthDate"),
         form_row.get("date_of_birth"),
+        form_row.get("dateOfBirth"),
     )
     date_of_birth = ""
     for candidate in date_of_birth_candidates:
@@ -18394,6 +18486,9 @@ def _submitted_forms_missing_xero_required_fields(form_row: dict) -> list[str]:
             value = str(extracted_fields.get(key) or "").strip()
         if not value:
             missing.append(label)
+    date_of_birth_value = str(extracted_fields.get("dateOfBirth") or "").strip()
+    if date_of_birth_value and not _submitted_employee_forms_normalise_date(date_of_birth_value):
+        missing.append("Date of birth")
     return missing
 
 

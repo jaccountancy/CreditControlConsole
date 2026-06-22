@@ -53,6 +53,7 @@ let persistClientMatchesTimer = null;
 let searchDebounceTimer = null;
 let hmrcWizardState = loadHmrcWizardState();
 let clientWorkflowStateByClient = loadClientWorkflowStateByClient();
+const appLoadingState = { visible: true, message: "Loading client profile..." };
 const PERSIST_DEBOUNCE_MS = 180;
 const currencyFormatter = new Intl.NumberFormat("en-GB", {
     style: "currency",
@@ -210,6 +211,20 @@ function normaliseState(payload) {
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
     return injected;
+}
+
+function setAppLoadingState(visible, message = "") {
+    appLoadingState.visible = Boolean(visible);
+    if (message) appLoadingState.message = String(message);
+    renderAppLoadingOverlay();
+}
+
+function renderAppLoadingOverlay() {
+    const overlay = document.getElementById("appLoadingOverlay");
+    const text = document.getElementById("appLoadingText");
+    if (!overlay || !text) return;
+    text.textContent = appLoadingState.message || "Loading client profile...";
+    overlay.hidden = !appLoadingState.visible;
 }
 
 function loadHmrcWizardState() {
@@ -1954,6 +1969,7 @@ function renderAll() {
     renderClientScreen();
     renderSettingsScreen();
     renderHmrcSettingsScreen();
+    renderAppLoadingOverlay();
 }
 
 function flushPendingPersistence() {
@@ -2707,14 +2723,24 @@ function wireForms() {
 
 async function init() {
     consumeHmrcCallbackParams();
-    await hydrateFromAPI();
-    await refreshHmrcOauthStatus();
-    await refreshHmrc64Tracker();
+    const hasWarmLedger = Array.isArray(state.customers) && state.customers.length > 0;
+    setAppLoadingState(true, hasWarmLedger ? "Refreshing client profile..." : "Loading client profile...");
     renderAll();
+    const hmrcRefreshPromise = Promise.all([refreshHmrcOauthStatus(), refreshHmrc64Tracker()]);
+    const longLoadHintTimer = window.setTimeout(() => {
+        setAppLoadingState(true, "Still loading client profile. Large ledgers can take a moment.");
+    }, 1600);
+    await hydrateFromAPI();
+    window.clearTimeout(longLoadHintTimer);
+    renderAll();
+    setAppLoadingState(false);
     wireFilters();
     wireLoginButtons();
     wireSyncButtons();
     wireForms();
     window.addEventListener("beforeunload", flushPendingPersistence);
+    void hmrcRefreshPromise.then(() => {
+        if (activeView === "hmrcSettings") renderHmrcSettingsScreen();
+    });
 }
 init();

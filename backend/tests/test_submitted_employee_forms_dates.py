@@ -34,6 +34,8 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
         self.assertEqual(services._submitted_employee_forms_normalise_date("07/04/1989"), "1989-04-07")
         self.assertEqual(services._submitted_employee_forms_normalise_date("7th Apr 1989"), "1989-04-07")
         self.assertEqual(services._submitted_employee_forms_normalise_date("1989-04-07T00:00:00Z"), "1989-04-07")
+        self.assertEqual(services._submitted_employee_forms_normalise_date("1989\u201104\u201107"), "1989-04-07")
+        self.assertEqual(services._submitted_employee_forms_normalise_date("19890407"), "1989-04-07")
 
     def test_create_payload_sets_date_of_birth_from_non_iso_value(self):
         payload = services._submitted_forms_employee_create_payload(
@@ -55,6 +57,23 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
             }
         )
         self.assertEqual(payload["Employees"][0].get("DateOfBirth"), "1989-04-07")
+
+    def test_missing_required_fields_flags_invalid_dob_format(self):
+        missing = services._submitted_forms_missing_xero_required_fields(
+            {
+                "employee_first_name": "Sarah",
+                "employee_last_name": "Chapman",
+                "extracted_fields": {
+                    "dateOfBirth": "not-a-date",
+                    "addressLine1": "90 Chaffinch Drive",
+                    "city": "Hebburn",
+                    "postcode": "NE31 1BF",
+                    "payrollNumber": "11111",
+                    "taxCode": "1257L",
+                },
+            }
+        )
+        self.assertIn("Date of birth", missing)
 
     def test_apply_field_overrides_updates_extracted_and_identity_fields(self):
         row = {
