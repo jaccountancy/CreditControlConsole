@@ -2710,21 +2710,17 @@ def _payroll_overview_trial_balance_label_is_tax_liability(label_norm: str) -> b
         return False
     if "pension" in label_norm or "nest" in label_norm:
         return False
-    includes_tax = any(
+    # Keep fallback strict: only PAYE/NIC payable liability labels should qualify.
+    return any(
         token in label_norm
         for token in (
             "payepayable",
             "payenicpayable",
-            "paye",
-            "nicpayable",
-            "nationalinsurance",
-            "hmrc",
-            "payrollpayable",
-            "taxpayable",
+            "paye/payable",
+            "payeandnicpayable",
+            "payeni payable".replace(" ", ""),
         )
     )
-    includes_liability_hint = any(token in label_norm for token in ("payable", "liability", "creditor"))
-    return includes_tax and (includes_liability_hint or "paye" in label_norm or "nic" in label_norm or "hmrc" in label_norm)
 
 
 def _payroll_overview_trial_balance_label_is_pension_liability(label_norm: str) -> bool:
@@ -2834,6 +2830,7 @@ def _payroll_overview_payslip_pension_from_payload(payroll_payload: dict) -> Dec
 
 
 def _payroll_overview_nominal_accounts(accounts: list[dict]) -> tuple[list[dict], list[dict]]:
+    explicit_paye_accounts: list[dict] = []
     tax_accounts: list[dict] = []
     pension_accounts: list[dict] = []
     for account in accounts or []:
@@ -2844,18 +2841,22 @@ def _payroll_overview_nominal_accounts(accounts: list[dict]) -> tuple[list[dict]
         name = _payroll_overview_text(account.get("Name"))
         if not account_id and not code and not name:
             continue
+        account_name_norm = _payroll_overview_normalise_key(name)
         entry = {
             "accountId": account_id,
             "code": code,
             "name": name,
         }
+        if "payepayable" in account_name_norm or "payenicpayable" in account_name_norm:
+            explicit_paye_accounts.append(entry)
         if _payroll_overview_account_is_tax_liability(account):
             tax_accounts.append(entry)
         if _payroll_overview_account_is_pension_liability(account):
             pension_accounts.append(entry)
-    tax_accounts.sort(key=lambda row: (_payroll_overview_normalise_key(row.get("code")), _payroll_overview_normalise_key(row.get("name"))))
+    selected_tax_accounts = explicit_paye_accounts if explicit_paye_accounts else tax_accounts
+    selected_tax_accounts.sort(key=lambda row: (_payroll_overview_normalise_key(row.get("code")), _payroll_overview_normalise_key(row.get("name"))))
     pension_accounts.sort(key=lambda row: (_payroll_overview_normalise_key(row.get("code")), _payroll_overview_normalise_key(row.get("name"))))
-    return tax_accounts[:6], pension_accounts[:6]
+    return selected_tax_accounts[:6], pension_accounts[:6]
 
 
 def _payroll_overview_account_transaction_lines(payload: dict) -> list[dict]:
