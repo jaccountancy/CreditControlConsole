@@ -695,6 +695,51 @@ function formatDate(value) {
     return dateFormatter.format(date);
 }
 
+function parseDateValue(value) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+}
+
+function selfAssessmentPeriodEndFromTitle(title) {
+    const value = String(title || "");
+    const match = value.match(/tax\s*year\s*(\d{2,4})\s*\/\s*(\d{2,4})/i);
+    if (!match) return null;
+    const endYearRaw = Number(match[2]);
+    if (!Number.isFinite(endYearRaw)) return null;
+    const endYear = endYearRaw < 100 ? 2000 + endYearRaw : endYearRaw;
+    return new Date(endYear, 3, 5);
+}
+
+function resolveTaskPeriodEndBadge(invoice) {
+    const title = String(invoice?.description || invoice?.invoiceNumber || "");
+    const titleLower = title.toLowerCase();
+    const explicitPeriodEnd = invoice?.periodEndDate
+        || invoice?.periodEnd
+        || invoice?.period_end
+        || invoice?.taxPeriodEnd
+        || invoice?.tax_period_end
+        || invoice?.yearEndDate
+        || invoice?.year_end_date
+        || invoice?.vatPeriodEnd
+        || invoice?.vat_period_end;
+    const explicitPeriodEndDate = parseDateValue(explicitPeriodEnd);
+
+    const isSelfAssessment = titleLower.includes("self assessment");
+    const isVatReturn = titleLower.includes("vat");
+    const isYearEndAccounts = titleLower.includes("year end accounts") || titleLower.includes("year-end accounts");
+    const isPayrollTask = titleLower.includes("payroll");
+    if (isPayrollTask) return "";
+
+    let periodEndDate = null;
+    if (isSelfAssessment) periodEndDate = selfAssessmentPeriodEndFromTitle(title) || explicitPeriodEndDate;
+    else if (isVatReturn || isYearEndAccounts) periodEndDate = explicitPeriodEndDate;
+    if (!periodEndDate) return "";
+
+    return `PERIOD END ${formatDate(periodEndDate).toUpperCase()}`;
+}
+
 function invoicePayments(invoice) {
     const customer = findCustomerById(invoice?.customerId);
     if (!customer || !Array.isArray(customer.payments)) return [];
@@ -1045,6 +1090,10 @@ function renderInvoiceTable(invoices = allInvoices()) {
             paged.forEach((invoice) => {
                 const category = invoice.category || invoiceCategory(invoice);
                 const paidHoverText = category === "paid" ? paidInvoiceHoverText(invoice) : "";
+                const periodEndBadgeText = resolveTaskPeriodEndBadge(invoice);
+                const descriptionMeta = periodEndBadgeText
+                    ? `<div class="period-end-badge">${escapeHTML(periodEndBadgeText)}</div>`
+                    : `<div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div>`;
                 const paidDateLabel = category === "paid"
                     ? paidHoverText.replace(/^Paid on\s*/i, "")
                     : category === "overdue"
@@ -1057,7 +1106,7 @@ function renderInvoiceTable(invoices = allInvoices()) {
                 row.innerHTML = `
                     <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
                     <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
-                    <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
+                    <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div>${descriptionMeta}</div></div></td>
                     <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
                     <td><div class="payment-cell"><div class="payment-status"${paidHoverText ? ` title="${escapeHTML(paidHoverText)}"` : ""}><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount ${category === "paid" ? "is-paid" : "is-outstanding"}">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${paidDateLabel}</div></div></td>
                     <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
