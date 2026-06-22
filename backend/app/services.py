@@ -2437,6 +2437,7 @@ async def _payroll_overview_openai_liability_inference(
     payrun_rows: list[dict],
     journal_payable_diagnostics: dict,
     trial_balance_report_date: date | None,
+    trial_balance_comparison_date: date | None,
     trial_balance_delta_p32_tax: Decimal,
     trial_balance_delta_pension_payable: Decimal,
     user_id: str | None = None,
@@ -2487,6 +2488,7 @@ async def _payroll_overview_openai_liability_inference(
         },
         "trialBalance": {
             "reportDate": trial_balance_report_date.isoformat() if isinstance(trial_balance_report_date, date) else "",
+            "comparisonDate": trial_balance_comparison_date.isoformat() if isinstance(trial_balance_comparison_date, date) else "",
             "taxDeltaFromPreviousDay": float(trial_balance_delta_p32_tax),
             "pensionDeltaFromPreviousDay": float(trial_balance_delta_pension_payable),
         },
@@ -2604,6 +2606,79 @@ def _payroll_overview_trial_balance_line_balance_map(trial_balance_payload: dict
             continue
         balances[label_norm] = _money(amounts[-1])
     return balances
+
+
+def _payroll_overview_previous_month_end(value: date) -> date:
+    month_start = value.replace(day=1)
+    return month_start - timedelta(days=1)
+
+
+def _payroll_overview_trial_balance_code_balance_map(trial_balance_payload: dict) -> dict[str, Decimal]:
+    lines = _xero_report_lines(trial_balance_payload if isinstance(trial_balance_payload, dict) else {})
+    balances: dict[str, Decimal] = {}
+    for line in lines:
+        label = str(line.get("label") or "").strip()
+        if not label:
+            continue
+        code_match = re.match(r"^\s*([A-Za-z0-9]+)\b", label)
+        if not code_match:
+            continue
+        code_key = _payroll_overview_normalise_key(code_match.group(1))
+        if not code_key:
+            continue
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not amounts:
+            continue
+        balances[code_key] = _money(amounts[-1])
+    return balances
+
+
+def _payroll_overview_trial_balance_code_delta(
+    current_payload: dict,
+    previous_payload: dict,
+    accounts: list[dict],
+) -> tuple[Decimal, Decimal, dict]:
+    current_map = _payroll_overview_trial_balance_code_balance_map(current_payload)
+    previous_map = _payroll_overview_trial_balance_code_balance_map(previous_payload)
+    tax_codes: set[str] = set()
+    pension_codes: set[str] = set()
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        raw_code = _payroll_overview_text(account.get("Code") or account.get("code"))
+        if not raw_code:
+            continue
+        code_match = re.match(r"[A-Za-z0-9]+", raw_code)
+        code_key = _payroll_overview_normalise_key(code_match.group(0) if code_match else raw_code)
+        if not code_key:
+            continue
+        if _payroll_overview_account_is_tax_liability(account):
+            tax_codes.add(code_key)
+        if _payroll_overview_account_is_pension_liability(account):
+            pension_codes.add(code_key)
+    tax_delta = Decimal("0")
+    pension_delta = Decimal("0")
+    matched_tax_codes: list[str] = []
+    matched_pension_codes: list[str] = []
+    for code in sorted(tax_codes):
+        if code not in current_map and code not in previous_map:
+            continue
+        tax_delta += abs(_money(current_map.get(code, Decimal("0")) - previous_map.get(code, Decimal("0"))))
+        matched_tax_codes.append(code)
+    for code in sorted(pension_codes):
+        if code not in current_map and code not in previous_map:
+            continue
+        pension_delta += abs(_money(current_map.get(code, Decimal("0")) - previous_map.get(code, Decimal("0"))))
+        matched_pension_codes.append(code)
+    diagnostics = {
+        "taxCodes": sorted(tax_codes),
+        "pensionCodes": sorted(pension_codes),
+        "matchedTaxCodes": matched_tax_codes,
+        "matchedPensionCodes": matched_pension_codes,
+        "taxDelta": float(abs(tax_delta)),
+        "pensionDelta": float(abs(pension_delta)),
+    }
+    return abs(tax_delta), abs(pension_delta), diagnostics
 
 
 def _payroll_overview_trial_balance_label_is_tax_liability(label_norm: str) -> bool:
@@ -2902,10 +2977,10 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "Trial balance",
         {"date": trial_balance_report_date.isoformat()},
     )
-    trial_balance_previous_date = trial_balance_report_date - timedelta(days=1)
+    trial_balance_previous_date = _payroll_overview_previous_month_end(trial_balance_report_date)
     trial_balance_previous_payload = await _fetch(
         XERO_REPORTS_TRIAL_BALANCE_URL,
-        "Trial balance previous day",
+        "Trial balance previous month end",
         {"date": trial_balance_previous_date.isoformat()},
     )
     trial_balance_delta_p32_tax = Decimal("0")
@@ -2916,10 +2991,23 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             trial_balance_delta_p32_tax,
             trial_balance_delta_pension_payable,
             trial_balance_delta_diagnostics,
-        ) = _payroll_overview_trial_balance_liability_delta(
+        ) = _payroll_overview_trial_balance_code_delta(
             trial_balance_payload,
             trial_balance_previous_payload,
+            accounts,
         )
+        if trial_balance_delta_p32_tax <= Decimal("0") and trial_balance_delta_pension_payable <= Decimal("0"):
+            (
+                trial_balance_delta_p32_tax,
+                trial_balance_delta_pension_payable,
+                trial_balance_delta_diagnostics,
+            ) = _payroll_overview_trial_balance_liability_delta(
+                trial_balance_payload,
+                trial_balance_previous_payload,
+            )
+            trial_balance_delta_diagnostics["engine"] = "label_fallback"
+        else:
+            trial_balance_delta_diagnostics["engine"] = "nominal_code_delta"
     except Exception:
         trial_balance_delta_p32_tax = Decimal("0")
         trial_balance_delta_pension_payable = Decimal("0")
@@ -2938,6 +3026,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 payrun_rows=payrun_rows,
                 journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
                 trial_balance_report_date=trial_balance_report_date,
+                trial_balance_comparison_date=trial_balance_previous_date,
                 trial_balance_delta_p32_tax=trial_balance_delta_p32_tax,
                 trial_balance_delta_pension_payable=trial_balance_delta_pension_payable,
                 user_id=str(user.get("id") or "").strip() or None,
@@ -3174,6 +3263,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 "payRuns": fetch_diagnostics.get("payruns") or {},
                 "accounts": fetch_diagnostics.get("chartofaccounts") or {},
                 "trialBalance": fetch_diagnostics.get("trialbalance") or {},
+                "trialBalancePreviousMonthEnd": fetch_diagnostics.get("trialbalancepreviousmonthend") or {},
                 "trialBalancePreviousDay": fetch_diagnostics.get("trialbalancepreviousday") or {},
             },
         },

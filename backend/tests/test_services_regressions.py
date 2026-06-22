@@ -397,7 +397,7 @@ class ServicesRegressionTests(unittest.TestCase):
                             }
                         ]
                     }
-                if report_date == "2026-05-30":
+                if report_date == "2026-04-30":
                     return {
                         "Reports": [
                             {
