@@ -3263,85 +3263,14 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     trial_balance_delta_p32_tax = Decimal("0")
     trial_balance_delta_pension_payable = Decimal("0")
     trial_balance_delta_diagnostics: dict = {}
-    try:
-        (
-            trial_balance_delta_p32_tax,
-            trial_balance_delta_pension_payable,
-            trial_balance_delta_diagnostics,
-        ) = _payroll_overview_trial_balance_code_delta(
-            trial_balance_payload,
-            trial_balance_previous_payload,
-            accounts,
-        )
-        if trial_balance_delta_p32_tax <= Decimal("0") and trial_balance_delta_pension_payable <= Decimal("0"):
-            (
-                trial_balance_delta_p32_tax,
-                trial_balance_delta_pension_payable,
-                trial_balance_delta_diagnostics,
-            ) = _payroll_overview_trial_balance_liability_delta(
-                trial_balance_payload,
-                trial_balance_previous_payload,
-            )
-            trial_balance_delta_diagnostics["engine"] = "label_fallback"
-        else:
-            trial_balance_delta_diagnostics["engine"] = "nominal_code_delta"
-    except Exception:
-        trial_balance_delta_p32_tax = Decimal("0")
-        trial_balance_delta_pension_payable = Decimal("0")
-        trial_balance_delta_diagnostics = {}
     trial_balance_pension_rows = _payroll_overview_trial_balance_pension_rows(trial_balance_payload)
     trial_balance_pension_payable_balance = float(
         sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in trial_balance_pension_rows)
     )
     nominal_transaction_context: dict = {}
-    try:
-        if payroll_api_p32_tax <= Decimal("0") or payroll_api_pension_payable <= Decimal("0"):
-            nominal_period_start = (
-                _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
-                or _parse_any_date((reference_payrun or {}).get("paymentDate"))
-                or trial_balance_report_date
-            )
-            nominal_period_end = (
-                _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
-                or _parse_any_date((reference_payrun or {}).get("paymentDate"))
-                or trial_balance_report_date
-            )
-            if isinstance(nominal_period_start, date) and isinstance(nominal_period_end, date):
-                if nominal_period_start > nominal_period_end:
-                    nominal_period_start, nominal_period_end = nominal_period_end, nominal_period_start
-                nominal_transaction_context = await _payroll_overview_nominal_transaction_context(
-                    fetcher=_fetch,
-                    accounts=accounts,
-                    period_start=nominal_period_start,
-                    period_end=nominal_period_end,
-                )
-    except Exception as exc:
-        errors.append(f"Nominal account transactions: {_sync_error_message(exc)}")
-        nominal_transaction_context = {}
     openai_p32_tax = Decimal("0")
     openai_pension_payable = Decimal("0")
-    openai_payable_diagnostics: dict = {}
-    try:
-        if payroll_api_p32_tax <= Decimal("0") or payroll_api_pension_payable <= Decimal("0"):
-            openai_p32_tax, openai_pension_payable, openai_payable_diagnostics = await _payroll_overview_openai_liability_inference(
-                reference_payrun=reference_payrun,
-                payrun_rows=payrun_rows,
-                payroll_api_context={
-                    "selectedPayrunDetails": selected_payrun_details_payload if isinstance(selected_payrun_details_payload, dict) else {},
-                    "selectedPayrunPayslips": selected_payrun_payslips_payload if isinstance(selected_payrun_payslips_payload, dict) else {},
-                    "payrollApiDiagnostics": payroll_api_diagnostics if isinstance(payroll_api_diagnostics, dict) else {},
-                },
-                nominal_transaction_context=nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {},
-                journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
-                trial_balance_report_date=trial_balance_report_date,
-                trial_balance_comparison_date=trial_balance_previous_date,
-                trial_balance_delta_p32_tax=trial_balance_delta_p32_tax,
-                trial_balance_delta_pension_payable=trial_balance_delta_pension_payable,
-                user_id=str(user.get("id") or "").strip() or None,
-            )
-    except Exception as exc:
-        errors.append(f"OpenAI payroll inference: {_sync_error_message(exc)}")
-        openai_payable_diagnostics = {}
+    openai_payable_diagnostics: dict = {"engine": "disabled", "reason": "exact_payroll_values_only"}
 
     logger.info(
         "payroll_overview_fetch_diagnostics user_id=%s tenant_id=%s employees_attempted=%s employees_status=%s employees_ok=%s payruns_attempted=%s payruns_status=%s payruns_ok=%s accounts_attempted=%s accounts_status=%s accounts_ok=%s payruns_returned=%s errors=%s",
@@ -3454,80 +3383,46 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     latest_payrun_pension_balance = float(
         _payroll_overview_numeric_decimal((latest_payrun_with_pension or {}).get("estimatedPensionPayable"))
     )
+    pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
+    selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
     if payroll_api_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(payroll_api_p32_tax)
-    elif posted_journal_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(posted_journal_p32_tax)
-    elif openai_p32_tax > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
-        estimated_p32_tax_balance = float(openai_p32_tax)
-    elif trial_balance_delta_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
-    if estimated_p32_tax_balance <= 0:
-        estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
+    else:
+        estimated_p32_tax_balance = 0.0
     if payroll_api_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(payroll_api_pension_payable)
-    elif posted_journal_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(posted_journal_pension_payable)
-    elif openai_pension_payable > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
-        estimated_pension_payable_balance = float(openai_pension_payable)
-    elif trial_balance_delta_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(trial_balance_delta_pension_payable)
-    if estimated_pension_payable_balance <= 0:
-        estimated_pension_payable_balance = (
-            latest_payrun_pension_balance
-            if latest_payrun_pension_balance > 0
-            else (trial_balance_pension_payable_balance if trial_balance_pension_payable_balance > 0 else pension_payable_balance)
-        )
+    else:
+        estimated_pension_payable_balance = 0.0
+    if selected_payrun_id and (estimated_p32_tax_balance <= 0 or estimated_pension_payable_balance <= 0):
+        payslips_status = int(pay_slips_diag.get("statusCode") or 0)
+        details_status = int(selected_details_diag.get("statusCode") or 0)
+        if payslips_status in (401, 403) or details_status in (401, 403):
+            errors.append(
+                "Exact payroll liability extraction unavailable: missing payroll permission scope. "
+                "Reconnect Xero and approve payroll.payslip.read and payroll.payruns.read."
+            )
+        elif not bool(pay_slips_diag.get("ok")) and not bool(selected_details_diag.get("ok")):
+            errors.append(
+                "Exact payroll liability extraction unavailable: Xero payroll endpoints returned no usable data for the selected pay run."
+            )
+        elif estimated_p32_tax_balance <= 0:
+            errors.append(
+                "Exact payroll liability extraction unavailable: could not read PAYE/NIC liability from Xero payroll data."
+            )
+        elif estimated_pension_payable_balance <= 0:
+            errors.append(
+                "Exact payroll liability extraction unavailable: could not read pension payable from Xero payroll data."
+            )
     estimated_balances_source = {
         "p32Tax": (
             "payroll_api_payslips"
             if payroll_api_p32_tax > Decimal("0")
-            else (
-            "posted_payroll_journal"
-            if posted_journal_p32_tax > Decimal("0")
-            else (
-            "openai_payroll_inference"
-            if (openai_p32_tax > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6)
-            else (
-            "trial_balance_delta"
-            if trial_balance_delta_p32_tax > Decimal("0")
-            else (
-            "reference_payrun"
-            if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax"))) > 0
-            else (
-                "latest_payrun_with_value"
-                if latest_payrun_p32_balance > 0
-                else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
-            )
-        ))))) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
+            else "none"
+        ),
         "pensionPayable": (
             "payroll_api_payslips"
             if payroll_api_pension_payable > Decimal("0")
-            else (
-            "posted_payroll_journal"
-            if posted_journal_pension_payable > Decimal("0")
-            else (
-            "openai_payroll_inference"
-            if (openai_pension_payable > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6)
-            else (
-            "trial_balance_delta"
-            if trial_balance_delta_pension_payable > Decimal("0")
-            else (
-            "reference_payrun"
-            if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable"))) > 0
-            else (
-                "latest_payrun_with_value"
-                if latest_payrun_pension_balance > 0
-                else (
-                    "trial_balance_report"
-                    if trial_balance_pension_payable_balance > 0
-                    else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
-                )
-            )
-        ))))) if reference_payrun else (
-            "trial_balance_report"
-            if trial_balance_pension_payable_balance > 0
-            else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+            else "none"
         ),
     }
     if details_fetch_attempted:

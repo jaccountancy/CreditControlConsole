@@ -124827,56 +124827,10 @@
                     return parsed ? parsed.toISOString().slice(0, 10) : "";
                 })();
                 const figureSources = summary?.figureSources && typeof summary.figureSources === "object" ? summary.figureSources : {};
-                const selectedRunPayeComponent = Number(selectedPayRun?.payeAmount || selectedPayRun?.paye || 0);
-                const selectedRunNicComponent = Number(
-                    selectedPayRun?.nicAmount
-                    || selectedPayRun?.niAmount
-                    || selectedPayRun?.nationalInsuranceAmount
-                    || 0
-                );
-                const selectedRunCombinedPayeNic = Number.isFinite(selectedRunPayeComponent + selectedRunNicComponent)
-                    ? (selectedRunPayeComponent + selectedRunNicComponent)
-                    : 0;
                 const p32FigureSource = String(figureSources?.p32Tax || "").trim();
                 const pensionFigureSource = String(figureSources?.pensionPayable || "").trim();
-                const summaryP32FromReferenceRun = ["reference_payrun", "posted_payroll_journal"].includes(p32FigureSource)
-                    ? Number(summary?.estimatedP32TaxBalance || 0)
-                    : 0;
-                const summaryPensionFromReferenceRun = ["reference_payrun", "posted_payroll_journal"].includes(pensionFigureSource)
-                    ? Number(summary?.pensionPayableBalance || 0)
-                    : 0;
-                const preferPostedJournalP32 = p32FigureSource === "posted_payroll_journal";
-                const preferPostedJournalPension = pensionFigureSource === "posted_payroll_journal";
-                const initialP32Tax = preferPostedJournalP32
-                    ? payrollFirstUsefulNumber(
-                        summaryP32FromReferenceRun,
-                        selectedPayRun?.estimatedP32Tax,
-                        selectedPayRun?.payeNicAmount,
-                        selectedRunCombinedPayeNic,
-                        0
-                    )
-                    : payrollFirstUsefulNumber(
-                        selectedPayRun?.estimatedP32Tax,
-                        selectedPayRun?.payeNicAmount,
-                        selectedRunCombinedPayeNic,
-                        summaryP32FromReferenceRun,
-                        0
-                    );
-                const initialPension = preferPostedJournalPension
-                    ? payrollFirstUsefulNumber(
-                        summaryPensionFromReferenceRun,
-                        selectedPayRun?.estimatedPensionPayable,
-                        selectedPayRun?.pensionPayable,
-                        selectedPayRun?.pensionAmount,
-                        0
-                    )
-                    : payrollFirstUsefulNumber(
-                        selectedPayRun?.estimatedPensionPayable,
-                        selectedPayRun?.pensionPayable,
-                        selectedPayRun?.pensionAmount,
-                        summaryPensionFromReferenceRun,
-                        0
-                    );
+                const initialP32Tax = Number(summary?.estimatedP32TaxBalance || 0);
+                const initialPension = Number(summary?.pensionPayableBalance || 0);
                 const payrunDiagnostics = summary?.payrunDetailDiagnostics && typeof summary.payrunDetailDiagnostics === "object"
                     ? summary.payrunDetailDiagnostics
                     : {};
@@ -124886,8 +124840,8 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const hasReliableReferenceExtraction = ["reference_payrun", "posted_payroll_journal"].includes(p32FigureSource)
-                    || ["reference_payrun", "posted_payroll_journal"].includes(pensionFigureSource);
+                const hasReliableReferenceExtraction = ["payroll_api_payslips"].includes(p32FigureSource)
+                    && ["payroll_api_payslips"].includes(pensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
@@ -124950,7 +124904,7 @@
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
                                     <div class="task-detail-modal-grid">
-                                        <label>P32 / HMRC PAYE-NIC estimate
+                                        <label>P32 / HMRC PAYE-NIC
                                             <input id="taskPayrollEmailP32Amount" type="number" step="0.01" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                         <label>Pension payable (if applicable)
@@ -125050,8 +125004,8 @@
                                 `Selected source: ${String(selectedPayRunSource || "unknown")}`,
                                 `P32 source: ${String(figureSources?.p32Tax || "none")}`,
                                 `Pension source: ${String(figureSources?.pensionPayable || "none")}`,
-                                `Estimated P32 used: ${formatCurrency(Number(initialP32Tax || 0))}`,
-                                `Estimated pension used: ${formatCurrency(Number(initialPension || 0))}`,
+                                `Extracted P32: ${formatCurrency(Number(initialP32Tax || 0))}`,
+                                `Extracted pension: ${formatCurrency(Number(initialPension || 0))}`,
                                 `Journal selected: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`,
                                 `Journal date: ${String(summary?.journalPayableDiagnostics?.selectedJournalDate || "unknown")}`,
                                 `Journal matched liability lines: ${Number(summary?.journalPayableDiagnostics?.matchedCreditLines || 0).toLocaleString("en-GB")}`,

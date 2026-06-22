@@ -516,9 +516,9 @@ class ServicesRegressionTests(unittest.TestCase):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
         self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 4151.67)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1000.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
         self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "payroll_api_payslips")
-        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "trial_balance_delta")
+        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "none")
 
     def test_payroll_overview_uses_openai_inference_when_journal_and_trial_balance_are_not_usable(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
@@ -589,10 +589,10 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "_payroll_overview_openai_liability_inference", side_effect=_fake_openai):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 6123.45)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1188.22)
-        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "openai_payroll_inference")
-        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "openai_payroll_inference")
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 0.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
+        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "none")
+        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "none")
 
     def test_payroll_overview_uses_signed_journal_lines_when_account_metadata_missing(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
@@ -1147,8 +1147,8 @@ class ServicesRegressionTests(unittest.TestCase):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
         self.assertEqual(payload["summary"]["outstandingTaxBalance"], 1234.56)
-        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 1234.56)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 210.1)
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 0.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
 
     def test_payroll_overview_reads_described_tax_and_pension_line_amounts(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
