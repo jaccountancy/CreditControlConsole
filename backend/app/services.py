@@ -1266,6 +1266,18 @@ def _parse_any_date(value) -> date | None:
             return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).date()
         except (TypeError, ValueError, OSError):
             return None
+    for fmt in (
+        "%d %b %Y",
+        "%d %B %Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
     return None
 
 
@@ -3936,11 +3948,11 @@ async def payroll_tenant_overview_payload(
             nominal_tx_p32_tax = abs(
                 sum(
                     _payroll_overview_numeric_decimal(
-                        row.get("allTransactionNet")
-                        if row.get("allTransactionNet") not in (None, "")
-                        else row.get("applicableNet")
+                        row.get("applicableNet")
                         if row.get("applicableNet") not in (None, "")
                         else row.get("payrollExpenseNet")
+                        if row.get("payrollExpenseNet") not in (None, "")
+                        else row.get("allTransactionNet")
                     )
                     for row in tax_account_rows
                     if isinstance(row, dict)
@@ -3949,11 +3961,11 @@ async def payroll_tenant_overview_payload(
             nominal_tx_pension_payable = abs(
                 sum(
                     _payroll_overview_numeric_decimal(
-                        row.get("allTransactionNet")
-                        if row.get("allTransactionNet") not in (None, "")
-                        else row.get("applicableNet")
+                        row.get("applicableNet")
                         if row.get("applicableNet") not in (None, "")
                         else row.get("payrollExpenseNet")
+                        if row.get("payrollExpenseNet") not in (None, "")
+                        else row.get("allTransactionNet")
                     )
                     for row in pension_account_rows
                     if isinstance(row, dict)
