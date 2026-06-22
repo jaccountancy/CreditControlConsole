@@ -135,7 +135,9 @@ function applyTaskSidebarState() {
     const sidebar = document.getElementById("taskSidebar");
     const backdrop = document.getElementById("taskSidebarBackdrop");
     const toggleButton = document.getElementById("openTaskSidebarButton");
-    const shouldShow = activeView === "client" && taskSidebarOpen;
+    const sidebarEligibleView = activeView === "client" || activeView === "ledger";
+    const hasTaskContext = Boolean(selectedInvoiceId && (selectedClientId || findCustomerByInvoiceId(selectedInvoiceId)));
+    const shouldShow = sidebarEligibleView && hasTaskContext && taskSidebarOpen;
     if (sidebar) {
         sidebar.classList.toggle("is-open", shouldShow);
         sidebar.setAttribute("aria-hidden", String(!shouldShow));
@@ -799,14 +801,13 @@ function resolveTaskPeriodEndBadge(invoice) {
     const explicitPeriodEndDate = parseDateValue(explicitPeriodEnd);
 
     const isSelfAssessment = titleLower.includes("self assessment");
-    const isVatReturn = titleLower.includes("vat");
-    const isYearEndAccounts = titleLower.includes("year end accounts") || titleLower.includes("year-end accounts");
+    const isYearEndTask = titleLower.includes("year end") || titleLower.includes("year-end");
     const isPayrollTask = titleLower.includes("payroll");
     if (isPayrollTask) return "";
 
     let periodEndDate = null;
     if (isSelfAssessment) periodEndDate = selfAssessmentPeriodEndFromTitle(title) || explicitPeriodEndDate;
-    else if (isVatReturn || isYearEndAccounts) periodEndDate = explicitPeriodEndDate;
+    else if (isYearEndTask) periodEndDate = explicitPeriodEndDate;
     if (!periodEndDate) return "";
 
     return `PERIOD END ${formatDate(periodEndDate).toUpperCase()}`;
@@ -1251,17 +1252,22 @@ function renderClientScreen() {
     clientScreen.hidden = activeView !== "client";
     settingsScreen.hidden = activeView !== "settings";
     hmrcSettingsScreen.hidden = activeView !== "hmrcSettings";
-    if (activeView !== "client") {
-        applyTaskSidebarState();
-        return;
-    }
-
     const invoice = findInvoiceById(selectedInvoiceId);
     const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
     const invoices = clientInvoices(client);
     const selectedInvoice = invoice || invoices[0] || null;
     selectedInvoiceId = selectedInvoice?.id || null;
     selectedClientId = client?.id || selectedInvoice?.customerId || null;
+
+    if (activeView !== "client") {
+        renderTaskSidebar(client, selectedInvoice, invoices);
+        renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
+        renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
+        renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+        renderTaskSidebarTabs();
+        applyTaskSidebarState();
+        return;
+    }
 
     document.getElementById("clientTitle").textContent = client?.name || "No client selected";
     document.getElementById("clientMeta").textContent = client
@@ -2081,11 +2087,9 @@ function wireFilters() {
         selectedInvoiceId = row.dataset.invoiceId || null;
         selectedClientId = row.dataset.customerId || null;
         if (!selectedInvoiceId || !selectedClientId) return;
-        taskSidebarTab = normaliseTaskSidebarTab(requestedTab || "task");
-        taskSidebarOpen = true;
-        activeView = "client";
+        setTaskSidebarTab(requestedTab || "task", { open: true });
+        activeView = "ledger";
         renderAll();
-        window.scrollTo({ top: 0, behavior: "smooth" });
     });
 }
 
