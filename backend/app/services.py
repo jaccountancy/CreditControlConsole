@@ -274,6 +274,7 @@ XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
+XERO_PAYROLL_PAYSLIP_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips/{payslip_id}"
 SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE = "1257L"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
 PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
@@ -1870,6 +1871,55 @@ def _payroll_overview_text(value) -> str:
     return str(value or "").strip()
 
 
+def _payroll_overview_payslip_rows(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
+    keys = ("PaySlips", "Payslips", "paySlips", "payslips", "PaySlip", "Payslip", "paySlip", "payslip")
+    for key in keys:
+        candidate = payload.get(key)
+        if isinstance(candidate, list):
+            return [row for row in candidate if isinstance(row, dict)]
+        if isinstance(candidate, dict):
+            return [candidate]
+    return []
+
+
+def _payroll_overview_payslip_ids(payrun: dict) -> list[str]:
+    if not isinstance(payrun, dict):
+        return []
+    rows = (
+        payrun.get("Payslips")
+        or payrun.get("PaySlips")
+        or payrun.get("payslips")
+        or payrun.get("paySlips")
+        or []
+    )
+    if not isinstance(rows, list):
+        rows = []
+    seen: set[str] = set()
+    ordered_ids: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        payslip_id = _payroll_overview_text(
+            row.get("PayslipID")
+            or row.get("PaySlipID")
+            or row.get("payslipID")
+            or row.get("paySlipID")
+            or row.get("PayslipId")
+            or row.get("PaySlipId")
+            or row.get("payslipId")
+            or row.get("paySlipId")
+            or row.get("id")
+            or row.get("ID")
+        )
+        if not payslip_id or payslip_id in seen:
+            continue
+        seen.add(payslip_id)
+        ordered_ids.append(payslip_id)
+    return ordered_ids
+
+
 def _payroll_overview_employee_name(employee: dict) -> str:
     first = _payroll_overview_text(employee.get("FirstName"))
     last = _payroll_overview_text(employee.get("LastName"))
@@ -2147,6 +2197,26 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             target_row["estimatedP32Tax"] = float(detailed_p32_estimate)
         if detailed_pension_estimate > Decimal("0"):
             target_row["estimatedPensionPayable"] = float(detailed_pension_estimate)
+            return
+        payslip_ids = _payroll_overview_payslip_ids(detail_payrun)
+        if not payslip_ids:
+            return
+        pension_from_payslips = Decimal("0")
+        for payslip_id in payslip_ids[:80]:
+            payslip_url = XERO_PAYROLL_PAYSLIP_DETAILS_URL.format(payslip_id=quote(payslip_id, safe=""))
+            try:
+                payslip_payload = await xero_api_get(connection_row, payslip_url)
+            except Exception as exc:
+                errors.append(f"Payslip {payslip_id}: {_sync_error_message(exc)}")
+                continue
+            payslip_rows = _payroll_overview_payslip_rows(payslip_payload if isinstance(payslip_payload, dict) else {})
+            if payslip_rows:
+                pension_from_payslips += _payroll_overview_estimate_pension(payslip_rows[0])
+                continue
+            if isinstance(payslip_payload, dict):
+                pension_from_payslips += _payroll_overview_estimate_pension(payslip_payload)
+        if pension_from_payslips > Decimal("0"):
+            target_row["estimatedPensionPayable"] = float(pension_from_payslips)
 
     draft_statuses = {"DRAFT", "POSTED"}
     draft_payruns = [row for row in payrun_rows if str(row.get("status") or "").upper() in draft_statuses]
