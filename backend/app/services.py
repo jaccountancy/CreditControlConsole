@@ -4160,11 +4160,7 @@ async def payroll_tenant_overview_payload(
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
     else:
         estimated_pension_payable_balance = 0.0
-    if selected_payrun_id and (not has_tax_nominal_evidence or not has_pension_nominal_evidence):
-        errors.append(
-            "Exact payroll liability extraction unavailable: no nominal account transactions were returned for selected PAYE/pension codes in the selected period."
-        )
-    if not nominal_strict_ready:
+    if selected_payrun_id and not nominal_strict_ready:
         errors.append(
             "Exact payroll liability extraction failed: nominal account transactions are required for both PAYE and pension in the selected period."
         )
@@ -4226,6 +4222,18 @@ async def payroll_tenant_overview_payload(
             estimated_pension_payable_balance,
         )
 
+    deduped_errors: list[str] = []
+    seen_error_keys: set[str] = set()
+    for message in errors:
+        text = str(message or "").strip()
+        if not text:
+            continue
+        key = re.sub(r"\s+", " ", text).strip().lower()
+        if key in seen_error_keys:
+            continue
+        seen_error_keys.add(key)
+        deduped_errors.append(text)
+
     return {
         "tenantId": clean_tenant_id,
         "tenantName": str(connection_row.get("tenant_name") or clean_tenant_id),
@@ -4277,7 +4285,7 @@ async def payroll_tenant_overview_payload(
         "outstandingTaxes": tax_rows[:20],
         "outstandingPensions": pension_rows[:20],
         "outstandingPensionsFromTrialBalance": trial_balance_pension_rows[:20],
-        "errors": errors,
+        "errors": deduped_errors,
     }
 
 
