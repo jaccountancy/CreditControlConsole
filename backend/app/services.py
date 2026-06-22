@@ -1269,9 +1269,19 @@ def _payroll_headcount_payrun_date(payrun: dict) -> date | None:
         or _parse_any_date(payrun.get("paymentDate"))
         or _parse_any_date(payrun.get("PayDate"))
         or _parse_any_date(payrun.get("PayRunPeriodEndDate"))
+        or _parse_any_date(payrun.get("payRunPeriodEndDate"))
         or _parse_any_date(payrun.get("PayPeriodEndDate"))
+        or _parse_any_date(payrun.get("payPeriodEndDate"))
         or _parse_any_date(payrun.get("PeriodEndDate"))
+        or _parse_any_date(payrun.get("periodEndDate"))
+        or _parse_any_date(payrun.get("PayRunPeriodStartDate"))
+        or _parse_any_date(payrun.get("payRunPeriodStartDate"))
+        or _parse_any_date(payrun.get("PayPeriodStartDate"))
+        or _parse_any_date(payrun.get("payPeriodStartDate"))
+        or _parse_any_date(payrun.get("PeriodStartDate"))
+        or _parse_any_date(payrun.get("periodStartDate"))
         or _parse_any_date(payrun.get("Date"))
+        or _parse_any_date(payrun.get("date"))
     )
 
 
@@ -1279,8 +1289,13 @@ def _payroll_headcount_payrun_id(payrun: dict) -> str:
     return str(
         payrun.get("PayRunID")
         or payrun.get("payRunID")
+        or payrun.get("PayRunId")
+        or payrun.get("payRunId")
         or payrun.get("PayrunID")
         or payrun.get("payrunID")
+        or payrun.get("payrunId")
+        or payrun.get("id")
+        or payrun.get("ID")
         or ""
     ).strip()
 
@@ -1654,13 +1669,24 @@ def _payroll_overview_employee_name(employee: dict) -> str:
 def _payroll_overview_status(payrun: dict) -> str:
     return _payroll_overview_text(
         payrun.get("PayRunStatus")
+        or payrun.get("payRunStatus")
         or payrun.get("Status")
         or payrun.get("status")
+        or payrun.get("state")
     ).upper() or "UNKNOWN"
 
 
 def _payroll_overview_payrun_count(payrun: dict) -> int:
-    for key in ("PayslipCount", "PayslipsCount", "PaySlipsCount", "EmployeeCount"):
+    for key in (
+        "PayslipCount",
+        "PayslipsCount",
+        "PaySlipsCount",
+        "payslipCount",
+        "payslipsCount",
+        "paySlipsCount",
+        "EmployeeCount",
+        "employeeCount",
+    ):
         raw = payrun.get(key)
         if raw in (None, ""):
             continue
@@ -1730,13 +1756,44 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
 
     errors: list[str] = []
+    fetch_diagnostics: dict[str, dict] = {}
+
+    def _register_fetch_diagnostic(label: str, *, url: str = "") -> dict:
+        key = _payroll_overview_normalise_key(label) or "unknown"
+        diagnostics = fetch_diagnostics.get(key)
+        if isinstance(diagnostics, dict):
+            return diagnostics
+        diagnostics = {
+            "label": label,
+            "url": url,
+            "attempted": False,
+            "statusCode": None,
+            "elapsedMs": 0,
+            "ok": False,
+            "error": "",
+        }
+        fetch_diagnostics[key] = diagnostics
+        return diagnostics
 
     async def _fetch(url: str, label: str, params: dict | None = None) -> dict:
+        diagnostics = _register_fetch_diagnostic(label, url=url)
+        diagnostics["attempted"] = True
+        response_meta: dict = {}
+        def _on_response(meta: dict):
+            if isinstance(meta, dict):
+                response_meta.update(meta)
         try:
-            payload = await xero_api_get(connection_row, url, params=params)
+            payload = await xero_api_get(connection_row, url, params=params, on_response=_on_response)
+            diagnostics["statusCode"] = response_meta.get("status_code")
+            diagnostics["elapsedMs"] = int(response_meta.get("elapsed_ms") or 0)
+            diagnostics["ok"] = True
             return payload if isinstance(payload, dict) else {}
         except Exception as exc:
-            errors.append(f"{label}: {_sync_error_message(exc)}")
+            diagnostics["statusCode"] = response_meta.get("status_code")
+            diagnostics["elapsedMs"] = int(response_meta.get("elapsed_ms") or 0)
+            diagnostics["ok"] = False
+            diagnostics["error"] = _sync_error_message(exc)
+            errors.append(f"{label}: {diagnostics['error']}")
             return {}
 
     employees_payload, payruns_payload, accounts_payload = await asyncio.gather(
@@ -1787,18 +1844,31 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 "status": run_status,
                 "payRunPeriodStartDate": (
                     _parse_any_date(row.get("PayRunPeriodStartDate"))
+                    or _parse_any_date(row.get("payRunPeriodStartDate"))
                     or _parse_any_date(row.get("PayPeriodStartDate"))
+                    or _parse_any_date(row.get("payPeriodStartDate"))
                     or _parse_any_date(row.get("PeriodStartDate"))
+                    or _parse_any_date(row.get("periodStartDate"))
                 ),
                 "payRunPeriodEndDate": (
                     _parse_any_date(row.get("PayRunPeriodEndDate"))
+                    or _parse_any_date(row.get("payRunPeriodEndDate"))
                     or _parse_any_date(row.get("PayPeriodEndDate"))
+                    or _parse_any_date(row.get("payPeriodEndDate"))
                     or _parse_any_date(row.get("PeriodEndDate"))
+                    or _parse_any_date(row.get("periodEndDate"))
                 ),
                 "paymentDate": run_date,
                 "updatedDateUtc": _parse_any_date(row.get("UpdatedDateUTC")) or _parse_any_date(row.get("UpdatedDate")),
                 "payslipCount": _payroll_overview_payrun_count(row),
-                "wages": float(_payroll_overview_decimal(row.get("Wages"))),
+                "wages": float(
+                    _payroll_overview_decimal(
+                        row.get("Wages")
+                        or row.get("wages")
+                        or row.get("TotalWages")
+                        or row.get("totalWages")
+                    )
+                ),
                 "estimatedP32Tax": float(p32_estimate),
                 "estimatedPensionPayable": float(pension_estimate),
             }
@@ -1867,6 +1937,23 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             await _apply_payrun_detail_estimates(candidate)
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
+
+    logger.info(
+        "payroll_overview_fetch_diagnostics user_id=%s tenant_id=%s employees_attempted=%s employees_status=%s employees_ok=%s payruns_attempted=%s payruns_status=%s payruns_ok=%s accounts_attempted=%s accounts_status=%s accounts_ok=%s payruns_returned=%s errors=%s",
+        user.get("id"),
+        clean_tenant_id,
+        bool((fetch_diagnostics.get("employees") or {}).get("attempted")),
+        (fetch_diagnostics.get("employees") or {}).get("statusCode"),
+        bool((fetch_diagnostics.get("employees") or {}).get("ok")),
+        bool((fetch_diagnostics.get("payruns") or {}).get("attempted")),
+        (fetch_diagnostics.get("payruns") or {}).get("statusCode"),
+        bool((fetch_diagnostics.get("payruns") or {}).get("ok")),
+        bool((fetch_diagnostics.get("chartofaccounts") or {}).get("attempted")),
+        (fetch_diagnostics.get("chartofaccounts") or {}).get("statusCode"),
+        bool((fetch_diagnostics.get("chartofaccounts") or {}).get("ok")),
+        len(payrun_rows),
+        "; ".join(errors[:4]),
+    )
 
     reference_payrun_id = _payroll_overview_text(reference_payrun.get("payRunId")) if reference_payrun else ""
 
@@ -1991,6 +2078,11 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     pay_run_id
                     for pay_run_id in list(payrun_rows_by_id.keys())[:12]
                 ],
+            },
+            "fetchDiagnostics": {
+                "employees": fetch_diagnostics.get("employees") or {},
+                "payRuns": fetch_diagnostics.get("payruns") or {},
+                "accounts": fetch_diagnostics.get("chartofaccounts") or {},
             },
         },
         "payRuns": payrun_rows[:12],
