@@ -17979,6 +17979,104 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
 
 
 async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> dict:
+    def _to_camel_payload(value):
+        if isinstance(value, dict):
+            transformed: dict = {}
+            for key, item in value.items():
+                key_text = str(key or "")
+                if key_text:
+                    camel_key = f"{key_text[:1].lower()}{key_text[1:]}"
+                else:
+                    camel_key = key_text
+                transformed[camel_key] = _to_camel_payload(item)
+            return transformed
+        if isinstance(value, list):
+            return [_to_camel_payload(item) for item in value]
+        return value
+
+    def _error_summary(response: httpx.Response) -> str:
+        try:
+            error_payload = response.json() if response.content else {}
+        except ValueError:
+            error_payload = {}
+
+        messages: list[str] = []
+
+        def add_message(raw_value) -> None:
+            text = re.sub(r"\s+", " ", str(raw_value or "")).strip()
+            if not text:
+                return
+            if text.lower() in {"badrequest", "a validation exception occurred"}:
+                return
+            if text not in messages:
+                messages.append(text)
+
+        def collect(value) -> None:
+            if isinstance(value, dict):
+                for key in ("message", "Message", "detail", "Detail", "title", "Title", "error", "Error", "error_description"):
+                    add_message(value.get(key))
+                invalid_fields = value.get("invalidFields") or value.get("InvalidFields")
+                if isinstance(invalid_fields, list):
+                    for field in invalid_fields:
+                        if not isinstance(field, dict):
+                            continue
+                        field_name = re.sub(r"\s+", " ", str(field.get("name") or field.get("Name") or "")).strip()
+                        reason = re.sub(r"\s+", " ", str(field.get("reason") or field.get("Reason") or "")).strip()
+                        if field_name and reason:
+                            add_message(f"{field_name}: {reason}")
+                        elif reason:
+                            add_message(reason)
+                        elif field_name:
+                            add_message(field_name)
+                validations = value.get("ValidationErrors")
+                if isinstance(validations, list):
+                    for item in validations:
+                        collect(item)
+                elements = value.get("Elements")
+                if isinstance(elements, list):
+                    for item in elements:
+                        collect(item)
+                for nested_key in ("problem", "Problem"):
+                    nested = value.get(nested_key)
+                    if isinstance(nested, (dict, list)):
+                        collect(nested)
+            elif isinstance(value, list):
+                for item in value:
+                    collect(item)
+
+        collect(error_payload)
+        if messages:
+            return "; ".join(messages[:4])[:400]
+        return re.sub(r"\s+", " ", response.text or "").strip()[:400] or "Unknown error"
+
+    source_employee_row = {}
+    if isinstance(payload, dict):
+        candidate_rows = payload.get("Employees")
+        if isinstance(candidate_rows, list) and candidate_rows and isinstance(candidate_rows[0], dict):
+            source_employee_row = dict(candidate_rows[0])
+        elif any(key in payload for key in ("FirstName", "firstName", "LastName", "lastName")):
+            source_employee_row = dict(payload)
+
+    payload_variants: list[dict] = []
+    if isinstance(payload, dict) and payload:
+        payload_variants.append(payload)
+    if source_employee_row:
+        payload_variants.append(source_employee_row)
+        payload_variants.append(_to_camel_payload(source_employee_row))
+
+    deduped_variants: list[dict] = []
+    seen_variant_keys: set[str] = set()
+    for variant in payload_variants:
+        try:
+            variant_key = json.dumps(variant, sort_keys=True, default=_json_default)
+        except Exception:
+            variant_key = str(variant)
+        if variant_key in seen_variant_keys:
+            continue
+        seen_variant_keys.add(variant_key)
+        deduped_variants.append(variant)
+    payload_variants = deduped_variants or [payload if isinstance(payload, dict) else {}]
+
     refreshed_connection = await refresh_connection(str(connection_row.get("id") or ""))
     headers = {
         "Authorization": f"Bearer {refreshed_connection.get('access_token') or ''}",
@@ -17986,49 +18084,39 @@ async def _xero_payroll_create_employee(connection_row: dict, payload: dict) -> 
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+
+    response: httpx.Response | None = None
+    summary = ""
     async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(XERO_PAYROLL_EMPLOYEES_URL, headers=headers, json=payload)
-    if response.is_error:
-        detail = response.text[:400]
-        try:
-            error_payload = response.json() if response.content else {}
-        except ValueError:
-            error_payload = {}
-        if isinstance(error_payload, dict):
-            detail_candidates = [
-                error_payload.get("Message"),
-                error_payload.get("message"),
-                error_payload.get("Detail"),
-                error_payload.get("detail"),
-            ]
-            elements = error_payload.get("Elements")
-            if not any(str(item or "").strip() for item in detail_candidates) and isinstance(elements, list) and elements:
-                first_element = elements[0] if isinstance(elements[0], dict) else {}
-                validations = first_element.get("ValidationErrors") if isinstance(first_element, dict) else None
-                if isinstance(validations, list) and validations:
-                    first_validation = validations[0] if isinstance(validations[0], dict) else {}
-                    detail_candidates.extend(
-                        [
-                            first_validation.get("Message"),
-                            first_validation.get("message"),
-                        ]
-                    )
-            for candidate in detail_candidates:
-                candidate_text = str(candidate or "").strip()
-                if candidate_text:
-                    detail = candidate_text[:400]
-                    break
-        if response.status_code in (401, 403):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Xero Payroll access denied. Reconnect Xero with payroll scopes before creating employees.",
-            )
+        for index, variant_payload in enumerate(payload_variants):
+            response = await client.post(XERO_PAYROLL_EMPLOYEES_URL, headers=headers, json=variant_payload)
+            if not response.is_error:
+                break
+            if response.status_code in (401, 403):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Xero Payroll access denied. Reconnect Xero with payroll scopes before creating employees.",
+                )
+            summary = _error_summary(response)
+            should_retry_variant = response.status_code in (400, 404, 405, 415, 422) and index < len(payload_variants) - 1
+            if not should_retry_variant:
+                break
+
+    if response is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Xero Payroll employee creation failed ({response.status_code}): {detail or 'Unknown error'}",
+            detail="Xero Payroll employee creation failed (no response received).",
+        )
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Xero Payroll employee creation failed ({response.status_code}): {summary or 'Unknown error'}",
         )
     response_payload = response.json() if response.content else {}
     employees = _payroll_headcount_rows(response_payload if isinstance(response_payload, dict) else {}, "Employees", "Employee")
+    if not employees and isinstance(response_payload, dict):
+        if any(key in response_payload for key in ("EmployeeID", "employeeID", "employeeId")):
+            employees = [response_payload]
     first_row = employees[0] if employees else {}
     employee_id, _, _ = _xero_payroll_employee_identity(first_row if isinstance(first_row, dict) else {})
     return {
@@ -19356,13 +19444,14 @@ async def sync_submitted_employee_forms(
                 xero_status="failed",
                 xero_note=(
                     f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}, "
-                    f"but employee creation failed: {error_message}"
+                    f"but employee creation failed: {error_message}."
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
                 debug_lines=row_debug_base + [
                     f"tenantId={clean_tenant_id}",
                     f"requestedEmployeeNumber={payroll_number}",
                     f"requestedTaxCode={tax_code}",
+                    f"requestedDateOfBirth={str(extracted_fields.get('dateOfBirth') or '-')}",
                     f"requestedAddressLine1={str(extracted_fields.get('addressLine1') or '-')}",
                     f"requestedCity={str(extracted_fields.get('city') or '-')}",
                     f"requestedPostcode={str(extracted_fields.get('postcode') or '-')}",
