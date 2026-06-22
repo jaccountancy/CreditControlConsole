@@ -2029,11 +2029,13 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         )
     pension_rows.sort(key=lambda row: abs(float(row.get("balance") or 0)), reverse=True)
 
+    # Liability balances can be positive or negative in Xero depending on account setup.
+    # Use absolute balances so payable fallbacks still populate when sign conventions differ.
     outstanding_tax_balance = float(
-        sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in tax_rows)
+        sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in tax_rows)
     )
     pension_payable_balance = float(
-        sum(max(_payroll_overview_decimal(row.get("balance")), Decimal("0")) for row in pension_rows)
+        sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in pension_rows)
     )
     latest_payrun_date = ""
     if reference_payrun:
@@ -2049,20 +2051,52 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     estimated_pension_payable_balance = float(
         _payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable")) if reference_payrun else Decimal("0")
     )
+    latest_payrun_with_p32 = next(
+        (
+            row
+            for row in payrun_rows
+            if float(_payroll_overview_numeric_decimal(row.get("estimatedP32Tax"))) > 0
+        ),
+        None,
+    )
+    latest_payrun_with_pension = next(
+        (
+            row
+            for row in payrun_rows
+            if float(_payroll_overview_numeric_decimal(row.get("estimatedPensionPayable"))) > 0
+        ),
+        None,
+    )
+    latest_payrun_p32_balance = float(
+        _payroll_overview_numeric_decimal((latest_payrun_with_p32 or {}).get("estimatedP32Tax"))
+    )
+    latest_payrun_pension_balance = float(
+        _payroll_overview_numeric_decimal((latest_payrun_with_pension or {}).get("estimatedPensionPayable"))
+    )
     if estimated_p32_tax_balance <= 0:
-        estimated_p32_tax_balance = outstanding_tax_balance
+        estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
     if estimated_pension_payable_balance <= 0:
-        estimated_pension_payable_balance = pension_payable_balance
+        estimated_pension_payable_balance = (
+            latest_payrun_pension_balance if latest_payrun_pension_balance > 0 else pension_payable_balance
+        )
     estimated_balances_source = {
         "p32Tax": (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax"))) > 0
-            else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
+            else (
+                "latest_payrun_with_value"
+                if latest_payrun_p32_balance > 0
+                else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
+            )
         ) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
         "pensionPayable": (
             "reference_payrun"
             if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable"))) > 0
-            else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+            else (
+                "latest_payrun_with_value"
+                if latest_payrun_pension_balance > 0
+                else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+            )
         ) if reference_payrun else ("account_balance_fallback" if pension_payable_balance > 0 else "none"),
     }
     if details_fetch_attempted:
