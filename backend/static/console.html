@@ -29008,6 +29008,32 @@
                 display: grid;
                 gap: 12px;
             }
+            .task-detail-tab-bar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+            .task-detail-tab-button {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.92);
+                color: var(--muted);
+                padding: 7px 12px;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+            .task-detail-tab-button.is-active {
+                border-color: rgba(52, 132, 197, 0.34);
+                background: var(--blue-soft);
+                color: #1b4f83;
+            }
+            .task-detail-tab-panel[hidden] {
+                display: none;
+            }
             .task-detail-modal-card {
                 border: 1px solid var(--line);
                 border-radius: 12px;
@@ -123454,12 +123480,15 @@
                 return true;
             }
 
-            function openBmTaskDetailModal(row = {}, allRows = []) {
+            function openBmTaskDetailModal(row = {}, allRows = [], options = {}) {
                 const rowId = bmTaskIdentitySafe(row);
                 if (!rowId) return;
                 const resolved = bmTaskRowWithOverrides(row);
                 const titleClient = bmTaskClientDisplayName(resolved.clientName);
                 const titleTask = bmTaskDisplayName(resolved);
+                let activeTab = String(options?.initialTab || "task-note").trim().toLowerCase();
+                const validTabs = new Set(["task-note", "progress", "history", "timeline"]);
+                if (!validTabs.has(activeTab)) activeTab = "task-note";
                 const renderModalBody = (body, summary) => {
                     const latest = bmTaskRowWithOverrides(resolved);
                     const history = bmTaskHistoryEntries(rowId).slice(0, 16);
@@ -123467,13 +123496,21 @@
                     const progressNotes = history
                         .filter((entry) => String(entry?.type || "").includes("note"))
                         .slice(0, 8);
+                    const clientKey = bmTaskClientTimelineKey(latest);
+                    const timelineRows = bmTaskTimelineEntriesForClient(clientKey, allRows).slice(0, 24);
                     if (summary) summary.innerHTML = [
                         `<span class="operation-review-chip">${escapeHTML(bmTaskStatusLabel(latest?.status || "open"))}</span>`,
                         `<span class="operation-review-chip">${escapeHTML(latest?.deadlineISO ? formatDate(latest.deadlineISO) : "No deadline")}</span>`,
                     ].join("");
                     body.innerHTML = `
                         <div class="task-detail-modal-grid">
-                            <article class="task-detail-modal-card">
+                            <div class="task-detail-tab-bar" role="tablist" aria-label="Task detail tabs">
+                                <button type="button" class="task-detail-tab-button ${activeTab === "task-note" ? "is-active" : ""}" data-task-detail-tab="task-note" role="tab" aria-selected="${activeTab === "task-note" ? "true" : "false"}">Task note</button>
+                                <button type="button" class="task-detail-tab-button ${activeTab === "progress" ? "is-active" : ""}" data-task-detail-tab="progress" role="tab" aria-selected="${activeTab === "progress" ? "true" : "false"}">Progress notes</button>
+                                <button type="button" class="task-detail-tab-button ${activeTab === "history" ? "is-active" : ""}" data-task-detail-tab="history" role="tab" aria-selected="${activeTab === "history" ? "true" : "false"}">Task history</button>
+                                <button type="button" class="task-detail-tab-button ${activeTab === "timeline" ? "is-active" : ""}" data-task-detail-tab="timeline" role="tab" aria-selected="${activeTab === "timeline" ? "true" : "false"}">Client timeline</button>
+                            </div>
+                            <article class="task-detail-modal-card task-detail-tab-panel" data-task-detail-panel="task-note" ${activeTab === "task-note" ? "" : "hidden"}>
                                 <h5>Task Note</h5>
                                 <p class="detail-meta">This note is applied to the task and copied to the client timeline.</p>
                                 <div class="task-detail-note-entry">
@@ -123481,7 +123518,7 @@
                                     <button class="primary-button" type="button" id="taskDetailNoteApplyButton">Add note</button>
                                 </div>
                             </article>
-                            <article class="task-detail-modal-card">
+                            <article class="task-detail-modal-card task-detail-tab-panel" data-task-detail-panel="progress" ${activeTab === "progress" ? "" : "hidden"}>
                                 <h5>Progress Notes</h5>
                                 ${progressNotes.length
                                     ? `<div class="task-history-list">${progressNotes.map((entry) => `
@@ -123495,7 +123532,7 @@
                                     `).join("")}</div>`
                                     : `<p class="detail-meta">No task notes yet.</p>`}
                             </article>
-                            <article class="task-detail-modal-card">
+                            <article class="task-detail-modal-card task-detail-tab-panel" data-task-detail-panel="history" ${activeTab === "history" ? "" : "hidden"}>
                                 <h5>Task History</h5>
                                 ${statusHistory.length
                                     ? `<div class="task-history-list">${statusHistory.map((entry) => `
@@ -123509,8 +123546,27 @@
                                     `).join("")}</div>`
                                     : `<p class="detail-meta">No history entries yet.</p>`}
                             </article>
+                            <article class="task-detail-modal-card task-detail-tab-panel" data-task-detail-panel="timeline" ${activeTab === "timeline" ? "" : "hidden"}>
+                                <h5>Client Timeline</h5>
+                                ${timelineRows.length
+                                    ? `<div class="mini-timeline">${timelineRows.map((item) => `
+                                        <article class="timeline-item">
+                                            <div class="timeline-head"><span class="timeline-title">${escapeHTML(item?.title || "Update")}</span><span class="timeline-stamp">${escapeHTML(item?.stamp ? formatDateTime(item.stamp) : "—")}</span></div>
+                                            <div class="timeline-body">${escapeHTML(item?.body || "")}</div>
+                                        </article>
+                                    `).join("")}</div>`
+                                    : `<p class="detail-meta">No timeline entries yet.</p>`}
+                            </article>
                         </div>
                     `;
+                    body.querySelectorAll("[data-task-detail-tab]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const nextTab = String(button.getAttribute("data-task-detail-tab") || "").trim().toLowerCase();
+                            if (!validTabs.has(nextTab)) return;
+                            activeTab = nextTab;
+                            renderModalBody(body, summary);
+                        });
+                    });
                     body.querySelector("#taskDetailNoteApplyButton")?.addEventListener("click", () => {
                         const input = body.querySelector("#taskDetailNoteInput");
                         const note = String(input?.value || "").trim();
@@ -123523,6 +123579,7 @@
                         });
                         renderTaskSubpages();
                         showToast("Task note saved and copied to timeline.", "success");
+                        activeTab = "progress";
                         renderModalBody(body, summary);
                     });
                 };
@@ -124544,27 +124601,10 @@
                     cancelLabel: "Cancel",
                     columns: [],
                     rows: [{}],
-                    summaryChips: [
-                        tenantId ? "Xero payroll data linked" : "No Xero payroll match",
-                        registerRow?.id ? "Client register linked" : "Client register not linked",
-                        selectedPayRunLabel ? `Selected pay run: ${selectedPayRunLabel}` : selectedPayRunSource,
-                        referenceLookup.referencesFoundInRegister
-                            ? "PAYE and Accounts Office refs auto-populated from client register"
-                            : "Client register references missing - manual entry required",
-                    ],
+                    summaryChips: [],
                     onRender: ({ panel, body }) => {
                         body.innerHTML = `
                             <div class="task-detail-modal-grid">
-                                <article class="task-detail-modal-card">
-                                    <h5>Payroll summary</h5>
-                                    <ul class="task-detail-extraction-status">
-                                        <li class="is-complete" id="taskPayrollSummaryPaye">PAYE owed: ${escapeHTML(formatCurrency(Number(p32TaxAmount || 0)))}</li>
-                                        <li class="is-complete" id="taskPayrollSummaryPension">Pensions owed: ${escapeHTML(formatCurrency(Number(pensionPayableAmount || 0)))}</li>
-                                        <li class="is-complete" id="taskPayrollSummaryPeriod">Period date: ${escapeHTML(selectedPayRunLabel || "Not set")}</li>
-                                        <li class="is-complete" id="taskPayrollSummaryDeadline">Deadline: ${escapeHTML(paymentDate ? formatDate(payrollHmrcDueDateFromPaymentDate(paymentDate)) : "Not set")}</li>
-                                    </ul>
-                                    <p class="task-detail-modal-hint">Summary values update as you edit payroll figures and dates below.</p>
-                                </article>
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
                                     <div class="task-detail-modal-grid">
@@ -124609,10 +124649,6 @@
                             const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
                             const payeInput = panel?.querySelector("#taskPayrollEmailPayeRef");
                             const officeInput = panel?.querySelector("#taskPayrollEmailAccountsOfficeRef");
-                            const summaryPaye = body.querySelector("#taskPayrollSummaryPaye");
-                            const summaryPension = body.querySelector("#taskPayrollSummaryPension");
-                            const summaryPeriod = body.querySelector("#taskPayrollSummaryPeriod");
-                            const summaryDeadline = body.querySelector("#taskPayrollSummaryDeadline");
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
                             const validationWrap = document.createElement("article");
@@ -124624,25 +124660,11 @@
                             `;
                             body.appendChild(validationWrap);
                             const validationHint = validationWrap.querySelector(`#${validationHintId}`);
-                            const updateSummaryBubbles = () => {
-                                const paymentDateValue = String(paymentInput?.value || "").trim();
-                                const periodStart = String(selectedPayRun?.payRunPeriodStartDate || "").trim();
-                                const periodEnd = String(selectedPayRun?.payRunPeriodEndDate || "").trim();
-                                const periodDateLabel = periodStart && periodEnd
-                                    ? `${formatDate(periodStart)} to ${formatDate(periodEnd)}`
-                                    : (paymentDateValue ? formatDate(paymentDateValue) : "Not set");
-                                const deadlineValue = String(hmrcDueInput?.value || "").trim();
-                                if (summaryPaye) summaryPaye.textContent = `PAYE owed: ${formatCurrency(Number(p32Input?.value || 0))}`;
-                                if (summaryPension) summaryPension.textContent = `Pensions owed: ${formatCurrency(Number(pensionInput?.value || 0))}`;
-                                if (summaryPeriod) summaryPeriod.textContent = `Period date: ${periodDateLabel}`;
-                                if (summaryDeadline) summaryDeadline.textContent = `Deadline: ${deadlineValue ? formatDate(deadlineValue) : "Not set"}`;
-                            };
                             const updateDraft = () => {
                                 const paymentDateValue = String(paymentInput?.value || "").trim();
                                 const dueValue = String(hmrcDueInput?.value || "").trim()
                                     || payrollHmrcDueDateFromPaymentDate(paymentDateValue);
                                 if (hmrcDueInput && dueValue) hmrcDueInput.value = dueValue;
-                                updateSummaryBubbles();
                                 const draft = composePayrollPostedEmailDraft({
                                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
                                     paymentDate: paymentDateValue,
@@ -124865,11 +124887,15 @@
                     if (timelineButton instanceof HTMLElement) {
                         event.stopPropagation();
                         const clientKey = String(timelineButton.getAttribute("data-task-open-client-timeline") || "");
-                        const clientName = String(timelineButton.getAttribute("data-task-open-client-name") || "");
                         if (!clientKey) return;
                         const allRows = bmTaskAllRowsWithOverrides();
-                        const clientRows = allRows.filter((row) => bmTaskClientTimelineKey(row) === clientKey);
-                        openTaskClientTimeline(clientKey, clientName, clientRows);
+                        const rowNode = timelineButton.closest("tr[data-task-row-id]");
+                        const rowId = String(rowNode?.getAttribute("data-task-row-id") || "");
+                        const focusRow = bmTaskFindRowById(rowId, allRows)
+                            || allRows.find((row) => bmTaskClientTimelineKey(row) === clientKey)
+                            || null;
+                        if (!focusRow) return;
+                        openBmTaskDetailModal(focusRow, allRows, { initialTab: "timeline" });
                         return;
                     }
 
