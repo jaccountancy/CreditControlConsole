@@ -125124,6 +125124,27 @@
                                         `Trial balance delta used: ${formatCurrency(Number(isP32 ? summary?.trialBalanceDeltaP32Tax : summary?.trialBalanceDeltaPensionPayable || 0))}`
                                     );
                                     items.push(`Delta engine: ${String(trialBalanceDeltaDiagnostics?.engine || "unknown")}`);
+                                    const taxRows = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
+                                        ? nominalTransactionDiagnostics.taxAccountTransactions
+                                        : [];
+                                    const pensionRows = Array.isArray(nominalTransactionDiagnostics?.pensionAccountTransactions)
+                                        ? nominalTransactionDiagnostics.pensionAccountTransactions
+                                        : [];
+                                    const accountRows = isP32 ? taxRows : pensionRows;
+                                    const lineRows = accountRows.flatMap((row) => {
+                                        if (isP32) return Array.isArray(row?.payrollExpenseLines) ? row.payrollExpenseLines : [];
+                                        return Array.isArray(row?.applicableLines) ? row.applicableLines : [];
+                                    });
+                                    if (lineRows.length) {
+                                        items.push(`Linked nominal transactions: ${lineRows.length.toLocaleString("en-GB")} row(s)`);
+                                        for (const line of lineRows.slice(0, 8)) {
+                                            const date = String(line?.date || "").trim() || "date?";
+                                            const description = String(line?.description || line?.reference || "Line").trim();
+                                            const debit = Number(line?.debit || 0);
+                                            const credit = Number(line?.credit || 0);
+                                            items.push(`${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
+                                        }
+                                    }
                                 } else if (source === "payroll_api_payslips") {
                                     items.push(`Payroll API amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrollApi : payrollApiDiagnostics?.pensionFromPayrollApi || 0))}`);
                                     items.push(`Pay run details amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrunDetails : payrollApiDiagnostics?.pensionFromPayrunDetails || 0))}`);
