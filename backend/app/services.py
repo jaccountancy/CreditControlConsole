@@ -17153,6 +17153,12 @@ def _submitted_forms_normalized_employee_name(value: str | None) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
 
+def _submitted_forms_xero_employee_name_strict(row: dict) -> str:
+    first = re.sub(r"\s+", " ", str(row.get("FirstName") or row.get("firstName") or "")).strip()
+    last = re.sub(r"\s+", " ", str(row.get("LastName") or row.get("lastName") or "")).strip()
+    return _submitted_forms_normalized_employee_name(" ".join(part for part in [first, last] if part))
+
+
 def _canonical_xero_employee_id(value: str | None) -> str:
     return str(value or "").strip().strip("{}").lower()
 
@@ -18624,7 +18630,8 @@ async def sync_submitted_employee_forms(
             existing_name_candidates: dict[str, set[str]] = {}
             inactive_name_candidates: dict[str, set[str]] = {}
             for employee in existing_employees:
-                employee_id, employee_email, employee_name = _xero_payroll_employee_identity(employee)
+                employee_id, employee_email, _ = _xero_payroll_employee_identity(employee)
+                employee_name = _submitted_forms_xero_employee_name_strict(employee if isinstance(employee, dict) else {})
                 employee_is_active = _payroll_headcount_employee_is_active(employee)
                 if employee_email:
                     if employee_is_active:
@@ -18785,9 +18792,9 @@ async def sync_submitted_employee_forms(
                 verify_existing_payload = await xero_api_get(connection_row, verify_existing_url)
                 verify_existing_rows = _payroll_headcount_rows(verify_existing_payload, "Employees", "Employee")
                 verify_existing_row = verify_existing_rows[0] if verify_existing_rows else {}
-                verified_existing_id, verified_existing_email, verified_existing_name = _xero_payroll_employee_identity(
-                    verify_existing_row if isinstance(verify_existing_row, dict) else {}
-                )
+                verify_existing_dict = verify_existing_row if isinstance(verify_existing_row, dict) else {}
+                verified_existing_id, verified_existing_email, _ = _xero_payroll_employee_identity(verify_existing_dict)
+                verified_existing_name = _submitted_forms_xero_employee_name_strict(verify_existing_dict)
                 expected_employee_id = _canonical_xero_employee_id(existing_employee_id)
                 actual_employee_id = _canonical_xero_employee_id(verified_existing_id)
                 if not actual_employee_id or actual_employee_id != expected_employee_id:
@@ -18809,15 +18816,26 @@ async def sync_submitted_employee_forms(
                         "Matched EmployeeID is not active in payroll "
                         f"(employee_id={verified_existing_id or existing_employee_id})."
                     )
-                if employee_email and verified_existing_email and verified_existing_email != employee_email:
-                    raise ValueError(
-                        "Matched EmployeeID email did not match expected email "
-                        f"(expected={employee_email}, actual={verified_existing_email})."
-                    )
+                if employee_email:
+                    if not verified_existing_email:
+                        raise ValueError(
+                            "Matched EmployeeID email was missing during verification "
+                            f"(expected={employee_email})."
+                        )
+                    if verified_existing_email != employee_email:
+                        raise ValueError(
+                            "Matched EmployeeID email did not match expected email "
+                            f"(expected={employee_email}, actual={verified_existing_email})."
+                        )
                 if employee_name:
                     expected_employee_name = _submitted_forms_normalized_employee_name(employee_name)
                     actual_employee_name = _submitted_forms_normalized_employee_name(verified_existing_name)
-                    if actual_employee_name and actual_employee_name != expected_employee_name:
+                    if not actual_employee_name:
+                        raise ValueError(
+                            "Matched EmployeeID name was missing during verification "
+                            f"(expected={employee_name})."
+                        )
+                    if actual_employee_name != expected_employee_name:
                         raise ValueError(
                             "Matched EmployeeID name did not match expected employee name "
                             f"(expected={employee_name}, actual={verified_existing_name})."

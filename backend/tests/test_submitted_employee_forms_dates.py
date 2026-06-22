@@ -103,6 +103,26 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
         self.assertEqual(email, "sarah.chapman@example.com")
         self.assertEqual(full_name, "sarah chapman")
 
+    def test_submitted_forms_xero_employee_name_strict_ignores_name_fallback(self):
+        strict_name = services._submitted_forms_xero_employee_name_strict(
+            {
+                "Name": "Sarah Chapman",
+                "FirstName": "",
+                "LastName": "",
+            }
+        )
+        self.assertEqual(strict_name, "")
+
+    def test_submitted_forms_xero_employee_name_strict_uses_first_and_last(self):
+        strict_name = services._submitted_forms_xero_employee_name_strict(
+            {
+                "FirstName": "  Sarah ",
+                "LastName": " Chapman  ",
+                "Name": "Wrong Fallback",
+            }
+        )
+        self.assertEqual(strict_name, "sarah chapman")
+
 
 if __name__ == "__main__":
     unittest.main()
