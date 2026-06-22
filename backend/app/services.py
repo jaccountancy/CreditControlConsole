@@ -3332,6 +3332,18 @@ async def _payroll_overview_nominal_transaction_context(
                     "lines": rows[:80],
                     "allTransactionLineCount": len(transaction_entries),
                     "allTransactionNet": float(all_transaction_net),
+                    "allTransactionLines": [
+                        {
+                            "date": _payroll_overview_text(line.get("date")),
+                            "source": _payroll_overview_text(line.get("source")),
+                            "description": _payroll_overview_text(line.get("description")),
+                            "reference": _payroll_overview_text(line.get("reference")),
+                            "debit": float(_money(line.get("debit"))),
+                            "credit": float(_money(line.get("credit"))),
+                            "net": float(_money(line.get("net"))),
+                        }
+                        for line in transaction_entries
+                    ],
                     "payrollExpenseLineCount": len(payroll_expense_entries),
                     "payrollExpenseNet": float(payroll_expense_net),
                     "applicableLineCount": len(applicable_entries),
