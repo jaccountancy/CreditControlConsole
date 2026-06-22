@@ -3627,18 +3627,17 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     )
     pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
     selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
+    # For payroll-run extraction, avoid trial-balance deltas as the displayed
+    # figure source because those include opening balances and can overstate
+    # the current run amount. Prefer nominal transactions, then payroll API.
     if nominal_tx_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(nominal_tx_p32_tax)
-    elif trial_balance_delta_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
     elif payroll_api_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(payroll_api_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
     if nominal_tx_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
-    elif trial_balance_delta_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(trial_balance_delta_pension_payable)
     elif payroll_api_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(payroll_api_pension_payable)
     else:
@@ -3667,8 +3666,6 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "p32Tax": (
             "nominal_account_transactions"
             if nominal_tx_p32_tax > Decimal("0")
-            else "nominal_trial_balance_delta"
-            if trial_balance_delta_p32_tax > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_p32_tax > Decimal("0")
             else "none"
@@ -3676,8 +3673,6 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "pensionPayable": (
             "nominal_account_transactions"
             if nominal_tx_pension_payable > Decimal("0")
-            else "nominal_trial_balance_delta"
-            if trial_balance_delta_pension_payable > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_pension_payable > Decimal("0")
             else "none"

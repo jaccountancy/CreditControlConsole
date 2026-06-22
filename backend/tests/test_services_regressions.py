@@ -515,10 +515,10 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "_code_breaker_fetch_xero_journals", side_effect=_fake_fetch_journals):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 5000.0)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1000.0)
-        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "nominal_trial_balance_delta")
-        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "nominal_trial_balance_delta")
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 4151.67)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
+        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "payroll_api_payslips")
+        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "none")
 
     def test_payroll_overview_uses_openai_inference_when_journal_and_trial_balance_are_not_usable(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
@@ -1438,10 +1438,10 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 17457.13)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 1972.69)
-        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "nominal_trial_balance_delta")
-        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "nominal_trial_balance_delta")
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 7002.1)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 2096.72)
+        self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "payroll_api_payslips")
+        self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "payroll_api_payslips")
         self.assertEqual(payload["summary"]["trialBalanceDeltaP32Tax"], 17457.13)
         self.assertEqual(payload["summary"]["trialBalanceDeltaPensionPayable"], 1972.69)
 
