@@ -2155,7 +2155,7 @@ async def _payroll_overview_extract_posted_journal_payables(
         "usedPayrollSourceHint": False,
         "matchedCreditLines": 0,
     }
-    if not journals or not reference_period_end:
+    if not journals:
         return Decimal("0"), Decimal("0"), diagnostics
 
     account_by_id: dict[str, dict] = {}
@@ -2262,13 +2262,6 @@ async def _payroll_overview_extract_posted_journal_payables(
         journal_date = _parse_any_date(journal.get("JournalDate") or journal.get("Date") or journal.get("DateString"))
         if journal_date is None:
             continue
-        in_window = (
-            bool(reference_payment_date and journal_date == reference_payment_date)
-            or bool(reference_period_start and reference_period_end and reference_period_start <= journal_date <= reference_period_end)
-            or bool(not reference_period_start and reference_period_end and journal_date == reference_period_end)
-        )
-        if not in_window:
-            continue
         if _is_payroll_journal(journal):
             strict_candidates.append(journal)
         else:
@@ -2280,12 +2273,10 @@ async def _payroll_overview_extract_posted_journal_payables(
     if not candidate_journals:
         return Decimal("0"), Decimal("0"), diagnostics
 
-    def _journal_liability_totals(journal: dict) -> tuple[Decimal, Decimal, Decimal, Decimal, int, list[dict]]:
+    def _journal_liability_totals(journal: dict) -> tuple[Decimal, Decimal, int, list[dict]]:
         lines = journal.get("JournalLines") if isinstance(journal.get("JournalLines"), list) else []
         p32_credit_total = Decimal("0")
         pension_credit_total = Decimal("0")
-        p32_peak_credit = Decimal("0")
-        pension_peak_credit = Decimal("0")
         matched_credit_lines = 0
         journal_line_rows: list[dict] = []
         for line_index, line in enumerate(lines):
@@ -2293,7 +2284,6 @@ async def _payroll_overview_extract_posted_journal_payables(
                 continue
             credit_amount = _payroll_overview_journal_line_credit_amount(line)
             debit_amount = _payroll_overview_journal_line_debit_amount(line)
-            liability_amount = credit_amount - debit_amount
             account = _resolve_line_account(line)
             account_code = _payroll_overview_text(
                 account.get("Code")
@@ -2339,7 +2329,7 @@ async def _payroll_overview_extract_posted_journal_payables(
                     "netAmount": float(net_amount),
                 }
             )
-            if liability_amount == Decimal("0"):
+            if credit_amount <= Decimal("0"):
                 continue
             if explicit_paye_payable_account_codes or explicit_pension_payable_account_codes:
                 is_tax_liability = (
@@ -2362,17 +2352,13 @@ async def _payroll_overview_extract_posted_journal_payables(
                     bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
                 )
             if is_tax_liability:
-                p32_credit_total += liability_amount
-                if liability_amount > p32_peak_credit:
-                    p32_peak_credit = liability_amount
+                p32_credit_total += credit_amount
                 matched_credit_lines += 1
                 continue
             if is_pension_liability:
-                pension_credit_total += liability_amount
-                if liability_amount > pension_peak_credit:
-                    pension_peak_credit = liability_amount
+                pension_credit_total += credit_amount
                 matched_credit_lines += 1
-        return p32_credit_total, pension_credit_total, p32_peak_credit, pension_peak_credit, matched_credit_lines, journal_line_rows
+        return p32_credit_total, pension_credit_total, matched_credit_lines, journal_line_rows
 
     best_candidate = None
     for journal in candidate_journals:
@@ -2380,18 +2366,23 @@ async def _payroll_overview_extract_posted_journal_payables(
         (
             p32_credit_total,
             pension_credit_total,
-            p32_peak_credit,
-            pension_peak_credit,
             matched_credit_lines,
             journal_line_rows,
         ) = _journal_liability_totals(journal)
         combined_credit_total = p32_credit_total + pension_credit_total
+        in_reference_window = (
+            bool(reference_payment_date and journal_date == reference_payment_date)
+            or bool(reference_period_start and reference_period_end and reference_period_start <= journal_date <= reference_period_end)
+            or bool(not reference_period_start and reference_period_end and journal_date == reference_period_end)
+        )
         score = (
+            1 if _is_payroll_journal(journal) else 0,
+            journal_date.toordinal(),
+            1 if in_reference_window else 0,
             1 if matched_credit_lines > 0 else 0,
             matched_credit_lines,
             float(combined_credit_total),
-            1 if _is_payroll_journal(journal) else 0,
-            journal_date.toordinal(),
+            _payroll_overview_text(journal.get("JournalNumber") or journal.get("JournalID") or journal.get("Id")),
         )
         if best_candidate is None or score > best_candidate["score"]:
             best_candidate = {
@@ -2399,8 +2390,6 @@ async def _payroll_overview_extract_posted_journal_payables(
                 "score": score,
                 "p32_credit_total": p32_credit_total,
                 "pension_credit_total": pension_credit_total,
-                "p32_peak_credit": p32_peak_credit,
-                "pension_peak_credit": pension_peak_credit,
                 "matched_credit_lines": matched_credit_lines,
                 "journal_line_rows": journal_line_rows,
                 "journal_date": journal_date,
@@ -2419,22 +2408,20 @@ async def _payroll_overview_extract_posted_journal_payables(
 
     p32_credit_total = (best_candidate or {}).get("p32_credit_total") if isinstance(best_candidate, dict) else Decimal("0")
     pension_credit_total = (best_candidate or {}).get("pension_credit_total") if isinstance(best_candidate, dict) else Decimal("0")
-    p32_peak_credit = (best_candidate or {}).get("p32_peak_credit") if isinstance(best_candidate, dict) else Decimal("0")
-    pension_peak_credit = (best_candidate or {}).get("pension_peak_credit") if isinstance(best_candidate, dict) else Decimal("0")
     matched_credit_lines = int((best_candidate or {}).get("matched_credit_lines") or 0)
     journal_line_rows = (best_candidate or {}).get("journal_line_rows") if isinstance(best_candidate, dict) else []
     if not isinstance(journal_line_rows, list):
         journal_line_rows = []
     diagnostics["matchedCreditLines"] = matched_credit_lines
 
-    deterministic_paye = p32_peak_credit if p32_peak_credit > Decimal("0") else abs(p32_credit_total)
-    deterministic_pension = pension_peak_credit if pension_peak_credit > Decimal("0") else abs(pension_credit_total)
+    deterministic_paye = abs(p32_credit_total)
+    deterministic_pension = abs(pension_credit_total)
     diagnostics["deterministicPaye"] = float(deterministic_paye)
     diagnostics["deterministicPension"] = float(deterministic_pension)
     diagnostics["journalTaxLineTotal"] = float(abs(p32_credit_total))
     diagnostics["journalPensionLineTotal"] = float(abs(pension_credit_total))
-    diagnostics["journalTaxPeakLine"] = float(p32_peak_credit)
-    diagnostics["journalPensionPeakLine"] = float(pension_peak_credit)
+    diagnostics["journalTaxPeakLine"] = 0.0
+    diagnostics["journalPensionPeakLine"] = 0.0
 
     diagnostics["engine"] = "rules"
     return deterministic_paye, deterministic_pension, diagnostics
