@@ -1594,7 +1594,7 @@ class ServicesRegressionTests(unittest.TestCase):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
         self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 17457.13)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 271.23)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 2284.22)
         self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "nominal_account_transactions")
         self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "nominal_account_transactions")
 

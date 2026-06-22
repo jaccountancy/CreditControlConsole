@@ -2983,7 +2983,16 @@ async def _payroll_overview_nominal_transaction_context(
         "taxPayrollExpenseNet": 0.0,
         "pensionPayrollExpenseNet": 0.0,
         "pensionApplicableNet": 0.0,
+        "payeRunReferences": [],
+        "payeRunDates": [],
     }
+
+    paye_run_reference_keys: set[str] = set()
+    paye_run_dates: set[str] = set()
+
+    def _reference_key(value: str) -> str:
+        return _payroll_overview_normalise_key(str(value or "").strip())
+
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
         applicable_total = Decimal("0")
@@ -3009,11 +3018,32 @@ async def _payroll_overview_nominal_transaction_context(
                 for row in transaction_entries
                 if "payrollexpense" in _payroll_overview_normalise_key(row.get("source"))
             ]
-            applicable_entries = (
-                transaction_entries
-                if str(label_prefix).strip().lower() == "pension"
-                else payroll_expense_entries
-            )
+            if str(label_prefix).strip().lower() == "tax":
+                for row in payroll_expense_entries:
+                    reference_key = _reference_key(row.get("reference"))
+                    if reference_key:
+                        paye_run_reference_keys.add(reference_key)
+                    date_key = _payroll_overview_text(row.get("date"))
+                    if date_key:
+                        paye_run_dates.add(date_key)
+
+            if str(label_prefix).strip().lower() == "pension":
+                if paye_run_reference_keys:
+                    applicable_entries = [
+                        row
+                        for row in transaction_entries
+                        if _reference_key(row.get("reference")) in paye_run_reference_keys
+                    ]
+                elif paye_run_dates:
+                    applicable_entries = [
+                        row
+                        for row in transaction_entries
+                        if _payroll_overview_text(row.get("date")) in paye_run_dates
+                    ]
+                else:
+                    applicable_entries = payroll_expense_entries
+            else:
+                applicable_entries = payroll_expense_entries
             payroll_expense_net = _payroll_overview_account_transaction_net(payroll_expense_entries)
             applicable_net = _payroll_overview_account_transaction_net(applicable_entries)
             bucket_total += payroll_expense_net
@@ -3061,6 +3091,8 @@ async def _payroll_overview_nominal_transaction_context(
     context["taxPayrollExpenseNet"] = float(tax_payroll_total)
     context["pensionPayrollExpenseNet"] = float(pension_payroll_total)
     context["pensionApplicableNet"] = float(pension_applicable_total)
+    context["payeRunReferences"] = sorted(paye_run_reference_keys)
+    context["payeRunDates"] = sorted(paye_run_dates)
     return context
 
 
