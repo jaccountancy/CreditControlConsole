@@ -125086,11 +125086,14 @@
                                         items.push(`Nominal codes matched: ${accountCodes.slice(0, 12).join(", ")}`);
                                     }
                                     items.push(
-                                        `Payroll expense net used: ${formatCurrency(Number(isP32 ? nominalTransactionDiagnostics?.taxPayrollExpenseNet : nominalTransactionDiagnostics?.pensionPayrollExpenseNet || 0))}`
+                                        `${isP32 ? "Payroll expense net used" : "Applicable nominal net used"}: ${formatCurrency(Number(isP32 ? nominalTransactionDiagnostics?.taxPayrollExpenseNet : (nominalTransactionDiagnostics?.pensionApplicableNet ?? nominalTransactionDiagnostics?.pensionPayrollExpenseNet) || 0))}`
                                     );
-                                    const lineRows = accountRows.flatMap((row) => Array.isArray(row?.payrollExpenseLines) ? row.payrollExpenseLines : []);
+                                    const lineRows = accountRows.flatMap((row) => {
+                                        if (isP32) return Array.isArray(row?.payrollExpenseLines) ? row.payrollExpenseLines : [];
+                                        return Array.isArray(row?.applicableLines) ? row.applicableLines : [];
+                                    });
                                     if (lineRows.length) {
-                                        items.push(`Payroll expense lines: ${lineRows.length.toLocaleString("en-GB")} row(s)`);
+                                        items.push(`${isP32 ? "Payroll expense lines" : "Applicable nominal lines"}: ${lineRows.length.toLocaleString("en-GB")} row(s)`);
                                         for (const line of lineRows.slice(0, 8)) {
                                             const date = String(line?.date || "").trim() || "date?";
                                             const description = String(line?.description || line?.reference || "Line").trim();

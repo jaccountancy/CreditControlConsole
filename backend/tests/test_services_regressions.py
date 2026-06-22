@@ -1543,6 +1543,7 @@ class ServicesRegressionTests(unittest.TestCase):
                                             },
                                             {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Benefits"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "1,086.12"}]},
                                             {"RowType": "Row", "Cells": [{"Value": "31 May 2026"}, {"Value": "Payroll Expense"}, {"Value": "Deductions"}, {"Value": "PD-79"}, {"Value": ""}, {"Value": "1,198.10"}]},
+                                            {"RowType": "Row", "Cells": [{"Value": "8 May 2026"}, {"Value": "Spend Money"}, {"Value": "NEST - pension contributions"}, {"Value": ""}, {"Value": "2,012.99"}, {"Value": ""}]},
                                         ],
                                     }
                                 ]
@@ -1593,7 +1594,7 @@ class ServicesRegressionTests(unittest.TestCase):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
         self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 17457.13)
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 2284.22)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 271.23)
         self.assertEqual(payload["summary"]["figureSources"]["p32Tax"], "nominal_account_transactions")
         self.assertEqual(payload["summary"]["figureSources"]["pensionPayable"], "nominal_account_transactions")
 

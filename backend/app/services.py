@@ -2981,9 +2981,11 @@ async def _payroll_overview_nominal_transaction_context(
         "pensionAccountTransactions": [],
         "taxPayrollExpenseNet": 0.0,
         "pensionPayrollExpenseNet": 0.0,
+        "pensionApplicableNet": 0.0,
     }
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
+        applicable_total = Decimal("0")
         for account in account_rows[:4]:
             if not isinstance(account, dict):
                 continue
@@ -3006,8 +3008,15 @@ async def _payroll_overview_nominal_transaction_context(
                 for row in transaction_entries
                 if "payrollexpense" in _payroll_overview_normalise_key(row.get("source"))
             ]
+            applicable_entries = (
+                transaction_entries
+                if str(label_prefix).strip().lower() == "pension"
+                else payroll_expense_entries
+            )
             payroll_expense_net = _payroll_overview_account_transaction_net(payroll_expense_entries)
+            applicable_net = _payroll_overview_account_transaction_net(applicable_entries)
             bucket_total += payroll_expense_net
+            applicable_total += applicable_net
             bucket.append(
                 {
                     "accountId": account_id,
@@ -3017,6 +3026,8 @@ async def _payroll_overview_nominal_transaction_context(
                     "lines": rows[:80],
                     "payrollExpenseLineCount": len(payroll_expense_entries),
                     "payrollExpenseNet": float(payroll_expense_net),
+                    "applicableLineCount": len(applicable_entries),
+                    "applicableNet": float(applicable_net),
                     "payrollExpenseLines": [
                         {
                             "date": _payroll_overview_text(line.get("date")),
@@ -3029,11 +3040,26 @@ async def _payroll_overview_nominal_transaction_context(
                         }
                         for line in payroll_expense_entries[:40]
                     ],
+                    "applicableLines": [
+                        {
+                            "date": _payroll_overview_text(line.get("date")),
+                            "source": _payroll_overview_text(line.get("source")),
+                            "description": _payroll_overview_text(line.get("description")),
+                            "reference": _payroll_overview_text(line.get("reference")),
+                            "debit": float(_money(line.get("debit"))),
+                            "credit": float(_money(line.get("credit"))),
+                            "net": float(_money(line.get("net"))),
+                        }
+                        for line in applicable_entries[:40]
+                    ],
                 }
             )
-        return bucket_total
-    context["taxPayrollExpenseNet"] = float(await _collect(tax_accounts, context["taxAccountTransactions"], "Tax"))
-    context["pensionPayrollExpenseNet"] = float(await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension"))
+        return bucket_total, applicable_total
+    tax_payroll_total, _ = await _collect(tax_accounts, context["taxAccountTransactions"], "Tax")
+    pension_payroll_total, pension_applicable_total = await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension")
+    context["taxPayrollExpenseNet"] = float(tax_payroll_total)
+    context["pensionPayrollExpenseNet"] = float(pension_payroll_total)
+    context["pensionApplicableNet"] = float(pension_applicable_total)
     return context
 
 
@@ -3437,7 +3463,13 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 period_end=nominal_period_end,
             )
             nominal_tx_p32_tax = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("taxPayrollExpenseNet")))
-            nominal_tx_pension_payable = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("pensionPayrollExpenseNet")))
+            nominal_tx_pension_payable = abs(
+                _payroll_overview_numeric_decimal(
+                    nominal_transaction_context.get("pensionApplicableNet")
+                    if nominal_transaction_context.get("pensionApplicableNet") not in (None, "")
+                    else nominal_transaction_context.get("pensionPayrollExpenseNet")
+                )
+            )
         except Exception as exc:
             nominal_transaction_context = {
                 "engine": "nominal_account_transactions",
