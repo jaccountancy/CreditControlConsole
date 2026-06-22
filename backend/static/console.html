@@ -22067,6 +22067,37 @@
             .operation-review-head p {
                 margin: 0;
             }
+            .operation-review-head-inline {
+                display: flex;
+                align-items: flex-end;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-left: auto;
+            }
+            .operation-review-head-inline-field {
+                display: grid;
+                gap: 4px;
+                min-width: 180px;
+            }
+            .operation-review-head-inline-label {
+                margin: 0;
+                font-size: 0.66rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--muted);
+                font-weight: 820;
+            }
+            .operation-review-head-inline-field input {
+                width: 100%;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: var(--surface-soft);
+                color: var(--ink);
+                font: inherit;
+                font-size: 0.8rem;
+                font-weight: 760;
+            }
             .operation-review-subtitle {
                 margin-top: 6px !important;
                 color: var(--muted);
@@ -67126,6 +67157,7 @@
                 actions.classList.remove("has-cs01-nav");
                 actions.hidden = false;
                 actions.querySelectorAll(".ch-review-footer-nav").forEach((node) => node.remove());
+                panel.querySelectorAll(".operation-review-head-inline").forEach((node) => node.remove());
                 if (card) {
                     card.scrollTop = 0;
                 }
@@ -124461,20 +124493,9 @@
                             ? "PAYE and Accounts Office refs auto-populated from client register"
                             : "Client register references missing - manual entry required",
                     ],
-                    onRender: ({ body }) => {
+                    onRender: ({ panel, body }) => {
                         body.innerHTML = `
                             <div class="task-detail-modal-grid">
-                                <article class="task-detail-modal-card">
-                                    <h5>HMRC references</h5>
-                                    <div class="task-detail-modal-grid">
-                                        <label>Employer PAYE reference
-                                            <input id="taskPayrollEmailPayeRef" type="text" value="">
-                                        </label>
-                                        <label>Accounts Office reference
-                                            <input id="taskPayrollEmailAccountsOfficeRef" type="text" value="">
-                                        </label>
-                                    </div>
-                                </article>
                                 <article class="task-detail-modal-card">
                                     <h5>AI extraction status</h5>
                                     <ul id="taskPayrollExtractionStatus" class="task-detail-extraction-status">
@@ -124516,13 +124537,30 @@
                                 </article>
                             </div>
                         `;
+                        const reviewHead = panel?.querySelector(".operation-review-head");
+                        const closeButton = panel?.querySelector("#closeOperationReviewButton");
+                        if (reviewHead && closeButton) {
+                            const referenceBar = document.createElement("div");
+                            referenceBar.className = "operation-review-head-inline";
+                            referenceBar.innerHTML = `
+                                <label class="operation-review-head-inline-field"> 
+                                    <span class="operation-review-head-inline-label">Employer PAYE ref</span>
+                                    <input id="taskPayrollEmailPayeRef" type="text" value="" placeholder="e.g. 123/AB45678">
+                                </label>
+                                <label class="operation-review-head-inline-field">
+                                    <span class="operation-review-head-inline-label">Accounts Office ref</span>
+                                    <input id="taskPayrollEmailAccountsOfficeRef" type="text" value="" placeholder="e.g. 123PA00123456">
+                                </label>
+                            `;
+                            reviewHead.insertBefore(referenceBar, closeButton);
+                        }
                         const bindRegenerate = () => {
                             const p32Input = body.querySelector("#taskPayrollEmailP32Amount");
                             const pensionInput = body.querySelector("#taskPayrollEmailPensionAmount");
                             const paymentInput = body.querySelector("#taskPayrollEmailPaymentDate");
                             const hmrcDueInput = body.querySelector("#taskPayrollEmailHmrcDueDate");
-                            const payeInput = body.querySelector("#taskPayrollEmailPayeRef");
-                            const officeInput = body.querySelector("#taskPayrollEmailAccountsOfficeRef");
+                            const payeInput = panel?.querySelector("#taskPayrollEmailPayeRef");
+                            const officeInput = panel?.querySelector("#taskPayrollEmailAccountsOfficeRef");
                             const statusItems = Array.from(body.querySelectorAll("#taskPayrollExtractionStatus [data-step-index]"));
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
