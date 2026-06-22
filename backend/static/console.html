@@ -123913,13 +123913,12 @@
                         `Overview errors: ${Array.isArray(overview?.errors) && overview.errors.length ? overview.errors.join(" · ") : "none"}`,
                     ].join(" | ");
                     pushSystemActivity({
-                        type: "error",
-                        label: "Payroll extraction blocked",
-                        message: "No pay runs were returned from Xero payroll overview for this client.",
+                        type: "warning",
+                        label: "Payroll extraction fallback",
+                        message: "No pay runs were returned from Xero payroll overview. Starting workflow with fallback values.",
                         detail: diagnosticsDetail,
                     });
-                    showToast("Payroll extraction blocked: no pay runs were returned from Xero for this tenant.", "error");
-                    return;
+                    showToast("No pay runs were returned from Xero for this tenant. Starting payroll workflow with fallback values.", "info");
                 }
                 const selectedPayRunMeta = payrollSelectReferencePayRun(payRuns);
                 const selectedPayRun = selectedPayRunMeta.selected || {};
