@@ -3296,6 +3296,17 @@ async def _payroll_overview_nominal_transaction_context(
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
         bucket_total = Decimal("0")
         applicable_total = Decimal("0")
+        def _filter_entries_to_period(entries: list[dict]) -> list[dict]:
+            filtered: list[dict] = []
+            for item in entries or []:
+                if not isinstance(item, dict):
+                    continue
+                entry_date = _parse_any_date(item.get("date"))
+                if not isinstance(entry_date, date):
+                    continue
+                if period_start <= entry_date <= period_end:
+                    filtered.append(item)
+            return filtered
         for account in account_rows:
             if not isinstance(account, dict):
                 continue
@@ -3313,6 +3324,22 @@ async def _payroll_overview_nominal_transaction_context(
             )
             rows = _payroll_overview_account_transaction_lines(payload)
             transaction_entries = _payroll_overview_account_transaction_entries(payload)
+            if not transaction_entries:
+                # Some tenants intermittently return empty account-transaction rows when
+                # range params are supplied. Retry without range and filter locally.
+                fallback_payload = await fetcher(
+                    XERO_REPORTS_ACCOUNT_TRANSACTIONS_URL,
+                    f"{label_prefix} {account.get('code') or account_id} transactions (fallback all)",
+                    {
+                        "accountID": account_id,
+                    },
+                )
+                fallback_rows = _payroll_overview_account_transaction_lines(fallback_payload)
+                fallback_entries = _payroll_overview_account_transaction_entries(fallback_payload)
+                filtered_entries = _filter_entries_to_period(fallback_entries)
+                if filtered_entries:
+                    rows = fallback_rows
+                    transaction_entries = filtered_entries
             all_transaction_net = _payroll_overview_account_transaction_net(transaction_entries)
             payroll_expense_entries = [
                 row
