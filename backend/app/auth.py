@@ -35,6 +35,14 @@ DEFAULT_XERO_CONNECTION_SCOPES = (
 XERO_PAYROLL_SCOPES = (
     "payroll.employees.read",
     "payroll.payruns.read",
+    "payroll.payslip.read",
+)
+XERO_ALL_AVAILABLE_REQUIRED_SCOPES = (
+    "accounting.reports.read",
+    "accounting.journals.read",
+    "payroll.employees.read",
+    "payroll.payruns.read",
+    "payroll.payslip.read",
 )
 KNOWN_XERO_SCOPES = {
     "openid",
@@ -161,7 +169,11 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
 def xero_scope_string_all_available(configured_scopes: str) -> str:
     # "All available" means the maximum scope set this app is configured to
     # request, plus payroll read scopes for future-ready consent.
-    return xero_scope_string(configured_scopes, include_payroll_scopes=True)
+    scopes = xero_scope_string(configured_scopes, include_payroll_scopes=True).split()
+    for required_scope in XERO_ALL_AVAILABLE_REQUIRED_SCOPES:
+        if required_scope not in scopes:
+            scopes.append(required_scope)
+    return " ".join(scopes)
 
 
 def allowed_panel_origins() -> set[str]:
