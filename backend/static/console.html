@@ -27305,6 +27305,35 @@
             .submitted-employee-preview-fill-status.is-error p {
                 color: color-mix(in srgb, var(--red) 72%, black);
             }
+            .submitted-employee-preview-tabs {
+                margin-top: 10px;
+                display: flex;
+                gap: 8px;
+                border-bottom: 1px solid var(--line);
+                padding-bottom: 8px;
+            }
+            .submitted-employee-preview-tab {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 6px 12px;
+                background: var(--surface-strong);
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 800;
+                cursor: pointer;
+                transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+            }
+            .submitted-employee-preview-tab:hover,
+            .submitted-employee-preview-tab:focus-visible {
+                border-color: color-mix(in srgb, var(--blue) 35%, white);
+                color: var(--ink);
+                transform: translateY(-1px);
+            }
+            .submitted-employee-preview-tab.is-active {
+                background: color-mix(in srgb, var(--blue-soft) 82%, white);
+                border-color: color-mix(in srgb, var(--blue) 38%, white);
+                color: var(--ink);
+            }
             .submitted-employee-preview-confirm {
                 border: 1px solid var(--line);
                 border-radius: 14px;
@@ -28997,29 +29026,44 @@
                 margin: 0;
                 padding: 0;
                 list-style: none;
-                display: grid;
-                gap: 7px;
+                display: flex;
+                gap: 10px;
+                overflow-x: auto;
+                scroll-snap-type: x proximity;
+                padding-bottom: 2px;
             }
             .task-detail-extraction-status li {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12.5px;
+                display: grid;
+                place-items: center;
+                text-align: center;
+                min-width: 176px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: var(--surface-soft);
+                font-size: 12px;
+                line-height: 1.3;
                 color: var(--muted);
-                transition: color 0.2s ease, transform 0.2s ease;
+                font-weight: 700;
+                transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+                scroll-snap-align: start;
             }
             .task-detail-extraction-status li::before {
                 content: "";
-                width: 9px;
-                height: 9px;
+                width: 10px;
+                height: 10px;
                 border-radius: 999px;
                 background: rgba(112, 136, 175, 0.38);
                 box-shadow: 0 0 0 0 rgba(83, 130, 197, 0.45);
+                margin-bottom: 6px;
                 transition: background 0.2s ease, box-shadow 0.2s ease;
             }
             .task-detail-extraction-status li.is-active {
                 color: #1b4f83;
-                transform: translateX(2px);
+                transform: translateY(-2px);
+                border-color: rgba(52, 132, 197, 0.42);
+                background: color-mix(in srgb, var(--blue-soft) 78%, white);
+                animation: taskDetailPulse 0.9s ease;
             }
             .task-detail-extraction-status li.is-active::before {
                 background: #3484c5;
@@ -29027,10 +29071,17 @@
             }
             .task-detail-extraction-status li.is-complete {
                 color: #1f5f8d;
+                border-color: rgba(27, 168, 86, 0.35);
+                background: rgba(171, 241, 201, 0.18);
             }
             .task-detail-extraction-status li.is-complete::before {
-                background: #3484c5;
-                box-shadow: 0 0 0 4px rgba(52, 132, 197, 0.12);
+                background: #1ba856;
+                box-shadow: 0 0 0 4px rgba(27, 168, 86, 0.16);
+            }
+            @keyframes taskDetailPulse {
+                0% { transform: translateY(0); }
+                50% { transform: translateY(-3px); }
+                100% { transform: translateY(-2px); }
             }
             .task-detail-modal-card ul {
                 margin: 0;
@@ -44726,33 +44777,41 @@
                                 <strong id="submittedEmployeeFormsPreviewFillStatusTitle">Running OpenAI extraction</strong>
                                 <p id="submittedEmployeeFormsPreviewFillStatusMeta">Populating Xero field map from the email one field at a time.</p>
                             </div>
-                            <section class="submitted-employee-preview-form-layout">
-                                <aside class="submitted-employee-preview-xero-fields">
-                                    <h5>Xero Payroll Fields</h5>
-                                    <ul id="submittedEmployeeFormsPreviewXeroFieldList"></ul>
-                                </aside>
-                                <section class="submitted-employee-preview-form-wrap">
-                                    <form class="submitted-employee-preview-form" id="submittedEmployeeFormsPreviewForm"></form>
+                            <nav class="submitted-employee-preview-tabs" aria-label="Employee preview tabs">
+                                <button class="submitted-employee-preview-tab is-active" id="submittedEmployeeFormsPreviewTabForm" type="button" data-submitted-employee-preview-tab="form">Employee Form</button>
+                                <button class="submitted-employee-preview-tab" id="submittedEmployeeFormsPreviewTabHistory" type="button" data-submitted-employee-preview-tab="history">Attempt History</button>
+                            </nav>
+                            <section id="submittedEmployeeFormsPreviewPanelForm">
+                                <section class="submitted-employee-preview-form-layout">
+                                    <aside class="submitted-employee-preview-xero-fields">
+                                        <h5>Xero Payroll Fields</h5>
+                                        <ul id="submittedEmployeeFormsPreviewXeroFieldList"></ul>
+                                    </aside>
+                                    <section class="submitted-employee-preview-form-wrap">
+                                        <form class="submitted-employee-preview-form" id="submittedEmployeeFormsPreviewForm"></form>
+                                    </section>
+                                </section>
+                                <section class="submitted-employee-preview-confirm" id="submittedEmployeeFormsPreviewConfirm" hidden>
+                                    <p class="eyebrow">Confirmation</p>
+                                    <h4>Ready to publish this employee to Xero Payroll?</h4>
+                                    <p class="detail-meta" id="submittedEmployeeFormsPreviewConfirmMeta">Review the summary below before creating the employee record.</p>
+                                    <div class="submitted-employee-preview-confirm-grid" id="submittedEmployeeFormsPreviewConfirmGrid"></div>
                                 </section>
                             </section>
-                            <section class="submitted-employee-preview-confirm" id="submittedEmployeeFormsPreviewConfirm" hidden>
-                                <p class="eyebrow">Confirmation</p>
-                                <h4>Ready to publish this employee to Xero Payroll?</h4>
-                                <p class="detail-meta" id="submittedEmployeeFormsPreviewConfirmMeta">Review the summary below before creating the employee record.</p>
-                                <div class="submitted-employee-preview-confirm-grid" id="submittedEmployeeFormsPreviewConfirmGrid"></div>
-                            </section>
-                            <section class="ch-companies-table-wrap submitted-employee-preview-audit-wrap">
-                                <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form audit history">
-                                    <thead>
-                                        <tr>
-                                            <th>Attempt at</th>
-                                            <th>Status</th>
-                                            <th>Workspace</th>
-                                            <th>Note</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="submittedEmployeeFormsPreviewAuditBody"></tbody>
-                                </table>
+                            <section id="submittedEmployeeFormsPreviewPanelHistory" hidden>
+                                <section class="ch-companies-table-wrap submitted-employee-preview-audit-wrap">
+                                    <table class="ch-table submitted-employee-preview-table" aria-label="Submitted employee form audit history">
+                                        <thead>
+                                            <tr>
+                                                <th>Attempt at</th>
+                                                <th>Status</th>
+                                                <th>Workspace</th>
+                                                <th>Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="submittedEmployeeFormsPreviewAuditBody"></tbody>
+                                    </table>
+                                </section>
                             </section>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="submittedEmployeeFormsPreviewAutofillButton" type="button">Re-run AI fill</button>
@@ -47009,6 +47068,7 @@
             let submittedEmployeeFormsPreviewAutofillState = { running: false, rowId: "", timer: null, index: 0 };
             let submittedEmployeeFormsPreviewPublishing = false;
             let submittedEmployeeFormsPreviewStep = "edit";
+            let submittedEmployeeFormsPreviewTab = "form";
             let notificationPullTimer = null;
             let notificationPullInFlight = false;
             const clientPagePayrollOverviewCache = new Map();
@@ -58505,6 +58565,8 @@
                 const previewBackButton = document.getElementById("submittedEmployeeFormsPreviewBackButton");
                 const previewContinueButton = document.getElementById("submittedEmployeeFormsPreviewContinueButton");
                 const previewPublishButton = document.getElementById("submittedEmployeeFormsPreviewPublishButton");
+                const previewTabFormButton = document.getElementById("submittedEmployeeFormsPreviewTabForm");
+                const previewTabHistoryButton = document.getElementById("submittedEmployeeFormsPreviewTabHistory");
                 const noteModal = document.getElementById("submittedEmployeeFormsNoteModal");
                 const noteCloseButton = document.getElementById("submittedEmployeeFormsNoteCloseButton");
                 const setupModal = document.getElementById("submittedEmployeeFormsSetupModal");
@@ -58513,7 +58575,7 @@
                 const notifyModal = document.getElementById("submittedEmployeeFormsNotifyModal");
                 const notifyCloseButton = document.getElementById("submittedEmployeeFormsNotifyCloseButton");
                 const notifySendButton = document.getElementById("submittedEmployeeFormsNotifySendButton");
-                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !previewAutofillButton || !previewBackButton || !previewContinueButton || !previewPublishButton || !noteModal || !noteCloseButton || !setupModal || !setupCloseButton || !setupStartButton || !notifyModal || !notifyCloseButton || !notifySendButton) return;
+                if (!summary || !tableBody || !refreshButton || !reconnectButton || !syncButton || !wizardMeta || !selectAllButton || !clearSelectionButton || !previewModal || !previewCloseButton || !previewAutofillButton || !previewBackButton || !previewContinueButton || !previewPublishButton || !previewTabFormButton || !previewTabHistoryButton || !noteModal || !noteCloseButton || !setupModal || !setupCloseButton || !setupStartButton || !notifyModal || !notifyCloseButton || !notifySendButton) return;
                 summary.hidden = true;
                 summary.textContent = "";
 
@@ -58574,6 +58636,7 @@
                     previewCloseButton.addEventListener("click", () => {
                         submittedEmployeeFormsPreviewStopAutofill();
                         submittedEmployeeFormsPreviewStep = "edit";
+                        submittedEmployeeFormsPreviewTab = "form";
                         submittedEmployeeFormsPreviewRowId = "";
                         renderSubmittedEmployeeFormsPreviewModal([]);
                     });
@@ -58581,9 +58644,24 @@
                         if (event.target === previewModal) {
                             submittedEmployeeFormsPreviewStopAutofill();
                             submittedEmployeeFormsPreviewStep = "edit";
+                            submittedEmployeeFormsPreviewTab = "form";
                             submittedEmployeeFormsPreviewRowId = "";
                             renderSubmittedEmployeeFormsPreviewModal([]);
                         }
+                    });
+                }
+                if (previewTabFormButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewTabFormButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewTabFormButton.addEventListener("click", () => {
+                        submittedEmployeeFormsPreviewTab = "form";
+                        renderSubmittedEmployeeFormsScreen();
+                    });
+                }
+                if (previewTabHistoryButton.dataset.submittedEmployeeFormsWired !== "true") {
+                    previewTabHistoryButton.dataset.submittedEmployeeFormsWired = "true";
+                    previewTabHistoryButton.addEventListener("click", () => {
+                        submittedEmployeeFormsPreviewTab = "history";
+                        renderSubmittedEmployeeFormsScreen();
                     });
                 }
                 if (previewAutofillButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -58788,6 +58866,7 @@
                         if (!rowId) return;
                         submittedEmployeeFormsPreviewRowId = rowId;
                         submittedEmployeeFormsPreviewStep = "edit";
+                        submittedEmployeeFormsPreviewTab = "form";
                         const selectedRow = allRows.find((item) => String(item?.id || "").trim() === rowId) || null;
                         if (selectedRow && !submittedEmployeeFormsPreviewDraftByRowId.has(rowId)) {
                             submittedEmployeeFormsPreviewStartAutofill(selectedRow, { resetDraft: true });
@@ -58947,6 +59026,10 @@
                 const previewForm = document.getElementById("submittedEmployeeFormsPreviewForm");
                 const xeroFieldList = document.getElementById("submittedEmployeeFormsPreviewXeroFieldList");
                 const previewAuditBody = document.getElementById("submittedEmployeeFormsPreviewAuditBody");
+                const panelForm = document.getElementById("submittedEmployeeFormsPreviewPanelForm");
+                const panelHistory = document.getElementById("submittedEmployeeFormsPreviewPanelHistory");
+                const tabFormButton = document.getElementById("submittedEmployeeFormsPreviewTabForm");
+                const tabHistoryButton = document.getElementById("submittedEmployeeFormsPreviewTabHistory");
                 const autofillStatus = document.getElementById("submittedEmployeeFormsPreviewFillStatus");
                 const autofillStatusTitle = document.getElementById("submittedEmployeeFormsPreviewFillStatusTitle");
                 const autofillStatusMeta = document.getElementById("submittedEmployeeFormsPreviewFillStatusMeta");
@@ -58957,7 +59040,7 @@
                 const backButton = document.getElementById("submittedEmployeeFormsPreviewBackButton");
                 const continueButton = document.getElementById("submittedEmployeeFormsPreviewContinueButton");
                 const publishButton = document.getElementById("submittedEmployeeFormsPreviewPublishButton");
-                if (!previewModal || !previewTitle || !previewMeta || !previewForm || !xeroFieldList || !previewAuditBody || !autofillStatus || !autofillStatusTitle || !autofillStatusMeta || !confirmSection || !confirmMeta || !confirmGrid || !autofillButton || !backButton || !continueButton || !publishButton) return;
+                if (!previewModal || !previewTitle || !previewMeta || !previewForm || !xeroFieldList || !previewAuditBody || !panelForm || !panelHistory || !tabFormButton || !tabHistoryButton || !autofillStatus || !autofillStatusTitle || !autofillStatusMeta || !confirmSection || !confirmMeta || !confirmGrid || !autofillButton || !backButton || !continueButton || !publishButton) return;
                 const rows = Array.isArray(allRows) ? allRows : [];
                 const row = rows.find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
                 previewModal.hidden = !row;
@@ -58970,12 +59053,21 @@
                 const missingMandatoryFields = submittedEmployeeFormsMandatoryFieldsMissing(draft);
                 const autofilling = submittedEmployeeFormsPreviewAutofillState.running && submittedEmployeeFormsPreviewAutofillState.rowId === rowId;
                 const isConfirmStep = submittedEmployeeFormsPreviewStep === "confirm";
+                const activePreviewTab = isConfirmStep
+                    ? "form"
+                    : (submittedEmployeeFormsPreviewTab === "history" ? "history" : "form");
                 const currentAutofillKey = autofilling
                     ? (submittedEmployeeFormsXeroFieldBlueprint[submittedEmployeeFormsPreviewAutofillState.index - 1]?.key || "")
                     : "";
                 const extractionFailureReason = submittedEmployeeFormsExtractionFailureReason(row, draft)
                     || (missingMandatoryFields.length ? `Missing Xero mandatory fields: ${missingMandatoryFields.join(", ")}.` : "");
                 const extractionFailed = !autofilling && Boolean(extractionFailureReason);
+                tabFormButton.classList.toggle("is-active", activePreviewTab === "form");
+                tabHistoryButton.classList.toggle("is-active", activePreviewTab === "history");
+                tabFormButton.setAttribute("aria-selected", String(activePreviewTab === "form"));
+                tabHistoryButton.setAttribute("aria-selected", String(activePreviewTab === "history"));
+                panelForm.hidden = activePreviewTab !== "form";
+                panelHistory.hidden = activePreviewTab !== "history";
                 confirmSection.hidden = !isConfirmStep;
                 const formLayout = previewForm.closest(".submitted-employee-preview-form-layout");
                 if (formLayout) formLayout.hidden = isConfirmStep;
@@ -59048,11 +59140,11 @@
                 }
                 autofillButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling;
                 autofillButton.textContent = autofilling ? "AI filling..." : "Re-run AI fill";
-                autofillButton.hidden = isConfirmStep;
-                continueButton.hidden = isConfirmStep;
-                backButton.hidden = !isConfirmStep;
-                publishButton.hidden = !isConfirmStep;
-                continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || extractionFailed;
+                autofillButton.hidden = isConfirmStep || activePreviewTab !== "form";
+                continueButton.hidden = isConfirmStep || activePreviewTab !== "form";
+                backButton.hidden = !isConfirmStep || activePreviewTab !== "form";
+                publishButton.hidden = !isConfirmStep || activePreviewTab !== "form";
+                continueButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling;
                 backButton.disabled = submittedEmployeeFormsPreviewPublishing;
                 publishButton.disabled = submittedEmployeeFormsPreviewPublishing || autofilling || !isConfirmStep || Boolean(missingMandatoryFields.length);
                 publishButton.textContent = submittedEmployeeFormsPreviewPublishing ? "Publishing..." : "Publish to Xero Payroll";
@@ -124295,6 +124387,7 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
+                const lockExtractedFigureInputs = Boolean(tenantId);
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
                     paymentDate,
@@ -124360,15 +124453,26 @@
                         body.innerHTML = `
                             <div class="task-detail-modal-grid">
                                 <article class="task-detail-modal-card">
+                                    <h5>HMRC references</h5>
+                                    <div class="task-detail-modal-grid">
+                                        <label>Employer PAYE reference
+                                            <input id="taskPayrollEmailPayeRef" type="text" value="">
+                                        </label>
+                                        <label>Accounts Office reference
+                                            <input id="taskPayrollEmailAccountsOfficeRef" type="text" value="">
+                                        </label>
+                                    </div>
+                                </article>
+                                <article class="task-detail-modal-card">
                                     <h5>AI extraction status</h5>
                                     <ul id="taskPayrollExtractionStatus" class="task-detail-extraction-status">
-                                        <li data-step-index="0">Extracting payment date from payroll run</li>
-                                        <li data-step-index="1">Extracting P32 PAYE/NIC estimate</li>
-                                        <li data-step-index="2">Extracting pension payable figure</li>
-                                        <li data-step-index="3">Extracting HMRC payment references</li>
-                                        <li data-step-index="4">Preparing email draft seed</li>
+                                        <li data-step-index="0">Payment date</li>
+                                        <li data-step-index="1">P32 PAYE/NIC estimate</li>
+                                        <li data-step-index="2">Pension payable</li>
+                                        <li data-step-index="3">HMRC references</li>
+                                        <li data-step-index="4">Email draft seed</li>
                                     </ul>
-                                    <p class="task-detail-modal-hint">Fields are populated one-by-one so the review path is clear.</p>
+                                    <p class="task-detail-modal-hint">Extraction runs left-to-right with animated status cards.</p>
                                 </article>
                                 <article class="task-detail-modal-card">
                                     <h5>Xero extraction trace</h5>
@@ -124384,29 +124488,19 @@
                                     <h5>Payroll figures</h5>
                                     <div class="task-detail-modal-grid">
                                         <label>P32 / HMRC PAYE-NIC estimate
-                                            <input id="taskPayrollEmailP32Amount" type="number" step="0.01" value="">
+                                            <input id="taskPayrollEmailP32Amount" type="number" step="0.01" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                         <label>Pension payable (if applicable)
-                                            <input id="taskPayrollEmailPensionAmount" type="number" step="0.01" value="">
+                                            <input id="taskPayrollEmailPensionAmount" type="number" step="0.01" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                         <label>Payroll payment date
-                                            <input id="taskPayrollEmailPaymentDate" type="date" value="">
+                                            <input id="taskPayrollEmailPaymentDate" type="date" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                         <label>HMRC due date (BACS)
-                                            <input id="taskPayrollEmailHmrcDueDate" type="date" value="">
+                                            <input id="taskPayrollEmailHmrcDueDate" type="date" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                     </div>
-                                </article>
-                                <article class="task-detail-modal-card">
-                                    <h5>HMRC references</h5>
-                                    <div class="task-detail-modal-grid">
-                                        <label>Employer PAYE reference
-                                            <input id="taskPayrollEmailPayeRef" type="text" value="">
-                                        </label>
-                                        <label>Accounts Office reference
-                                            <input id="taskPayrollEmailAccountsOfficeRef" type="text" value="">
-                                        </label>
-                                    </div>
+                                    <p class="task-detail-modal-hint">${lockExtractedFigureInputs ? "Pulled from Xero payroll and locked for consistency." : "No Xero payroll match detected, so values can be entered manually."}</p>
                                 </article>
                             </div>
                         `;
