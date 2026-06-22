@@ -3120,6 +3120,16 @@ def _payroll_overview_account_transaction_entries(payload: dict) -> list[dict]:
     def _normalise_header(value: str) -> str:
         return _payroll_overview_normalise_key(value).replace(" ", "")
 
+    def _header_index(candidates: tuple[str, ...], *, required: bool = False) -> int | None:
+        for candidate in candidates:
+            idx = header_map.get(candidate)
+            if idx is not None:
+                return idx
+        for key, idx in header_map.items():
+            if any(key.startswith(candidate) or candidate in key for candidate in candidates):
+                return idx
+        return None if not required else -1
+
     def _walk(rows: list[dict]) -> None:
         nonlocal current_account, header_map
         for row in rows:
@@ -3140,13 +3150,13 @@ def _payroll_overview_account_transaction_entries(payload: dict) -> list[dict]:
                 if len(values) == 1 and first_value and first_value.lower() not in {"opening balance", "closing balance"} and not first_value.lower().startswith("total "):
                     current_account = first_value
                 else:
-                    date_idx = header_map.get("date")
-                    source_idx = header_map.get("source")
-                    desc_idx = header_map.get("description")
-                    ref_idx = header_map.get("reference")
-                    debit_idx = header_map.get("debit")
-                    credit_idx = header_map.get("credit")
-                    if date_idx is not None and debit_idx is not None and credit_idx is not None:
+                    date_idx = _header_index(("date",), required=True)
+                    source_idx = _header_index(("source",))
+                    desc_idx = _header_index(("description", "details", "narrative"))
+                    ref_idx = _header_index(("reference", "ref"))
+                    debit_idx = _header_index(("debit",), required=True)
+                    credit_idx = _header_index(("credit",), required=True)
+                    if date_idx is not None and debit_idx is not None and credit_idx is not None and min(date_idx, debit_idx, credit_idx) >= 0:
                         date_text = values[date_idx] if date_idx < len(values) else ""
                         debit = _money(_money_from_report_cell(values[debit_idx] if debit_idx < len(values) else ""))
                         credit = _money(_money_from_report_cell(values[credit_idx] if credit_idx < len(values) else ""))
