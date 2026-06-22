@@ -50347,12 +50347,22 @@
                 return { payload, syncMeta };
             }
 
-            function submittedEmployeeFormsEligibleRowIdsForSetup() {
+            function submittedEmployeeFormsRowsForSetup() {
                 const rows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
                 const selected = [...submittedEmployeeFormsSelectedRowIds].filter(Boolean);
-                if (selected.length) return selected;
+                if (selected.length) {
+                    const selectedRows = selected
+                        .map((rowId) => rows.find((row) => String(row?.id || "").trim() === rowId))
+                        .filter(Boolean);
+                    if (selectedRows.length) return selectedRows;
+                }
                 return rows
                     .filter((row) => ["pending", "failed", "needs-review", ""].includes(String(row?.xeroStatus || "").trim().toLowerCase()))
+                    .filter((row) => String(row?.id || "").trim());
+            }
+
+            function submittedEmployeeFormsEligibleRowIdsForSetup() {
+                return submittedEmployeeFormsRowsForSetup()
                     .map((row) => String(row?.id || "").trim())
                     .filter(Boolean);
             }
@@ -50374,23 +50384,38 @@
 
             async function runSubmittedEmployeeFormsSetupFlow() {
                 if (submittedEmployeeFormsSyncing || submittedEmployeeFormsSetupState.running) return;
+                const preSyncRows = Array.isArray(submittedEmployeeFormsData?.rows) ? submittedEmployeeFormsData.rows : [];
+                const selectedBeforeSync = [...submittedEmployeeFormsSelectedRowIds].filter(Boolean);
+                const canUseAlreadySyncedSelection = selectedBeforeSync.length > 0
+                    && selectedBeforeSync.every((rowId) => preSyncRows.some((row) => String(row?.id || "").trim() === rowId));
                 submittedEmployeeFormsSyncing = true;
                 submittedEmployeeFormsSetupState.running = true;
-                submittedEmployeeFormsSetupState.stage = "syncing";
-                submittedEmployeeFormsSetupState.currentLabel = "Syncing Gmail submissions";
+                submittedEmployeeFormsSetupState.stage = canUseAlreadySyncedSelection ? "processing" : "syncing";
+                submittedEmployeeFormsSetupState.currentLabel = canUseAlreadySyncedSelection
+                    ? "Using already synced selected rows"
+                    : "Syncing Gmail submissions";
                 renderSubmittedEmployeeFormsScreen();
                 try {
-                    const { syncMeta } = await submittedEmployeeFormsSyncRequest({ mode: "fetch", lookbackDays: 28 });
-                    const imported = Number(syncMeta.imported || 0);
+                    if (!canUseAlreadySyncedSelection) {
+                        const { syncMeta } = await submittedEmployeeFormsSyncRequest({ mode: "fetch", lookbackDays: 28 });
+                        const imported = Number(syncMeta.imported || 0);
+                        submittedEmployeeFormsSetupState.logs.unshift({
+                            at: new Date().toISOString(),
+                            employee: "Submission sync",
+                            status: "pending",
+                            detail: `${imported.toLocaleString("en-GB")} email submission${imported === 1 ? "" : "s"} synced from Gmail.`,
+                        });
+                    } else {
+                        submittedEmployeeFormsSetupState.logs.unshift({
+                            at: new Date().toISOString(),
+                            employee: "Submission sync",
+                            status: "pending",
+                            detail: "Using selected rows already loaded on this screen.",
+                        });
+                    }
                     const eligibleRowIds = submittedEmployeeFormsEligibleRowIdsForSetup();
                     submittedEmployeeFormsSetupState.total = eligibleRowIds.length;
                     submittedEmployeeFormsSetupState.stage = "processing";
-                    submittedEmployeeFormsSetupState.logs.unshift({
-                        at: new Date().toISOString(),
-                        employee: "Submission sync",
-                        status: "pending",
-                        detail: `${imported.toLocaleString("en-GB")} email submission${imported === 1 ? "" : "s"} synced from Gmail.`,
-                    });
                     if (!eligibleRowIds.length) {
                         submittedEmployeeFormsSetupState.running = false;
                         submittedEmployeeFormsSetupState.stage = "complete";
@@ -58670,14 +58695,22 @@
                 setupModal.hidden = !submittedEmployeeFormsSetupModalOpen;
                 if (setupModal.hidden) return;
                 const state = submittedEmployeeFormsSetupState || {};
+                const queuedRows = submittedEmployeeFormsRowsForSetup();
+                const selectedRowsQueued = [...submittedEmployeeFormsSelectedRowIds].length > 0;
                 const stageLabel = String(state.stage || "idle").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
                 setupStage.textContent = stageLabel || "Ready";
                 setupTitleLine.textContent = state.running
                     ? `Processing ${Number(state.processed || 0).toLocaleString("en-GB")} of ${Number(state.total || 0).toLocaleString("en-GB")}`
-                    : (state.stage === "complete" ? "Setup run complete" : "Ready to run setup");
+                    : (state.stage === "complete"
+                        ? "Setup run complete"
+                        : queuedRows.length
+                            ? `Ready to process ${Number(queuedRows.length).toLocaleString("en-GB")} row${queuedRows.length === 1 ? "" : "s"}`
+                            : "No rows selected");
                 setupProgressText.textContent = state.running
                     ? `${String(state.currentLabel || "Working")} · ${Number(state.created || 0).toLocaleString("en-GB")} created · ${Number(state.exists || 0).toLocaleString("en-GB")} exists · ${Number(state.failed || 0).toLocaleString("en-GB")} failed`
-                    : "Sync submissions and process each selected employee row one-by-one.";
+                    : selectedRowsQueued
+                        ? "Selected rows are already synced. Start setup to process them one-by-one."
+                        : "Select employee rows first, then run setup to process them one-by-one.";
                 setupLogBody.innerHTML = Array.isArray(state.logs) && state.logs.length
                     ? state.logs.map((entry) => `
                         <tr>
@@ -58687,9 +58720,35 @@
                             <td>${escapeHTML(String(entry?.detail || ""))}</td>
                         </tr>
                     `).join("")
-                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No run yet</p><h4>No setup events logged</h4><p>Start a setup run to process synced employee submissions.</p></div></td></tr>';
-                setupStartButton.disabled = Boolean(state.running);
-                setupStartButton.textContent = state.running ? "Running..." : "Start setup run";
+                    : queuedRows.length
+                        ? queuedRows.map((row) => {
+                            const employeeName = String(row?.employeeFullName || "").trim() || "Employee";
+                            const status = String(row?.xeroStatus || "pending").trim().toLowerCase() || "pending";
+                            const statusLabel = status.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+                            const employerName = String(row?.employerName || "").trim();
+                            const email = String(row?.employeeEmail || row?.extractedFields?.employeeEmail || "").trim();
+                            const dob = String(row?.dateOfBirth || row?.extractedFields?.dateOfBirth || row?.extractedFields?.employeeDateOfBirth || "").trim();
+                            const detailParts = [
+                                employerName ? `Employer: ${employerName}` : "",
+                                email ? `Email: ${email}` : "",
+                                dob ? `DOB: ${dob}` : "",
+                            ].filter(Boolean);
+                            return `
+                                <tr>
+                                    <td>${escapeHTML(formatDateTime(row?.receivedAt || row?.createdAt || "") || "--")}</td>
+                                    <td>${escapeHTML(employeeName)}</td>
+                                    <td><span class="status-pill ${submittedEmployeeFormsStatusClass(status)}">${escapeHTML(statusLabel)}</span></td>
+                                    <td>${escapeHTML(detailParts.join(" · ") || "Ready to process this selected row.")}</td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No rows selected</p><h4>Select employee rows to process</h4><p>Choose rows from the table, then run setup.</p></div></td></tr>';
+                setupStartButton.disabled = Boolean(state.running) || (!state.running && !queuedRows.length);
+                setupStartButton.textContent = state.running
+                    ? "Running..."
+                    : queuedRows.length
+                        ? "Process selected rows"
+                        : "Select rows to process";
             }
 
             function renderSubmittedEmployeeFormsNotifyModal(allRows = []) {
