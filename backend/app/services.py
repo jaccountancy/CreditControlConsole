@@ -2877,6 +2877,92 @@ def _payroll_overview_account_transaction_lines(payload: dict) -> list[dict]:
     return rows
 
 
+def _payroll_overview_account_transaction_entries(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
+
+    reports = payload.get("Reports") or payload.get("reports") or []
+    if not isinstance(reports, list) or not reports:
+        return []
+    report = reports[0] if isinstance(reports[0], dict) else {}
+    root_rows = report.get("Rows") or report.get("rows") or []
+    if not isinstance(root_rows, list):
+        return []
+
+    current_account = ""
+    header_map: dict[str, int] = {}
+    entries: list[dict] = []
+
+    def _cell_value(cell) -> str:
+        if not isinstance(cell, dict):
+            return ""
+        return str(cell.get("Value") or cell.get("value") or "").strip()
+
+    def _normalise_header(value: str) -> str:
+        return _payroll_overview_normalise_key(value).replace(" ", "")
+
+    def _walk(rows: list[dict]) -> None:
+        nonlocal current_account, header_map
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_type = str(row.get("RowType") or row.get("rowType") or "").strip().lower()
+            cells = row.get("Cells") or row.get("cells") or []
+            values = [_cell_value(cell) for cell in cells] if isinstance(cells, list) else []
+            first_value = values[0] if values else ""
+
+            if row_type == "header":
+                header_map = {
+                    _normalise_header(value): idx
+                    for idx, value in enumerate(values)
+                    if str(value or "").strip()
+                }
+            elif row_type == "row":
+                if len(values) == 1 and first_value and first_value.lower() not in {"opening balance", "closing balance"} and not first_value.lower().startswith("total "):
+                    current_account = first_value
+                else:
+                    date_idx = header_map.get("date")
+                    source_idx = header_map.get("source")
+                    desc_idx = header_map.get("description")
+                    ref_idx = header_map.get("reference")
+                    debit_idx = header_map.get("debit")
+                    credit_idx = header_map.get("credit")
+                    if date_idx is not None and source_idx is not None and debit_idx is not None and credit_idx is not None:
+                        date_text = values[date_idx] if date_idx < len(values) else ""
+                        debit = _money(_money_from_report_cell(values[debit_idx] if debit_idx < len(values) else ""))
+                        credit = _money(_money_from_report_cell(values[credit_idx] if credit_idx < len(values) else ""))
+                        source_text = values[source_idx] if source_idx < len(values) else ""
+                        if (date_text or source_text) and (debit != Decimal("0.00") or credit != Decimal("0.00")):
+                            entries.append(
+                                {
+                                    "accountName": current_account,
+                                    "date": date_text,
+                                    "source": source_text,
+                                    "description": values[desc_idx] if desc_idx is not None and desc_idx < len(values) else "",
+                                    "reference": values[ref_idx] if ref_idx is not None and ref_idx < len(values) else "",
+                                    "debit": debit,
+                                    "credit": credit,
+                                    "net": _money(credit - debit),
+                                }
+                            )
+
+            nested_rows = row.get("Rows") or row.get("rows") or []
+            if isinstance(nested_rows, list) and nested_rows:
+                _walk(nested_rows)
+
+    _walk(root_rows)
+    return entries
+
+
+def _payroll_overview_account_transaction_net(entries: list[dict]) -> Decimal:
+    total = Decimal("0")
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        total += _money(entry.get("credit")) - _money(entry.get("debit"))
+    return _money(total)
+
+
 async def _payroll_overview_nominal_transaction_context(
     *,
     fetcher,
@@ -2893,8 +2979,11 @@ async def _payroll_overview_nominal_transaction_context(
         "pensionAccounts": pension_accounts,
         "taxAccountTransactions": [],
         "pensionAccountTransactions": [],
+        "taxPayrollExpenseNet": 0.0,
+        "pensionPayrollExpenseNet": 0.0,
     }
     async def _collect(account_rows: list[dict], bucket: list[dict], label_prefix: str) -> None:
+        bucket_total = Decimal("0")
         for account in account_rows[:4]:
             if not isinstance(account, dict):
                 continue
@@ -2911,6 +3000,14 @@ async def _payroll_overview_nominal_transaction_context(
                 },
             )
             rows = _payroll_overview_account_transaction_lines(payload)
+            transaction_entries = _payroll_overview_account_transaction_entries(payload)
+            payroll_expense_entries = [
+                row
+                for row in transaction_entries
+                if "payrollexpense" in _payroll_overview_normalise_key(row.get("source"))
+            ]
+            payroll_expense_net = _payroll_overview_account_transaction_net(payroll_expense_entries)
+            bucket_total += payroll_expense_net
             bucket.append(
                 {
                     "accountId": account_id,
@@ -2918,10 +3015,25 @@ async def _payroll_overview_nominal_transaction_context(
                     "name": _payroll_overview_text(account.get("name")),
                     "lineCount": len(rows),
                     "lines": rows[:80],
+                    "payrollExpenseLineCount": len(payroll_expense_entries),
+                    "payrollExpenseNet": float(payroll_expense_net),
+                    "payrollExpenseLines": [
+                        {
+                            "date": _payroll_overview_text(line.get("date")),
+                            "source": _payroll_overview_text(line.get("source")),
+                            "description": _payroll_overview_text(line.get("description")),
+                            "reference": _payroll_overview_text(line.get("reference")),
+                            "debit": float(_money(line.get("debit"))),
+                            "credit": float(_money(line.get("credit"))),
+                            "net": float(_money(line.get("net"))),
+                        }
+                        for line in payroll_expense_entries[:40]
+                    ],
                 }
             )
-    await _collect(tax_accounts, context["taxAccountTransactions"], "Tax")
-    await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension")
+        return bucket_total
+    context["taxPayrollExpenseNet"] = float(await _collect(tax_accounts, context["taxAccountTransactions"], "Tax"))
+    context["pensionPayrollExpenseNet"] = float(await _collect(pension_accounts, context["pensionAccountTransactions"], "Pension"))
     return context
 
 
@@ -3304,6 +3416,35 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         "pensionDelta": float(trial_balance_delta_pension_payable),
         "diagnostics": trial_balance_delta_diagnostics if isinstance(trial_balance_delta_diagnostics, dict) else {},
     }
+    nominal_tx_p32_tax = Decimal("0")
+    nominal_tx_pension_payable = Decimal("0")
+    nominal_period_start = (
+        _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
+        or _parse_any_date((reference_payrun or {}).get("paymentDate"))
+        or trial_balance_previous_date + timedelta(days=1)
+    )
+    nominal_period_end = (
+        _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
+        or _parse_any_date((reference_payrun or {}).get("paymentDate"))
+        or trial_balance_report_date
+    )
+    if isinstance(nominal_period_start, date) and isinstance(nominal_period_end, date):
+        try:
+            nominal_transaction_context = await _payroll_overview_nominal_transaction_context(
+                fetcher=_fetch,
+                accounts=accounts,
+                period_start=nominal_period_start,
+                period_end=nominal_period_end,
+            )
+            nominal_tx_p32_tax = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("taxPayrollExpenseNet")))
+            nominal_tx_pension_payable = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("pensionPayrollExpenseNet")))
+        except Exception as exc:
+            nominal_transaction_context = {
+                "engine": "nominal_account_transactions",
+                "error": _sync_error_message(exc),
+                "periodStart": nominal_period_start.isoformat(),
+                "periodEnd": nominal_period_end.isoformat(),
+            }
     openai_p32_tax = Decimal("0")
     openai_pension_payable = Decimal("0")
     openai_payable_diagnostics: dict = {"engine": "disabled", "reason": "exact_payroll_values_only"}
@@ -3421,13 +3562,17 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     )
     pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
     selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
-    if trial_balance_delta_p32_tax > Decimal("0"):
+    if nominal_tx_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(nominal_tx_p32_tax)
+    elif trial_balance_delta_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
     elif payroll_api_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(payroll_api_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
-    if trial_balance_delta_pension_payable > Decimal("0"):
+    if nominal_tx_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(nominal_tx_pension_payable)
+    elif trial_balance_delta_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(trial_balance_delta_pension_payable)
     elif payroll_api_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(payroll_api_pension_payable)
@@ -3455,14 +3600,18 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             )
     estimated_balances_source = {
         "p32Tax": (
-            "nominal_trial_balance_delta"
+            "nominal_account_transactions"
+            if nominal_tx_p32_tax > Decimal("0")
+            else "nominal_trial_balance_delta"
             if trial_balance_delta_p32_tax > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
-            "nominal_trial_balance_delta"
+            "nominal_account_transactions"
+            if nominal_tx_pension_payable > Decimal("0")
+            else "nominal_trial_balance_delta"
             if trial_balance_delta_pension_payable > Decimal("0")
             else "payroll_api_payslips"
             if payroll_api_pension_payable > Decimal("0")

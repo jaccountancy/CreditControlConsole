@@ -124876,7 +124876,7 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta"];
+                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions"];
                 const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(p32FigureSource)
                     && reliablePayrollFigureSources.includes(pensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
@@ -125071,7 +125071,35 @@
                                     `Source: ${source}`,
                                     `Selected pay run: ${String(selectedPayRunLabel || "Unavailable")}`,
                                 ];
-                                if (source === "nominal_trial_balance_delta") {
+                                if (source === "nominal_account_transactions") {
+                                    const taxRows = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
+                                        ? nominalTransactionDiagnostics.taxAccountTransactions
+                                        : [];
+                                    const pensionRows = Array.isArray(nominalTransactionDiagnostics?.pensionAccountTransactions)
+                                        ? nominalTransactionDiagnostics.pensionAccountTransactions
+                                        : [];
+                                    const accountRows = isP32 ? taxRows : pensionRows;
+                                    const accountCodes = accountRows
+                                        .map((row) => String(row?.code || "").trim())
+                                        .filter(Boolean);
+                                    if (accountCodes.length) {
+                                        items.push(`Nominal codes matched: ${accountCodes.slice(0, 12).join(", ")}`);
+                                    }
+                                    items.push(
+                                        `Payroll expense net used: ${formatCurrency(Number(isP32 ? nominalTransactionDiagnostics?.taxPayrollExpenseNet : nominalTransactionDiagnostics?.pensionPayrollExpenseNet || 0))}`
+                                    );
+                                    const lineRows = accountRows.flatMap((row) => Array.isArray(row?.payrollExpenseLines) ? row.payrollExpenseLines : []);
+                                    if (lineRows.length) {
+                                        items.push(`Payroll expense lines: ${lineRows.length.toLocaleString("en-GB")} row(s)`);
+                                        for (const line of lineRows.slice(0, 8)) {
+                                            const date = String(line?.date || "").trim() || "date?";
+                                            const description = String(line?.description || line?.reference || "Line").trim();
+                                            const debit = Number(line?.debit || 0);
+                                            const credit = Number(line?.credit || 0);
+                                            items.push(`${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
+                                        }
+                                    }
+                                } else if (source === "nominal_trial_balance_delta") {
                                     const codeDelta = trialBalanceDeltaDiagnostics?.codeDelta && typeof trialBalanceDeltaDiagnostics.codeDelta === "object"
                                         ? trialBalanceDeltaDiagnostics.codeDelta
                                         : {};
