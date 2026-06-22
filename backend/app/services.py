@@ -1377,8 +1377,12 @@ def _payroll_overview_numeric_decimal(value) -> Decimal:
     return Decimal("0")
 
 
+def _payroll_overview_normalise_key(value) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").strip().lower())
+
+
 def _payroll_overview_find_numeric_value(payload, candidate_keys: list[str]) -> Decimal:
-    wanted = {str(key or "").strip().lower() for key in candidate_keys if str(key or "").strip()}
+    wanted = {_payroll_overview_normalise_key(key) for key in candidate_keys if str(key or "").strip()}
     if not wanted:
         return Decimal("0")
     queue = [payload]
@@ -1395,7 +1399,7 @@ def _payroll_overview_find_numeric_value(payload, candidate_keys: list[str]) -> 
             continue
         visited.add(marker)
         for key, value in node.items():
-            normalised = str(key or "").strip().lower()
+            normalised = _payroll_overview_normalise_key(key)
             if normalised in wanted:
                 numeric = _payroll_overview_numeric_decimal(value)
                 if numeric != Decimal("0"):
@@ -1406,7 +1410,7 @@ def _payroll_overview_find_numeric_value(payload, candidate_keys: list[str]) -> 
 
 
 def _payroll_overview_sum_numeric_values(payload, candidate_keys: list[str]) -> Decimal:
-    wanted = {str(key or "").strip().lower() for key in candidate_keys if str(key or "").strip()}
+    wanted = {_payroll_overview_normalise_key(key) for key in candidate_keys if str(key or "").strip()}
     if not wanted:
         return Decimal("0")
     queue = [payload]
@@ -1424,12 +1428,49 @@ def _payroll_overview_sum_numeric_values(payload, candidate_keys: list[str]) -> 
             continue
         visited.add(marker)
         for key, value in node.items():
-            normalised = str(key or "").strip().lower()
+            normalised = _payroll_overview_normalise_key(key)
             if normalised in wanted:
                 total += abs(_payroll_overview_numeric_decimal(value))
             if isinstance(value, (dict, list)):
                 queue.append(value)
     return total
+
+
+def _payroll_overview_find_numeric_value_by_hints(
+    payload,
+    include_hints: list[str],
+    exclude_hints: list[str] | None = None,
+) -> Decimal:
+    include = [_payroll_overview_normalise_key(item) for item in include_hints if str(item or "").strip()]
+    exclude = {_payroll_overview_normalise_key(item) for item in (exclude_hints or []) if str(item or "").strip()}
+    if not include:
+        return Decimal("0")
+    queue = [payload]
+    visited: set[int] = set()
+    best = Decimal("0")
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        for key, value in node.items():
+            normalised = _payroll_overview_normalise_key(key)
+            if normalised:
+                has_include = any(token in normalised for token in include)
+                has_exclude = any(token and token in normalised for token in exclude)
+                if has_include and not has_exclude:
+                    numeric = abs(_payroll_overview_numeric_decimal(value))
+                    if numeric > best:
+                        best = numeric
+            if isinstance(value, (dict, list)):
+                queue.append(value)
+    return best
 
 
 def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
@@ -1443,6 +1484,22 @@ def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
             "PayeNiDue",
             "TaxPayable",
             "Tax",
+            "TaxDue",
+            "TotalTax",
+            "TotalTaxAmount",
+            "TotalPaye",
+            "TotalPAYE",
+            "TotalNIC",
+            "TotalPayeNic",
+            "PayeAndNic",
+            "PayeNicLiability",
+            "PayeLiability",
+            "PAYENIC",
+            "EmployeeTaxAmount",
+            "EmployerTaxAmount",
+            "NationalInsuranceAmount",
+            "EmployerNationalInsuranceAmount",
+            "EmployeeNationalInsuranceAmount",
         ],
     )
     if total > Decimal("0"):
@@ -1467,7 +1524,29 @@ def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
         ],
     )
     combined = paye_component + nic_component
-    return combined if combined > Decimal("0") else Decimal("0")
+    if combined > Decimal("0"):
+        return combined
+    return _payroll_overview_find_numeric_value_by_hints(
+        payrun,
+        include_hints=["p32", "paye", "nic", "nationalinsurance", "taxdue", "payenliability"],
+        exclude_hints=[
+            "taxcode",
+            "taxyear",
+            "identifier",
+            "id",
+            "number",
+            "rate",
+            "percentage",
+            "percent",
+            "days",
+            "hours",
+            "year",
+            "month",
+            "date",
+            "period",
+            "ytd",
+        ],
+    )
 
 
 def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
@@ -1483,11 +1562,14 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "PensionTotal",
             "TotalPension",
             "Super",
+            "EmployerPensionAmount",
+            "PensionDue",
+            "TotalEmployerPension",
         ],
     )
     if total > Decimal("0"):
         return total
-    return _payroll_overview_sum_numeric_values(
+    summed = _payroll_overview_sum_numeric_values(
         payrun,
         [
             "EmployerPension",
@@ -1499,6 +1581,25 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "PensionAmount",
             "PensionPayable",
             "Super",
+        ],
+    )
+    if summed > Decimal("0"):
+        return summed
+    return _payroll_overview_find_numeric_value_by_hints(
+        payrun,
+        include_hints=["pension", "employerpension", "pensionpayable", "workplacepension", "nest"],
+        exclude_hints=[
+            "scheme",
+            "name",
+            "id",
+            "identifier",
+            "number",
+            "rate",
+            "percentage",
+            "percent",
+            "tax",
+            "code",
+            "ytd",
         ],
     )
 
@@ -1685,6 +1786,29 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         for key in ("payRunPeriodStartDate", "payRunPeriodEndDate", "paymentDate", "updatedDateUtc"):
             item[key] = item[key].isoformat() if isinstance(item.get(key), date) else ""
 
+    details_fetch_attempted = 0
+    details_fetch_succeeded = 0
+
+    async def _apply_payrun_detail_estimates(target_row: dict) -> None:
+        nonlocal details_fetch_attempted, details_fetch_succeeded
+        payrun_id = _payroll_overview_text(target_row.get("payRunId"))
+        if not payrun_id:
+            return
+        details_fetch_attempted += 1
+        details_url = XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(payrun_id, safe=""))
+        payrun_details_payload = await xero_api_get(connection_row, details_url)
+        detail_rows = _payroll_headcount_rows(payrun_details_payload, "PayRuns", "PayRun")
+        detail_payrun = detail_rows[0] if detail_rows else {}
+        if not detail_payrun:
+            return
+        details_fetch_succeeded += 1
+        detailed_p32_estimate = _payroll_overview_estimate_p32_tax(detail_payrun)
+        detailed_pension_estimate = _payroll_overview_estimate_pension(detail_payrun)
+        if detailed_p32_estimate > Decimal("0"):
+            target_row["estimatedP32Tax"] = float(detailed_p32_estimate)
+        if detailed_pension_estimate > Decimal("0"):
+            target_row["estimatedPensionPayable"] = float(detailed_pension_estimate)
+
     draft_statuses = {"DRAFT", "POSTED"}
     draft_payruns = [row for row in payrun_rows if str(row.get("status") or "").upper() in draft_statuses]
     submitted_statuses = {"POSTED", "PAID", "SUBMITTED", "COMPLETED", "PROCESSED"}
@@ -1693,22 +1817,29 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         None,
     )
     reference_payrun = submitted_payrun or (payrun_rows[0] if payrun_rows else None)
-    reference_payrun_id = _payroll_overview_text(reference_payrun.get("payRunId")) if reference_payrun else ""
-    if reference_payrun and reference_payrun_id:
+    payrun_rows_by_id = {
+        _payroll_overview_text(item.get("payRunId")): item
+        for item in payrun_rows
+        if _payroll_overview_text(item.get("payRunId"))
+    }
+    detail_candidates = []
+    if reference_payrun:
+        detail_candidates.append(reference_payrun)
+    for item in payrun_rows:
+        if len(detail_candidates) >= 3:
+            break
+        if item in detail_candidates:
+            continue
+        if float(_payroll_overview_numeric_decimal(item.get("estimatedP32Tax"))) > 0 and float(_payroll_overview_numeric_decimal(item.get("estimatedPensionPayable"))) > 0:
+            continue
+        detail_candidates.append(item)
+    for candidate in detail_candidates:
         try:
-            details_url = XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(reference_payrun_id, safe=""))
-            payrun_details_payload = await xero_api_get(connection_row, details_url)
-            detail_rows = _payroll_headcount_rows(payrun_details_payload, "PayRuns", "PayRun")
-            detail_payrun = detail_rows[0] if detail_rows else {}
-            if detail_payrun:
-                detailed_p32_estimate = _payroll_overview_estimate_p32_tax(detail_payrun)
-                detailed_pension_estimate = _payroll_overview_estimate_pension(detail_payrun)
-                if detailed_p32_estimate > Decimal("0"):
-                    reference_payrun["estimatedP32Tax"] = float(detailed_p32_estimate)
-                if detailed_pension_estimate > Decimal("0"):
-                    reference_payrun["estimatedPensionPayable"] = float(detailed_pension_estimate)
+            await _apply_payrun_detail_estimates(candidate)
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
+
+    reference_payrun_id = _payroll_overview_text(reference_payrun.get("payRunId")) if reference_payrun else ""
 
     today = utcnow().date()
     next_due = None
@@ -1782,6 +1913,31 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         estimated_p32_tax_balance = outstanding_tax_balance
     if estimated_pension_payable_balance <= 0:
         estimated_pension_payable_balance = pension_payable_balance
+    estimated_balances_source = {
+        "p32Tax": (
+            "reference_payrun"
+            if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedP32Tax"))) > 0
+            else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
+        ) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
+        "pensionPayable": (
+            "reference_payrun"
+            if float(_payroll_overview_numeric_decimal(reference_payrun.get("estimatedPensionPayable"))) > 0
+            else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
+        ) if reference_payrun else ("account_balance_fallback" if pension_payable_balance > 0 else "none"),
+    }
+    if details_fetch_attempted:
+        logger.info(
+            "payroll_overview_detail_fetch user_id=%s tenant_id=%s attempted=%s succeeded=%s reference_payrun_id=%s p32_source=%s pension_source=%s p32_value=%.2f pension_value=%.2f",
+            user.get("id"),
+            clean_tenant_id,
+            details_fetch_attempted,
+            details_fetch_succeeded,
+            reference_payrun_id,
+            estimated_balances_source["p32Tax"],
+            estimated_balances_source["pensionPayable"],
+            estimated_p32_tax_balance,
+            estimated_pension_payable_balance,
+        )
 
     return {
         "tenantId": clean_tenant_id,
@@ -1797,6 +1953,16 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "outstandingTaxBalance": outstanding_tax_balance,
             "estimatedP32TaxBalance": estimated_p32_tax_balance,
             "pensionPayableBalance": estimated_pension_payable_balance,
+            "figureSources": estimated_balances_source,
+            "payrunDetailDiagnostics": {
+                "attempted": details_fetch_attempted,
+                "succeeded": details_fetch_succeeded,
+                "referencePayRunId": reference_payrun_id,
+                "payRunIds": [
+                    pay_run_id
+                    for pay_run_id in list(payrun_rows_by_id.keys())[:12]
+                ],
+            },
         },
         "payRuns": payrun_rows[:12],
         "draftPayRuns": draft_payruns[:6],

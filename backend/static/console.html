@@ -123894,7 +123894,7 @@
                 const payrollDetails = serviceDetails?.payroll || {};
                 const resolvedXero = bmTaskResolvedXeroMatch(resolvedTask);
                 const tenantId = String(resolvedXero?.tenantId || "").trim();
-                const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId) : null;
+                const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
                 const summary = overview?.summary || {};
                 const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
                 const selectedPayRunMeta = payrollSelectReferencePayRun(payRuns);
@@ -123929,6 +123929,10 @@
                     summary?.pensionPayableBalance,
                     0
                 );
+                const figureSources = summary?.figureSources && typeof summary.figureSources === "object" ? summary.figureSources : {};
+                const payrunDiagnostics = summary?.payrunDetailDiagnostics && typeof summary.payrunDetailDiagnostics === "object"
+                    ? summary.payrunDetailDiagnostics
+                    : {};
                 const referenceLookup = payrollResolveReferencesFromRegister(registerRow, payrollDetails);
                 let payeReference = String(referenceLookup.payeReference || "").trim();
                 let accountsOfficeReference = String(referenceLookup.accountsOfficeReference || "").trim();
@@ -123944,6 +123948,32 @@
                     pensionPayableAmount,
                     hmrcDueDate,
                 });
+                if (tenantId && initialP32Tax <= 0) {
+                    pushSystemActivity({
+                        type: "error",
+                        label: "Payroll extraction",
+                        message: "P32 / PAYE-NIC extraction returned £0 from Xero payroll overview.",
+                        detail: [
+                            `Tenant: ${tenantId}`,
+                            `Source: ${String(figureSources?.p32Tax || "none")}`,
+                            `Selected pay run: ${selectedPayRunLabel || "Unavailable"}`,
+                            `Detail fetch: ${Number(payrunDiagnostics?.succeeded || 0)}/${Number(payrunDiagnostics?.attempted || 0)} succeeded`,
+                        ].join(" | "),
+                    });
+                }
+                if (tenantId && initialPension <= 0) {
+                    pushSystemActivity({
+                        type: "warning",
+                        label: "Payroll extraction",
+                        message: "Pension payable extraction returned £0.",
+                        detail: [
+                            `Tenant: ${tenantId}`,
+                            `Source: ${String(figureSources?.pensionPayable || "none")}`,
+                            `Selected pay run: ${selectedPayRunLabel || "Unavailable"}`,
+                            `Detail fetch: ${Number(payrunDiagnostics?.succeeded || 0)}/${Number(payrunDiagnostics?.attempted || 0)} succeeded`,
+                        ].join(" | "),
+                    });
+                }
 
                 const modalResult = await showOperationReviewDialog({
                     eyebrow: "Payroll task",
@@ -123974,6 +124004,16 @@
                                         <li data-step-index="4">Drafting payroll posted email</li>
                                     </ul>
                                     <p class="task-detail-modal-hint">Fields are populated one-by-one so the review path is clear.</p>
+                                </article>
+                                <article class="task-detail-modal-card">
+                                    <h5>Xero extraction trace</h5>
+                                    <p class="task-detail-modal-hint">
+                                        P32 source: ${escapeHTML(String(figureSources?.p32Tax || "none"))}
+                                        · Pension source: ${escapeHTML(String(figureSources?.pensionPayable || "none"))}
+                                    </p>
+                                    <p class="task-detail-modal-hint">
+                                        Pay run detail fetch: ${escapeHTML(String(Number(payrunDiagnostics?.succeeded || 0)))} / ${escapeHTML(String(Number(payrunDiagnostics?.attempted || 0)))} succeeded
+                                    </p>
                                 </article>
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
@@ -124058,14 +124098,16 @@
                                 const officeValue = String(officeInput?.value || "").trim();
                                 const reasons = [];
                                 if (!(p32Value > 0)) reasons.push("P32 / PAYE-NIC must be greater than £0");
-                                if (!(pensionValue > 0)) reasons.push("Pension payable must be greater than £0");
                                 if (!payeValue) reasons.push("Employer PAYE reference is required");
                                 if (!officeValue) reasons.push("Accounts Office reference is required");
                                 if (confirmButton) confirmButton.disabled = reasons.length > 0;
                                 if (validationHint) {
+                                    const optionalPensionHint = pensionValue > 0
+                                        ? "Pension payable populated."
+                                        : "Pension payable is £0 (allowed if not applicable for this run).";
                                     validationHint.textContent = reasons.length
-                                        ? `Cannot continue: ${reasons.join(" · ")}.`
-                                        : "Ready to continue.";
+                                        ? `Cannot continue: ${reasons.join(" · ")}. ${optionalPensionHint}`
+                                        : `Ready to continue. ${optionalPensionHint}`;
                                 }
                             };
                             [p32Input, pensionInput, paymentInput, hmrcDueInput, payeInput, officeInput].forEach((input) => {
@@ -126410,6 +126452,12 @@
                         return data;
                     })
                     .catch((error) => {
+                        pushSystemActivity({
+                            type: "error",
+                            label: "Payroll overview",
+                            message: "Unable to load payroll overview from Xero.",
+                            detail: `Tenant: ${cleanTenantId} | Error: ${String(error?.message || "Unknown error")}`,
+                        });
                         clientPagePayrollOverviewCache.set(cleanTenantId, {
                             loading: false,
                             data: existing?.data || null,
