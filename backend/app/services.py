@@ -1404,6 +1404,33 @@ def _payroll_overview_find_numeric_value(payload, candidate_keys: list[str]) -> 
     return Decimal("0")
 
 
+def _payroll_overview_sum_numeric_values(payload, candidate_keys: list[str]) -> Decimal:
+    wanted = {str(key or "").strip().lower() for key in candidate_keys if str(key or "").strip()}
+    if not wanted:
+        return Decimal("0")
+    queue = [payload]
+    visited: set[int] = set()
+    total = Decimal("0")
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        for key, value in node.items():
+            normalised = str(key or "").strip().lower()
+            if normalised in wanted:
+                total += abs(_payroll_overview_numeric_decimal(value))
+            if isinstance(value, (dict, list)):
+                queue.append(value)
+    return total
+
+
 def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
     total = _payroll_overview_find_numeric_value(
         payrun,
@@ -1443,15 +1470,33 @@ def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
 
 
 def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
-    return _payroll_overview_find_numeric_value(
+    total = _payroll_overview_find_numeric_value(
         payrun,
         [
             "PensionPayable",
             "PensionAmount",
-            "EmployerPension",
-            "EmployerPensionContribution",
-            "PensionContribution",
+            "EmployerPensionContributions",
+            "EmployerPensionContributionTotal",
+            "TotalEmployerPensionContribution",
+            "PensionContributions",
             "PensionTotal",
+            "TotalPension",
+            "Super",
+        ],
+    )
+    if total > Decimal("0"):
+        return total
+    return _payroll_overview_sum_numeric_values(
+        payrun,
+        [
+            "EmployerPension",
+            "EmployerPensionContributions",
+            "EmployerPensionContribution",
+            "EmployerPensionContributionAmount",
+            "PensionContribution",
+            "PensionContributions",
+            "PensionAmount",
+            "PensionPayable",
             "Super",
         ],
     )

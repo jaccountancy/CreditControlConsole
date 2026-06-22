@@ -174,6 +174,42 @@ class ServicesRegressionTests(unittest.TestCase):
         submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-1"), {})
         self.assertEqual(submitted.get("estimatedP32Tax"), 1250.0)
 
+    def test_payroll_overview_sums_pension_from_submitted_payrun_payslips(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None):
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "PayRuns": [
+                        {"PayRunID": "submitted-2", "PayRunStatus": "POSTED", "PaymentDate": "2026-06-22"},
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {"Accounts": []}
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-2"):
+                return {
+                    "PayRuns": [
+                        {
+                            "PayRunID": "submitted-2",
+                            "Payslips": [
+                                {"EmployerPensionContribution": "120.50"},
+                                {"EmployerPensionContribution": "79.50"},
+                            ],
+                        }
+                    ]
+                }
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 200.0)
+        submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-2"), {})
+        self.assertEqual(submitted.get("estimatedPensionPayable"), 200.0)
+
 
 if __name__ == "__main__":
     unittest.main()
