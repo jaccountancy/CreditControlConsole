@@ -1340,22 +1340,24 @@ def _payroll_headcount_effective_count(active_employee_count: int, latest_payrun
 def _payroll_headcount_rows(payload: dict, plural_key: str, singular_key: str) -> list[dict]:
     if not isinstance(payload, dict):
         return []
+    plural_camel = f"{plural_key[:1].lower()}{plural_key[1:]}" if plural_key else ""
+    singular_camel = f"{singular_key[:1].lower()}{singular_key[1:]}" if singular_key else ""
+    candidate_keys = [
+        plural_key,
+        plural_key.lower(),
+        plural_camel,
+        singular_key,
+        singular_key.lower(),
+        singular_camel,
+    ]
     candidate = (
-        payload.get(plural_key)
-        or payload.get(plural_key.lower())
-        or payload.get(singular_key)
-        or payload.get(singular_key.lower())
+        next((payload.get(key) for key in candidate_keys if key and payload.get(key) not in (None, "")), None)
         or []
     )
     if isinstance(candidate, list):
         return [row for row in candidate if isinstance(row, dict)]
     if isinstance(candidate, dict):
-        for nested in (
-            candidate.get(plural_key),
-            candidate.get(plural_key.lower()),
-            candidate.get(singular_key),
-            candidate.get(singular_key.lower()),
-        ):
+        for nested in (candidate.get(key) for key in candidate_keys if key):
             if isinstance(nested, list):
                 return [row for row in nested if isinstance(row, dict)]
             if isinstance(nested, dict) and any(
@@ -1698,8 +1700,8 @@ def _payroll_overview_payrun_count(payrun: dict) -> int:
 
 
 def _payroll_overview_account_is_tax_liability(account: dict) -> bool:
-    code = _payroll_overview_text(account.get("Code")).lower()
-    name = _payroll_overview_text(account.get("Name")).lower()
+    code = _payroll_overview_text(account.get("Code") or account.get("code")).lower()
+    name = _payroll_overview_text(account.get("Name") or account.get("name")).lower()
     combined = f"{code} {name}"
     keywords = (
         "paye payable",
@@ -1712,16 +1714,16 @@ def _payroll_overview_account_is_tax_liability(account: dict) -> bool:
     )
     if any(keyword in combined for keyword in keywords):
         return True
-    account_type = _payroll_overview_text(account.get("Type")).upper()
-    account_class = _payroll_overview_text(account.get("Class")).upper()
+    account_type = _payroll_overview_text(account.get("Type") or account.get("type")).upper()
+    account_class = _payroll_overview_text(account.get("Class") or account.get("class")).upper()
     if account_type in {"CURRLIAB", "LIABILITY"} and account_class in {"LIABILITY", "EQUITY", ""}:
         return "payroll" in combined or "hmrc" in combined or "tax" in combined
     return False
 
 
 def _payroll_overview_account_is_pension_liability(account: dict) -> bool:
-    code = _payroll_overview_text(account.get("Code")).lower()
-    name = _payroll_overview_text(account.get("Name")).lower()
+    code = _payroll_overview_text(account.get("Code") or account.get("code")).lower()
+    name = _payroll_overview_text(account.get("Name") or account.get("name")).lower()
     combined = f"{code} {name}"
     keywords = (
         "pension payable",
@@ -1733,14 +1735,25 @@ def _payroll_overview_account_is_pension_liability(account: dict) -> bool:
     )
     if any(keyword in combined for keyword in keywords):
         return True
-    account_type = _payroll_overview_text(account.get("Type")).upper()
+    account_type = _payroll_overview_text(account.get("Type") or account.get("type")).upper()
     if account_type not in {"CURRLIAB", "LIABILITY"}:
         return False
     return "pension" in combined and ("payable" in combined or "creditor" in combined or "liability" in combined)
 
 
 def _payroll_overview_account_balance(account: dict) -> Decimal:
-    for key in ("CurrentBalance", "Balance", "YTDBalance", "CurrentNetBalance"):
+    for key in (
+        "CurrentBalance",
+        "currentBalance",
+        "Balance",
+        "balance",
+        "YTDBalance",
+        "ytdBalance",
+        "CurrentNetBalance",
+        "currentNetBalance",
+        "ClosingBalance",
+        "closingBalance",
+    ):
         raw = account.get(key)
         if raw in (None, ""):
             continue
@@ -1804,11 +1817,22 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
 
     employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
     payruns = _payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
-    accounts = [
-        account
-        for account in (accounts_payload.get("Accounts") if isinstance(accounts_payload.get("Accounts"), list) else [])
-        if isinstance(account, dict)
-    ]
+    accounts_candidate = (
+        accounts_payload.get("Accounts")
+        or accounts_payload.get("accounts")
+        or accounts_payload.get("Account")
+        or accounts_payload.get("account")
+        or []
+    )
+    if isinstance(accounts_candidate, dict):
+        accounts_candidate = (
+            accounts_candidate.get("Accounts")
+            or accounts_candidate.get("accounts")
+            or accounts_candidate.get("Account")
+            or accounts_candidate.get("account")
+            or []
+        )
+    accounts = [account for account in accounts_candidate if isinstance(account, dict)] if isinstance(accounts_candidate, list) else []
 
     active_employees = [row for row in employees if _payroll_headcount_employee_is_active(row)]
     employee_rows = sorted(

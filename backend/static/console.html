@@ -123676,10 +123676,12 @@
             }
 
             function payrollSelectedPayRunLabel(payRun = {}) {
+                const payRunId = String(payRun?.payRunId || "").trim();
                 const periodStart = String(payRun?.payRunPeriodStartDate || "").trim();
                 const periodEnd = String(payRun?.payRunPeriodEndDate || "").trim();
                 const paymentDate = String(payRun?.paymentDate || "").trim();
                 const status = String(payRun?.status || "").trim();
+                if (!payRunId && !periodStart && !periodEnd && !paymentDate && !status) return "";
                 const periodLabel = (periodStart && periodEnd)
                     ? `${formatDate(periodStart)} to ${formatDate(periodEnd)}`
                     : (periodStart ? `From ${formatDate(periodStart)}` : (periodEnd ? `To ${formatDate(periodEnd)}` : "Period not set"));

@@ -256,6 +256,92 @@ class ServicesRegressionTests(unittest.TestCase):
         self.assertEqual(submitted.get("status"), "POSTED")
         self.assertEqual(submitted.get("wages"), 3999.55)
 
+    def test_payroll_overview_supports_lower_camel_plural_payruns_key(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
+            if callable(on_response):
+                on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {
+                    "payRuns": [
+                        {
+                            "payRunId": "submitted-lc-plural-1",
+                            "payRunStatus": "POSTED",
+                            "paymentDate": "2026-06-22",
+                        },
+                    ]
+                }
+            if url == services.ACCOUNTS_URL:
+                return {"accounts": []}
+            if url == services.XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id="submitted-lc-plural-1"):
+                return {
+                    "payRuns": [
+                        {
+                            "payRunId": "submitted-lc-plural-1",
+                            "totals": {"payeAmount": "900.00", "nicAmount": "200.00"},
+                            "payslips": [
+                                {"employerPensionContribution": "60.00"},
+                                {"employerPensionContribution": "40.00"},
+                            ],
+                        }
+                    ]
+                }
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 1100.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 100.0)
+        submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-lc-plural-1"), {})
+        self.assertEqual(submitted.get("estimatedP32Tax"), 1100.0)
+        self.assertEqual(submitted.get("estimatedPensionPayable"), 100.0)
+
+    def test_payroll_overview_supports_lower_camel_account_balance_keys(self):
+        async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
+            if callable(on_response):
+                on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
+            if url == services.XERO_PAYROLL_EMPLOYEES_URL:
+                return {"Employees": []}
+            if url == services.XERO_PAYROLL_PAYRUNS_URL:
+                return {"PayRuns": []}
+            if url == services.ACCOUNTS_URL:
+                return {
+                    "accounts": [
+                        {
+                            "accountId": "tax-1",
+                            "code": "825",
+                            "name": "PAYE Payable",
+                            "type": "CURRLIAB",
+                            "class": "LIABILITY",
+                            "currentBalance": "1234.56",
+                        },
+                        {
+                            "accountId": "pen-1",
+                            "code": "826",
+                            "name": "Pension Payable",
+                            "type": "CURRLIAB",
+                            "class": "LIABILITY",
+                            "currentBalance": "210.10",
+                        },
+                    ]
+                }
+            raise AssertionError(f"Unexpected URL: {url} params={params}")
+
+        fixed_now = datetime(2026, 6, 22, 9, 0, tzinfo=timezone.utc)
+        with patch.object(services, "utcnow", return_value=fixed_now), \
+             patch.object(services, "xero_connection_for_user_tenant", return_value={"tenant_id": "tenant-1"}), \
+             patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
+            payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
+
+        self.assertEqual(payload["summary"]["outstandingTaxBalance"], 1234.56)
+        self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 1234.56)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 210.1)
+
 
 if __name__ == "__main__":
     unittest.main()
