@@ -619,7 +619,7 @@ class ServicesRegressionTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["estimatedP32TaxBalance"], 11676.94)
         self.assertEqual(payload["summary"]["pensionPayableBalance"], 1198.1)
 
-    def test_payroll_overview_stops_repeated_payslip_calls_after_permission_error(self):
+    def test_payroll_overview_does_not_call_payslip_detail_fallback(self):
         payslip_calls = {"count": 0}
 
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
@@ -657,7 +657,7 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
             asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payslip_calls["count"], 1)
+        self.assertEqual(payslip_calls["count"], 0)
 
     def test_payroll_overview_sums_pension_from_submitted_payrun_payslips(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
@@ -916,7 +916,7 @@ class ServicesRegressionTests(unittest.TestCase):
         submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-super-1"), {})
         self.assertEqual(submitted.get("estimatedPensionPayable"), 140.0)
 
-    def test_payroll_overview_falls_back_to_payslip_detail_for_pension(self):
+    def test_payroll_overview_does_not_fall_back_to_payslip_detail_for_pension(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
             if callable(on_response):
                 on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
@@ -958,11 +958,11 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 150.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
         submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-ps-1"), {})
-        self.assertEqual(submitted.get("estimatedPensionPayable"), 150.0)
+        self.assertEqual(submitted.get("estimatedPensionPayable"), 0.0)
 
-    def test_payroll_overview_sums_employee_and_employer_pension_on_payslips(self):
+    def test_payroll_overview_does_not_sum_employee_and_employer_from_payslip_detail_calls(self):
         async def _fake_xero_api_get(_connection_row, url, params=None, on_response=None):
             if callable(on_response):
                 on_response({"status_code": 200, "elapsed_ms": 5, "rate_limit_headers": {}})
@@ -1009,9 +1009,9 @@ class ServicesRegressionTests(unittest.TestCase):
              patch.object(services, "xero_api_get", side_effect=_fake_xero_api_get):
             payload = asyncio.run(services.payroll_tenant_overview_payload({"id": "user-1"}, "tenant-1"))
 
-        self.assertEqual(payload["summary"]["pensionPayableBalance"], 145.0)
+        self.assertEqual(payload["summary"]["pensionPayableBalance"], 0.0)
         submitted = next((row for row in payload["payRuns"] if row.get("payRunId") == "submitted-ps-2"), {})
-        self.assertEqual(submitted.get("estimatedPensionPayable"), 145.0)
+        self.assertEqual(submitted.get("estimatedPensionPayable"), 0.0)
 
 
 if __name__ == "__main__":

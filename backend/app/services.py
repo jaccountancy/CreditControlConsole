@@ -2165,6 +2165,10 @@ async def _payroll_overview_extract_posted_journal_payables(
     pension_liability_account_ids: set[str] = set()
     tax_liability_account_codes: set[str] = set()
     pension_liability_account_codes: set[str] = set()
+    explicit_paye_payable_account_ids: set[str] = set()
+    explicit_pension_payable_account_ids: set[str] = set()
+    explicit_paye_payable_account_codes: set[str] = set()
+    explicit_pension_payable_account_codes: set[str] = set()
     for account in accounts or []:
         if not isinstance(account, dict):
             continue
@@ -2183,6 +2187,15 @@ async def _payroll_overview_extract_posted_journal_payables(
             account_by_code[_payroll_overview_normalise_key(account_code)] = account
             canonical_code = _canonical_account_code(account_code)
             if canonical_code:
+                account_name_norm = _payroll_overview_normalise_key(account.get("Name") or account.get("name"))
+                if "payepayable" in account_name_norm or "payenicpayable" in account_name_norm:
+                    explicit_paye_payable_account_codes.add(canonical_code)
+                    if account_id_key:
+                        explicit_paye_payable_account_ids.add(account_id_key)
+                if "pensionpayable" in account_name_norm or "pensionspayable" in account_name_norm:
+                    explicit_pension_payable_account_codes.add(canonical_code)
+                    if account_id_key:
+                        explicit_pension_payable_account_ids.add(account_id_key)
                 if _payroll_overview_account_is_tax_liability(account):
                     tax_liability_account_codes.add(canonical_code)
                 if _payroll_overview_account_is_pension_liability(account):
@@ -2190,6 +2203,9 @@ async def _payroll_overview_extract_posted_journal_payables(
         account_name = _payroll_overview_text(account.get("Name") or account.get("name"))
         if account_name:
             account_by_name[_payroll_overview_normalise_key(account_name)] = account
+    diagnostics["nominalCodeSelectionEngine"] = "rules"
+    diagnostics["payePayableNominalCodes"] = sorted(explicit_paye_payable_account_codes) if explicit_paye_payable_account_codes else sorted(tax_liability_account_codes)
+    diagnostics["pensionPayableNominalCodes"] = sorted(explicit_pension_payable_account_codes) if explicit_pension_payable_account_codes else sorted(pension_liability_account_codes)
 
     def _resolve_line_account(line: dict) -> dict:
         account_id = _payroll_overview_text(
@@ -2325,16 +2341,26 @@ async def _payroll_overview_extract_posted_journal_payables(
             )
             if liability_amount == Decimal("0"):
                 continue
-            is_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
-                bool(line_account_id_key) and line_account_id_key in tax_liability_account_ids
-            ) or (
-                bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
-            )
-            is_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
-                bool(line_account_id_key) and line_account_id_key in pension_liability_account_ids
-            ) or (
-                bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
-            )
+            if explicit_paye_payable_account_codes or explicit_pension_payable_account_codes:
+                is_tax_liability = (
+                    (bool(line_account_id_key) and line_account_id_key in explicit_paye_payable_account_ids)
+                    or (bool(canonical_line_code) and canonical_line_code in explicit_paye_payable_account_codes)
+                )
+                is_pension_liability = (
+                    (bool(line_account_id_key) and line_account_id_key in explicit_pension_payable_account_ids)
+                    or (bool(canonical_line_code) and canonical_line_code in explicit_pension_payable_account_codes)
+                )
+            else:
+                is_tax_liability = _payroll_overview_journal_line_is_tax_liability(line, account) or (
+                    bool(line_account_id_key) and line_account_id_key in tax_liability_account_ids
+                ) or (
+                    bool(canonical_line_code) and canonical_line_code in tax_liability_account_codes
+                )
+                is_pension_liability = _payroll_overview_journal_line_is_pension_liability(line, account) or (
+                    bool(line_account_id_key) and line_account_id_key in pension_liability_account_ids
+                ) or (
+                    bool(canonical_line_code) and canonical_line_code in pension_liability_account_codes
+                )
             if is_tax_liability:
                 p32_credit_total += liability_amount
                 if liability_amount > p32_peak_credit:
@@ -2410,71 +2436,7 @@ async def _payroll_overview_extract_posted_journal_payables(
     diagnostics["journalTaxPeakLine"] = float(p32_peak_credit)
     diagnostics["journalPensionPeakLine"] = float(pension_peak_credit)
 
-    settings = get_settings()
-    if not str(settings.openai_api_key or "").strip() or not journal_line_rows:
-        diagnostics["engine"] = "rules"
-        return deterministic_paye, deterministic_pension, diagnostics
-
-    period_hint = ""
-    if reference_period_start and reference_period_end:
-        period_hint = f"{reference_period_start.isoformat()} to {reference_period_end.isoformat()}"
-    elif reference_period_end:
-        period_hint = reference_period_end.isoformat()
-
-    request_body = {
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "You are extracting UK payroll liability totals from a single posted payroll journal.\n"
-                            "Return PAYE payable and pension payable amounts for the payroll period using journal lines.\n"
-                            "Use credit-side liabilities only; ignore wages/salary expense lines and balance-sheet lines unrelated to payroll liabilities.\n"
-                            "PAYE payable should include PAYE/NIC/HMRC payroll liability lines.\n"
-                            "Pension payable should include pension payable/workplace pension/NEST liability lines.\n"
-                            f"Reference payroll period: {period_hint or 'unknown'}\n"
-                            f"Journal date: {diagnostics.get('selectedJournalDate') or 'unknown'}\n"
-                            f"Journal reference: {diagnostics.get('selectedJournalReference') or 'unknown'}\n"
-                            f"Journal lines JSON:\n{json.dumps(journal_line_rows[:220], default=_json_default)}"
-                        ),
-                    }
-                ],
-            }
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "payroll_journal_liability_extraction",
-                "schema": PAYROLL_JOURNAL_FIGURES_AI_SCHEMA,
-                "strict": True,
-            }
-        },
-        "max_output_tokens": 1200,
-    }
-    try:
-        payload = await _post_openai_responses(
-            request_body,
-            "payroll journal liability extraction",
-            preferred_model=settings.openai_model,
-            timeout_seconds=PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS,
-            user_id=user_id,
-            feature="payroll-headcount",
-            page="payroll-headcount",
-        )
-        parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for payroll journal extraction.")
-        paye_ai = abs(_payroll_overview_numeric_decimal((parsed or {}).get("payePayable")))
-        pension_ai = abs(_payroll_overview_numeric_decimal((parsed or {}).get("pensionPayable")))
-        diagnostics["engine"] = "openai"
-        diagnostics["confidence"] = float(_payroll_overview_numeric_decimal((parsed or {}).get("confidence")))
-        diagnostics["notes"] = _payroll_overview_text((parsed or {}).get("notes"))
-        if paye_ai > Decimal("0") or pension_ai > Decimal("0"):
-            return paye_ai, pension_ai, diagnostics
-    except Exception as exc:
-        diagnostics["engine"] = "rules"
-        diagnostics["openAiError"] = _sync_error_message(exc)
-
+    diagnostics["engine"] = "rules"
     return deterministic_paye, deterministic_pension, diagnostics
 
 
@@ -2692,32 +2654,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         if detailed_pension_estimate > Decimal("0"):
             target_row["estimatedPensionPayable"] = float(detailed_pension_estimate)
             return
-        payslip_ids = _payroll_overview_payslip_ids(detail_payrun)
-        if not payslip_ids:
-            return
-        pension_from_payslips = Decimal("0")
-        payslip_permissions_blocked = False
-        for payslip_id in payslip_ids[:80]:
-            if payslip_permissions_blocked:
-                break
-            payslip_url = XERO_PAYROLL_PAYSLIP_DETAILS_URL.format(payslip_id=quote(payslip_id, safe=""))
-            try:
-                payslip_payload = await xero_api_get(connection_row, payslip_url)
-            except Exception as exc:
-                error_text = _sync_error_message(exc)
-                errors.append(f"Payslip {payslip_id}: {error_text}")
-                lowered = error_text.lower()
-                if "permissions need updating" in lowered or "reconnect xero" in lowered:
-                    payslip_permissions_blocked = True
-                continue
-            payslip_rows = _payroll_overview_payslip_rows(payslip_payload if isinstance(payslip_payload, dict) else {})
-            if payslip_rows:
-                pension_from_payslips += _payroll_overview_estimate_pension(payslip_rows[0])
-                continue
-            if isinstance(payslip_payload, dict):
-                pension_from_payslips += _payroll_overview_estimate_pension(payslip_payload)
-        if pension_from_payslips > Decimal("0"):
-            target_row["estimatedPensionPayable"] = float(pension_from_payslips)
+        # Payroll workflow now relies on posted journal and account liabilities.
+        # Do not call payslip-detail endpoints as a fallback.
+        return
 
     draft_statuses = {"DRAFT", "POSTED"}
     draft_payruns = [row for row in payrun_rows if str(row.get("status") or "").upper() in draft_statuses]
