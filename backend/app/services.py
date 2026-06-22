@@ -2056,18 +2056,18 @@ def _payroll_overview_journal_line_credit_amount(line: dict) -> Decimal:
     if not isinstance(line, dict):
         return Decimal("0")
     debit_amount = Decimal("0")
-    for key in ("Debit", "debit", "DebitAmount", "debitAmount"):
+    for key in ("Debit", "debit", "debit_amount", "DebitAmount", "debitAmount"):
         amount = _payroll_overview_numeric_decimal(line.get(key))
         if amount > Decimal("0"):
             debit_amount = amount
             break
-    for key in ("Credit", "credit", "CreditAmount", "creditAmount"):
+    for key in ("Credit", "credit", "credit_amount", "CreditAmount", "creditAmount"):
         amount = _payroll_overview_numeric_decimal(line.get(key))
         if amount > Decimal("0"):
             return amount
     if debit_amount > Decimal("0"):
         return Decimal("0")
-    for key in ("NetAmount", "netAmount", "LineAmount", "lineAmount", "Amount", "amount", "GrossAmount", "grossAmount"):
+    for key in ("NetAmount", "netAmount", "net_amount", "LineAmount", "lineAmount", "line_amount", "Amount", "amount", "GrossAmount", "grossAmount", "gross_amount"):
         amount = _payroll_overview_decimal(line.get(key))
         if amount < Decimal("0"):
             return abs(amount)
@@ -2078,18 +2078,18 @@ def _payroll_overview_journal_line_debit_amount(line: dict) -> Decimal:
     if not isinstance(line, dict):
         return Decimal("0")
     credit_amount = Decimal("0")
-    for key in ("Credit", "credit", "CreditAmount", "creditAmount"):
+    for key in ("Credit", "credit", "credit_amount", "CreditAmount", "creditAmount"):
         amount = _payroll_overview_numeric_decimal(line.get(key))
         if amount > Decimal("0"):
             credit_amount = amount
             break
-    for key in ("Debit", "debit", "DebitAmount", "debitAmount"):
+    for key in ("Debit", "debit", "debit_amount", "DebitAmount", "debitAmount"):
         amount = _payroll_overview_numeric_decimal(line.get(key))
         if amount > Decimal("0"):
             return amount
     if credit_amount > Decimal("0"):
         return Decimal("0")
-    for key in ("NetAmount", "netAmount", "LineAmount", "lineAmount", "Amount", "amount", "GrossAmount", "grossAmount"):
+    for key in ("NetAmount", "netAmount", "net_amount", "LineAmount", "lineAmount", "line_amount", "Amount", "amount", "GrossAmount", "grossAmount", "gross_amount"):
         amount = _payroll_overview_decimal(line.get(key))
         if amount > Decimal("0"):
             return amount
@@ -2185,22 +2185,39 @@ async def _payroll_overview_extract_posted_journal_payables(
             account_by_name[_payroll_overview_normalise_key(account_name)] = account
 
     def _resolve_line_account(line: dict) -> dict:
-        account_id = _payroll_overview_text(line.get("AccountID") or line.get("accountID") or line.get("accountId"))
+        account_id = _payroll_overview_text(
+            line.get("AccountID")
+            or line.get("accountID")
+            or line.get("accountId")
+            or line.get("account_id")
+        )
         if account_id and account_id in account_by_id:
             return account_by_id[account_id]
-        account_code = _payroll_overview_text(line.get("AccountCode") or line.get("accountCode") or line.get("Code") or line.get("code"))
+        account_code = _payroll_overview_text(
+            line.get("AccountCode")
+            or line.get("accountCode")
+            or line.get("account_code")
+            or line.get("Code")
+            or line.get("code")
+        )
         code_key = _payroll_overview_normalise_key(account_code)
         if code_key and code_key in account_by_code:
             return account_by_code[code_key]
-        account_name = _payroll_overview_text(line.get("AccountName") or line.get("accountName") or line.get("Name") or line.get("name"))
+        account_name = _payroll_overview_text(
+            line.get("AccountName")
+            or line.get("accountName")
+            or line.get("account_name")
+            or line.get("Name")
+            or line.get("name")
+        )
         name_key = _payroll_overview_normalise_key(account_name)
         if name_key and name_key in account_by_name:
             return account_by_name[name_key]
         return {
             "Code": account_code,
             "Name": account_name,
-            "Type": _payroll_overview_text(line.get("AccountType") or line.get("accountType")),
-            "Class": _payroll_overview_text(line.get("AccountClass") or line.get("accountClass")),
+            "Type": _payroll_overview_text(line.get("AccountType") or line.get("accountType") or line.get("account_type")),
+            "Class": _payroll_overview_text(line.get("AccountClass") or line.get("accountClass") or line.get("account_class")),
         }
 
     def _is_payroll_journal(journal: dict) -> bool:
@@ -2254,16 +2271,35 @@ async def _payroll_overview_extract_posted_journal_payables(
             debit_amount = _payroll_overview_journal_line_debit_amount(line)
             liability_amount = credit_amount - debit_amount
             account = _resolve_line_account(line)
-            account_code = _payroll_overview_text(account.get("Code") or line.get("AccountCode") or line.get("code"))
-            account_name = _payroll_overview_text(account.get("Name") or line.get("AccountName") or line.get("name"))
-            line_account_id = _payroll_overview_text(line.get("AccountID") or line.get("accountID") or line.get("accountId"))
+            account_code = _payroll_overview_text(
+                account.get("Code")
+                or line.get("AccountCode")
+                or line.get("accountCode")
+                or line.get("account_code")
+                or line.get("code")
+            )
+            account_name = _payroll_overview_text(
+                account.get("Name")
+                or line.get("AccountName")
+                or line.get("accountName")
+                or line.get("account_name")
+                or line.get("name")
+            )
+            line_account_id = _payroll_overview_text(
+                line.get("AccountID")
+                or line.get("accountID")
+                or line.get("accountId")
+                or line.get("account_id")
+            )
             canonical_line_code = _canonical_account_code(account_code)
-            description = _payroll_overview_text(line.get("Description") or line.get("description"))
+            description = _payroll_overview_text(line.get("Description") or line.get("description") or line.get("line_description"))
             net_amount = _payroll_overview_numeric_decimal(
                 line.get("NetAmount")
                 or line.get("netAmount")
+                or line.get("net_amount")
                 or line.get("LineAmount")
                 or line.get("lineAmount")
+                or line.get("line_amount")
                 or line.get("Amount")
                 or line.get("amount")
             )
