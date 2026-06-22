@@ -2498,6 +2498,39 @@ async def _payroll_overview_openai_liability_inference(
             }
         )
 
+    nominal_context = nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {}
+    tax_account_rows = nominal_context.get("taxAccountTransactions") if isinstance(nominal_context.get("taxAccountTransactions"), list) else []
+    pension_account_rows = nominal_context.get("pensionAccountTransactions") if isinstance(nominal_context.get("pensionAccountTransactions"), list) else []
+
+    def _flatten_all_lines(rows: list[dict]) -> list[dict]:
+        lines: list[dict] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            account_code = _payroll_overview_text(row.get("code"))
+            account_name = _payroll_overview_text(row.get("name"))
+            raw_lines = row.get("allTransactionLines") if isinstance(row.get("allTransactionLines"), list) else []
+            for line in raw_lines:
+                if not isinstance(line, dict):
+                    continue
+                lines.append(
+                    {
+                        "accountCode": account_code,
+                        "accountName": account_name,
+                        "date": _payroll_overview_text(line.get("date")),
+                        "source": _payroll_overview_text(line.get("source")),
+                        "description": _payroll_overview_text(line.get("description")),
+                        "reference": _payroll_overview_text(line.get("reference")),
+                        "debit": float(_money(line.get("debit"))),
+                        "credit": float(_money(line.get("credit"))),
+                        "net": float(_money(line.get("net"))),
+                    }
+                )
+        return lines
+
+    full_tax_lines = _flatten_all_lines(tax_account_rows)
+    full_pension_lines = _flatten_all_lines(pension_account_rows)
+
     ai_context = {
         "selectedPayrun": {
             "payRunId": _payroll_overview_text(reference.get("payRunId")),
@@ -2510,7 +2543,13 @@ async def _payroll_overview_openai_liability_inference(
         },
         "recentPayruns": recent_runs,
         "payrollApiContext": payroll_api_context if isinstance(payroll_api_context, dict) else {},
-        "nominalTransactionContext": nominal_transaction_context if isinstance(nominal_transaction_context, dict) else {},
+        "nominalTransactionContext": nominal_context,
+        "fullNominalTransactionLines": {
+            "taxAccountLines": full_tax_lines,
+            "pensionAccountLines": full_pension_lines,
+            "taxLineCount": len(full_tax_lines),
+            "pensionLineCount": len(full_pension_lines),
+        },
         "journalDiagnostics": {
             "selectedJournalId": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalId")),
             "selectedJournalDate": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalDate")),
