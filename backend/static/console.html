@@ -131610,7 +131610,9 @@
                 const vatNumberInput = document.getElementById("chRegisterClientPageVatNumber");
                 const vatMemberStateInput = document.getElementById("chRegisterClientPageVatMemberState");
                 const normalisedVatNumber = clientRegisterNormaliseVatNumber(vatNumberInput?.value || "");
-                if (!clientRegisterVatNumberIsValid(normalisedVatNumber)) {
+                const currentVatNumber = clientRegisterNormaliseVatNumber(profile?.companiesHouse?.serviceDetails?.vat?.vatNumber || "");
+                const vatNumberChanged = normalisedVatNumber !== currentVatNumber;
+                if (vatNumberChanged && !clientRegisterVatNumberIsValid(normalisedVatNumber)) {
                     showToast("Enter a valid VAT number (for example GB123456789).", "error");
                     if (vatNumberInput?.focus) vatNumberInput.focus();
                     return;
@@ -131620,7 +131622,9 @@
                 }
                 const currentRow = payload?.row || {};
                 const infoVatNumber = clientRegisterNormaliseVatNumber(document.getElementById("chRegisterClientPageInfoVatNumber")?.value || "");
-                if (!clientRegisterVatNumberIsValid(infoVatNumber)) {
+                const currentInfoVatNumber = clientRegisterNormaliseVatNumber(currentRow?.vatNumber || "");
+                const infoVatNumberChanged = infoVatNumber !== currentInfoVatNumber;
+                if (infoVatNumberChanged && !clientRegisterVatNumberIsValid(infoVatNumber)) {
                     showToast("Enter a valid VAT number in Client Info (for example GB123456789).", "error");
                     const infoVatInput = document.getElementById("chRegisterClientPageInfoVatNumber");
                     if (infoVatInput?.focus) infoVatInput.focus();
