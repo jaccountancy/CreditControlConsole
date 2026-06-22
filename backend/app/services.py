@@ -3032,20 +3032,33 @@ async def _payroll_overview_nominal_transaction_context(
                         paye_run_dates.add(date_key)
 
             if str(label_prefix).strip().lower() == "pension":
-                if paye_run_reference_keys:
-                    applicable_entries = [
-                        row
-                        for row in transaction_entries
-                        if _reference_key(row.get("reference")) in paye_run_reference_keys
-                    ]
-                elif paye_run_dates:
-                    applicable_entries = [
-                        row
-                        for row in transaction_entries
-                        if _payroll_overview_text(row.get("date")) in paye_run_dates
-                    ]
-                else:
-                    applicable_entries = payroll_expense_entries
+                matched_reference_entries = [
+                    row
+                    for row in transaction_entries
+                    if _reference_key(row.get("reference")) in paye_run_reference_keys
+                ] if paye_run_reference_keys else []
+                matched_date_entries = [
+                    row
+                    for row in transaction_entries
+                    if _payroll_overview_text(row.get("date")) in paye_run_dates
+                ] if paye_run_dates else []
+                # Pension postings do not always carry the exact same reference
+                # as PAYE lines, so include either matching references or dates.
+                applicable_entries = []
+                seen_applicable_keys: set[tuple[str, str, str, str, str, str]] = set()
+                for row in matched_reference_entries + matched_date_entries + payroll_expense_entries:
+                    key = (
+                        _payroll_overview_text(row.get("date")),
+                        _payroll_overview_text(row.get("source")),
+                        _payroll_overview_text(row.get("description")),
+                        _payroll_overview_text(row.get("reference")),
+                        str(_money(row.get("debit"))),
+                        str(_money(row.get("credit"))),
+                    )
+                    if key in seen_applicable_keys:
+                        continue
+                    seen_applicable_keys.add(key)
+                    applicable_entries.append(row)
             else:
                 applicable_entries = payroll_expense_entries
             payroll_expense_net = _payroll_overview_account_transaction_net(payroll_expense_entries)
