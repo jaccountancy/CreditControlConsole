@@ -1519,6 +1519,93 @@ def _payroll_overview_find_numeric_value_by_hints(
     return best
 
 
+def _payroll_overview_sum_described_amounts(
+    payload,
+    include_hints: list[str],
+    exclude_hints: list[str] | None = None,
+) -> Decimal:
+    include = [_payroll_overview_normalise_key(item) for item in include_hints if str(item or "").strip()]
+    exclude = {_payroll_overview_normalise_key(item) for item in (exclude_hints or []) if str(item or "").strip()}
+    if not include:
+        return Decimal("0")
+    descriptor_key_hints = (
+        "name",
+        "description",
+        "title",
+        "label",
+        "type",
+        "category",
+        "item",
+    )
+    amount_key_hints = (
+        "amount",
+        "value",
+        "total",
+        "contribution",
+        "liability",
+    )
+    amount_key_excludes = (
+        "rate",
+        "percent",
+        "percentage",
+        "hour",
+        "hours",
+        "day",
+        "days",
+        "month",
+        "year",
+        "ytd",
+        "yeartodate",
+        "id",
+        "identifier",
+        "code",
+        "number",
+        "reference",
+        "date",
+    )
+    queue = [payload]
+    visited: set[int] = set()
+    total = Decimal("0")
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        descriptor_tokens: list[str] = []
+        for key, value in node.items():
+            if not isinstance(value, str):
+                if isinstance(value, (dict, list)):
+                    queue.append(value)
+                continue
+            key_norm = _payroll_overview_normalise_key(key)
+            if any(hint in key_norm for hint in descriptor_key_hints):
+                descriptor_tokens.append(_payroll_overview_normalise_key(value))
+        descriptor_text = " ".join(token for token in descriptor_tokens if token)
+        if descriptor_text:
+            has_include = any(token in descriptor_text for token in include)
+            has_exclude = any(token and token in descriptor_text for token in exclude)
+            if has_include and not has_exclude:
+                best_amount = Decimal("0")
+                for key, value in node.items():
+                    key_norm = _payroll_overview_normalise_key(key)
+                    if not any(hint in key_norm for hint in amount_key_hints):
+                        continue
+                    if any(hint in key_norm for hint in amount_key_excludes):
+                        continue
+                    numeric = abs(_payroll_overview_numeric_decimal(value))
+                    if numeric > best_amount:
+                        best_amount = numeric
+                if best_amount > Decimal("0"):
+                    total += best_amount
+    return total
+
+
 def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
     total = _payroll_overview_find_numeric_value(
         payrun,
@@ -1572,6 +1659,29 @@ def _payroll_overview_estimate_p32_tax(payrun: dict) -> Decimal:
     combined = paye_component + nic_component
     if combined > Decimal("0"):
         return combined
+    described = _payroll_overview_sum_described_amounts(
+        payrun,
+        include_hints=["paye", "nic", "national insurance", "tax", "hmrc"],
+        exclude_hints=[
+            "taxcode",
+            "taxyear",
+            "identifier",
+            "id",
+            "number",
+            "rate",
+            "percentage",
+            "percent",
+            "days",
+            "hours",
+            "year",
+            "month",
+            "date",
+            "period",
+            "ytd",
+        ],
+    )
+    if described > Decimal("0"):
+        return described
     return _payroll_overview_find_numeric_value_by_hints(
         payrun,
         include_hints=["p32", "paye", "nic", "nationalinsurance", "taxdue", "payenliability"],
@@ -1631,6 +1741,25 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
     )
     if summed > Decimal("0"):
         return summed
+    described = _payroll_overview_sum_described_amounts(
+        payrun,
+        include_hints=["pension", "employer pension", "workplace pension", "nest", "auto enrolment"],
+        exclude_hints=[
+            "scheme",
+            "name",
+            "id",
+            "identifier",
+            "number",
+            "rate",
+            "percentage",
+            "percent",
+            "tax",
+            "code",
+            "ytd",
+        ],
+    )
+    if described > Decimal("0"):
+        return described
     return _payroll_overview_find_numeric_value_by_hints(
         payrun,
         include_hints=["pension", "employerpension", "pensionpayable", "workplacepension", "nest"],
