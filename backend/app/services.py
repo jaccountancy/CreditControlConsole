@@ -16817,6 +16817,10 @@ def _xero_payroll_employee_identity(row: dict) -> tuple[str, str, str]:
     return employee_id, email_value, full_name
 
 
+def _canonical_xero_employee_id(value: str | None) -> str:
+    return str(value or "").strip().strip("{}").lower()
+
+
 def _submitted_employee_forms_summary(rows: list[dict]) -> dict:
     total = len(rows)
     created = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "created")
@@ -18344,8 +18348,13 @@ async def sync_submitted_employee_forms(
                 verified_existing_id, _, _ = _xero_payroll_employee_identity(
                     verify_existing_row if isinstance(verify_existing_row, dict) else {}
                 )
-                if str(verified_existing_id or "").strip() != existing_employee_id:
-                    raise ValueError("EmployeeID not found on verification response.")
+                expected_employee_id = _canonical_xero_employee_id(existing_employee_id)
+                actual_employee_id = _canonical_xero_employee_id(verified_existing_id)
+                if not actual_employee_id or actual_employee_id != expected_employee_id:
+                    raise ValueError(
+                        "EmployeeID did not match verification response "
+                        f"(expected={existing_employee_id}, actual={verified_existing_id or '-'})"
+                    )
             except Exception as verify_existing_exc:
                 verify_existing_ok = False
                 verify_existing_error = _sync_error_message(verify_existing_exc)
