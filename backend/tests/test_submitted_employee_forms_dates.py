@@ -123,6 +123,17 @@ class SubmittedEmployeeFormDateTests(unittest.TestCase):
         )
         self.assertEqual(strict_name, "sarah chapman")
 
+    def test_employee_created_timeline_note_has_expected_text(self):
+        note = services._submitted_forms_employee_created_timeline_note(
+            employee_name="Sarah Chapman",
+            tenant_name="S Fleming Ltd",
+            xero_employee_id="emp-123",
+        )
+        self.assertIn("Sarah Chapman", note)
+        self.assertIn("S Fleming Ltd", note)
+        self.assertIn("emp-123", note)
+        self.assertIn("By Jenius AI", note)
+
 
 if __name__ == "__main__":
     unittest.main()

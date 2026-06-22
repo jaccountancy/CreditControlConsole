@@ -18164,6 +18164,109 @@ def _submitted_forms_employee_create_payload(form_row: dict) -> dict:
     return {"Employees": [employee_row]}
 
 
+def _submitted_forms_employee_created_timeline_note(
+    *,
+    employee_name: str,
+    tenant_name: str,
+    xero_employee_id: str,
+) -> str:
+    clean_employee_name = re.sub(r"\s+", " ", str(employee_name or "").strip())
+    clean_tenant_name = re.sub(r"\s+", " ", str(tenant_name or "").strip())
+    note_body = (
+        f"Employee {clean_employee_name or 'Unknown employee'} was created in Xero Payroll via Jenius AI"
+        + (f" for {clean_tenant_name}" if clean_tenant_name else "")
+        + "."
+    )
+    if str(xero_employee_id or "").strip():
+        note_body = f"{note_body} Xero Employee ID: {str(xero_employee_id).strip()}."
+    return _with_jenius_signature(note_body)
+
+
+def _submitted_forms_add_customer_timeline_note(
+    *,
+    user_id: str,
+    tenant_id: str,
+    tenant_name: str,
+    employer_name: str,
+    employee_name: str,
+    xero_employee_id: str,
+) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    target_keys = [
+        _bm_tasks_normalise_name_key(value)
+        for value in (employer_name, tenant_name)
+        if _bm_tasks_normalise_name_key(value)
+    ]
+    if not clean_tenant_id or not target_keys:
+        return {"added": False, "customerId": "", "customerName": "", "reason": "insufficient-target-data"}
+
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, name
+                        FROM customers
+                        WHERE tenant_id = %s
+                        """,
+                        (clean_tenant_id,),
+                    )
+                    rows = cursor.fetchall() or []
+                    best_row = None
+                    best_score = 0.0
+                    for row in rows:
+                        candidate_name = str(row.get("name") or "").strip()
+                        candidate_key = _bm_tasks_normalise_name_key(candidate_name)
+                        if not candidate_key:
+                            continue
+                        score = 0.0
+                        for target_key in target_keys:
+                            if candidate_key == target_key:
+                                score = max(score, 1.0)
+                            elif candidate_key in target_key or target_key in candidate_key:
+                                score = max(score, 0.94)
+                            else:
+                                score = max(score, difflib.SequenceMatcher(None, candidate_key, target_key).ratio())
+                        if score > best_score:
+                            best_score = score
+                            best_row = row if isinstance(row, dict) else None
+                    if best_row is None or best_score < 0.74:
+                        connection.commit()
+                        return {"added": False, "customerId": "", "customerName": "", "reason": "customer-not-found"}
+                    customer_id = str(best_row.get("id") or "").strip()
+                    customer_name = str(best_row.get("name") or "").strip()
+                    note_body = _submitted_forms_employee_created_timeline_note(
+                        employee_name=employee_name,
+                        tenant_name=tenant_name or customer_name,
+                        xero_employee_id=xero_employee_id,
+                    )
+                    clean_user_id = str(user_id or "").strip() or None
+                    cursor.execute(
+                        "INSERT INTO customer_notes (customer_id, user_id, body) VALUES (%s, %s, %s)",
+                        (customer_id, clean_user_id, note_body),
+                    )
+                connection.commit()
+            record_audit_event(
+                "customer",
+                customer_id,
+                "client.note.added",
+                {
+                    "body": note_body,
+                    "source": "submitted-employee-forms",
+                    "xero_employee_id": str(xero_employee_id or "").strip(),
+                },
+                str(user_id or "").strip() or None,
+            )
+            return {"added": True, "customerId": customer_id, "customerName": customer_name, "reason": ""}
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
 def _submitted_forms_employee_number_as_int(value: str) -> int | None:
     clean_value = re.sub(r"\s+", "", str(value or "")).strip()
     if not clean_value or not clean_value.isdigit():
@@ -19031,6 +19134,19 @@ async def sync_submitted_employee_forms(
                         existing_by_name_unique.pop(employee_name, None)
                     else:
                         existing_by_name_unique[employee_name] = created_employee_id
+            timeline_note_result = _submitted_forms_add_customer_timeline_note(
+                user_id=user_id,
+                tenant_id=clean_tenant_id,
+                tenant_name=clean_tenant_name,
+                employer_name=employer_name,
+                employee_name=employee_name,
+                xero_employee_id=created_employee_id,
+            )
+            timeline_note_summary = (
+                f" Client timeline note added for {timeline_note_result.get('customerName') or 'matched client'}."
+                if timeline_note_result.get("added")
+                else ""
+            )
             update_row_state(
                 tenant_id=clean_tenant_id,
                 tenant_name=clean_tenant_name,
@@ -19039,6 +19155,7 @@ async def sync_submitted_employee_forms(
                 xero_note=(
                     f"Matched employer '{employer_name or clean_tenant_name}' to {clean_tenant_name}. "
                     f"Employee created in Xero Payroll{f' ({created_status})' if created_status else ''}."
+                    f"{timeline_note_summary}"
                     f"{f' AI match confidence {ai_match_confidence}%: {ai_match_reason}.' if ai_match_reason else ''}"
                 ),
                 debug_lines=row_debug_base + [
@@ -19047,6 +19164,10 @@ async def sync_submitted_employee_forms(
                     f"xeroHttpStatus={response_http_status or '-'}",
                     f"requestedEmployeeNumber={payroll_number}",
                     f"requestedTaxCode={tax_code}",
+                    f"timelineNoteAdded={str(bool(timeline_note_result.get('added'))).lower()}",
+                    f"timelineCustomerId={str(timeline_note_result.get('customerId') or '-')}",
+                    f"timelineCustomerName={str(timeline_note_result.get('customerName') or '-')}",
+                    f"timelineNoteReason={str(timeline_note_result.get('reason') or '-')}",
                     "verifyCreate=confirmed",
                 ],
             )
