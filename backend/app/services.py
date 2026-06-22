@@ -3773,6 +3773,8 @@ async def payroll_tenant_overview_payload(
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
 
     journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_primary_mode"}
+    journal_p32_tax = Decimal("0")
+    journal_pension_payable = Decimal("0")
     payroll_api_p32_tax = Decimal("0")
     payroll_api_pension_payable = Decimal("0")
     payroll_api_diagnostics: dict = {}
@@ -3819,6 +3821,27 @@ async def payroll_tenant_overview_payload(
             "p32FromPayrunDetails": float(payrun_detail_p32_tax),
             "pensionFromPayrunDetails": float(payrun_detail_pension_payable),
         }
+        try:
+            journals_payload, journals_error = await _code_breaker_fetch_xero_journals(connection_row)
+        except Exception as exc:
+            journals_payload = []
+            journals_error = _sync_error_message(exc)
+        if journals_error:
+            journal_payable_diagnostics = {
+                "engine": "journals_unavailable",
+                "reason": journals_error,
+            }
+        else:
+            (
+                journal_p32_tax,
+                journal_pension_payable,
+                journal_payable_diagnostics,
+            ) = await _payroll_overview_extract_posted_journal_payables(
+                journals_payload if isinstance(journals_payload, list) else [],
+                accounts,
+                reference_payrun,
+                user_id=str(user.get("id") or "").strip() or None,
+            )
     else:
         payroll_api_diagnostics = {"engine": "payroll_api", "selectedPayRunId": "", "reason": "no_selected_payrun"}
 
@@ -4118,23 +4141,58 @@ async def payroll_tenant_overview_payload(
     pension_nominal_count = int((nominal_transaction_context or {}).get("pensionNominalTransactionCount") or 0) if isinstance(nominal_transaction_context, dict) else 0
     has_tax_nominal_evidence = tax_nominal_count > 0
     has_pension_nominal_evidence = pension_nominal_count > 0
+    def _is_permission_block_message(message: str) -> bool:
+        text = str(message or "").strip().lower()
+        if not text:
+            return False
+        return (
+            ("permission" in text and "scope" in text)
+            or "permissions need updating" in text
+            or "forbidden" in text
+            or "invalid_scope" in text
+            or "reconnect xero" in text
+        )
+
+    nominal_context_errors = (
+        nominal_transaction_context.get("errors")
+        if isinstance(nominal_transaction_context, dict) and isinstance(nominal_transaction_context.get("errors"), list)
+        else []
+    )
+    nominal_permission_blocked = any(
+        _is_permission_block_message(message)
+        for message in (
+            list(nominal_transaction_fetch_errors)
+            + list(nominal_context_errors)
+            + list(errors)
+        )
+    )
+    has_journal_liability_evidence = journal_p32_tax > Decimal("0") or journal_pension_payable > Decimal("0")
+
     # Only use OpenAI when nominal account transactions were actually fetched.
-    # Do not fall back to payroll API amounts for final monthly liabilities.
+    # When nominal account transactions are permission-blocked, fall back to posted payroll journal liabilities.
     if has_tax_nominal_evidence and openai_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(openai_p32_tax)
     elif has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(nominal_tx_p32_tax)
+    elif nominal_permission_blocked and journal_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(journal_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
     if has_pension_nominal_evidence and openai_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(openai_pension_payable)
     elif has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(nominal_tx_pension_payable)
+    elif nominal_permission_blocked and journal_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(journal_pension_payable)
     else:
         estimated_pension_payable_balance = 0.0
     if selected_payrun_id and (not has_tax_nominal_evidence or not has_pension_nominal_evidence):
         errors.append(
             "Exact payroll liability extraction unavailable: no nominal account transactions were returned for selected PAYE/pension codes in the selected period."
+        )
+    if nominal_permission_blocked and not has_journal_liability_evidence:
+        errors.append(
+            "Exact payroll liability extraction unavailable: nominal transactions are permission-blocked and no posted payroll journal liabilities were available. Reconnect Xero and approve the required scopes."
         )
     if selected_payrun_id and (estimated_p32_tax_balance <= 0 or estimated_pension_payable_balance <= 0):
         payslips_status = int(pay_slips_diag.get("statusCode") or 0)
@@ -4166,6 +4224,8 @@ async def payroll_tenant_overview_payload(
             if has_tax_nominal_evidence and openai_p32_tax > Decimal("0")
             else "nominal_account_transactions"
             if has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0")
+            else "journal_posted_liabilities"
+            if nominal_permission_blocked and journal_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
@@ -4173,6 +4233,8 @@ async def payroll_tenant_overview_payload(
             if has_pension_nominal_evidence and openai_pension_payable > Decimal("0")
             else "nominal_account_transactions"
             if has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0")
+            else "journal_posted_liabilities"
+            if nominal_permission_blocked and journal_pension_payable > Decimal("0")
             else "none"
         ),
     }

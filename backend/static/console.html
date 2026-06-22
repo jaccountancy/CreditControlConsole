@@ -125035,7 +125035,7 @@
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions", "openai_nominal_inference"];
+                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta", "nominal_account_transactions", "openai_nominal_inference", "journal_posted_liabilities"];
                 const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(resolvedP32FigureSource)
                     && reliablePayrollFigureSources.includes(resolvedPensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
@@ -125124,6 +125124,9 @@
                                                 <button id="taskPayrollDiagnosticsClose" class="ghost-button" type="button">Close</button>
                                             </div>
                                             <ul id="taskPayrollDiagnosticsList" class="task-payroll-diagnostics-list"></ul>
+                                            <div class="task-payroll-diagnostics-trigger-wrap">
+                                                <a id="taskPayrollReconnectXeroButton" class="ghost-button" href="/auth/xero/start?force=1&include_all_scopes=1&redirect_to=/">Reconnect Xero with permissions</a>
+                                            </div>
                                         </article>
                                     </div>
                                 </article>
@@ -125158,6 +125161,7 @@
                             const diagnosticsCloseButton = body.querySelector("#taskPayrollDiagnosticsClose");
                             const diagnosticsList = body.querySelector("#taskPayrollDiagnosticsList");
                             const diagnosticsTitle = body.querySelector("#taskPayrollDiagnosticsTitle");
+                            const reconnectXeroButton = body.querySelector("#taskPayrollReconnectXeroButton");
                             const p32BreakdownButton = body.querySelector("#taskPayrollP32BreakdownButton");
                             const pensionBreakdownButton = body.querySelector("#taskPayrollPensionBreakdownButton");
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
@@ -125218,12 +125222,25 @@
                                 `Accounts fetch status: ${String(fetchDiagnostics?.accounts?.statusCode ?? "n/a")} (ok: ${fetchDiagnostics?.accounts?.ok ? "yes" : "no"})`,
                                 `Overview errors: ${Array.isArray(overview?.errors) && overview.errors.length ? overview.errors.join(" · ") : "none"}`,
                             ];
+                            const diagnosticsSuggestReconnect = (items) => {
+                                const text = Array.isArray(items) ? items.join(" ").toLowerCase() : "";
+                                return (
+                                    text.includes("permissions need updating")
+                                    || text.includes("missing payroll permission scope")
+                                    || text.includes("invalid_scope")
+                                    || text.includes("reconnect xero")
+                                    || text.includes("permission-blocked")
+                                );
+                            };
                             const setDiagnosticsContent = (title, items) => {
                                 if (diagnosticsTitle) diagnosticsTitle.textContent = String(title || "Payroll extraction diagnostics");
                                 if (diagnosticsList) {
                                     diagnosticsList.innerHTML = (Array.isArray(items) ? items : [])
                                         .map((item) => `<li>${escapeHTML(String(item || ""))}</li>`)
                                         .join("");
+                                }
+                                if (reconnectXeroButton) {
+                                    reconnectXeroButton.style.display = diagnosticsSuggestReconnect(items) ? "inline-flex" : "none";
                                 }
                             };
                             const buildFigureBreakdownItems = (kind) => {
@@ -125309,6 +125326,11 @@
                                             items.push(`${usedLabel} · ${code || "code?"} · ${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
                                         }
                                     }
+                                } else if (source === "journal_posted_liabilities") {
+                                    items.push(`Posted journal amount: ${formatCurrency(Number(isP32 ? summary?.journalPayableDiagnostics?.journalTaxLineTotal : summary?.journalPayableDiagnostics?.journalPensionLineTotal || 0))}`);
+                                    items.push(`Selected journal: ${String(summary?.journalPayableDiagnostics?.selectedJournalId || "none")}`);
+                                    items.push(`Journal date: ${String(summary?.journalPayableDiagnostics?.selectedJournalDate || "unknown")}`);
+                                    items.push(`Matched liability lines: ${Number(summary?.journalPayableDiagnostics?.matchedCreditLines || 0).toLocaleString("en-GB")}`);
                                 } else if (source === "nominal_trial_balance_delta") {
                                     const codeDelta = trialBalanceDeltaDiagnostics?.codeDelta && typeof trialBalanceDeltaDiagnostics.codeDelta === "object"
                                         ? trialBalanceDeltaDiagnostics.codeDelta
