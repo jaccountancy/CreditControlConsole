@@ -3533,15 +3533,46 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     "degradedReason": "partial_account_transaction_fetch_failure",
                     "errors": nominal_transaction_fetch_errors[:12],
                 }
-            else:
-                nominal_tx_p32_tax = abs(_payroll_overview_numeric_decimal(nominal_transaction_context.get("taxPayrollExpenseNet")))
-                nominal_tx_pension_payable = abs(
+            tax_account_rows = (
+                nominal_transaction_context.get("taxAccountTransactions")
+                if isinstance(nominal_transaction_context, dict)
+                else []
+            )
+            pension_account_rows = (
+                nominal_transaction_context.get("pensionAccountTransactions")
+                if isinstance(nominal_transaction_context, dict)
+                else []
+            )
+            if not isinstance(tax_account_rows, list):
+                tax_account_rows = []
+            if not isinstance(pension_account_rows, list):
+                pension_account_rows = []
+            nominal_tx_p32_tax = abs(
+                sum(
                     _payroll_overview_numeric_decimal(
-                        nominal_transaction_context.get("pensionApplicableNet")
-                        if nominal_transaction_context.get("pensionApplicableNet") not in (None, "")
-                        else nominal_transaction_context.get("pensionPayrollExpenseNet")
+                        row.get("allTransactionNet")
+                        if row.get("allTransactionNet") not in (None, "")
+                        else row.get("applicableNet")
+                        if row.get("applicableNet") not in (None, "")
+                        else row.get("payrollExpenseNet")
                     )
+                    for row in tax_account_rows
+                    if isinstance(row, dict)
                 )
+            )
+            nominal_tx_pension_payable = abs(
+                sum(
+                    _payroll_overview_numeric_decimal(
+                        row.get("allTransactionNet")
+                        if row.get("allTransactionNet") not in (None, "")
+                        else row.get("applicableNet")
+                        if row.get("applicableNet") not in (None, "")
+                        else row.get("payrollExpenseNet")
+                    )
+                    for row in pension_account_rows
+                    if isinstance(row, dict)
+                )
+            )
         except Exception as exc:
             nominal_transaction_context = {
                 "engine": "nominal_account_transactions",
@@ -3555,7 +3586,6 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     nominal_context_ready_for_ai = (
         isinstance(nominal_transaction_context, dict)
         and str(nominal_transaction_context.get("engine") or "").strip() == "nominal_account_transactions"
-        and nominal_transaction_context.get("degraded") is not True
         and not str(nominal_transaction_context.get("error") or "").strip()
         and (
             bool(nominal_transaction_context.get("taxAccountTransactions"))

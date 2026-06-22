@@ -124870,9 +124870,14 @@
                     ? summary.nominalTransactionDiagnostics
                     : {};
                 const nominalDiagnosticsEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
+                const nominalTaxTransactions = Array.isArray(nominalTransactionDiagnostics?.taxAccountTransactions)
+                    ? nominalTransactionDiagnostics.taxAccountTransactions
+                    : [];
+                const nominalPensionTransactions = Array.isArray(nominalTransactionDiagnostics?.pensionAccountTransactions)
+                    ? nominalTransactionDiagnostics.pensionAccountTransactions
+                    : [];
                 const nominalDiagnosticsHealthy = nominalDiagnosticsEngine === "nominal_account_transactions"
-                    && nominalTransactionDiagnostics?.degraded !== true
-                    && !String(nominalTransactionDiagnostics?.error || "").trim();
+                    && (nominalTaxTransactions.length > 0 || nominalPensionTransactions.length > 0);
                 const normaliseFigureSource = (source) => {
                     const value = String(source || "").trim();
                     if (!value || value === "none") {
