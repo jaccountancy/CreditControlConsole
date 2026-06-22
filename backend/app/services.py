@@ -16621,6 +16621,62 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
         match = re.search(pattern, combined, flags=re.IGNORECASE)
         return str(match.group(1) or "").strip() if match else ""
 
+    def _fallback_email_from_context(
+        text: str,
+        candidate_lines: list[str],
+        *,
+        name_parts: list[str],
+    ) -> str:
+        email_pattern = r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b"
+        line_candidates: list[str] = []
+        for line in candidate_lines:
+            if not isinstance(line, str):
+                continue
+            if re.search(r"\b(employee|starter|new\s+joiner|new\s+employee|onboard)\b", line, flags=re.IGNORECASE):
+                line_candidates.extend(re.findall(email_pattern, line, flags=re.IGNORECASE))
+        if line_candidates:
+            unique_line = list(dict.fromkeys(item.strip().lower() for item in line_candidates if str(item or "").strip()))
+            if len(unique_line) == 1:
+                return unique_line[0]
+
+        all_matches = re.findall(email_pattern, text, flags=re.IGNORECASE)
+        unique_matches = list(dict.fromkeys(item.strip().lower() for item in all_matches if str(item or "").strip()))
+        if not unique_matches:
+            return ""
+        if len(unique_matches) == 1:
+            return unique_matches[0]
+
+        clean_tokens = [
+            re.sub(r"[^a-z0-9]", "", str(token or "").strip().lower())
+            for token in name_parts
+        ]
+        clean_tokens = [token for token in clean_tokens if len(token) >= 2]
+        if not clean_tokens:
+            return ""
+
+        def _score(email_value: str) -> int:
+            local = str(email_value.split("@", 1)[0] if "@" in email_value else email_value).lower()
+            local_clean = re.sub(r"[^a-z0-9]", "", local)
+            score = 0
+            for token in clean_tokens:
+                if token and token in local_clean:
+                    score += 2
+            if len(clean_tokens) >= 2 and all(token in local_clean for token in clean_tokens[:2]):
+                score += 2
+            return score
+
+        scored = sorted(
+            ((email, _score(email)) for email in unique_matches),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        best_email, best_score = scored[0]
+        if best_score <= 0:
+            return ""
+        if len(scored) > 1 and scored[1][1] == best_score:
+            return ""
+        return best_email
+
     full_name = (
         _next_line_after_label(["Name", "Employee Name", "Full Name"])
         or _find(r"(?:employee\s*name|full\s*name)\s*[:\-]\s*([^\n,;]+)")
@@ -16693,10 +16749,6 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
     bank_account_name = _next_line_after_label(["Account Name", "Bank Account Name"]) or _find(r"(?:bank\s*account\s*name|account\s*name)\s*[:\-]\s*([^\n,;]+)")
     bank_account_number = _next_line_after_label(["Account Number", "Bank Account Number"]) or _find(r"(?:bank\s*account\s*number|account\s*number)\s*[:\-]\s*([A-Za-z0-9 ]+)")
     bank_sort_code = _next_line_after_label(["Sort Code", "Bank Sort Code"]) or _find(r"(?:sort\s*code|bank\s*sort\s*code)\s*[:\-]\s*([A-Za-z0-9\- ]+)")
-    if not email_value:
-        free_email = re.search(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", combined, flags=re.IGNORECASE)
-        email_value = str(free_email.group(0) or "").strip() if free_email else ""
-
     if not full_name and _submitted_employee_forms_subject_matches(subject):
         full_name = _submitted_employee_forms_subject_suffix(subject).strip().strip("-: ")
 
@@ -16712,6 +16764,12 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
             last_name = " ".join(parts[1:])
     if not full_name and (first_name or last_name):
         full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+    if not email_value:
+        email_value = _fallback_email_from_context(
+            combined,
+            lines,
+            name_parts=[first_name, last_name, full_name],
+        )
 
     return {
         "employeeFullName": full_name[:160],
