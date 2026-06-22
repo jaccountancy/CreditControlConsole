@@ -161,12 +161,7 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
 def xero_scope_string_all_available(configured_scopes: str) -> str:
     # "All available" means the maximum scope set this app is configured to
     # request, plus payroll read scopes for future-ready consent.
-    scopes = xero_scope_string(configured_scopes, include_payroll_scopes=True).split()
-    # Account Transactions report access requires the broad reports.read scope
-    # in addition to granular report scopes for many tenants.
-    if "accounting.reports.read" not in scopes:
-        scopes.append("accounting.reports.read")
-    return " ".join(scopes)
+    return xero_scope_string(configured_scopes, include_payroll_scopes=True)
 
 
 def allowed_panel_origins() -> set[str]:

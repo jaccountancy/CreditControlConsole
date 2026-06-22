@@ -111,7 +111,6 @@ class XeroScopeStringTests(unittest.TestCase):
         self.assertIn("offline_access", scopes)
         self.assertIn("accounting.invoices", scopes)
         self.assertIn("accounting.reports.balancesheet.read", scopes)
-        self.assertIn("accounting.reports.read", scopes)
         self.assertIn("payroll.employees.read", scopes)
         self.assertIn("payroll.payruns.read", scopes)
         self.assertNotIn("files.read", scopes)
