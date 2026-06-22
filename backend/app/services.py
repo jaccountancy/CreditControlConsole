@@ -17265,13 +17265,38 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
     combined = "\n".join([str(subject or ""), str(snippet or ""), str(body_text or "")]).strip()
     lines = [line.strip() for line in str(body_text or "").splitlines() if line and line.strip()]
 
+    def _normalise_label(value: str) -> str:
+        cleaned = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())
+        return re.sub(r"\s+", " ", cleaned).strip()
+
     def _next_line_after_label(label_candidates: list[str]) -> str:
-        lowered_lines = [line.lower() for line in lines]
-        labels = [label.lower().strip() for label in label_candidates if label]
-        for index, lowered in enumerate(lowered_lines):
-            if lowered in labels:
-                if index + 1 < len(lines):
-                    return str(lines[index + 1] or "").strip()
+        labels = [str(label or "").strip() for label in label_candidates if str(label or "").strip()]
+        normalised_labels = [_normalise_label(label) for label in labels]
+        for index, line in enumerate(lines):
+            raw_line = str(line or "").strip()
+            if not raw_line:
+                continue
+            for label in labels:
+                escaped = re.escape(label)
+                inline_with_separator = re.match(
+                    rf"(?i)^\s*{escaped}\s*(?:\([^)]*\))?\s*\*?\s*[:\-]\s*(.+?)\s*$",
+                    raw_line,
+                )
+                if inline_with_separator:
+                    return str(inline_with_separator.group(1) or "").strip()
+                inline_without_separator = re.match(
+                    rf"(?i)^\s*{escaped}\s*(?:\([^)]*\))?\s*\*?\s+(.+?)\s*$",
+                    raw_line,
+                )
+                if inline_without_separator:
+                    return str(inline_without_separator.group(1) or "").strip()
+
+            normalised_line = _normalise_label(raw_line)
+            if normalised_line in normalised_labels:
+                for next_index in range(index + 1, len(lines)):
+                    next_line = str(lines[next_index] or "").strip()
+                    if next_line:
+                        return next_line
         return ""
 
     def _find(pattern: str) -> str:
@@ -17360,11 +17385,11 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
     )
     title = (
         _next_line_after_label(["Title", "Employee Title"])
-        or _find(r"(?:title|employee\s*title)\s*[:\-]\s*([^\n,;]+)")
+        or _find(r"(?:title|employee\s*title)\s*(?:\([^)]*\))?\s*\*?\s*[:\-]?\s*([^\n,;]+)")
     )
     gender = (
-        _next_line_after_label(["Gender", "Sex"])
-        or _find(r"(?:gender|sex)\s*[:\-]\s*([^\n,;]+)")
+        _next_line_after_label(["Gender", "Gender (M/F)", "Sex"])
+        or _find(r"(?:gender(?:\s*\(m\/f\))?|sex)\s*\*?\s*[:\-]?\s*([^\n,;]+)")
     )
     date_of_birth = (
         _next_line_after_label(["Date of Birth", "DOB", "Birth Date"])
@@ -17469,7 +17494,10 @@ def _extract_employee_identity(subject: str, snippet: str, body_text: str) -> di
 def _submitted_employee_forms_ai_request_text(subject: str, snippet: str, body_text: str) -> str:
     return (
         "Extract employee onboarding form fields from this email content. "
-        "Use only explicit values present in the text. Return empty strings where unknown.\n\n"
+        "Use only explicit values present in the text. "
+        "Pay special attention to labels like 'Title *' and 'Gender (M/F) *' which may appear on separate lines from values. "
+        "Set country to 'United Kingdom' when it is missing or listed as UK/GB/England/Scotland/Wales/Northern Ireland. "
+        "Return empty strings where unknown.\n\n"
         f"Subject:\n{subject}\n\n"
         f"Gmail snippet:\n{snippet}\n\n"
         f"Body text:\n{body_text[:12000]}"
@@ -17646,7 +17674,7 @@ def _submitted_employee_forms_merged_identity(local_identity: dict, ai_identity:
         str(merged.get("gender") or ""),
         title=str(merged.get("title") or ""),
     )
-    merged["country"] = _submitted_employee_forms_normalise_country_name(str(merged.get("country") or ""))
+    merged["country"] = "United Kingdom"
     for field_name in ("dateOfBirth", "startDate"):
         value = str(merged.get(field_name) or "").strip()
         normalised = _submitted_employee_forms_normalise_date(value)
