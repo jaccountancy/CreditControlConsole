@@ -29184,6 +29184,30 @@
                 display: grid;
                 gap: 6px;
             }
+            .task-payroll-field-title {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .task-payroll-help-icon {
+                width: 20px;
+                height: 20px;
+                border-radius: 999px;
+                border: 1px solid var(--line);
+                background: #fff;
+                color: var(--muted);
+                font: inherit;
+                font-weight: 800;
+                line-height: 1;
+                padding: 0;
+                cursor: pointer;
+            }
+            .task-payroll-help-icon:hover,
+            .task-payroll-help-icon:focus-visible {
+                border-color: rgba(52, 132, 197, 0.48);
+                color: #1b4f83;
+                outline: none;
+            }
             .task-detail-modal-hint {
                 margin: 0;
                 font-size: 11px;
@@ -124834,14 +124858,27 @@
                 const payrunDiagnostics = summary?.payrunDetailDiagnostics && typeof summary.payrunDetailDiagnostics === "object"
                     ? summary.payrunDetailDiagnostics
                     : {};
+                const trialBalanceDeltaDiagnostics = summary?.trialBalanceDeltaDiagnostics && typeof summary.trialBalanceDeltaDiagnostics === "object"
+                    ? summary.trialBalanceDeltaDiagnostics
+                    : {};
+                const nominalTransactionDiagnostics = summary?.nominalTransactionDiagnostics && typeof summary.nominalTransactionDiagnostics === "object"
+                    ? summary.nominalTransactionDiagnostics
+                    : {};
+                const openAiPayrollInferenceDiagnostics = summary?.openAiPayrollInferenceDiagnostics && typeof summary.openAiPayrollInferenceDiagnostics === "object"
+                    ? summary.openAiPayrollInferenceDiagnostics
+                    : {};
+                const payrollApiDiagnostics = summary?.payrollApiDiagnostics && typeof summary.payrollApiDiagnostics === "object"
+                    ? summary.payrollApiDiagnostics
+                    : {};
                 const referenceLookup = payrollResolveReferencesFromRegister(registerRow, payrollDetails);
                 let payeReference = String(referenceLookup.payeReference || "").trim();
                 let accountsOfficeReference = String(referenceLookup.accountsOfficeReference || "").trim();
                 let p32TaxAmount = Number.isFinite(initialP32Tax) ? initialP32Tax : 0;
                 let pensionPayableAmount = Number.isFinite(initialPension) ? initialPension : 0;
                 let hmrcDueDate = payrollHmrcDueDateFromPaymentDate(paymentDate);
-                const hasReliableReferenceExtraction = ["payroll_api_payslips"].includes(p32FigureSource)
-                    && ["payroll_api_payslips"].includes(pensionFigureSource);
+                const reliablePayrollFigureSources = ["payroll_api_payslips", "nominal_trial_balance_delta"];
+                const hasReliableReferenceExtraction = reliablePayrollFigureSources.includes(p32FigureSource)
+                    && reliablePayrollFigureSources.includes(pensionFigureSource);
                 const lockExtractedFigureInputs = Boolean(tenantId) && hasReliableReferenceExtraction;
                 let emailBody = composePayrollPostedEmailDraft({
                     clientName: bmTaskClientDisplayName(resolvedTask?.clientName || registerRow?.displayName || registerRow?.clientName || ""),
@@ -124904,10 +124941,10 @@
                                 <article class="task-detail-modal-card">
                                     <h5>Payroll figures</h5>
                                     <div class="task-detail-modal-grid">
-                                        <label>P32 / HMRC PAYE-NIC
+                                        <label><span class="task-payroll-field-title">P32 / HMRC PAYE-NIC <button id="taskPayrollP32BreakdownButton" class="task-payroll-help-icon" type="button" aria-label="Show P32 extraction breakdown" title="Show extraction breakdown">?</button></span>
                                             <input id="taskPayrollEmailP32Amount" type="number" step="0.01" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
-                                        <label>Pension payable (if applicable)
+                                        <label><span class="task-payroll-field-title">Pension payable (if applicable) <button id="taskPayrollPensionBreakdownButton" class="task-payroll-help-icon" type="button" aria-label="Show pension extraction breakdown" title="Show extraction breakdown">?</button></span>
                                             <input id="taskPayrollEmailPensionAmount" type="number" step="0.01" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                         <label>Payroll payment date
@@ -124917,7 +124954,7 @@
                                             <input id="taskPayrollEmailHmrcDueDate" type="date" value="" ${lockExtractedFigureInputs ? "disabled" : ""}>
                                         </label>
                                     </div>
-                                    <p class="task-detail-modal-hint">${lockExtractedFigureInputs ? "Pulled from Xero payroll and locked for consistency." : "No Xero payroll match detected, so values can be entered manually."}</p>
+                                    <p class="task-detail-modal-hint">${lockExtractedFigureInputs ? "Pulled from Xero extraction and locked for consistency." : "No reliable Xero extraction source detected, so values can be entered manually."}</p>
                                     <div class="task-payroll-diagnostics-trigger-wrap">
                                         <button id="taskPayrollDiagnosticsButton" class="ghost-button" type="button">View extraction diagnostics</button>
                                     </div>
@@ -124961,6 +124998,9 @@
                             const diagnosticsModal = body.querySelector("#taskPayrollDiagnosticsModal");
                             const diagnosticsCloseButton = body.querySelector("#taskPayrollDiagnosticsClose");
                             const diagnosticsList = body.querySelector("#taskPayrollDiagnosticsList");
+                            const diagnosticsTitle = body.querySelector("#taskPayrollDiagnosticsTitle");
+                            const p32BreakdownButton = body.querySelector("#taskPayrollP32BreakdownButton");
+                            const pensionBreakdownButton = body.querySelector("#taskPayrollPensionBreakdownButton");
                             const confirmButton = document.getElementById("confirmOperationReviewButton");
                             const validationHintId = `taskPayrollValidationHint-${Math.random().toString(36).slice(2, 10)}`;
                             const validationWrap = document.createElement("article");
@@ -125014,13 +125054,75 @@
                                 `Accounts fetch status: ${String(fetchDiagnostics?.accounts?.statusCode ?? "n/a")} (ok: ${fetchDiagnostics?.accounts?.ok ? "yes" : "no"})`,
                                 `Overview errors: ${Array.isArray(overview?.errors) && overview.errors.length ? overview.errors.join(" · ") : "none"}`,
                             ];
-                            if (diagnosticsList) {
-                                diagnosticsList.innerHTML = diagnosticsItems.map((item) => `<li>${escapeHTML(item)}</li>`).join("");
-                            }
+                            const setDiagnosticsContent = (title, items) => {
+                                if (diagnosticsTitle) diagnosticsTitle.textContent = String(title || "Payroll extraction diagnostics");
+                                if (diagnosticsList) {
+                                    diagnosticsList.innerHTML = (Array.isArray(items) ? items : [])
+                                        .map((item) => `<li>${escapeHTML(String(item || ""))}</li>`)
+                                        .join("");
+                                }
+                            };
+                            const buildFigureBreakdownItems = (kind) => {
+                                const isP32 = kind === "p32";
+                                const source = String(isP32 ? figureSources?.p32Tax : figureSources?.pensionPayable || "none").trim() || "none";
+                                const value = Number(isP32 ? (p32Input?.value || initialP32Tax || 0) : (pensionInput?.value || initialPension || 0));
+                                const items = [
+                                    `Figure: ${formatCurrency(value)}`,
+                                    `Source: ${source}`,
+                                    `Selected pay run: ${String(selectedPayRunLabel || "Unavailable")}`,
+                                ];
+                                if (source === "nominal_trial_balance_delta") {
+                                    const codeDelta = trialBalanceDeltaDiagnostics?.codeDelta && typeof trialBalanceDeltaDiagnostics.codeDelta === "object"
+                                        ? trialBalanceDeltaDiagnostics.codeDelta
+                                        : {};
+                                    const labelDelta = trialBalanceDeltaDiagnostics?.labelDelta && typeof trialBalanceDeltaDiagnostics.labelDelta === "object"
+                                        ? trialBalanceDeltaDiagnostics.labelDelta
+                                        : {};
+                                    const codeMatches = isP32 ? codeDelta?.matchedTaxCodes : codeDelta?.matchedPensionCodes;
+                                    const labelMatches = isP32 ? labelDelta?.taxLabels : labelDelta?.pensionLabels;
+                                    if (Array.isArray(codeMatches) && codeMatches.length) {
+                                        items.push(`Nominal codes matched: ${codeMatches.slice(0, 12).join(", ")}`);
+                                    }
+                                    if (Array.isArray(labelMatches) && labelMatches.length) {
+                                        items.push(`Nominal labels matched: ${labelMatches.slice(0, 8).join(" · ")}`);
+                                    }
+                                    items.push(
+                                        `Trial balance delta used: ${formatCurrency(Number(isP32 ? summary?.trialBalanceDeltaP32Tax : summary?.trialBalanceDeltaPensionPayable || 0))}`
+                                    );
+                                    items.push(`Delta engine: ${String(trialBalanceDeltaDiagnostics?.engine || "unknown")}`);
+                                } else if (source === "payroll_api_payslips") {
+                                    items.push(`Payroll API amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrollApi : payrollApiDiagnostics?.pensionFromPayrollApi || 0))}`);
+                                    items.push(`Pay run details amount: ${formatCurrency(Number(isP32 ? payrollApiDiagnostics?.p32FromPayrunDetails : payrollApiDiagnostics?.pensionFromPayrunDetails || 0))}`);
+                                    items.push(`Payslips analysed: ${Number(payrollApiDiagnostics?.payslipCount || 0).toLocaleString("en-GB")}`);
+                                } else {
+                                    items.push("No extraction source is currently attached to this figure.");
+                                }
+                                if (openAiPayrollInferenceDiagnostics && typeof openAiPayrollInferenceDiagnostics === "object") {
+                                    const aiEngine = String(openAiPayrollInferenceDiagnostics?.engine || "disabled");
+                                    const aiNote = String(openAiPayrollInferenceDiagnostics?.notes || "").trim();
+                                    items.push(`OpenAI inference engine: ${aiEngine}`);
+                                    if (aiNote) items.push(`OpenAI note: ${aiNote}`);
+                                }
+                                if (nominalTransactionDiagnostics && typeof nominalTransactionDiagnostics === "object") {
+                                    const nominalEngine = String(nominalTransactionDiagnostics?.engine || "").trim();
+                                    if (nominalEngine) items.push(`Nominal diagnostics engine: ${nominalEngine}`);
+                                }
+                                return items;
+                            };
+                            setDiagnosticsContent("Payroll extraction diagnostics", diagnosticsItems);
                             const closeDiagnostics = () => {
                                 if (diagnosticsModal) diagnosticsModal.hidden = true;
                             };
                             diagnosticsOpenButton?.addEventListener("click", () => {
+                                setDiagnosticsContent("Payroll extraction diagnostics", diagnosticsItems);
+                                if (diagnosticsModal) diagnosticsModal.hidden = false;
+                            });
+                            p32BreakdownButton?.addEventListener("click", () => {
+                                setDiagnosticsContent("P32 figure breakdown", buildFigureBreakdownItems("p32"));
+                                if (diagnosticsModal) diagnosticsModal.hidden = false;
+                            });
+                            pensionBreakdownButton?.addEventListener("click", () => {
+                                setDiagnosticsContent("Pension figure breakdown", buildFigureBreakdownItems("pension"));
                                 if (diagnosticsModal) diagnosticsModal.hidden = false;
                             });
                             diagnosticsCloseButton?.addEventListener("click", closeDiagnostics);

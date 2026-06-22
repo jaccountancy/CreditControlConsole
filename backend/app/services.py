@@ -3191,9 +3191,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         except Exception as exc:
             errors.append(f"Pay run details: {_sync_error_message(exc)}")
 
-    posted_journal_p32_tax = Decimal("0")
-    posted_journal_pension_payable = Decimal("0")
-    journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "payroll_api_primary_mode"}
+    journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_primary_mode"}
     payroll_api_p32_tax = Decimal("0")
     payroll_api_pension_payable = Decimal("0")
     payroll_api_diagnostics: dict = {}
@@ -3263,11 +3261,49 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     trial_balance_delta_p32_tax = Decimal("0")
     trial_balance_delta_pension_payable = Decimal("0")
     trial_balance_delta_diagnostics: dict = {}
+    (
+        code_delta_tax,
+        code_delta_pension,
+        code_delta_diag,
+    ) = _payroll_overview_trial_balance_code_delta(
+        trial_balance_payload,
+        trial_balance_previous_payload,
+        accounts,
+    )
+    (
+        label_delta_tax,
+        label_delta_pension,
+        label_delta_diag,
+    ) = _payroll_overview_trial_balance_liability_delta(
+        trial_balance_payload,
+        trial_balance_previous_payload,
+    )
+    if code_delta_tax > Decimal("0") or code_delta_pension > Decimal("0"):
+        trial_balance_delta_p32_tax = code_delta_tax
+        trial_balance_delta_pension_payable = code_delta_pension
+        trial_balance_delta_diagnostics = {
+            "engine": "nominal_code_delta",
+            "codeDelta": code_delta_diag if isinstance(code_delta_diag, dict) else {},
+            "labelDelta": label_delta_diag if isinstance(label_delta_diag, dict) else {},
+        }
+    else:
+        trial_balance_delta_p32_tax = label_delta_tax
+        trial_balance_delta_pension_payable = label_delta_pension
+        trial_balance_delta_diagnostics = {
+            "engine": "nominal_label_delta",
+            "codeDelta": code_delta_diag if isinstance(code_delta_diag, dict) else {},
+            "labelDelta": label_delta_diag if isinstance(label_delta_diag, dict) else {},
+        }
     trial_balance_pension_rows = _payroll_overview_trial_balance_pension_rows(trial_balance_payload)
     trial_balance_pension_payable_balance = float(
         sum(abs(_payroll_overview_decimal(row.get("balance"))) for row in trial_balance_pension_rows)
     )
-    nominal_transaction_context: dict = {}
+    nominal_transaction_context: dict = {
+        "engine": "trial_balance_delta",
+        "taxDelta": float(trial_balance_delta_p32_tax),
+        "pensionDelta": float(trial_balance_delta_pension_payable),
+        "diagnostics": trial_balance_delta_diagnostics if isinstance(trial_balance_delta_diagnostics, dict) else {},
+    }
     openai_p32_tax = Decimal("0")
     openai_pension_payable = Decimal("0")
     openai_payable_diagnostics: dict = {"engine": "disabled", "reason": "exact_payroll_values_only"}
@@ -3385,11 +3421,15 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     )
     pay_slips_diag = fetch_diagnostics.get("payslipsbypayrun") or {}
     selected_details_diag = fetch_diagnostics.get("selectedpayrundetails") or {}
-    if payroll_api_p32_tax > Decimal("0"):
+    if trial_balance_delta_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
+    elif payroll_api_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(payroll_api_p32_tax)
     else:
         estimated_p32_tax_balance = 0.0
-    if payroll_api_pension_payable > Decimal("0"):
+    if trial_balance_delta_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(trial_balance_delta_pension_payable)
+    elif payroll_api_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(payroll_api_pension_payable)
     else:
         estimated_pension_payable_balance = 0.0
@@ -3415,12 +3455,16 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             )
     estimated_balances_source = {
         "p32Tax": (
-            "payroll_api_payslips"
+            "nominal_trial_balance_delta"
+            if trial_balance_delta_p32_tax > Decimal("0")
+            else "payroll_api_payslips"
             if payroll_api_p32_tax > Decimal("0")
             else "none"
         ),
         "pensionPayable": (
-            "payroll_api_payslips"
+            "nominal_trial_balance_delta"
+            if trial_balance_delta_pension_payable > Decimal("0")
+            else "payroll_api_payslips"
             if payroll_api_pension_payable > Decimal("0")
             else "none"
         ),
