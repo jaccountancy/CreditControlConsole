@@ -125230,6 +125230,17 @@
                                 const isP32 = kind === "p32";
                                 const source = isP32 ? resolvedP32FigureSource : resolvedPensionFigureSource;
                                 const value = Number(isP32 ? (p32Input?.value || initialP32Tax || 0) : (pensionInput?.value || initialPension || 0));
+                                const lineKey = (line) => {
+                                    if (!line || typeof line !== "object") return "";
+                                    return [
+                                        String(line?.date || "").trim(),
+                                        String(line?.source || "").trim(),
+                                        String(line?.description || "").trim(),
+                                        String(line?.reference || "").trim(),
+                                        String(Number(line?.debit || 0)),
+                                        String(Number(line?.credit || 0)),
+                                    ].join("|");
+                                };
                                 const items = [
                                     `Figure: ${formatCurrency(value)}`,
                                     `Source: ${source}`,
@@ -125267,14 +125278,35 @@
                                         if (isP32) return Array.isArray(row?.payrollExpenseLines) ? row.payrollExpenseLines : [];
                                         return Array.isArray(row?.applicableLines) ? row.applicableLines : [];
                                     });
+                                    const usedLineKeys = new Set(lineRows.map((line) => lineKey(line)).filter(Boolean));
+                                    const pulledLines = accountRows.flatMap((row) => (
+                                        Array.isArray(row?.allTransactionLines)
+                                            ? row.allTransactionLines.map((line) => ({
+                                                ...(line && typeof line === "object" ? line : {}),
+                                                accountCode: String(row?.code || "").trim(),
+                                            }))
+                                            : []
+                                    ));
                                     if (lineRows.length) {
                                         items.push(`${isP32 ? "Payroll expense lines" : "Applicable nominal lines"}: ${lineRows.length.toLocaleString("en-GB")} row(s)`);
-                                        for (const line of lineRows.slice(0, 8)) {
+                                        for (const line of lineRows.slice(0, 12)) {
                                             const date = String(line?.date || "").trim() || "date?";
                                             const description = String(line?.description || line?.reference || "Line").trim();
                                             const debit = Number(line?.debit || 0);
                                             const credit = Number(line?.credit || 0);
-                                            items.push(`${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
+                                            items.push(`USED IN ${isP32 ? "P32" : "PENSION"}: ${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
+                                        }
+                                    }
+                                    if (pulledLines.length) {
+                                        items.push(`Xero nominal transactions pulled: ${pulledLines.length.toLocaleString("en-GB")} row(s)`);
+                                        for (const line of pulledLines.slice(0, 80)) {
+                                            const date = String(line?.date || "").trim() || "date?";
+                                            const description = String(line?.description || line?.reference || "Line").trim();
+                                            const debit = Number(line?.debit || 0);
+                                            const credit = Number(line?.credit || 0);
+                                            const code = String(line?.accountCode || "").trim();
+                                            const usedLabel = usedLineKeys.has(lineKey(line)) ? `USED IN ${isP32 ? "P32" : "PENSION"}` : "NOT USED";
+                                            items.push(`${usedLabel} · ${code || "code?"} · ${date} · ${description} · Dr ${formatCurrency(debit)} · Cr ${formatCurrency(credit)}`);
                                         }
                                     }
                                 } else if (source === "nominal_trial_balance_delta") {
