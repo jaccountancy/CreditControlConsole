@@ -124353,25 +124353,65 @@
             } = {}) {
                 const resolvedTask = bmTaskRowWithOverrides(row);
                 if (!resolvedTask || bmTaskWorkflowType(resolvedTask) !== "payroll") return;
-                if (!Array.isArray(companiesHouseSettings?.authRegisterRows) || !companiesHouseSettings.authRegisterRows.length) {
-                    try {
-                        await loadAuthCodeRegisterDirectory(false);
-                    } catch {}
-                }
-                const registerRow = bmTaskFindRegisterRowForTask(resolvedTask) || {};
-                const serviceDetails = registerRow?.companiesHouse?.serviceDetails || registerRow?.serviceDetails || {};
-                const payrollDetails = serviceDetails?.payroll || {};
-                const resolvedXero = bmTaskResolvedXeroMatch(resolvedTask);
-                const tenantId = String(resolvedXero?.tenantId || "").trim();
-                const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
-                const summary = overview?.summary || {};
-                const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
-                const fetchDiagnostics = summary?.fetchDiagnostics && typeof summary.fetchDiagnostics === "object"
-                    ? summary.fetchDiagnostics
-                    : {};
-                const payRunsFetch = fetchDiagnostics?.payRuns && typeof fetchDiagnostics.payRuns === "object"
-                    ? fetchDiagnostics.payRuns
-                    : {};
+                let loadingModalVisible = false;
+                const closeLoadingModal = () => {
+                    if (!loadingModalVisible) return;
+                    loadingModalVisible = false;
+                    const panel = document.getElementById("operationReviewPanel");
+                    const closeButton = panel?.querySelector("#closeOperationReviewButton");
+                    if (closeButton instanceof HTMLButtonElement) closeButton.disabled = false;
+                    if (panel && !panel.hidden) closeOperationReviewPanel(false);
+                };
+                void showOperationReviewDialog({
+                    eyebrow: "Payroll task",
+                    title: "Payroll email workflow",
+                    subtitle: "Connecting to Xero payroll and preparing extracted values...",
+                    confirmLabel: "Loading...",
+                    cancelLabel: "Cancel",
+                    columns: [],
+                    rows: [{}],
+                    summaryChips: ["Starting extraction"],
+                    onRender: ({ panel, body, confirmButton, cancelButton, actions }) => {
+                        loadingModalVisible = true;
+                        if (confirmButton) {
+                            confirmButton.hidden = true;
+                            confirmButton.disabled = true;
+                        }
+                        if (cancelButton) {
+                            cancelButton.hidden = true;
+                            cancelButton.disabled = true;
+                        }
+                        if (actions) actions.hidden = true;
+                        const closeButton = panel?.querySelector("#closeOperationReviewButton");
+                        if (closeButton instanceof HTMLButtonElement) closeButton.disabled = true;
+                        body.innerHTML = `
+                            <article class="task-detail-modal-card">
+                                <h5>Loading</h5>
+                                <p class="task-detail-modal-hint">Pulling latest pay run, P32, pension and HMRC references from Xero. Please wait...</p>
+                            </article>
+                        `;
+                    },
+                }).catch(() => {});
+                try {
+                    if (!Array.isArray(companiesHouseSettings?.authRegisterRows) || !companiesHouseSettings.authRegisterRows.length) {
+                        try {
+                            await loadAuthCodeRegisterDirectory(false);
+                        } catch {}
+                    }
+                    const registerRow = bmTaskFindRegisterRowForTask(resolvedTask) || {};
+                    const serviceDetails = registerRow?.companiesHouse?.serviceDetails || registerRow?.serviceDetails || {};
+                    const payrollDetails = serviceDetails?.payroll || {};
+                    const resolvedXero = bmTaskResolvedXeroMatch(resolvedTask);
+                    const tenantId = String(resolvedXero?.tenantId || "").trim();
+                    const overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
+                    const summary = overview?.summary || {};
+                    const payRuns = Array.isArray(overview?.payRuns) ? overview.payRuns : [];
+                    const fetchDiagnostics = summary?.fetchDiagnostics && typeof summary.fetchDiagnostics === "object"
+                        ? summary.fetchDiagnostics
+                        : {};
+                    const payRunsFetch = fetchDiagnostics?.payRuns && typeof fetchDiagnostics.payRuns === "object"
+                        ? fetchDiagnostics.payRuns
+                        : {};
                 if (tenantId && !payRuns.length) {
                     const diagnosticsDetail = [
                         `Tenant: ${tenantId}`,
@@ -124493,6 +124533,7 @@
                     });
                 }
 
+                closeLoadingModal();
                 const modalResult = await showOperationReviewDialog({
                     eyebrow: "Payroll task",
                     title: paymentDate ? `Payroll email workflow · ${formatDate(paymentDate)}` : "Payroll email workflow",
@@ -124775,6 +124816,12 @@
                     urgent: false,
                 });
                 showToast("Payroll task completed and email workflow drafted.", "success");
+                } catch (error) {
+                    console.error("Unable to start payroll email workflow", error);
+                    showToast(error?.message || "Unable to start payroll workflow right now.", "error");
+                } finally {
+                    closeLoadingModal();
+                }
             }
 
             function bmTaskAllRowsWithOverrides() {
