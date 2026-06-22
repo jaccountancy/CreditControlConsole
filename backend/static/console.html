@@ -50096,33 +50096,54 @@
                 }
             }
 
+            const submittedEmployeeFormsDefaultTaxCode = "1257L";
             const submittedEmployeeFormsXeroFieldBlueprint = [
                 { key: "employerName", label: "Employer name", wide: true },
-                { key: "employeeFirstName", label: "First name" },
-                { key: "employeeLastName", label: "Last name" },
+                { key: "employeeFirstName", label: "First name", mandatory: true },
+                { key: "employeeLastName", label: "Last name", mandatory: true },
                 { key: "employeeFullName", label: "Full name", wide: true },
                 { key: "employeeEmail", label: "Employee email", type: "email", wide: true },
                 { key: "employeePhone", label: "Phone number", wide: true },
-                { key: "dateOfBirth", label: "Date of birth", type: "date" },
+                { key: "dateOfBirth", label: "Date of birth", type: "date", mandatory: true },
                 { key: "nationalInsuranceNumber", label: "NI number" },
                 { key: "startDate", label: "Start date", type: "date" },
                 { key: "jobTitle", label: "Job title" },
                 { key: "department", label: "Department" },
-                { key: "payrollNumber", label: "Payroll number" },
-                { key: "taxCode", label: "Tax code" },
+                { key: "payrollNumber", label: "Payroll number", mandatory: true },
+                { key: "taxCode", label: "Tax code", mandatory: true },
                 { key: "employmentType", label: "Employment type" },
                 { key: "hoursPerWeek", label: "Hours per week" },
                 { key: "salary", label: "Salary" },
-                { key: "addressLine1", label: "Address line 1", wide: true },
+                { key: "addressLine1", label: "Address line 1", wide: true, mandatory: true },
                 { key: "addressLine2", label: "Address line 2", wide: true },
-                { key: "city", label: "City" },
-                { key: "postcode", label: "Postcode" },
+                { key: "city", label: "City", mandatory: true },
+                { key: "postcode", label: "Postcode", mandatory: true },
                 { key: "country", label: "Country" },
                 { key: "bankAccountName", label: "Bank account name", wide: true },
                 { key: "bankAccountNumber", label: "Bank account number" },
                 { key: "bankSortCode", label: "Bank sort code" },
                 { key: "missingOrUnclear", label: "Missing or unclear notes", wide: true, multiline: true },
             ];
+
+            function submittedEmployeeFormsMandatoryFieldsMissing(draft = {}) {
+                const target = draft && typeof draft === "object" ? draft : {};
+                return submittedEmployeeFormsXeroFieldBlueprint
+                    .filter((field) => field.mandatory === true)
+                    .filter((field) => !String(target[field.key] || "").trim())
+                    .map((field) => field.label);
+            }
+
+            function submittedEmployeeFormsEnsureDefaults(row = {}, draft = {}) {
+                const nextDraft = draft && typeof draft === "object" ? { ...draft } : {};
+                const taxCode = String(nextDraft.taxCode || "").trim();
+                if (!taxCode) nextDraft.taxCode = submittedEmployeeFormsDefaultTaxCode;
+                const payrollNumber = String(nextDraft.payrollNumber || "").trim();
+                if (!payrollNumber) {
+                    const suggested = String(row?.suggestedPayrollNumber || "").trim();
+                    if (suggested) nextDraft.payrollNumber = suggested;
+                }
+                return nextDraft;
+            }
 
             function submittedEmployeeFormsPreviewDraftFromRow(row = {}) {
                 const extracted = row?.extractedFields && typeof row.extractedFields === "object" ? row.extractedFields : {};
@@ -50146,11 +50167,13 @@
 
             function submittedEmployeeFormsPreviewCurrentDraft(row = {}) {
                 const rowId = String(row?.id || "").trim();
-                if (!rowId) return submittedEmployeeFormsPreviewDraftFromRow(row);
+                if (!rowId) return submittedEmployeeFormsEnsureDefaults(row, submittedEmployeeFormsPreviewDraftFromRow(row));
                 if (submittedEmployeeFormsPreviewDraftByRowId.has(rowId)) {
-                    return { ...submittedEmployeeFormsPreviewDraftByRowId.get(rowId) };
+                    const existingDraft = submittedEmployeeFormsEnsureDefaults(row, submittedEmployeeFormsPreviewDraftByRowId.get(rowId));
+                    submittedEmployeeFormsPreviewDraftByRowId.set(rowId, existingDraft);
+                    return { ...existingDraft };
                 }
-                const draft = submittedEmployeeFormsPreviewDraftFromRow(row);
+                const draft = submittedEmployeeFormsEnsureDefaults(row, submittedEmployeeFormsPreviewDraftFromRow(row));
                 submittedEmployeeFormsPreviewDraftByRowId.set(rowId, draft);
                 return { ...draft };
             }
@@ -58446,15 +58469,9 @@
                         const row = (submittedEmployeeFormsData?.rows || []).find((item) => String(item?.id || "").trim() === String(submittedEmployeeFormsPreviewRowId || "").trim()) || null;
                         if (!row) return;
                         const draft = submittedEmployeeFormsPreviewCurrentDraft(row);
-                        const firstName = String(draft.employeeFirstName || "").trim();
-                        const lastName = String(draft.employeeLastName || "").trim();
-                        const dateOfBirth = String(draft.dateOfBirth || "").trim();
-                        if (!firstName || !lastName) {
-                            showToast("First name and last name are required before confirmation.", "warning");
-                            return;
-                        }
-                        if (!dateOfBirth) {
-                            showToast("Date of birth is required before publishing to Xero Payroll.", "warning");
+                        const missingMandatoryFields = submittedEmployeeFormsMandatoryFieldsMissing(draft);
+                        if (missingMandatoryFields.length) {
+                            showToast(`Complete Xero mandatory fields: ${missingMandatoryFields.join(", ")}.`, "warning");
                             return;
                         }
                         submittedEmployeeFormsPreviewStep = "confirm";
