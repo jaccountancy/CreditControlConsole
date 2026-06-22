@@ -27832,10 +27832,10 @@
                 line-height: 1.1;
             }
             .task-list-inline-controls {
-                display: grid;
-                grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(130px, 1fr)) auto;
-                gap: 8px;
+                display: flex;
                 align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
             }
             .task-list-inline-controls input,
             .task-list-inline-controls select {
@@ -27845,6 +27845,86 @@
                 padding: 8px 10px;
                 background: var(--surface-soft);
                 color: var(--ink);
+            }
+            .task-list-search-cluster {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .task-list-icon-button {
+                width: 36px;
+                height: 36px;
+                border-radius: 999px;
+                border: 1px solid var(--line);
+                background: #ffffff;
+                color: var(--ink);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+            }
+            .task-list-icon-button svg {
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 2;
+                fill: none;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .task-list-icon-button:hover,
+            .task-list-icon-button:focus-visible,
+            .task-list-icon-button[aria-expanded="true"] {
+                border-color: rgba(52, 132, 197, 0.3);
+                background: var(--blue-soft);
+                color: var(--blue);
+                outline: none;
+            }
+            .task-list-icon-button:active {
+                transform: scale(0.97);
+            }
+            .task-list-search-wrap {
+                width: 0;
+                max-width: 0;
+                opacity: 0;
+                overflow: hidden;
+                pointer-events: none;
+                transition: width 0.22s ease, max-width 0.22s ease, opacity 0.16s ease;
+            }
+            .task-list-search-wrap.is-open,
+            .task-list-search-wrap:focus-within {
+                width: min(340px, calc(100vw - 190px));
+                max-width: 340px;
+                opacity: 1;
+                pointer-events: auto;
+            }
+            .task-list-search-wrap input {
+                min-height: 36px;
+                border-radius: 999px;
+                padding: 8px 12px;
+                background: #ffffff;
+            }
+            .task-list-control-wrap {
+                position: relative;
+            }
+            .task-list-control-menu {
+                position: absolute;
+                top: calc(100% + 8px);
+                left: 0;
+                z-index: 120;
+                min-width: 210px;
+                padding: 8px;
+                border-radius: 14px;
+                border: 1px solid var(--line);
+                background: var(--surface-strong);
+                box-shadow: 0 14px 30px rgba(30, 47, 77, 0.14);
+            }
+            .task-list-control-menu select {
+                width: 100%;
+                min-height: 36px;
+                border-radius: 10px;
+                background: var(--surface-soft);
             }
             .task-list-bulk-bar {
                 display: grid;
@@ -29268,7 +29348,7 @@
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .task-list-inline-controls {
-                    grid-template-columns: 1fr 1fr;
+                    justify-content: flex-start;
                 }
                 .task-list-bulk-bar {
                     grid-template-columns: 1fr;
@@ -41214,33 +41294,92 @@
                                             <tr>
                                                 <th colspan="9">
                                                     <div class="task-list-inline-controls">
-                                                        <input id="taskListSearch" type="search" placeholder="Search client, task, status, manager...">
-                                                        <select id="taskListManagerFilter" aria-label="Filter by manager">
-                                                            <option value="">All managers</option>
-                                                        </select>
-                                                        <select id="taskListStatusFilter" aria-label="Filter by status">
-                                                            <option value="">All statuses</option>
-                                                            <option value="open">Open</option>
-                                                            <option value="records_requested">Records requested</option>
-                                                            <option value="awaiting_approval">Awaiting approval</option>
-                                                            <option value="awaiting_dean_approval">Awaiting Dean's approval</option>
-                                                            <option value="in_review">In review</option>
-                                                            <option value="bounceback">Bounceback</option>
-                                                            <option value="query">Query</option>
-                                                        </select>
-                                                        <select id="taskListDueFilter" aria-label="Filter by due state">
-                                                            <option value="">All deadlines</option>
-                                                            <option value="red">Red: due today or overdue</option>
-                                                            <option value="amber">Amber: due in 7 days</option>
-                                                            <option value="green">Green: due in more than 7 days</option>
-                                                        </select>
-                                                        <select id="taskListSort" aria-label="Sort tasks">
-                                                            <option value="deadline_asc">Sort: deadline (soonest)</option>
-                                                            <option value="deadline_desc">Sort: deadline (latest)</option>
-                                                            <option value="client_asc">Sort: client A-Z</option>
-                                                            <option value="status">Sort: status</option>
-                                                        </select>
-                                                        <button class="ghost-button" type="button" id="taskListColumnsButton">Columns</button>
+                                                        <div class="task-list-search-cluster">
+                                                            <button class="task-list-icon-button" type="button" id="taskListSearchToggle" aria-label="Search tasks" aria-expanded="false" aria-controls="taskListSearch" title="Search tasks">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <circle cx="11" cy="11" r="6"></circle>
+                                                                    <path d="M16 16l4 4"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <label class="task-list-search-wrap" id="taskListSearchWrap">
+                                                                <input id="taskListSearch" type="search" placeholder="Search client, task, status, manager...">
+                                                            </label>
+                                                        </div>
+                                                        <div class="task-list-control-wrap">
+                                                            <button class="task-list-icon-button" type="button" id="taskListManagerButton" aria-label="Filter by manager" aria-expanded="false" aria-controls="taskListManagerMenu" title="Manager filter">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <circle cx="12" cy="8" r="3.2"></circle>
+                                                                    <path d="M5 20c0-3.2 2.8-5.8 7-5.8s7 2.6 7 5.8"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <div class="task-list-control-menu" id="taskListManagerMenu" hidden>
+                                                                <select id="taskListManagerFilter" aria-label="Filter by manager">
+                                                                    <option value="">All managers</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="task-list-control-wrap">
+                                                            <button class="task-list-icon-button" type="button" id="taskListStatusButton" aria-label="Filter by status" aria-expanded="false" aria-controls="taskListStatusMenu" title="Status filter">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <path d="M3 5h18l-7 8v6l-4 2v-8z"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <div class="task-list-control-menu" id="taskListStatusMenu" hidden>
+                                                                <select id="taskListStatusFilter" aria-label="Filter by status">
+                                                                    <option value="">All statuses</option>
+                                                                    <option value="open">Open</option>
+                                                                    <option value="records_requested">Records requested</option>
+                                                                    <option value="awaiting_approval">Awaiting approval</option>
+                                                                    <option value="awaiting_dean_approval">Awaiting Dean's approval</option>
+                                                                    <option value="in_review">In review</option>
+                                                                    <option value="bounceback">Bounceback</option>
+                                                                    <option value="query">Query</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="task-list-control-wrap">
+                                                            <button class="task-list-icon-button" type="button" id="taskListDueButton" aria-label="Filter by deadline" aria-expanded="false" aria-controls="taskListDueMenu" title="Deadline filter">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <rect x="4" y="5" width="16" height="15" rx="2"></rect>
+                                                                    <path d="M8 3v4"></path>
+                                                                    <path d="M16 3v4"></path>
+                                                                    <path d="M4 10h16"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <div class="task-list-control-menu" id="taskListDueMenu" hidden>
+                                                                <select id="taskListDueFilter" aria-label="Filter by due state">
+                                                                    <option value="">All deadlines</option>
+                                                                    <option value="red">Red: due today or overdue</option>
+                                                                    <option value="amber">Amber: due in 7 days</option>
+                                                                    <option value="green">Green: due in more than 7 days</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="task-list-control-wrap">
+                                                            <button class="task-list-icon-button" type="button" id="taskListSortButton" aria-label="Sort tasks" aria-expanded="false" aria-controls="taskListSortMenu" title="Sort tasks">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <path d="M8 4v16"></path>
+                                                                    <path d="M5 7l3-3 3 3"></path>
+                                                                    <path d="M16 20V4"></path>
+                                                                    <path d="M13 17l3 3 3-3"></path>
+                                                                </svg>
+                                                            </button>
+                                                            <div class="task-list-control-menu" id="taskListSortMenu" hidden>
+                                                                <select id="taskListSort" aria-label="Sort tasks">
+                                                                    <option value="deadline_asc">Sort: deadline (soonest)</option>
+                                                                    <option value="deadline_desc">Sort: deadline (latest)</option>
+                                                                    <option value="client_asc">Sort: client A-Z</option>
+                                                                    <option value="status">Sort: status</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <button class="task-list-icon-button" type="button" id="taskListColumnsButton" aria-label="Columns" title="Columns">
+                                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                                                                <path d="M9 5v14"></path>
+                                                                <path d="M15 5v14"></path>
+                                                            </svg>
+                                                        </button>
                                                     </div>
                                                 </th>
                                             </tr>
@@ -132874,19 +133013,69 @@
                     resetTaskListPagination();
                     renderBmTasksTable();
                 });
+                const taskListSearchInput = document.getElementById("taskListSearch");
+                const taskListSearchWrap = document.getElementById("taskListSearchWrap");
+                const taskListSearchToggle = document.getElementById("taskListSearchToggle");
+                const taskListControlMenus = [
+                    ["taskListManagerMenu", "taskListManagerButton"],
+                    ["taskListStatusMenu", "taskListStatusButton"],
+                    ["taskListDueMenu", "taskListDueButton"],
+                    ["taskListSortMenu", "taskListSortButton"],
+                ];
+                const closeTaskListControlMenus = () => {
+                    taskListControlMenus.forEach(([menuId, buttonId]) => {
+                        const menu = document.getElementById(menuId);
+                        const button = document.getElementById(buttonId);
+                        if (menu) menu.hidden = true;
+                        if (button) button.setAttribute("aria-expanded", "false");
+                    });
+                };
+                const toggleTaskListControlMenu = (menuId, buttonId) => {
+                    const menu = document.getElementById(menuId);
+                    const button = document.getElementById(buttonId);
+                    if (!menu || !button) return;
+                    const willOpen = menu.hidden;
+                    closeTaskListControlMenus();
+                    menu.hidden = !willOpen;
+                    button.setAttribute("aria-expanded", String(willOpen));
+                };
+                const setTaskListSearchOpen = (open) => {
+                    const shouldOpen = Boolean(open || taskListSearchInput?.value);
+                    if (taskListSearchWrap) taskListSearchWrap.classList.toggle("is-open", shouldOpen);
+                    if (taskListSearchToggle) taskListSearchToggle.setAttribute("aria-expanded", String(shouldOpen));
+                };
                 document.getElementById("taskListSearch")?.addEventListener("input", (event) => {
                     companiesHouseSettings.bmTasksFilters = {
                         ...companiesHouseSettings.bmTasksFilters,
                         searchTerm: String(event?.target?.value || ""),
                     };
+                    setTaskListSearchOpen(Boolean(event?.target?.value));
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
+                taskListSearchInput?.addEventListener("focus", () => setTaskListSearchOpen(true));
+                taskListSearchInput?.addEventListener("blur", (event) => {
+                    if (!taskListSearchInput?.value && event?.relatedTarget !== taskListSearchToggle) {
+                        setTaskListSearchOpen(false);
+                    }
+                });
+                taskListSearchToggle?.addEventListener("click", () => {
+                    const willOpen = !taskListSearchWrap?.classList.contains("is-open");
+                    setTaskListSearchOpen(willOpen);
+                    if (willOpen) taskListSearchInput?.focus();
+                    else if (!taskListSearchInput?.value) taskListSearchInput?.blur();
+                });
+                setTaskListSearchOpen(Boolean(taskListSearchInput?.value || companiesHouseSettings?.bmTasksFilters?.searchTerm));
+                document.getElementById("taskListManagerButton")?.addEventListener("click", () => toggleTaskListControlMenu("taskListManagerMenu", "taskListManagerButton"));
+                document.getElementById("taskListStatusButton")?.addEventListener("click", () => toggleTaskListControlMenu("taskListStatusMenu", "taskListStatusButton"));
+                document.getElementById("taskListDueButton")?.addEventListener("click", () => toggleTaskListControlMenu("taskListDueMenu", "taskListDueButton"));
+                document.getElementById("taskListSortButton")?.addEventListener("click", () => toggleTaskListControlMenu("taskListSortMenu", "taskListSortButton"));
                 document.getElementById("taskListManagerFilter")?.addEventListener("change", (event) => {
                     companiesHouseSettings.bmTasksFilters = {
                         ...companiesHouseSettings.bmTasksFilters,
                         assignee: String(event?.target?.value || ""),
                     };
+                    closeTaskListControlMenus();
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
@@ -132898,6 +133087,7 @@
                             status: "",
                         };
                         event.target.value = "";
+                        closeTaskListControlMenus();
                         openTaskCompletedScreen();
                         return;
                     }
@@ -132905,6 +133095,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         status: requestedStatus,
                     };
+                    closeTaskListControlMenus();
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
@@ -132913,6 +133104,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         due: String(event?.target?.value || ""),
                     };
+                    closeTaskListControlMenus();
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
@@ -132921,6 +133113,7 @@
                         ...companiesHouseSettings.bmTasksFilters,
                         sort: String(event?.target?.value || "deadline_asc"),
                     };
+                    closeTaskListControlMenus();
                     resetTaskListPagination();
                     renderTaskSubpages();
                 });
@@ -132955,6 +133148,12 @@
                     renderTaskSubpages();
                 });
                 document.getElementById("taskListColumnsButton")?.addEventListener("click", openTaskListColumnsDialog);
+                document.addEventListener("click", (event) => {
+                    if (!event.target.closest(".task-list-control-wrap")) closeTaskListControlMenus();
+                    if (!event.target.closest(".task-list-search-cluster") && !taskListSearchInput?.value) {
+                        setTaskListSearchOpen(false);
+                    }
+                });
                 document.getElementById("taskListSelectAll")?.addEventListener("change", (event) => {
                     const allRows = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : []).map((row) => bmTaskRowWithOverrides(row));
                     const filteredRows = filteredBmTasksRows(allRows);
