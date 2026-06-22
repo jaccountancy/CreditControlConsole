@@ -1519,6 +1519,41 @@ def _payroll_overview_find_numeric_value_by_hints(
     return best
 
 
+def _payroll_overview_sum_numeric_values_by_hints(
+    payload,
+    include_hints: list[str],
+    exclude_hints: list[str] | None = None,
+) -> Decimal:
+    include = [_payroll_overview_normalise_key(item) for item in include_hints if str(item or "").strip()]
+    exclude = {_payroll_overview_normalise_key(item) for item in (exclude_hints or []) if str(item or "").strip()}
+    if not include:
+        return Decimal("0")
+    queue = [payload]
+    visited: set[int] = set()
+    total = Decimal("0")
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        if not isinstance(node, dict):
+            continue
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+        for key, value in node.items():
+            normalised = _payroll_overview_normalise_key(key)
+            if normalised:
+                has_include = any(token in normalised for token in include)
+                has_exclude = any(token and token in normalised for token in exclude)
+                if has_include and not has_exclude:
+                    total += abs(_payroll_overview_numeric_decimal(value))
+            if isinstance(value, (dict, list)):
+                queue.append(value)
+    return total
+
+
 def _payroll_overview_sum_described_amounts(
     payload,
     include_hints: list[str],
@@ -1718,6 +1753,8 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "PensionTotal",
             "TotalPension",
             "Super",
+            "SuperAmount",
+            "TotalSuper",
             "EmployerPensionAmount",
             "PensionDue",
             "TotalEmployerPension",
@@ -1737,13 +1774,63 @@ def _payroll_overview_estimate_pension(payrun: dict) -> Decimal:
             "PensionAmount",
             "PensionPayable",
             "Super",
+            "SuperAmount",
+            "EmployerSuper",
+            "EmployerSuperAmount",
+            "EmployerSuperContribution",
+            "EmployerSuperannuation",
+            "KiwiSaverEmployerContribution",
+            "RetirementContribution",
         ],
     )
     if summed > Decimal("0"):
         return summed
+    hinted_sum = _payroll_overview_sum_numeric_values_by_hints(
+        payrun,
+        include_hints=[
+            "pension",
+            "employerpension",
+            "workplacepension",
+            "nest",
+            "super",
+            "superannuation",
+            "kiwisaver",
+            "retirement",
+            "autoenrolment",
+        ],
+        exclude_hints=[
+            "scheme",
+            "name",
+            "id",
+            "identifier",
+            "number",
+            "rate",
+            "percentage",
+            "percent",
+            "tax",
+            "code",
+            "ytd",
+            "yeartodate",
+            "date",
+            "period",
+            "reference",
+        ],
+    )
+    if hinted_sum > Decimal("0"):
+        return hinted_sum
     described = _payroll_overview_sum_described_amounts(
         payrun,
-        include_hints=["pension", "employer pension", "workplace pension", "nest", "auto enrolment"],
+        include_hints=[
+            "pension",
+            "employer pension",
+            "workplace pension",
+            "nest",
+            "auto enrolment",
+            "super",
+            "superannuation",
+            "kiwisaver",
+            "retirement",
+        ],
         exclude_hints=[
             "scheme",
             "name",
