@@ -124907,9 +124907,19 @@
                     let overview = tenantId ? await ensureClientPagePayrollOverview(tenantId, { force: true }) : null;
                     let manualNominalSelection = null;
                     if (tenantId) {
+                        const hasFixedNominalSelection = (diagnostics = {}) => {
+                            const taxCodes = (Array.isArray(diagnostics?.selectedTaxAccounts) ? diagnostics.selectedTaxAccounts : [])
+                                .map((item) => String(item?.code || "").trim());
+                            const pensionCodes = (Array.isArray(diagnostics?.selectedPensionAccounts) ? diagnostics.selectedPensionAccounts : [])
+                                .map((item) => String(item?.code || "").trim());
+                            return taxCodes.includes("825") && pensionCodes.includes("858");
+                        };
                         for (let attempt = 0; attempt < 2; attempt += 1) {
                             const accountSelectionDiagnostics = overview?.summary?.nominalTransactionDiagnostics?.accountSelectionDiagnostics;
                             const needsUserSelection = !!accountSelectionDiagnostics?.requiresUserSelection;
+                            if (needsUserSelection && hasFixedNominalSelection(accountSelectionDiagnostics)) {
+                                break;
+                            }
                             if (!needsUserSelection) break;
                             closeLoadingModal();
                             const selection = await promptPayrollNominalCodeSelection({
