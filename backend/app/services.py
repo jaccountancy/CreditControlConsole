@@ -276,6 +276,7 @@ XERO_PAYROLL_EMPLOYEES_URL = "https://api.xero.com/payroll.xro/2.0/Employees"
 XERO_PAYROLL_PAYRUNS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns"
 XERO_PAYROLL_PAYRUN_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PayRuns/{payrun_id}"
 XERO_PAYROLL_PAYSLIP_DETAILS_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips/{payslip_id}"
+XERO_PAYROLL_PAYSLIPS_BY_PAYRUN_URL = "https://api.xero.com/payroll.xro/2.0/PaySlips"
 XERO_REPORTS_TRIAL_BALANCE_URL = "https://api.xero.com/api.xro/2.0/Reports/TrialBalance"
 SUBMITTED_EMPLOYEE_FORMS_DEFAULT_TAX_CODE = "1257L"
 PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account"
@@ -2147,6 +2148,7 @@ async def _payroll_overview_extract_posted_journal_payables(
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate"))
         or _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
     )
+    reference_payrun_id = _payroll_overview_text((reference_payrun or {}).get("payRunId"))
     reference_period_start = _parse_any_date((reference_payrun or {}).get("payRunPeriodStartDate"))
     reference_period_end = _parse_any_date((reference_payrun or {}).get("payRunPeriodEndDate")) or reference_payment_date
 
@@ -2254,6 +2256,15 @@ async def _payroll_overview_extract_posted_journal_payables(
         )
         payroll_tokens = ("payroll", "payrun", "pay run", "payslip", "wages")
         return any(token in source_text for token in payroll_tokens) or any(token in reference_text for token in payroll_tokens)
+
+    def _journal_source_id(journal: dict) -> str:
+        return _payroll_overview_text(
+            journal.get("SourceID")
+            or journal.get("sourceID")
+            or journal.get("sourceId")
+            or journal.get("source_id")
+            or journal.get("SourceId")
+        )
 
     strict_candidates: list[dict] = []
     loose_candidates: list[dict] = []
@@ -2378,7 +2389,10 @@ async def _payroll_overview_extract_posted_journal_payables(
             or bool(reference_period_start and reference_period_end and reference_period_start <= journal_date <= reference_period_end)
             or bool(not reference_period_start and reference_period_end and journal_date == reference_period_end)
         )
+        journal_source_id = _journal_source_id(journal)
+        source_id_matches_reference_payrun = bool(reference_payrun_id) and journal_source_id == reference_payrun_id
         score = (
+            1 if source_id_matches_reference_payrun else 0,
             1 if _is_payroll_journal(journal) else 0,
             journal_date.toordinal(),
             1 if in_reference_window else 0,
@@ -2396,6 +2410,8 @@ async def _payroll_overview_extract_posted_journal_payables(
                 "matched_credit_lines": matched_credit_lines,
                 "journal_line_rows": journal_line_rows,
                 "journal_date": journal_date,
+                "journal_source_id": journal_source_id,
+                "source_id_matches_reference_payrun": source_id_matches_reference_payrun,
             }
 
     selected_journal = (best_candidate or {}).get("journal") if isinstance(best_candidate, dict) else {}
@@ -2408,6 +2424,8 @@ async def _payroll_overview_extract_posted_journal_payables(
     diagnostics["selectedJournalReference"] = _payroll_overview_text(
         selected_journal.get("Reference") or selected_journal.get("Narration")
     )
+    diagnostics["selectedJournalSourceId"] = _payroll_overview_text((best_candidate or {}).get("journal_source_id"))
+    diagnostics["selectedJournalSourceIdMatchesPayrun"] = bool((best_candidate or {}).get("source_id_matches_reference_payrun"))
 
     p32_credit_total = (best_candidate or {}).get("p32_credit_total") if isinstance(best_candidate, dict) else Decimal("0")
     pension_credit_total = (best_candidate or {}).get("pension_credit_total") if isinstance(best_candidate, dict) else Decimal("0")
@@ -2435,6 +2453,7 @@ async def _payroll_overview_openai_liability_inference(
     *,
     reference_payrun: dict | None,
     payrun_rows: list[dict],
+    payroll_api_context: dict | None,
     journal_payable_diagnostics: dict,
     trial_balance_report_date: date | None,
     trial_balance_comparison_date: date | None,
@@ -2475,6 +2494,7 @@ async def _payroll_overview_openai_liability_inference(
             "estimatedPensionPayable": float(_payroll_overview_numeric_decimal(reference.get("estimatedPensionPayable"))),
         },
         "recentPayruns": recent_runs,
+        "payrollApiContext": payroll_api_context if isinstance(payroll_api_context, dict) else {},
         "journalDiagnostics": {
             "selectedJournalId": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalId")),
             "selectedJournalDate": _payroll_overview_text((journal_payable_diagnostics or {}).get("selectedJournalDate")),
@@ -2500,7 +2520,7 @@ async def _payroll_overview_openai_liability_inference(
                 "role": "system",
                 "content": (
                     "You are a UK payroll accounting analyst. Determine PAYE/NIC and pension liabilities for the most "
-                    "recent posted payroll run using journal lines first, then trial-balance deltas and payrun totals. "
+                    "recent posted payroll run using payroll API data (payrun details + payslips) first, then trial-balance deltas. "
                     "Return conservative numeric estimates and short notes."
                 ),
             },
@@ -2744,6 +2764,132 @@ def _payroll_overview_trial_balance_liability_delta(
     return abs(tax_delta), abs(pension_delta), diagnostics
 
 
+def _payroll_overview_payslip_tax_from_payload(payroll_payload: dict) -> Decimal:
+    rows = _payroll_overview_payslip_rows(payroll_payload if isinstance(payroll_payload, dict) else {})
+    if not rows:
+        return Decimal("0")
+    total = Decimal("0")
+    for row in rows:
+        row_total = _payroll_overview_sum_numeric_values(
+            row,
+            [
+                "Tax",
+                "PayeAmount",
+                "PAYE",
+                "TotalEmployerTaxes",
+                "EmployerTax",
+                "EmployeeTax",
+                "NationalInsurance",
+                "NicAmount",
+                "EmployeeNIC",
+                "EmployerNIC",
+                "StudentLoan",
+                "PostGraduateLoan",
+            ],
+        )
+        if row_total <= Decimal("0"):
+            row_total = _payroll_overview_sum_described_amounts(
+                row,
+                include_hints=["paye", "nic", "national insurance", "tax", "hmrc", "student loan", "postgraduate loan"],
+                exclude_hints=["ytd", "rate", "percentage", "code", "period"],
+            )
+        if row_total > Decimal("0"):
+            total += row_total
+    return _money(total)
+
+
+def _payroll_overview_payslip_pension_from_payload(payroll_payload: dict) -> Decimal:
+    rows = _payroll_overview_payslip_rows(payroll_payload if isinstance(payroll_payload, dict) else {})
+    if not rows:
+        return Decimal("0")
+    total = Decimal("0")
+    for row in rows:
+        row_total = _payroll_overview_sum_numeric_values(
+            row,
+            [
+                "EmployerPensionContribution",
+                "PensionEmployerContribution",
+                "EmployerSuperannuation",
+                "EmployerRetirementContribution",
+                "KiwiSaverEmployerContribution",
+                "PensionPayable",
+                "PensionLiability",
+            ],
+        )
+        if row_total <= Decimal("0"):
+            row_total = _payroll_overview_sum_described_amounts(
+                row,
+                include_hints=["pension", "nest", "auto enrolment", "workplace pension", "superannuation", "retirement"],
+                exclude_hints=["employee", "ytd", "rate", "percentage", "code"],
+            )
+        if row_total <= Decimal("0"):
+            row_total = _payroll_overview_estimate_pension(row)
+        if row_total > Decimal("0"):
+            total += row_total
+    return _money(total)
+
+
+def _payroll_overview_payrun_tax_from_payload(payrun_payload: dict) -> Decimal:
+    if not isinstance(payrun_payload, dict):
+        return Decimal("0")
+    rows = _payroll_headcount_rows(payrun_payload, "PayRuns", "PayRun")
+    payrun = rows[0] if rows else {}
+    if not isinstance(payrun, dict):
+        return Decimal("0")
+    direct = _payroll_overview_find_numeric_value(
+        payrun,
+        [
+            "TotalTax",
+            "TotalTaxAmount",
+            "TaxPayable",
+            "P32TaxAmount",
+            "PayeNicAmount",
+            "PayeAmount",
+            "NicAmount",
+            "NationalInsurance",
+            "EmployeeTax",
+            "EmployerTax",
+        ],
+    )
+    described = _payroll_overview_sum_described_amounts(
+        payrun,
+        include_hints=["paye", "nic", "national insurance", "tax", "hmrc", "student loan", "postgraduate loan"],
+        exclude_hints=["ytd", "rate", "percentage", "code", "period"],
+    )
+    estimated = _payroll_overview_estimate_p32_tax(payrun)
+    return _money(max(direct, described, estimated))
+
+
+def _payroll_overview_payrun_pension_from_payload(payrun_payload: dict) -> Decimal:
+    if not isinstance(payrun_payload, dict):
+        return Decimal("0")
+    rows = _payroll_headcount_rows(payrun_payload, "PayRuns", "PayRun")
+    payrun = rows[0] if rows else {}
+    if not isinstance(payrun, dict):
+        return Decimal("0")
+    direct = _payroll_overview_sum_numeric_values(
+        payrun,
+        [
+            "EmployerPensionContribution",
+            "PensionEmployerContribution",
+            "EmployerSuperannuation",
+            "EmployerRetirementContribution",
+            "KiwiSaverEmployerContribution",
+            "PensionPayable",
+            "PensionLiability",
+            "TotalPension",
+            "TotalPensionAmount",
+        ],
+    )
+    described = _payroll_overview_sum_described_amounts(
+        payrun,
+        include_hints=["pension", "nest", "auto enrolment", "workplace pension", "superannuation", "retirement"],
+        exclude_hints=["employee", "ytd", "rate", "percentage", "code"],
+    )
+    estimated = _payroll_overview_estimate_pension(payrun)
+    return _money(max(direct, described, estimated))
+
+
 async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     clean_tenant_id = str(tenant_id or "").strip()
     if not clean_tenant_id:
@@ -2951,20 +3097,55 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
 
     posted_journal_p32_tax = Decimal("0")
     posted_journal_pension_payable = Decimal("0")
-    journal_payable_diagnostics: dict = {}
-    try:
-        journals, journals_reason = await _code_breaker_fetch_xero_journals(connection_row)
-        if journals_reason:
-            errors.append(f"Journals: {journals_reason}")
-        posted_journal_p32_tax, posted_journal_pension_payable, journal_payable_diagnostics = await _payroll_overview_extract_posted_journal_payables(
-            journals,
-            accounts,
-            reference_payrun,
-            user_id=str(user.get("id") or "").strip() or None,
-        )
-    except Exception as exc:
-        errors.append(f"Journals: {_sync_error_message(exc)}")
-        journal_payable_diagnostics = {}
+    journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "payroll_api_primary_mode"}
+    payroll_api_p32_tax = Decimal("0")
+    payroll_api_pension_payable = Decimal("0")
+    payroll_api_diagnostics: dict = {}
+    selected_payrun_details_payload: dict = {}
+    selected_payrun_payslips_payload: dict = {}
+    selected_payrun_id = _payroll_overview_text((reference_payrun or {}).get("payRunId"))
+    if selected_payrun_id:
+        try:
+            selected_payrun_details_payload = await _fetch(
+                XERO_PAYROLL_PAYRUN_DETAILS_URL.format(payrun_id=quote(selected_payrun_id, safe="")),
+                "Selected pay run details",
+            )
+        except Exception as exc:
+            errors.append(f"Selected pay run details: {_sync_error_message(exc)}")
+            selected_payrun_details_payload = {}
+        try:
+            selected_payrun_payslips_payload = await _fetch(
+                XERO_PAYROLL_PAYSLIPS_BY_PAYRUN_URL,
+                "Pay slips by pay run",
+                {"PayRunID": selected_payrun_id},
+            )
+        except Exception as exc:
+            errors.append(f"Pay slips by pay run: {_sync_error_message(exc)}")
+            selected_payrun_payslips_payload = {}
+        payroll_api_p32_tax = _payroll_overview_payslip_tax_from_payload(selected_payrun_payslips_payload)
+        payroll_api_pension_payable = _payroll_overview_payslip_pension_from_payload(selected_payrun_payslips_payload)
+        payrun_detail_p32_tax = _payroll_overview_payrun_tax_from_payload(selected_payrun_details_payload)
+        payrun_detail_pension_payable = _payroll_overview_payrun_pension_from_payload(selected_payrun_details_payload)
+        if payrun_detail_p32_tax > payroll_api_p32_tax:
+            payroll_api_p32_tax = payrun_detail_p32_tax
+        if payrun_detail_pension_payable > payroll_api_pension_payable:
+            payroll_api_pension_payable = payrun_detail_pension_payable
+        if payroll_api_p32_tax <= Decimal("0"):
+            payroll_api_p32_tax = payrun_detail_p32_tax
+        if payroll_api_pension_payable <= Decimal("0"):
+            payroll_api_pension_payable = payrun_detail_pension_payable
+        payslip_rows = _payroll_overview_payslip_rows(selected_payrun_payslips_payload)
+        payroll_api_diagnostics = {
+            "engine": "payroll_api",
+            "selectedPayRunId": selected_payrun_id,
+            "payslipCount": len(payslip_rows),
+            "p32FromPayrollApi": float(payroll_api_p32_tax),
+            "pensionFromPayrollApi": float(payroll_api_pension_payable),
+            "p32FromPayrunDetails": float(payrun_detail_p32_tax),
+            "pensionFromPayrunDetails": float(payrun_detail_pension_payable),
+        }
+    else:
+        payroll_api_diagnostics = {"engine": "payroll_api", "selectedPayRunId": "", "reason": "no_selected_payrun"}
 
     trial_balance_report_date = (
         _parse_any_date((reference_payrun or {}).get("paymentDate"))
@@ -3020,10 +3201,15 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     openai_pension_payable = Decimal("0")
     openai_payable_diagnostics: dict = {}
     try:
-        if posted_journal_p32_tax <= Decimal("0") or posted_journal_pension_payable <= Decimal("0"):
+        if payroll_api_p32_tax <= Decimal("0") or payroll_api_pension_payable <= Decimal("0"):
             openai_p32_tax, openai_pension_payable, openai_payable_diagnostics = await _payroll_overview_openai_liability_inference(
                 reference_payrun=reference_payrun,
                 payrun_rows=payrun_rows,
+                payroll_api_context={
+                    "selectedPayrunDetails": selected_payrun_details_payload if isinstance(selected_payrun_details_payload, dict) else {},
+                    "selectedPayrunPayslips": selected_payrun_payslips_payload if isinstance(selected_payrun_payslips_payload, dict) else {},
+                    "payrollApiDiagnostics": payroll_api_diagnostics if isinstance(payroll_api_diagnostics, dict) else {},
+                },
                 journal_payable_diagnostics=journal_payable_diagnostics if isinstance(journal_payable_diagnostics, dict) else {},
                 trial_balance_report_date=trial_balance_report_date,
                 trial_balance_comparison_date=trial_balance_previous_date,
@@ -3146,7 +3332,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
     latest_payrun_pension_balance = float(
         _payroll_overview_numeric_decimal((latest_payrun_with_pension or {}).get("estimatedPensionPayable"))
     )
-    if posted_journal_p32_tax > Decimal("0"):
+    if payroll_api_p32_tax > Decimal("0"):
+        estimated_p32_tax_balance = float(payroll_api_p32_tax)
+    elif posted_journal_p32_tax > Decimal("0"):
         estimated_p32_tax_balance = float(posted_journal_p32_tax)
     elif openai_p32_tax > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
         estimated_p32_tax_balance = float(openai_p32_tax)
@@ -3154,7 +3342,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         estimated_p32_tax_balance = float(trial_balance_delta_p32_tax)
     if estimated_p32_tax_balance <= 0:
         estimated_p32_tax_balance = latest_payrun_p32_balance if latest_payrun_p32_balance > 0 else outstanding_tax_balance
-    if posted_journal_pension_payable > Decimal("0"):
+    if payroll_api_pension_payable > Decimal("0"):
+        estimated_pension_payable_balance = float(payroll_api_pension_payable)
+    elif posted_journal_pension_payable > Decimal("0"):
         estimated_pension_payable_balance = float(posted_journal_pension_payable)
     elif openai_pension_payable > Decimal("0") and float((openai_payable_diagnostics or {}).get("confidence") or 0) >= 0.6:
         estimated_pension_payable_balance = float(openai_pension_payable)
@@ -3168,6 +3358,9 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
         )
     estimated_balances_source = {
         "p32Tax": (
+            "payroll_api_payslips"
+            if payroll_api_p32_tax > Decimal("0")
+            else (
             "posted_payroll_journal"
             if posted_journal_p32_tax > Decimal("0")
             else (
@@ -3184,8 +3377,11 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 if latest_payrun_p32_balance > 0
                 else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none")
             )
-        )))) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
+        ))))) if reference_payrun else ("account_balance_fallback" if outstanding_tax_balance > 0 else "none"),
         "pensionPayable": (
+            "payroll_api_payslips"
+            if payroll_api_pension_payable > Decimal("0")
+            else (
             "posted_payroll_journal"
             if posted_journal_pension_payable > Decimal("0")
             else (
@@ -3206,7 +3402,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                     else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
                 )
             )
-        )))) if reference_payrun else (
+        ))))) if reference_payrun else (
             "trial_balance_report"
             if trial_balance_pension_payable_balance > 0
             else ("account_balance_fallback" if pension_payable_balance > 0 else "none")
@@ -3247,6 +3443,7 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
             "trialBalanceDeltaPensionPayable": float(trial_balance_delta_pension_payable),
             "trialBalanceDeltaDiagnostics": trial_balance_delta_diagnostics if isinstance(trial_balance_delta_diagnostics, dict) else {},
             "trialBalancePensionPayableBalance": trial_balance_pension_payable_balance,
+            "payrollApiDiagnostics": payroll_api_diagnostics if isinstance(payroll_api_diagnostics, dict) else {},
             "openAiPayrollInferenceDiagnostics": openai_payable_diagnostics if isinstance(openai_payable_diagnostics, dict) else {},
             "payrunDetailDiagnostics": {
                 "attempted": details_fetch_attempted,
@@ -3262,6 +3459,8 @@ async def payroll_tenant_overview_payload(user: dict, tenant_id: str) -> dict:
                 "employees": fetch_diagnostics.get("employees") or {},
                 "payRuns": fetch_diagnostics.get("payruns") or {},
                 "accounts": fetch_diagnostics.get("chartofaccounts") or {},
+                "selectedPayRunDetails": fetch_diagnostics.get("selectedpayrundetails") or {},
+                "paySlipsByPayRun": fetch_diagnostics.get("payslipsbypayrun") or {},
                 "trialBalance": fetch_diagnostics.get("trialbalance") or {},
                 "trialBalancePreviousMonthEnd": fetch_diagnostics.get("trialbalancepreviousmonthend") or {},
                 "trialBalancePreviousDay": fetch_diagnostics.get("trialbalancepreviousday") or {},
