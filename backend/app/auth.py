@@ -20,11 +20,9 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "offline_access",
 )
 DEFAULT_XERO_CONNECTION_SCOPES = (
-    "accounting.transactions",
     "accounting.invoices",
     "accounting.payments",
     "accounting.banktransactions",
-    "accounting.journals.read",
     "accounting.manualjournals",
     "accounting.contacts",
     "accounting.settings",
@@ -161,29 +159,9 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
 
 
 def xero_scope_string_all_available(configured_scopes: str) -> str:
-    # "All available" should always include the configured scope set plus
-    # baseline accounting/payroll scopes needed for reconnect-based recovery.
-    scopes: list[str] = []
-
-    def _append_scope(scope_value: str) -> None:
-        value = str(scope_value or "").strip().lower()
-        if not value or value not in KNOWN_XERO_SCOPES:
-            return
-        if value not in scopes:
-            scopes.append(value)
-
-    for configured_scope in _configured_xero_scopes(configured_scopes):
-        expanded = LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,))
-        for scope in expanded:
-            _append_scope(scope)
-
-    for default_scope in DEFAULT_XERO_CONNECTION_SCOPES:
-        _append_scope(default_scope)
-
-    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
-        _append_scope(required_scope)
-
-    return " ".join(scopes)
+    # Reconnect must only request scopes already configured for this app.
+    # Expanding/replacing scopes here can trigger Xero "invalid_scope".
+    return xero_scope_string(configured_scopes, include_payroll_scopes=False)
 
 
 def allowed_panel_origins() -> set[str]:
