@@ -31027,6 +31027,58 @@
                 font-size: 0.79rem;
                 font-weight: 800;
             }
+            .ch-register-client-save-dock {
+                position: fixed;
+                right: max(14px, env(safe-area-inset-right));
+                bottom: max(108px, calc(env(safe-area-inset-bottom) + 92px));
+                z-index: 106;
+                width: min(360px, calc(100vw - 28px));
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid rgba(91, 116, 160, 0.28);
+                background: rgba(249, 252, 255, 0.98);
+                box-shadow: 0 14px 28px rgba(30, 47, 77, 0.18);
+                backdrop-filter: blur(8px);
+            }
+            .ch-register-client-save-dock[data-state="saving"] {
+                border-color: rgba(52, 132, 197, 0.3);
+                background: rgba(233, 241, 255, 0.98);
+            }
+            .ch-register-client-save-dock[data-state="error"] {
+                border-color: rgba(220, 38, 38, 0.34);
+                background: rgba(254, 242, 242, 0.98);
+            }
+            .ch-register-client-save-dock-copy {
+                min-width: 0;
+                font-size: 0.8rem;
+                font-weight: 820;
+                line-height: 1.3;
+                color: #3e557a;
+            }
+            .ch-register-client-save-dock[data-state="error"] .ch-register-client-save-dock-copy {
+                color: #9f1239;
+            }
+            .ch-register-client-save-dock .primary-button {
+                min-height: 34px;
+                padding: 7px 11px;
+                border-radius: 10px;
+                font-size: 0.8rem;
+                font-weight: 850;
+                white-space: nowrap;
+                flex: 0 0 auto;
+            }
+            @media (max-width: 640px) {
+                .ch-register-client-save-dock {
+                    left: 10px;
+                    right: 10px;
+                    width: auto;
+                    bottom: max(90px, calc(env(safe-area-inset-bottom) + 80px));
+                }
+            }
             .ch-register-client-write-banner {
                 margin: 0 4px;
                 padding: 10px 12px;
@@ -47927,6 +47979,10 @@
                     </div>
                 </section>
 
+                <div class="ch-register-client-save-dock" id="chRegisterClientPageSaveDock" data-state="dirty" hidden>
+                    <span class="ch-register-client-save-dock-copy" id="chRegisterClientPageSaveDockCopy">Changes are cached locally. Save when you are ready.</span>
+                    <button class="primary-button" type="button" id="chRegisterClientPageSaveDockButton">Save changes</button>
+                </div>
                 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
                 <div class="background-task-stack" id="backgroundTaskStack" aria-live="polite" aria-atomic="false"></div>
 
@@ -132178,23 +132234,39 @@
                 const strip = document.getElementById("chRegisterClientPageSaveStrip");
                 const copy = document.getElementById("chRegisterClientPageSaveStripCopy");
                 const button = document.getElementById("chRegisterClientPageSaveButton");
+                const dock = document.getElementById("chRegisterClientPageSaveDock");
+                const dockCopy = document.getElementById("chRegisterClientPageSaveDockCopy");
+                const dockButton = document.getElementById("chRegisterClientPageSaveDockButton");
                 if (!strip) return;
                 const hasError = pageState.saveState === "error" && String(pageState.saveError || "").trim();
                 const pending = !!pageState.hasUnsavedChanges;
                 const saving = !!pageState.saving;
+                const message = saving
+                    ? "Saving client page changes..."
+                    : hasError
+                        ? String(pageState.saveError || "Unable to save client page.").trim()
+                        : "Changes are cached locally. Save when you are ready.";
                 const shouldShow = pending || saving || !!hasError;
+                const shouldShowDock = !!pageState.open && shouldShow;
                 strip.hidden = !shouldShow;
                 strip.dataset.state = saving ? "saving" : hasError ? "error" : "dirty";
                 if (copy) {
-                    copy.textContent = saving
-                        ? "Saving client page changes..."
-                        : hasError
-                            ? String(pageState.saveError || "Unable to save client page.").trim()
-                            : "Changes are cached locally. Save when you are ready.";
+                    copy.textContent = message;
                 }
                 if (button) {
                     button.disabled = saving || !pending;
                     button.textContent = saving ? "Saving..." : "Save changes";
+                }
+                if (dock) {
+                    dock.hidden = !shouldShowDock;
+                    dock.dataset.state = saving ? "saving" : hasError ? "error" : "dirty";
+                }
+                if (dockCopy) {
+                    dockCopy.textContent = message;
+                }
+                if (dockButton) {
+                    dockButton.disabled = saving || !pending;
+                    dockButton.textContent = saving ? "Saving..." : "Save changes";
                 }
             }
 
@@ -136254,6 +136326,9 @@
                 });
                 document.getElementById("chRegisterClientPageSaveButton")?.addEventListener("click", () => {
                     saveClientRegisterClientPage({ silent: false, source: "save-strip" });
+                });
+                document.getElementById("chRegisterClientPageSaveDockButton")?.addEventListener("click", () => {
+                    saveClientRegisterClientPage({ silent: false, source: "save-dock" });
                 });
                 document.getElementById("chRegisterClientPageWriteBannerRetryButton")?.addEventListener("click", (event) => {
                     const action = String(event?.currentTarget?.dataset?.retryAction || "").trim();
