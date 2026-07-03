@@ -32041,7 +32041,8 @@
             .ch-register-client-page-panel[data-client-page-panel="client-info"] #chRegisterClientPageInfoAddress {
                 font-size: 1rem;
             }
-            #chRegisterClientPageInfoEmail {
+            .ch-register-client-page-panel[data-client-page-panel="client-info"] #chRegisterClientPageInfoName,
+            .ch-register-client-page-panel[data-client-page-panel="client-info"] #chRegisterClientPageInfoEmail {
                 font-size: 1rem;
                 transition: font-size 0.18s ease;
             }
@@ -40548,7 +40549,10 @@
                                                 <input id="chRegisterClientPageInfoId" type="text" readonly>
                                             </label>
                                             <label>Client type
-                                                <input id="chRegisterClientPageInfoType" type="text" readonly>
+                                                <select id="chRegisterClientPageInfoType">
+                                                    <option value="Private Limited Company">Private Limited Company</option>
+                                                    <option value="Self Assessment Client">Self Assessment Client</option>
+                                                </select>
                                             </label>
                                             <label>Company number
                                                 <input id="chRegisterClientPageInfoCompanyNumber" type="text" readonly>
@@ -54762,7 +54766,7 @@
                 sidebar.classList.remove("is-overflowing");
                 tabsWrap.style.maxHeight = "";
                 tabsWrap.style.zoom = "";
-                fitClientInfoEmailField();
+                fitClientInfoPrimaryFields();
 
                 const isSidebarMode = document.body.classList.contains("client-register-sidebar-mode");
                 if (!isSidebarMode) return;
@@ -54782,7 +54786,7 @@
                 if (tabsWrap.scrollHeight > availableHeight + 1) {
                     sidebar.classList.add("is-overflowing");
                 }
-                fitClientInfoEmailField();
+                fitClientInfoPrimaryFields();
             }
 
             function syncClientRegisterSidebarDocking() {
@@ -128510,7 +128514,7 @@
                     || normalised === "sa"
                     || normalised.includes("sole trader")
                 ) {
-                    return "Self Assessment Individual";
+                    return "Self Assessment Client";
                 }
                 if (
                     normalised.includes("company")
@@ -128521,6 +128525,13 @@
                     return "Private Limited Company";
                 }
                 return raw;
+            }
+
+            function clientRegisterClientTypeSelectValue(value) {
+                const label = clientRegisterClientTypeLabel(value);
+                return label === "Self Assessment Client"
+                    ? "Self Assessment Client"
+                    : "Private Limited Company";
             }
 
             function clientRegisterTypeLooksNlac(value) {
@@ -132621,24 +132632,32 @@
                 return values.length ? values[0] : null;
             }
 
-            function fitClientInfoEmailField() {
-                const input = document.getElementById("chRegisterClientPageInfoEmail");
+            function fitClientInfoFieldValue(input, { minPx = 11, shrinkPaddingPx = 6 } = {}) {
                 if (!input) return;
                 const value = String(input.value || "").trim();
                 input.style.fontSize = "";
                 if (!value) return;
                 const style = window.getComputedStyle(input);
                 const basePx = parseFloat(style.fontSize || "16") || 16;
-                const canvas = fitClientInfoEmailField._canvas || (fitClientInfoEmailField._canvas = document.createElement("canvas"));
+                const canvas = fitClientInfoFieldValue._canvas || (fitClientInfoFieldValue._canvas = document.createElement("canvas"));
                 const context = canvas.getContext("2d");
                 if (!context) return;
                 context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
                 const textWidth = context.measureText(value).width;
-                const horizontalPadding = (parseFloat(style.paddingLeft || "0") || 0) + (parseFloat(style.paddingRight || "0") || 0) + 6;
+                const horizontalPadding = (parseFloat(style.paddingLeft || "0") || 0) + (parseFloat(style.paddingRight || "0") || 0) + Number(shrinkPaddingPx || 0);
                 const available = Math.max(40, input.clientWidth - horizontalPadding);
                 if (!Number.isFinite(textWidth) || textWidth <= available) return;
-                const scaledPx = Math.max(11, Math.min(basePx, Math.floor(basePx * (available / textWidth))));
+                const scaledPx = Math.max(Number(minPx || 11), Math.min(basePx, Math.floor(basePx * (available / textWidth))));
                 input.style.fontSize = `${scaledPx}px`;
+            }
+
+            function fitClientInfoEmailField() {
+                fitClientInfoFieldValue(document.getElementById("chRegisterClientPageInfoEmail"), { minPx: 11, shrinkPaddingPx: 6 });
+            }
+
+            function fitClientInfoPrimaryFields() {
+                fitClientInfoFieldValue(document.getElementById("chRegisterClientPageInfoName"), { minPx: 10, shrinkPaddingPx: 10 });
+                fitClientInfoEmailField();
             }
 
             function clientRegisterInvoicePaymentSourceLabel(invoice = {}) {
@@ -132897,7 +132916,7 @@
                 assignReadOnly("chRegisterClientPageInfoName", clientRegisterClientDisplayName(row));
                 assignReadOnly("chRegisterClientPageInfoManager", String(row?.clientManager || "").trim() || "Unassigned");
                 assignReadOnly("chRegisterClientPageInfoId", String(row?.clientId || "").trim());
-                assignReadOnly("chRegisterClientPageInfoType", clientRegisterClientTypeLabel(row?.clientType || ""));
+                assignReadOnly("chRegisterClientPageInfoType", clientRegisterClientTypeSelectValue(row?.clientType || ""));
                 assignReadOnly("chRegisterClientPageInfoCompanyNumber", String(row?.companyNumber || "").trim());
                 assignReadOnly("chRegisterClientPageInfoVatNumber", String(row?.vatNumber || "").trim());
                 assignReadOnly("chRegisterClientPageInfoEmail", String(row?.clientEmail || "").trim());
@@ -132905,7 +132924,7 @@
                 const clientAddress = String(row?.clientAddress || "").trim();
                 assignReadOnly("chRegisterClientPageInfoAddress", clientAddress);
                 assignReadOnly("chRegisterClientPageInfoAuthCode", String(row?.authCode || row?.authCodeHint || "").trim());
-                fitClientInfoEmailField();
+                fitClientInfoPrimaryFields();
                 assignReadOnly("chRegisterClientPageInfoCompanyUtr", String(row?.companyUtr || "").trim());
                 assignReadOnly("chRegisterClientPageInfoPersonalUtr", String(row?.personalUtr || "").trim());
                 assignReadOnly("chRegisterClientPageInfoCompanyStatus", String(row?.companyStatus || "").trim());
