@@ -126707,23 +126707,10 @@
                     }
                 }
                 if (next === "companies-house") {
-                    const payload = clientPagePayload() || {};
-                    const row = payload?.row || {};
-                    const companyNumber = String(row?.companyNumber || "").trim();
-                    const officers = Array.isArray(row?.officers) ? row.officers : [];
-                    const filingHistory = Array.isArray(row?.filingHistory) ? row.filingHistory : [];
-                    const shouldRefresh = companyNumber && !companiesHouseSettings.authRegisterClientPage?.companiesHouseAutoRefreshed && !officers.length && !filingHistory.length;
-                    if (shouldRefresh) {
-                        companiesHouseSettings.authRegisterClientPage = {
-                            ...companiesHouseSettings.authRegisterClientPage,
-                            companiesHouseAutoRefreshed: true,
-                        };
-                        window.setTimeout(() => {
-                            const latestState = companiesHouseSettings.authRegisterClientPage || {};
-                            if (!latestState.open || String(latestState.activeTab || "").trim() !== "companies-house") return;
-                            void refreshClientRegisterClientPage();
-                        }, 0);
-                    }
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        companiesHouseAutoRefreshed: true,
+                    };
                 }
                 if (next === "juk-invoices") {
                     window.setTimeout(() => {
@@ -131823,7 +131810,7 @@
                 renderClientRegisterClientPage();
                 try {
                     if (companyId || companyNumber) {
-                        await requestJSON("/api/companies-house/sync", {
+                        const syncResponse = await requestJSON("/api/companies-house/sync", {
                             method: "POST",
                             body: JSON.stringify({
                                 mode: "manual",
@@ -131831,9 +131818,20 @@
                                 companyIds: companyId ? [companyId] : [],
                                 companyNumbers: companyNumber ? [companyNumber] : [],
                             }),
+                            timeoutMs: 30000,
                         });
+                        const syncResult = syncResponse?.result || {};
+                        const syncedCount = Number(syncResult?.syncedCount || 0);
+                        const failedCount = Number(syncResult?.failedCount || 0);
+                        if (!syncedCount && failedCount > 0) {
+                            const firstFailure = Array.isArray(syncResult?.failed) ? syncResult.failed[0] : null;
+                            const reason = String(firstFailure?.reason || "").trim();
+                            throw new Error(reason || "Companies House refresh failed for this client.");
+                        }
                     }
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`, {
+                        timeoutMs: 15000,
+                    });
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!latestState.open || String(latestState.rowId || "").trim() !== rowId) return;
                     companiesHouseSettings.authRegisterClientPage = {
@@ -131842,9 +131840,14 @@
                         loadingToastShown: false,
                         payload,
                     };
+                    companiesHouseSettings.authRegisterRows = (companiesHouseSettings.authRegisterRows || []).map((item) => (
+                        String(item?.id || "").trim() === rowId
+                            ? { ...item, ...(payload?.row || {}) }
+                            : item
+                    ));
                     renderClientRegisterClientPage();
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
-                    showToast("Companies House data refreshed and saved.", "success");
+                    showToast("Companies House data refreshed and saved to the database.", "success");
                 } catch (error) {
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     companiesHouseSettings.authRegisterClientPage = {

@@ -1483,6 +1483,9 @@ def sync_companies_house_companies(user: dict | None, payload: dict | None = Non
                         """,
                         (company_ids, limit),
                     )
+                    companies = cursor.fetchall() or []
+                elif company_numbers:
+                    companies = []
                 else:
                     cursor.execute(
                         """
@@ -1496,7 +1499,7 @@ def sync_companies_house_companies(user: dict | None, payload: dict | None = Non
                         """,
                         (limit,),
                     )
-                companies = cursor.fetchall() or []
+                    companies = cursor.fetchall() or []
 
                 if company_numbers:
                     cursor.execute(
