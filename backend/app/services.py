@@ -6665,9 +6665,16 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client id is required.")
     canonicalised_count = 0
     alias_ids = {clean_client_id.lower()}
-    alias_names: set[str] = set()
+    alias_names: set[str] = {clean_client_id.lower()}
     canonical_client_id = clean_client_id
     canonical_client_name = ""
+
+    def _name_like_pattern(value: str) -> str:
+        tokens = re.findall(r"[a-z0-9]+", str(value or "").strip().lower())
+        if len(tokens) < 2:
+            return ""
+        return "%" + "%".join(tokens) + "%"
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -6727,6 +6734,7 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                     alias_ids.add(next_id)
                 if next_name:
                     alias_names.add(next_name)
+            alias_name_patterns = [pattern for pattern in (_name_like_pattern(name) for name in alias_names) if pattern]
             cursor.execute(
                 """
                 SELECT id,
@@ -6756,6 +6764,7 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                   AND (
                     LOWER(COALESCE(client_id, '')) = ANY(%s)
                     OR LOWER(COALESCE(client_name, '')) = ANY(%s)
+                    OR LOWER(COALESCE(client_name, '')) LIKE ANY(%s)
                   )
                 ORDER BY call_datetime DESC, id DESC
                 LIMIT 10000
@@ -6764,6 +6773,7 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                     user["id"],
                     list(alias_ids) or [clean_client_id.lower()],
                     list(alias_names) or [clean_client_id.lower()],
+                    alias_name_patterns or [_name_like_pattern(clean_client_id) or f"%{clean_client_id.lower()}%"],
                 ),
             )
             rows = cursor.fetchall() or []

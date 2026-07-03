@@ -6511,6 +6511,39 @@ def _ignition_proposal_client_name(payload: dict) -> str:
     return ""
 
 
+def _ignition_proposal_client_emails(payload: dict) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+    customer = payload.get("customer") if isinstance(payload.get("customer"), dict) else {}
+    candidates: list[object] = [
+        payload.get("client_email"),
+        payload.get("clientEmail"),
+        payload.get("customer_email"),
+        payload.get("customerEmail"),
+        payload.get("contact_email"),
+        payload.get("contactEmail"),
+        payload.get("email"),
+        client.get("email"),
+        client.get("contact_email"),
+        customer.get("email"),
+        customer.get("contact_email"),
+        client.get("contacts"),
+        customer.get("contacts"),
+        payload.get("contacts"),
+        payload.get("recipients"),
+    ]
+    emails: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        for email in _normalise_email_list(value):
+            if email in seen:
+                continue
+            seen.add(email)
+            emails.append(email)
+    return emails
+
+
 def _ignition_proposal_accepted(payload: dict) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -6813,6 +6846,21 @@ def _auth_register_ignition_engagement_letters(
     sync_start_year = datetime.now(timezone.utc).year
     sync_end_year = max(min_year, 1900)
     row_name_keys = set(_ignition_client_match_keys(client_name))
+    row_contact_email = _coerce_text(row.get("contact_email"), 250).lower()
+    row_contact_domain = _email_domain(row_contact_email)
+    blocked_public_domains = {
+        "gmail.com",
+        "googlemail.com",
+        "yahoo.com",
+        "hotmail.com",
+        "outlook.com",
+        "live.com",
+        "msn.com",
+        "icloud.com",
+        "aol.com",
+        "protonmail.com",
+    }
+    row_domain_match_allowed = bool(row_contact_domain and row_contact_domain not in blocked_public_domains)
     letters: list[dict] = []
     synced_years: list[int] = []
     seen: set[str] = set()
@@ -6842,8 +6890,22 @@ def _auth_register_ignition_engagement_letters(
             proposal_client_id = _ignition_proposal_client_id(proposal)
             proposal_client_name = _ignition_proposal_client_name(proposal)
             by_client_id = bool(matched_ignition_client_id and proposal_client_id and proposal_client_id == matched_ignition_client_id)
-            by_name = bool(row_name_keys and set(_ignition_client_match_keys(proposal_client_name)).intersection(row_name_keys))
-            if not by_client_id and not by_name:
+            proposal_name_keys = set(_ignition_client_match_keys(proposal_client_name))
+            by_name = bool(row_name_keys and proposal_name_keys.intersection(row_name_keys))
+            by_name_fuzzy = any(
+                min(len(left), len(right)) >= 8 and (left in right or right in left)
+                for left in row_name_keys
+                for right in proposal_name_keys
+            )
+            proposal_emails = _ignition_proposal_client_emails(proposal)
+            proposal_domains = {domain for domain in (_email_domain(email) for email in proposal_emails) if domain}
+            by_email = bool(row_contact_email and row_contact_email in proposal_emails)
+            by_domain = bool(
+                row_domain_match_allowed
+                and row_contact_domain
+                and row_contact_domain in proposal_domains
+            )
+            if not by_client_id and not by_name and not by_name_fuzzy and not by_email and not by_domain:
                 continue
             proposal_external_id = _coerce_text(
                 proposal.get("id")

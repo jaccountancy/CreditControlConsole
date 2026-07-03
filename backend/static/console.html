@@ -129061,6 +129061,78 @@
                     });
             }
 
+            function clientRegisterTaskTrackerPeriodEndISO(periodKey = "", dueDate = "") {
+                if (taskTrackerIsMonthKey(periodKey)) {
+                    const [yearText, monthText] = String(periodKey).split("-");
+                    const year = Number(yearText);
+                    const month = Number(monthText);
+                    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+                        const date = new Date(Date.UTC(year, month, 0));
+                        if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+                    }
+                }
+                if (taskTrackerIsWeekKey(periodKey)) {
+                    const [yearText, weekText] = String(periodKey).split("-W");
+                    const sunday = taskTrackerDateForIsoWeek(Number(yearText), Number(weekText), 7);
+                    if (sunday && !Number.isNaN(sunday.getTime())) return sunday.toISOString().slice(0, 10);
+                }
+                return clientRegisterNormaliseIsoDate(dueDate);
+            }
+
+            function clientRegisterTaskTrackerRowsForRow(row = {}, options = {}) {
+                const includeCompleted = !!options?.includeCompleted;
+                const clientKey = taskTrackerClientKeyForRow(row);
+                if (!clientKey) return [];
+                const option = taskTrackerClientOptions().find((item) => String(item?.key || "").trim() === clientKey) || null;
+                const rows = Array.isArray(taskTrackerState?.rows) ? taskTrackerState.rows : [];
+                return rows
+                    .filter((task) => String(task?.clientKey || "").trim() === clientKey)
+                    .filter((task) => includeCompleted || normaliseTaskStatus(task?.status) !== "done")
+                    .map((task) => {
+                        const status = normaliseTaskStatus(task?.status);
+                        const periodMonth = String(task?.periodMonth || "").trim();
+                        const dueDate = String(task?.dueDate || "").trim();
+                        return {
+                            ...task,
+                            id: `tracker:${String(task?.id || "").trim()}`,
+                            __taskSource: "tracker",
+                            __taskTrackerId: String(task?.id || "").trim(),
+                            taskName: String(task?.title || "Task").trim() || "Task",
+                            status: status === "done" ? "completed" : status,
+                            assigneeName: String(option?.manager || "").trim(),
+                            vatPeriodEndISO: clientRegisterTaskTrackerPeriodEndISO(periodMonth, dueDate),
+                            deadlineISO: clientRegisterNormaliseIsoDate(dueDate),
+                            taskProgress: periodMonth ? taskTrackerPeriodLabel(periodMonth) : "",
+                        };
+                    });
+            }
+
+            function clientRegisterClientPageTasksForRow(row = {}, options = {}) {
+                const bmRows = clientRegisterTasksForRow(row, options).map((task) => ({
+                    ...task,
+                    __taskSource: "bm",
+                    __taskTrackerId: "",
+                }));
+                const trackerRows = clientRegisterTaskTrackerRowsForRow(row, options);
+                return [...bmRows, ...trackerRows].sort((left, right) => {
+                    const leftStamp = dateSortValue(
+                        left?.completedAt
+                        || left?.updatedAt
+                        || bmTaskEffectiveDeadlineISO(left)
+                        || bmTaskEffectivePeriodEndISO(left)
+                        || ""
+                    );
+                    const rightStamp = dateSortValue(
+                        right?.completedAt
+                        || right?.updatedAt
+                        || bmTaskEffectiveDeadlineISO(right)
+                        || bmTaskEffectivePeriodEndISO(right)
+                        || ""
+                    );
+                    return rightStamp - leftStamp;
+                });
+            }
+
             function clientRegisterCallStatsClientIdCandidatesForRow(row = {}) {
                 const candidates = [
                     String(row?.clientId || "").trim(),
@@ -129578,9 +129650,52 @@
                         amountDue,
                         paymentStatus,
                         status: String(invoice?.controlStatus || invoice?.status || "").trim() || (amountDue <= 0.01 ? "paid" : "outstanding"),
+                        clientName: String(
+                            invoice?.jukContactName
+                            || invoice?.clientName
+                            || invoice?.customerName
+                            || customer?.name
+                            || customer?.displayName
+                            || ""
+                        ).trim(),
+                        clientId: String(
+                            invoice?.clientId
+                            || invoice?.customerId
+                            || invoice?.customerXeroContactId
+                            || customer?.id
+                            || customer?.xeroContactId
+                            || ""
+                        ).trim(),
                         source: "xero",
                     };
                 });
+            }
+
+            function clientRegisterJukInvoiceMatchesRow(invoice = {}, row = {}) {
+                const rowClientId = String(row?.clientId || "").trim().toLowerCase();
+                const rowName = clientRegisterClientDisplayName(row);
+                const rowNameKey = normalisePracticePackClientMatchName(rowName);
+                const invoiceClientId = String(
+                    invoice?.clientId
+                    || invoice?.customerId
+                    || invoice?.customerXeroContactId
+                    || invoice?.xeroContactId
+                    || ""
+                ).trim().toLowerCase();
+                const invoiceName = String(
+                    invoice?.clientName
+                    || invoice?.jukContactName
+                    || invoice?.customerName
+                    || ""
+                ).trim();
+                const invoiceNameKey = normalisePracticePackClientMatchName(invoiceName);
+                if (rowClientId && invoiceClientId && rowClientId === invoiceClientId) return true;
+                if (!rowNameKey || !invoiceNameKey) return false;
+                if (rowNameKey === invoiceNameKey) return true;
+                if (rowNameKey.length >= 8 && invoiceNameKey.length >= 8) {
+                    return rowNameKey.includes(invoiceNameKey) || invoiceNameKey.includes(rowNameKey);
+                }
+                return false;
             }
 
             function clientRegisterJukInvoicesForRow(row = {}) {
@@ -129594,6 +129709,14 @@
                     if (preferredCandidate?.customer) {
                         rows = clientRegisterJukInvoicesFromCustomer(preferredCandidate.customer);
                     }
+                }
+                const rowsWithIdentity = rows.filter((invoice) => {
+                    const hasId = String(invoice?.clientId || invoice?.customerId || invoice?.customerXeroContactId || invoice?.xeroContactId || "").trim();
+                    const hasName = String(invoice?.clientName || invoice?.jukContactName || invoice?.customerName || "").trim();
+                    return !!(hasId || hasName);
+                });
+                if (rowsWithIdentity.length) {
+                    rows = rows.filter((invoice) => clientRegisterJukInvoiceMatchesRow(invoice, row));
                 }
                 return rows
                     .filter((invoice) => {
@@ -132059,10 +132182,11 @@
                 const includeCompletedTasks = true;
                 const bmTasksLoading = !!companiesHouseSettings.bmTasksLoading;
                 if (tasksBody) {
-                    const clientTasks = clientRegisterTasksForRow(row, { includeCompleted: includeCompletedTasks });
+                    const clientTasks = clientRegisterClientPageTasksForRow(row, { includeCompleted: includeCompletedTasks });
                     tasksBody.innerHTML = clientTasks.length
                         ? clientTasks.map((task) => {
-                            const rowId = bmTaskIdentitySafe(task);
+                            const rowId = String(task?.id || bmTaskIdentitySafe(task)).trim();
+                            const taskSource = String(task?.__taskSource || "bm").trim().toLowerCase();
                             const status = String(task?.status || "").trim().toLowerCase() || "open";
                             const isCompletedTask = status === "completed";
                             const workflowType = bmTaskWorkflowType(task);
@@ -132073,6 +132197,8 @@
                             let actionMarkup = "—";
                             if (isCompletedTask) {
                                 actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="restore">Restore</button>`;
+                            } else if (taskSource === "tracker") {
+                                actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
                             } else if (workflowType === "vat") {
                                 if (workflowState === "ready_to_complete") {
                                     actionMarkup = `<button class="ghost-button" type="button" data-client-page-task-action="${escapeHTML(rowId)}" data-client-page-task-action-kind="complete">Complete</button>`;
@@ -132114,7 +132240,7 @@
                                 : (includeCompletedTasks ? "No tasks linked to this client." : "No outstanding tasks linked to this client.")
                         }</td></tr>`;
                     if (tasksMeta) {
-                        const allClientTaskCount = clientRegisterTasksForRow(row, { includeCompleted: true }).length;
+                        const allClientTaskCount = clientRegisterClientPageTasksForRow(row, { includeCompleted: true }).length;
                         tasksMeta.textContent = bmTasksLoading && allClientTaskCount === 0
                             ? "Loading linked tasks…"
                             : `${clientTasks.length.toLocaleString("en-GB")} shown${includeCompletedTasks ? "" : " (outstanding only)"} of ${allClientTaskCount.toLocaleString("en-GB")} linked task${allClientTaskCount === 1 ? "" : "s"}.`;
@@ -133613,6 +133739,28 @@
                 });
             }
 
+            function setTaskTrackerTaskStatus(taskId = "", status = "open") {
+                const safeTaskId = String(taskId || "").trim();
+                if (!safeTaskId) return false;
+                const nextStatus = normaliseTaskStatus(status);
+                let changed = false;
+                taskTrackerState.rows = (Array.isArray(taskTrackerState.rows) ? taskTrackerState.rows : []).map((task) => {
+                    if (String(task?.id || "").trim() !== safeTaskId) return task;
+                    changed = true;
+                    return {
+                        ...task,
+                        status: nextStatus,
+                        completionReason: nextStatus === "done" ? String(task?.completionReason || "").trim() : "",
+                        updatedAt: new Date().toISOString(),
+                    };
+                });
+                if (!changed) return false;
+                reconcileTaskTrackerAutoRows({ persist: false });
+                saveTaskTrackerRows();
+                renderTaskTrackerScreen();
+                return true;
+            }
+
             function applyCompaniesHouseSettings(settings) {
                 const data = settings || {};
                 companiesHouseSettings.data = {
@@ -134517,6 +134665,43 @@
                     const rowId = String(button.getAttribute("data-client-page-task-action") || "").trim();
                     const actionKind = String(button.getAttribute("data-client-page-task-action-kind") || "").trim().toLowerCase();
                     if (!rowId) return;
+                    const trackerTaskId = rowId.startsWith("tracker:") ? rowId.slice("tracker:".length) : "";
+                    if (trackerTaskId) {
+                        if (actionKind === "complete") {
+                            const changed = setTaskTrackerTaskStatus(trackerTaskId, "done");
+                            if (!changed) {
+                                showToast("Unable to find selected task.", "error");
+                                return;
+                            }
+                            void recordClientRegisterTimelineEvent({
+                                eventType: "client_task_completed",
+                                source: "User",
+                                action: "Task marked completed",
+                                note: "Task marked completed from client page.",
+                            });
+                            renderTaskSubpages();
+                            renderClientRegisterClientPage();
+                            showToast("Task completed.", "success");
+                            return;
+                        }
+                        if (actionKind === "restore") {
+                            const changed = setTaskTrackerTaskStatus(trackerTaskId, "open");
+                            if (!changed) {
+                                showToast("Unable to find selected task.", "error");
+                                return;
+                            }
+                            void recordClientRegisterTimelineEvent({
+                                eventType: "client_task_restored",
+                                source: "User",
+                                action: "Task restored",
+                                note: "Task restored from client page.",
+                            });
+                            renderTaskSubpages();
+                            renderClientRegisterClientPage();
+                            showToast("Task restored to outstanding.", "success");
+                            return;
+                        }
+                    }
                     const task = (Array.isArray(companiesHouseSettings.bmTasksRows) ? companiesHouseSettings.bmTasksRows : [])
                         .map((row) => bmTaskRowWithOverrides(row))
                         .find((row) => bmTaskIdentitySafe(row) === rowId);
