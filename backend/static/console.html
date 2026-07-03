@@ -132013,13 +132013,14 @@
                     saveError: "",
                 };
                 setClientRegisterWriteFailure("", "");
-                renderClientRegisterClientPage();
                 try {
+                    renderClientRegisterClientPage();
                     let updatedRow = currentRow;
                     if (registerChanged) {
                         const registerResult = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}`, {
                             method: "POST",
                             body: JSON.stringify(registerOutbound),
+                            timeoutMs: 20000,
                         });
                         if (registerResult?.row && typeof registerResult.row === "object") {
                             updatedRow = registerResult.row;
@@ -132030,6 +132031,7 @@
                         next = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`, {
                             method: "PATCH",
                             body: JSON.stringify(outbound),
+                            timeoutMs: 20000,
                         });
                     }
                     const timelineEntry = {
