@@ -6676,6 +6676,13 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
             return ""
         return "%" + "%".join(tokens) + "%"
 
+    def _rebuild_alias_name_patterns() -> list[str]:
+        patterns = [pattern for pattern in (_name_like_pattern(name) for name in alias_names) if pattern]
+        if patterns:
+            return patterns
+        fallback = _name_like_pattern(clean_client_id)
+        return [fallback] if fallback else [f"%{clean_client_id.lower()}%"]
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -6695,6 +6702,23 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                 (clean_client_id, clean_client_id, clean_client_id, clean_client_id),
             )
             register_rows = cursor.fetchall() or []
+            if not register_rows:
+                alias_name_patterns = _rebuild_alias_name_patterns()
+                cursor.execute(
+                    """
+                    SELECT id::text AS register_row_id,
+                           client_id,
+                           client_name,
+                           COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name
+                    FROM ch_auth_code_register
+                    WHERE LOWER(COALESCE(client_name, '')) LIKE ANY(%s)
+                       OR LOWER(COALESCE(company_name, '')) LIKE ANY(%s)
+                    ORDER BY updated_at DESC
+                    LIMIT 20
+                    """,
+                    (alias_name_patterns, alias_name_patterns),
+                )
+                register_rows = cursor.fetchall() or []
             for row in register_rows:
                 row_id = str(row.get("register_row_id") or "").strip().lower()
                 row_client_id = str(row.get("client_id") or "").strip().lower()
@@ -6728,6 +6752,19 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                 (clean_client_id, clean_client_id, list(alias_names) or [clean_client_id.lower()]),
             )
             customer_rows = cursor.fetchall() or []
+            if not customer_rows:
+                alias_name_patterns = _rebuild_alias_name_patterns()
+                cursor.execute(
+                    """
+                    SELECT id::text AS customer_id, name
+                    FROM customers
+                    WHERE LOWER(COALESCE(name, '')) LIKE ANY(%s)
+                    ORDER BY updated_at DESC NULLS LAST, id DESC
+                    LIMIT 40
+                    """,
+                    (alias_name_patterns,),
+                )
+                customer_rows = cursor.fetchall() or []
             for row in customer_rows:
                 next_id = str(row.get("customer_id") or "").strip().lower()
                 next_name = str(row.get("name") or "").strip().lower()
@@ -6735,7 +6772,7 @@ def call_stats_client_logs_payload(user: dict, client_id: str, filters: dict | N
                     alias_ids.add(next_id)
                 if next_name:
                     alias_names.add(next_name)
-            alias_name_patterns = [pattern for pattern in (_name_like_pattern(name) for name in alias_names) if pattern]
+            alias_name_patterns = _rebuild_alias_name_patterns()
             cursor.execute(
                 """
                 SELECT id,
