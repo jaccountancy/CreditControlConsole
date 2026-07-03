@@ -130511,6 +130511,77 @@
                 return candidates[0] || "";
             }
 
+            function clientRegisterCallStatsLocalMatches(row = {}, clientIdCandidates = []) {
+                const candidates = Array.isArray(clientIdCandidates)
+                    ? clientIdCandidates.map((value) => String(value || "").trim()).filter(Boolean)
+                    : [];
+                if (!candidates.length) return [];
+                const loweredCandidates = candidates.map((value) => value.toLowerCase());
+                const byId = new Set(loweredCandidates);
+                const nameTokens = loweredCandidates
+                    .map((value) => value.replace(/[^a-z0-9]+/g, " ").trim())
+                    .filter((value) => value.split(/\s+/).length >= 2);
+                const sourceRows = Array.isArray(clientCallStatsData?.rows) ? clientCallStatsData.rows : [];
+                return sourceRows
+                    .filter((item) => String(item?.matchedStatus || "").trim().toLowerCase() === "matched")
+                    .filter((item) => {
+                        const itemClientId = String(item?.clientId || "").trim().toLowerCase();
+                        const itemClientName = String(item?.clientName || "").trim().toLowerCase();
+                        if (itemClientId && byId.has(itemClientId)) return true;
+                        if (itemClientName && byId.has(itemClientName)) return true;
+                        if (!itemClientName) return false;
+                        const normalizedName = itemClientName.replace(/[^a-z0-9]+/g, " ").trim();
+                        return nameTokens.some((tokenLine) => {
+                            const parts = tokenLine.split(/\s+/).filter(Boolean);
+                            return parts.length >= 2 && parts.every((part) => normalizedName.includes(part));
+                        });
+                    })
+                    .map((item) => ({
+                        id: String(item?.id || ""),
+                        date: String(item?.callDate || ""),
+                        time: String(item?.callTime || ""),
+                        direction: String(item?.direction || ""),
+                        staffMember: String(item?.staffMember || ""),
+                        clientManager: String(item?.clientManager || ""),
+                        fromNumber: String(item?.fromNumber || ""),
+                        toNumber: String(item?.toNumber || ""),
+                        durationSeconds: Number(item?.durationSeconds || 0),
+                        outcome: String(item?.outcome || ""),
+                    }));
+            }
+
+            function clientRegisterCallStatsPayloadFromRows(rows = []) {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                const now = new Date();
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                let inbound = 0;
+                let outbound = 0;
+                let monthCount = 0;
+                let lastCallDate = "";
+                safeRows.forEach((row) => {
+                    const direction = String(row?.direction || "").trim().toLowerCase();
+                    if (direction === "inbound") inbound += 1;
+                    if (direction === "outbound") outbound += 1;
+                    const isoDate = String(row?.date || "").trim();
+                    if (isoDate) {
+                        if (!lastCallDate || isoDate > lastCallDate) lastCallDate = isoDate;
+                        const parsed = new Date(isoDate);
+                        if (!Number.isNaN(parsed.getTime()) && parsed >= monthStart) monthCount += 1;
+                    }
+                });
+                return {
+                    summary: {
+                        totalCalls: safeRows.length,
+                        inboundCalls: inbound,
+                        outboundCalls: outbound,
+                        callsThisMonth: monthCount,
+                        lastCallDate,
+                    },
+                    benchmark: {},
+                    rows: safeRows,
+                };
+            }
+
             async function loadClientRegisterClientPageCallStats({ force = false, silent = true } = {}) {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState?.rowId || "").trim();
@@ -130595,6 +130666,13 @@
 
                     if (!resolvedPayload) {
                         throw (lastError || new Error("Unable to load call stats."));
+                    }
+                    const resolvedRows = Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows : [];
+                    if (!resolvedRows.length) {
+                        const localRows = clientRegisterCallStatsLocalMatches(row, clientIdCandidates);
+                        if (localRows.length) {
+                            resolvedPayload = clientRegisterCallStatsPayloadFromRows(localRows);
+                        }
                     }
 
                     const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
@@ -130692,7 +130770,14 @@
                     const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
                     const nextPayload = bestResponse?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
-                    const rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : 0;
+                    let rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : 0;
+                    if (!rowCount) {
+                        const localRows = clientRegisterCallStatsLocalMatches(row, clientIdCandidates);
+                        if (localRows.length) {
+                            nextPayload = clientRegisterCallStatsPayloadFromRows(localRows);
+                            rowCount = localRows.length;
+                        }
+                    }
                     companiesHouseSettings.authRegisterClientPage = {
                         ...nextPageState,
                         callStats: {
