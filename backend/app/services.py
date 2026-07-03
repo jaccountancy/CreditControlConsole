@@ -3620,15 +3620,11 @@ async def payroll_tenant_overview_payload(
             errors.append(f"{label}: {diagnostics['error']}")
             return {}
 
-    _register_fetch_diagnostic("Employees", url=XERO_PAYROLL_EMPLOYEES_URL).update(
-        {"attempted": False, "ok": False, "error": "disabled_in_nominal_only_mode"}
-    )
-    _register_fetch_diagnostic("Pay runs", url=XERO_PAYROLL_PAYRUNS_URL).update(
-        {"attempted": False, "ok": False, "error": "disabled_in_nominal_only_mode"}
-    )
     accounts_payload = await _fetch(ACCOUNTS_URL, "Chart of accounts")
-    employees_payload: dict = {}
-    payruns_payload: dict = {}
+    employees_payload, payruns_payload = await asyncio.gather(
+        _fetch(XERO_PAYROLL_EMPLOYEES_URL, "Employees"),
+        _fetch(XERO_PAYROLL_PAYRUNS_URL, "Pay runs"),
+    )
 
     employees = _payroll_headcount_rows(employees_payload, "Employees", "Employee")
     payruns = _payroll_headcount_rows(payruns_payload, "PayRuns", "PayRun")
@@ -3797,6 +3793,10 @@ async def payroll_tenant_overview_payload(
     journal_payable_diagnostics: dict = {"engine": "disabled", "reason": "nominal_required_mode"}
     payroll_api_p32_tax = Decimal("0")
     payroll_api_pension_payable = Decimal("0")
+    payroll_api_p32_tax_from_payslips = Decimal("0")
+    payroll_api_pension_payable_from_payslips = Decimal("0")
+    payroll_api_p32_tax_from_payrun_details = Decimal("0")
+    payroll_api_pension_payable_from_payrun_details = Decimal("0")
     payroll_api_diagnostics: dict = {}
     selected_payrun_details_payload: dict = {}
     selected_payrun_payslips_payload: dict = {}
@@ -3819,18 +3819,20 @@ async def payroll_tenant_overview_payload(
         except Exception as exc:
             errors.append(f"Pay slips by pay run: {_sync_error_message(exc)}")
             selected_payrun_payslips_payload = {}
-        payroll_api_p32_tax = _payroll_overview_payslip_tax_from_payload(selected_payrun_payslips_payload)
-        payroll_api_pension_payable = _payroll_overview_payslip_pension_from_payload(selected_payrun_payslips_payload)
-        payrun_detail_p32_tax = _payroll_overview_payrun_tax_from_payload(selected_payrun_details_payload)
-        payrun_detail_pension_payable = _payroll_overview_payrun_pension_from_payload(selected_payrun_details_payload)
-        if payrun_detail_p32_tax > payroll_api_p32_tax:
-            payroll_api_p32_tax = payrun_detail_p32_tax
-        if payrun_detail_pension_payable > payroll_api_pension_payable:
-            payroll_api_pension_payable = payrun_detail_pension_payable
+        payroll_api_p32_tax_from_payslips = _payroll_overview_payslip_tax_from_payload(selected_payrun_payslips_payload)
+        payroll_api_pension_payable_from_payslips = _payroll_overview_payslip_pension_from_payload(selected_payrun_payslips_payload)
+        payroll_api_p32_tax_from_payrun_details = _payroll_overview_payrun_tax_from_payload(selected_payrun_details_payload)
+        payroll_api_pension_payable_from_payrun_details = _payroll_overview_payrun_pension_from_payload(selected_payrun_details_payload)
+        payroll_api_p32_tax = payroll_api_p32_tax_from_payslips
+        payroll_api_pension_payable = payroll_api_pension_payable_from_payslips
+        if payroll_api_p32_tax_from_payrun_details > payroll_api_p32_tax:
+            payroll_api_p32_tax = payroll_api_p32_tax_from_payrun_details
+        if payroll_api_pension_payable_from_payrun_details > payroll_api_pension_payable:
+            payroll_api_pension_payable = payroll_api_pension_payable_from_payrun_details
         if payroll_api_p32_tax <= Decimal("0"):
-            payroll_api_p32_tax = payrun_detail_p32_tax
+            payroll_api_p32_tax = payroll_api_p32_tax_from_payrun_details
         if payroll_api_pension_payable <= Decimal("0"):
-            payroll_api_pension_payable = payrun_detail_pension_payable
+            payroll_api_pension_payable = payroll_api_pension_payable_from_payrun_details
         payslip_rows = _payroll_overview_payslip_rows(selected_payrun_payslips_payload)
         payroll_api_diagnostics = {
             "engine": "payroll_api",
@@ -3838,8 +3840,8 @@ async def payroll_tenant_overview_payload(
             "payslipCount": len(payslip_rows),
             "p32FromPayrollApi": float(payroll_api_p32_tax),
             "pensionFromPayrollApi": float(payroll_api_pension_payable),
-            "p32FromPayrunDetails": float(payrun_detail_p32_tax),
-            "pensionFromPayrunDetails": float(payrun_detail_pension_payable),
+            "p32FromPayrunDetails": float(payroll_api_p32_tax_from_payrun_details),
+            "pensionFromPayrunDetails": float(payroll_api_pension_payable_from_payrun_details),
         }
         journal_payable_diagnostics = {"engine": "disabled", "reason": "nominal_required_mode"}
     else:
@@ -4170,24 +4172,35 @@ async def payroll_tenant_overview_payload(
     )
     nominal_strict_ready = has_tax_nominal_evidence and has_pension_nominal_evidence
 
-    # Payroll extraction must be nominal-transaction backed for both PAYE and pension.
-    # If either nominal side is missing, fail extraction instead of applying other fallbacks.
-    if nominal_strict_ready and has_tax_nominal_evidence and openai_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(openai_p32_tax)
-    elif nominal_strict_ready and has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0"):
-        estimated_p32_tax_balance = float(nominal_tx_p32_tax)
-    else:
-        estimated_p32_tax_balance = 0.0
-    if nominal_strict_ready and has_pension_nominal_evidence and openai_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(openai_pension_payable)
-    elif nominal_strict_ready and has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0"):
-        estimated_pension_payable_balance = float(nominal_tx_pension_payable)
-    else:
-        estimated_pension_payable_balance = 0.0
-    if selected_payrun_id and not nominal_strict_ready:
-        errors.append(
-            "Exact payroll liability extraction failed: nominal account transactions are required for both PAYE and pension in the selected period."
-        )
+    p32_candidates: list[tuple[str, float]] = [
+        ("openai_nominal_inference", float(openai_p32_tax)),
+        ("nominal_account_transactions", float(nominal_tx_p32_tax)),
+        ("payroll_api_payslips", float(payroll_api_p32_tax_from_payslips)),
+        ("payroll_api_payslips", float(payroll_api_p32_tax_from_payrun_details)),
+        ("payrun_estimate", latest_payrun_p32_balance),
+        ("nominal_trial_balance_delta", float(trial_balance_delta_p32_tax)),
+    ]
+    pension_candidates: list[tuple[str, float]] = [
+        ("openai_nominal_inference", float(openai_pension_payable)),
+        ("nominal_account_transactions", float(nominal_tx_pension_payable)),
+        ("payroll_api_payslips", float(payroll_api_pension_payable_from_payslips)),
+        ("payroll_api_payslips", float(payroll_api_pension_payable_from_payrun_details)),
+        ("payrun_estimate", latest_payrun_pension_balance),
+    ]
+
+    p32_source = "none"
+    pension_source = "none"
+    for source_name, value in p32_candidates:
+        if value > 0:
+            estimated_p32_tax_balance = value
+            p32_source = source_name
+            break
+    for source_name, value in pension_candidates:
+        if value > 0:
+            estimated_pension_payable_balance = value
+            pension_source = source_name
+            break
+
     if nominal_permission_blocked:
         errors.append(
             "Nominal transaction permissions appear incomplete. Reconnect Xero and approve required accounting/journal/report scopes."
@@ -4216,20 +4229,8 @@ async def payroll_tenant_overview_payload(
             openai_p32_tax > Decimal("0") or openai_pension_payable > Decimal("0")
         )
     estimated_balances_source = {
-        "p32Tax": (
-            "openai_nominal_inference"
-            if nominal_strict_ready and has_tax_nominal_evidence and openai_p32_tax > Decimal("0")
-            else "nominal_account_transactions"
-            if nominal_strict_ready and has_tax_nominal_evidence and nominal_tx_p32_tax > Decimal("0")
-            else "none"
-        ),
-        "pensionPayable": (
-            "openai_nominal_inference"
-            if nominal_strict_ready and has_pension_nominal_evidence and openai_pension_payable > Decimal("0")
-            else "nominal_account_transactions"
-            if nominal_strict_ready and has_pension_nominal_evidence and nominal_tx_pension_payable > Decimal("0")
-            else "none"
-        ),
+        "p32Tax": p32_source,
+        "pensionPayable": pension_source,
     }
     if details_fetch_attempted:
         logger.info(
