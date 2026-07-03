@@ -1515,6 +1515,25 @@ def sync_companies_house_companies(user: dict | None, payload: dict | None = Non
                     )
                     register_rows = cursor.fetchall() or []
                     for register_row in register_rows:
+                        safe_company_number = normalise_company_number(register_row.get("company_number"))
+                        if safe_company_number:
+                            _upsert_company(
+                                cursor,
+                                {
+                                    "company_number": safe_company_number,
+                                    "company_name": _coerce_text(register_row.get("display_name"), 250),
+                                    "client_name": _coerce_text(register_row.get("display_name"), 250),
+                                    "client_id": _coerce_text(register_row.get("client_id"), 80),
+                                    "contact_email": _coerce_text(register_row.get("contact_email"), 250),
+                                    "contact_phone": _coerce_text(register_row.get("contact_phone"), 120),
+                                    "client_address": _coerce_text(register_row.get("client_address"), 1000),
+                                    "assigned_staff": _coerce_text(register_row.get("client_manager"), 120),
+                                    "notes": "",
+                                    "period_end_iso": "",
+                                    "due_date_iso": "",
+                                },
+                                user_id,
+                            )
                         _sync_auth_register_contacts_to_company(
                             cursor,
                             company_number=register_row.get("company_number") or "",
