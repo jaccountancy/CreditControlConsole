@@ -130961,6 +130961,25 @@
                             || customer?.xeroContactId
                             || ""
                         ).trim(),
+                        clientEmail: String(
+                            invoice?.clientEmail
+                            || invoice?.contactEmail
+                            || invoice?.customerEmail
+                            || customer?.email
+                            || customer?.contactEmail
+                            || customer?.primaryEmail
+                            || customer?.clientEmail
+                            || ""
+                        ).trim(),
+                        companyNumber: String(
+                            invoice?.companyNumber
+                            || invoice?.companiesHouseNumber
+                            || invoice?.companyNo
+                            || customer?.companyNumber
+                            || customer?.companiesHouseNumber
+                            || customer?.companyNo
+                            || ""
+                        ).trim(),
                         source: "xero",
                     };
                 });
@@ -130970,6 +130989,9 @@
                 const rowClientId = String(row?.clientId || "").trim().toLowerCase();
                 const rowName = clientRegisterClientDisplayName(row);
                 const rowNameKey = normalisePracticePackClientMatchName(rowName);
+                const rowEmail = String(row?.clientEmail || "").trim().toLowerCase();
+                const rowDomain = rowEmail.includes("@") ? rowEmail.split("@").pop() : "";
+                const rowCompanyNumber = normaliseCompanyNumberInput(row?.companyNumber || "");
                 const invoiceClientId = String(
                     invoice?.clientId
                     || invoice?.customerId
@@ -130984,7 +131006,22 @@
                     || ""
                 ).trim();
                 const invoiceNameKey = normalisePracticePackClientMatchName(invoiceName);
+                const invoiceEmail = String(
+                    invoice?.clientEmail
+                    || invoice?.contactEmail
+                    || invoice?.customerEmail
+                    || ""
+                ).trim().toLowerCase();
+                const invoiceDomain = invoiceEmail.includes("@") ? invoiceEmail.split("@").pop() : "";
+                const invoiceCompanyNumber = normaliseCompanyNumberInput(
+                    invoice?.companyNumber
+                    || invoice?.companiesHouseNumber
+                    || ""
+                );
                 if (rowClientId && invoiceClientId && rowClientId === invoiceClientId) return true;
+                if (rowEmail && invoiceEmail && rowEmail === invoiceEmail) return true;
+                if (rowCompanyNumber && invoiceCompanyNumber && rowCompanyNumber === invoiceCompanyNumber) return true;
+                if (rowDomain && invoiceDomain && rowDomain === invoiceDomain && rowDomain !== "gmail.com") return true;
                 if (!rowNameKey || !invoiceNameKey) return false;
                 if (rowNameKey === invoiceNameKey) return true;
                 if (rowNameKey.length >= 8 && invoiceNameKey.length >= 8) {
@@ -131183,25 +131220,74 @@
                 const rowClientId = String(row?.clientId || "").trim().toLowerCase();
                 const rowName = clientRegisterClientDisplayName(row);
                 const rowNameKey = normalisePracticePackClientMatchName(rowName);
+                const rowEmail = String(row?.clientEmail || "").trim().toLowerCase();
+                const rowDomain = rowEmail.includes("@") ? rowEmail.split("@").pop() : "";
+                const rowCompanyNumber = normaliseCompanyNumberInput(row?.companyNumber || "");
                 return customers.map((customer) => {
                     const customerId = String(customer?.id || "").trim();
+                    const customerExternalClientId = String(
+                        customer?.clientId
+                        || customer?.reference
+                        || customer?.clientCode
+                        || customer?.accountNumber
+                        || customer?.externalId
+                        || ""
+                    ).trim();
                     const customerName = String(customer?.name || customer?.displayName || "").trim();
                     const customerNameKey = normalisePracticePackClientMatchName(customerName);
-                    const idExact = rowClientId && customerId && rowClientId === customerId.toLowerCase();
+                    const customerEmail = String(
+                        customer?.email
+                        || customer?.contactEmail
+                        || customer?.primaryEmail
+                        || customer?.clientEmail
+                        || ""
+                    ).trim().toLowerCase();
+                    const customerDomain = customerEmail.includes("@") ? customerEmail.split("@").pop() : "";
+                    const customerCompanyNumber = normaliseCompanyNumberInput(
+                        customer?.companyNumber
+                        || customer?.companiesHouseNumber
+                        || customer?.companyNo
+                        || ""
+                    );
+                    const idExact = rowClientId && (
+                        (customerId && rowClientId === customerId.toLowerCase())
+                        || (customerExternalClientId && rowClientId === customerExternalClientId.toLowerCase())
+                    );
+                    const emailExact = !!(rowEmail && customerEmail && rowEmail === customerEmail);
+                    const domainExact = !!(rowDomain && customerDomain && rowDomain === customerDomain && rowDomain !== "gmail.com");
+                    const companyNumberExact = !!(rowCompanyNumber && customerCompanyNumber && rowCompanyNumber === customerCompanyNumber);
                     const fuzzy = Math.max(
                         jukNameSimilarity(rowName, customerName),
                         jukNameSimilarity(rowNameKey, customerNameKey)
                     );
-                    const confidence = Math.min(1, (idExact ? 0.7 : 0) + (fuzzy * (idExact ? 0.3 : 1)));
                     const invoices = Array.isArray(customer?.invoices) ? customer.invoices : [];
+                    const invoiceCount = invoices.length;
+                    const invoiceBonus = Math.min(0.12, invoiceCount > 0 ? 0.02 + (Math.log10(invoiceCount + 1) * 0.05) : 0);
+                    const structuralScore = Math.max(
+                        idExact ? 1 : 0,
+                        companyNumberExact ? 0.97 : 0,
+                        emailExact ? 0.95 : 0,
+                        domainExact ? 0.7 : 0,
+                        fuzzy
+                    );
+                    const confidence = Math.min(1, structuralScore + invoiceBonus);
                     const outstanding = invoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
+                    const reason = idExact
+                        ? "Exact Client ID match"
+                        : companyNumberExact
+                            ? "Exact company number match"
+                            : emailExact
+                                ? "Exact email match"
+                                : domainExact
+                                    ? "Email domain match"
+                                    : "OpenAI-assisted fuzzy customer match";
                     return {
                         customer,
                         customerId,
                         customerName: customerName || "Client",
                         confidence,
-                        reason: idExact ? "Exact Client ID match" : "OpenAI-assisted fuzzy customer match",
-                        invoiceCount: invoices.length,
+                        reason,
+                        invoiceCount,
                         outstanding,
                     };
                 }).sort((left, right) => right.confidence - left.confidence || right.invoiceCount - left.invoiceCount);

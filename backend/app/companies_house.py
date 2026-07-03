@@ -6846,7 +6846,12 @@ def _auth_register_ignition_engagement_letters(
     sync_start_year = datetime.now(timezone.utc).year
     sync_end_year = max(min_year, 1900)
     row_name_keys = set(_ignition_client_match_keys(client_name))
-    row_contact_email = _coerce_text(row.get("contact_email"), 250).lower()
+    row_contact_email = _coerce_text(
+        row.get("contact_email")
+        or row.get("client_email")
+        or row.get("clientEmail"),
+        250,
+    ).lower()
     row_contact_domain = _email_domain(row_contact_email)
     blocked_public_domains = {
         "gmail.com",
@@ -6885,7 +6890,7 @@ def _auth_register_ignition_engagement_letters(
         year_count = 0
         for record in records:
             proposal = record.get("payload") if isinstance(record.get("payload"), dict) else {}
-            if not proposal or not _ignition_proposal_accepted(proposal):
+            if not proposal:
                 continue
             proposal_client_id = _ignition_proposal_client_id(proposal)
             proposal_client_name = _ignition_proposal_client_name(proposal)
