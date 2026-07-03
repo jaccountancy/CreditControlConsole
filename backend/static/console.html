@@ -811,6 +811,7 @@
                 --settings-accent-soft: rgba(30, 47, 77, 0.08);
             }
             .settings-sidebar-button[data-settings-nav="security-users"],
+            .settings-sidebar-button[data-settings-nav="security-staff-pics"],
             .settings-sidebar-button[data-settings-nav="security-audit"],
             .settings-sidebar-button[data-settings-nav="security-hardening"] {
                 --settings-accent: #cf3d5a;
@@ -821,6 +822,7 @@
                 border-color: rgba(30, 47, 77, 0.2);
             }
             .settings-sidebar-button[data-settings-nav="security-users"] .settings-sidebar-icon,
+            .settings-sidebar-button[data-settings-nav="security-staff-pics"] .settings-sidebar-icon,
             .settings-sidebar-button[data-settings-nav="security-audit"] .settings-sidebar-icon,
             .settings-sidebar-button[data-settings-nav="security-hardening"] .settings-sidebar-icon {
                 background: linear-gradient(135deg, rgba(255, 235, 239, 0.96), rgba(255, 223, 230, 0.9));
@@ -14202,9 +14204,113 @@
                 color: #9a5a04;
                 font-weight: 700;
             }
+            .security-staff-pics-grid {
+                margin-top: 14px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 12px;
+            }
+            .security-staff-pic-card {
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.86);
+                padding: 12px;
+                display: grid;
+                gap: 10px;
+            }
+            .security-staff-pic-preview {
+                width: 100%;
+                aspect-ratio: 1 / 1;
+                border-radius: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: linear-gradient(140deg, rgba(236, 242, 254, 0.95), rgba(247, 250, 255, 0.9));
+                overflow: hidden;
+                display: grid;
+                place-items: center;
+                color: #4d6188;
+                font-weight: 800;
+                font-size: 1.7rem;
+                letter-spacing: 0.04em;
+            }
+            .security-staff-pic-preview img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+            .security-staff-pic-meta {
+                display: grid;
+                gap: 4px;
+            }
+            .security-staff-pic-meta strong {
+                font-size: 0.95rem;
+            }
+            .security-staff-pic-meta small {
+                color: #5d7298;
+                font-weight: 700;
+            }
+            .security-staff-pic-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .security-staff-pic-editor {
+                width: min(760px, 94vw);
+            }
+            .security-staff-pic-editor-body {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr);
+                gap: 14px;
+                align-items: start;
+            }
+            .security-staff-pic-editor-stage {
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 14px;
+                padding: 10px;
+                background: rgba(248, 251, 255, 0.82);
+                display: grid;
+                place-items: center;
+            }
+            .security-staff-pic-editor-stage canvas {
+                width: min(100%, 430px);
+                aspect-ratio: 1 / 1;
+                border-radius: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                background: #fff;
+            }
+            .security-staff-pic-editor-controls {
+                display: grid;
+                gap: 10px;
+            }
+            .security-staff-pic-editor-controls label {
+                display: grid;
+                gap: 6px;
+                font-size: 0.8rem;
+                letter-spacing: 0.02em;
+                color: #4d638d;
+                font-weight: 800;
+            }
+            .security-staff-pic-editor-controls input[type="range"] {
+                width: 100%;
+            }
+            .security-staff-pic-editor-row {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .security-staff-pic-editor-actions {
+                margin-top: 4px;
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
             @media (max-width: 1080px) {
                 .security-filter-row {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .security-staff-pic-editor-body {
+                    grid-template-columns: 1fr;
                 }
             }
             @media (max-width: 760px) {
@@ -14221,6 +14327,9 @@
                 }
                 .security-user-modal-grid {
                     grid-template-columns: 1fr;
+                }
+                .security-staff-pics-grid {
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                 }
                 #settingsSecurityUsersPanel .ch-companies-table-wrap,
                 [data-settings-section="security-users"] .ch-companies-table-wrap {
@@ -37054,6 +37163,10 @@
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Users & Login</strong><span>Create and manage users</span></span>
                             </button>
+                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-staff-pics">
+                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-3.8 3.6-7 8-7s8 3.2 8 7"></path><path d="m18 5 2 2"></path></svg></span>
+                                <span class="app-nav-copy"><strong>Staff Pics</strong><span>Upload and crop photos</span></span>
+                            </button>
                             <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Audit</strong><span>Login and approval events</span></span>
@@ -37222,6 +37335,10 @@
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-users">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Users & Login</strong><span>Create and manage users</span></span>
+                            </button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-staff-pics">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-3.8 3.6-7 8-7s8 3.2 8 7"></path><path d="m18 5 2 2"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Staff Pics</strong><span>Upload and crop photos</span></span>
                             </button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
@@ -38633,6 +38750,62 @@
                                         <div class="security-user-modal-actions" id="settingsSecurityUserModalActions"></div>
                                         <div class="developer-log-list settings-developer-log-list security-user-modal-timeline" id="settingsSecurityUserTimeline">
                                             <div class="empty-state"><p class="eyebrow">Timeline</p><h4>Select a user</h4><p>User login and access events will appear here.</p></div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="security-staff-pics">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Staff Pics</p>
+                                        <h3>Staff photo library</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsSecurityStaffPicsSaveButton" type="button">Save staff pics</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="settingsSecurityStaffPicsSummary">Upload profile photos for your team. You can crop, zoom, and rotate each photo before saving.</p>
+                                <input id="settingsSecurityStaffPicsFileInput" type="file" accept="image/*" hidden>
+                                <div class="security-staff-pics-grid" id="settingsSecurityStaffPicsGrid">
+                                    <div class="empty-state"><p class="eyebrow">Staff photos</p><h4>No staff loaded yet</h4><p>Load users or add a photo to get started.</p></div>
+                                </div>
+                            </section>
+                            <div class="usage-inspector-modal" id="settingsSecurityStaffPicEditorModal" hidden>
+                                <section class="usage-inspector-modal-panel security-staff-pic-editor" role="dialog" aria-modal="true" aria-labelledby="settingsSecurityStaffPicEditorTitle">
+                                    <div class="usage-inspector-modal-head">
+                                        <div>
+                                            <h4 id="settingsSecurityStaffPicEditorTitle">Edit staff photo</h4>
+                                            <p id="settingsSecurityStaffPicEditorSubtitle">Crop and adjust before saving.</p>
+                                        </div>
+                                        <button class="ghost-button" id="closeSettingsSecurityStaffPicEditorButton" type="button">Close</button>
+                                    </div>
+                                    <div class="usage-inspector-modal-body security-staff-pic-editor-body">
+                                        <div class="security-staff-pic-editor-stage">
+                                            <canvas id="settingsSecurityStaffPicEditorCanvas" width="420" height="420"></canvas>
+                                        </div>
+                                        <div class="security-staff-pic-editor-controls">
+                                            <label>Zoom
+                                                <input id="settingsSecurityStaffPicZoom" type="range" min="1" max="3" step="0.01" value="1">
+                                            </label>
+                                            <label>Rotate
+                                                <input id="settingsSecurityStaffPicRotate" type="range" min="-180" max="180" step="1" value="0">
+                                            </label>
+                                            <label>Horizontal offset
+                                                <input id="settingsSecurityStaffPicOffsetX" type="range" min="-220" max="220" step="1" value="0">
+                                            </label>
+                                            <label>Vertical offset
+                                                <input id="settingsSecurityStaffPicOffsetY" type="range" min="-220" max="220" step="1" value="0">
+                                            </label>
+                                            <div class="security-staff-pic-editor-row">
+                                                <button class="ghost-button" id="settingsSecurityStaffPicRotateLeftButton" type="button">Rotate -90°</button>
+                                                <button class="ghost-button" id="settingsSecurityStaffPicRotateRightButton" type="button">Rotate +90°</button>
+                                            </div>
+                                            <div class="security-staff-pic-editor-actions">
+                                                <button class="ghost-button" id="settingsSecurityStaffPicResetButton" type="button">Reset</button>
+                                                <button class="ghost-button" id="settingsSecurityStaffPicCancelButton" type="button">Cancel</button>
+                                                <button class="primary-button" id="settingsSecurityStaffPicApplyButton" type="button">Apply photo</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </section>
@@ -48190,6 +48363,7 @@
                 "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
                 "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
                 "security-users": "Create users directly in Jenius so they can log straight in with Xero without invite-link acceptance.",
+                "security-staff-pics": "Upload and crop profile pictures for each staff member.",
                 "security-audit": "Review recent login sessions and app approval activity.",
                 "security-hardening": "Review security posture and hardening controls.",
                 usage: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features.",
@@ -48252,6 +48426,12 @@
             let securityAuditStatusFilter = "all";
             let securityUserDetailModalOpen = false;
             let securityUserDetailSelection = null;
+            const securityStaffPicsStorageKey = `${STORAGE_KEY}:security-staff-pics:v1`;
+            const defaultSecurityStaffPicNames = ["Martha Shields", "Jay Wilson", "Amie Thirlwell", "Tom Hadden"];
+            let securityStaffPics = loadSecurityStaffPics();
+            let securityStaffPicUploadTarget = null;
+            let securityStaffPicEditorState = null;
+            let securityStaffPicEditorOpen = false;
             let developerLogClearBusyStartedAt = 0;
             let developerLogClearBusyTick = null;
             let userActivityEntries = loadUserActivityLog();
@@ -116081,6 +116261,11 @@
                     title: "Users and Login Access",
                     meta: "Create users directly in Jenius; invited users can log in immediately with Xero and do not need an invite-link acceptance flow."
                 },
+                "security-staff-pics": {
+                    eyebrow: "Staff Pics",
+                    title: "Staff Photo Library",
+                    meta: "Upload, crop, and save staff photos used across the console for manager and team profile displays."
+                },
                 "security-audit": {
                     eyebrow: "Audit",
                     title: "Security Audit Timeline",
@@ -116147,6 +116332,7 @@
                 "gmail-connection": "communications",
                 "me-report-email": "communications",
                 "security-users": "security-settings",
+                "security-staff-pics": "security-settings",
                 "security-audit": "security-settings",
                 "security-hardening": "security-settings",
                 "factory-reset": "technical-settings",
@@ -116298,6 +116484,7 @@
                 if (activeSettingsSection === "juk-invoice-settings") renderJukInvoiceSettingsSection();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") renderDomainHealthPanels();
                 if (activeSettingsSection === "security-users") renderSecurityUsers();
+                if (activeSettingsSection === "security-staff-pics") renderSecurityStaffPics();
                 if (activeSettingsSection === "security-audit") renderSecurityAudit();
                 if (activeSettingsSection === "security-hardening") renderSecurityOverview();
             }
@@ -116333,6 +116520,7 @@
                 if (activeSettingsSection === "usage" || activeSettingsSection === "product-releases") loadSettingsUsage();
                 if (activeSettingsSection === "product-releases") loadProductReleases();
                 if (activeSettingsSection === "security-users") loadSecurityUsers();
+                if (activeSettingsSection === "security-staff-pics") loadSecurityUsers();
                 if (activeSettingsSection === "security-audit") loadSecurityAudit();
                 if (activeSettingsSection === "security-hardening") loadSecurityOverview();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") {
@@ -116511,7 +116699,7 @@
                 securityUserDetailModalOpen = Boolean(open && securityUserDetailSelection);
                 const modal = document.getElementById("settingsSecurityUserModal");
                 if (modal) modal.hidden = !securityUserDetailModalOpen;
-                document.body.classList.toggle("security-user-modal-open", securityUserDetailModalOpen);
+                document.body.classList.toggle("security-user-modal-open", securityUserDetailModalOpen || securityStaffPicEditorOpen);
             }
 
             function renderSecurityUserModal() {
@@ -116586,6 +116774,185 @@
                     await loadSecurityAudit(true);
                 }
                 renderSecurityUserModal();
+            }
+
+            function securityStaffKeyForName(name) {
+                return String(name || "")
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-+|-+$/g, "");
+            }
+
+            function normaliseSecurityStaffPicsPayload(payload) {
+                const source = payload && typeof payload === "object" ? payload : {};
+                const cleaned = {};
+                Object.entries(source).forEach(([key, value]) => {
+                    const safeKey = securityStaffKeyForName(key);
+                    const safeValue = String(value || "").trim();
+                    if (!safeKey || !safeValue) return;
+                    if (!safeValue.startsWith("data:image/")) return;
+                    cleaned[safeKey] = safeValue;
+                });
+                return cleaned;
+            }
+
+            function loadSecurityStaffPics() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(securityStaffPicsStorageKey) || "{}");
+                    return normaliseSecurityStaffPicsPayload(parsed);
+                } catch {
+                    return {};
+                }
+            }
+
+            function persistSecurityStaffPics() {
+                securityStaffPics = normaliseSecurityStaffPicsPayload(securityStaffPics);
+                localStorage.setItem(securityStaffPicsStorageKey, JSON.stringify(securityStaffPics));
+            }
+
+            function securityStaffDisplayNames() {
+                const users = Array.isArray(securityUsersData?.users) ? securityUsersData.users : [];
+                const candidates = [
+                    ...defaultSecurityStaffPicNames,
+                    ...users.map((row) => String(row?.full_name || row?.fullName || row?.email || "").trim()),
+                ];
+                const output = [];
+                const seen = new Set();
+                candidates.forEach((name) => {
+                    const safe = String(name || "").trim();
+                    if (!safe) return;
+                    const key = securityStaffKeyForName(safe);
+                    if (!key || seen.has(key)) return;
+                    seen.add(key);
+                    output.push(safe);
+                });
+                return output;
+            }
+
+            function securityStaffCustomPhotoForName(name) {
+                const key = securityStaffKeyForName(name);
+                if (!key) return "";
+                return String(securityStaffPics?.[key] || "").trim();
+            }
+
+            function setSecurityStaffPicEditorOpen(open) {
+                const modal = document.getElementById("settingsSecurityStaffPicEditorModal");
+                securityStaffPicEditorOpen = !!open;
+                if (modal) modal.hidden = !securityStaffPicEditorOpen;
+                document.body.classList.toggle("security-user-modal-open", securityStaffPicEditorOpen || securityUserDetailModalOpen);
+            }
+
+            function renderSecurityStaffPicEditorCanvas() {
+                const canvas = document.getElementById("settingsSecurityStaffPicEditorCanvas");
+                if (!canvas || !securityStaffPicEditorState?.image) return;
+                const context = canvas.getContext("2d");
+                if (!context) return;
+                const { image, zoom = 1, rotation = 0, offsetX = 0, offsetY = 0 } = securityStaffPicEditorState;
+                const width = Number(canvas.width || 420);
+                const height = Number(canvas.height || 420);
+                context.clearRect(0, 0, width, height);
+                context.fillStyle = "#f5f8ff";
+                context.fillRect(0, 0, width, height);
+                const baseScale = Math.max(width / Math.max(1, image.width), height / Math.max(1, image.height));
+                const scale = baseScale * Math.max(1, Number(zoom || 1));
+                context.save();
+                context.translate(width / 2 + Number(offsetX || 0), height / 2 + Number(offsetY || 0));
+                context.rotate((Number(rotation || 0) * Math.PI) / 180);
+                context.drawImage(
+                    image,
+                    (-image.width * scale) / 2,
+                    (-image.height * scale) / 2,
+                    image.width * scale,
+                    image.height * scale,
+                );
+                context.restore();
+            }
+
+            function openSecurityStaffPicEditor(dataUrl, staffName, staffKey) {
+                const image = new Image();
+                image.onload = () => {
+                    securityStaffPicEditorState = {
+                        staffName: String(staffName || "Staff").trim(),
+                        staffKey: String(staffKey || "").trim(),
+                        image,
+                        zoom: 1,
+                        rotation: 0,
+                        offsetX: 0,
+                        offsetY: 0,
+                    };
+                    const title = document.getElementById("settingsSecurityStaffPicEditorTitle");
+                    const subtitle = document.getElementById("settingsSecurityStaffPicEditorSubtitle");
+                    if (title) title.textContent = `Edit photo: ${securityStaffPicEditorState.staffName}`;
+                    if (subtitle) subtitle.textContent = "Crop, rotate, and position before saving.";
+                    const zoomInput = document.getElementById("settingsSecurityStaffPicZoom");
+                    const rotateInput = document.getElementById("settingsSecurityStaffPicRotate");
+                    const offsetXInput = document.getElementById("settingsSecurityStaffPicOffsetX");
+                    const offsetYInput = document.getElementById("settingsSecurityStaffPicOffsetY");
+                    if (zoomInput) zoomInput.value = "1";
+                    if (rotateInput) rotateInput.value = "0";
+                    if (offsetXInput) offsetXInput.value = "0";
+                    if (offsetYInput) offsetYInput.value = "0";
+                    setSecurityStaffPicEditorOpen(true);
+                    renderSecurityStaffPicEditorCanvas();
+                };
+                image.onerror = () => showToast("Unable to load image for editing.", "error");
+                image.src = dataUrl;
+            }
+
+            function closeSecurityStaffPicEditor() {
+                securityStaffPicEditorState = null;
+                setSecurityStaffPicEditorOpen(false);
+            }
+
+            function applySecurityStaffPicEditor() {
+                if (!securityStaffPicEditorState?.staffKey) return;
+                const canvas = document.getElementById("settingsSecurityStaffPicEditorCanvas");
+                if (!canvas) return;
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                if (!dataUrl) return;
+                securityStaffPics[securityStaffPicEditorState.staffKey] = dataUrl;
+                persistSecurityStaffPics();
+                closeSecurityStaffPicEditor();
+                renderSecurityStaffPics();
+                showToast("Staff photo saved.", "success");
+            }
+
+            function renderSecurityStaffPics() {
+                const summary = document.getElementById("settingsSecurityStaffPicsSummary");
+                const grid = document.getElementById("settingsSecurityStaffPicsGrid");
+                if (!grid) return;
+                const names = securityStaffDisplayNames();
+                const customCount = Object.keys(securityStaffPics || {}).length;
+                if (summary) {
+                    summary.textContent = `${names.length.toLocaleString("en-GB")} staff profile${names.length === 1 ? "" : "s"} available. ${customCount.toLocaleString("en-GB")} custom photo${customCount === 1 ? "" : "s"} saved.`;
+                }
+                if (!names.length) {
+                    grid.innerHTML = '<div class="empty-state"><p class="eyebrow">Staff photos</p><h4>No staff loaded yet</h4><p>Create users first in Users & Login, then upload photos here.</p></div>';
+                    return;
+                }
+                grid.innerHTML = names.map((name) => {
+                    const safeName = String(name || "").trim();
+                    const key = securityStaffKeyForName(safeName);
+                    const customPhoto = securityStaffCustomPhotoForName(safeName);
+                    const fallbackPhoto = clientRegisterStaffPhotoForName(safeName);
+                    const photo = customPhoto || fallbackPhoto;
+                    const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "ST";
+                    const status = customPhoto ? "Custom photo saved" : (photo ? "Using default photo" : "No photo set");
+                    return `
+                        <article class="security-staff-pic-card">
+                            <div class="security-staff-pic-preview">${photo ? `<img src="${escapeHTML(photo)}" alt="${escapeHTML(safeName)} photo">` : escapeHTML(initials)}</div>
+                            <div class="security-staff-pic-meta">
+                                <strong>${escapeHTML(safeName)}</strong>
+                                <small>${escapeHTML(status)}</small>
+                            </div>
+                            <div class="security-staff-pic-actions">
+                                <button class="ghost-button" type="button" data-security-staff-pic-action="upload" data-security-staff-key="${escapeHTML(key)}" data-security-staff-name="${escapeHTML(safeName)}">Upload / edit</button>
+                                <button class="ghost-button danger-button" type="button" data-security-staff-pic-action="remove" data-security-staff-key="${escapeHTML(key)}" data-security-staff-name="${escapeHTML(safeName)}" ${customPhoto ? "" : "disabled"}>Remove custom</button>
+                            </div>
+                        </article>
+                    `;
+                }).join("");
             }
 
             function renderSecurityUsers() {
@@ -116681,6 +117048,7 @@
                 } finally {
                     securityUsersLoading = false;
                     renderSecurityUsers();
+                    renderSecurityStaffPics();
                     renderSecurityUserModal();
                 }
             }
@@ -117549,6 +117917,115 @@
                 document.getElementById("settingsSecurityUsersRefreshButton")?.addEventListener("click", () => loadSecurityUsers(true));
                 document.getElementById("settingsSecurityAuditRefreshButton")?.addEventListener("click", () => loadSecurityAudit(true));
                 document.getElementById("settingsSecurityOverviewRefreshButton")?.addEventListener("click", () => loadSecurityOverview(true));
+                document.getElementById("settingsSecurityStaffPicsSaveButton")?.addEventListener("click", () => {
+                    persistSecurityStaffPics();
+                    renderSecurityStaffPics();
+                    showToast("Staff photos saved.", "success");
+                });
+                document.getElementById("settingsSecurityStaffPicsGrid")?.addEventListener("click", (event) => {
+                    const button = event.target.closest?.("[data-security-staff-pic-action]");
+                    if (!button) return;
+                    const action = String(button.dataset.securityStaffPicAction || "").trim();
+                    const staffKey = String(button.dataset.securityStaffKey || "").trim();
+                    const staffName = String(button.dataset.securityStaffName || "Staff").trim();
+                    if (!staffKey || !action) return;
+                    if (action === "remove") {
+                        if (!securityStaffPics?.[staffKey]) return;
+                        if (!window.confirm(`Remove custom photo for ${staffName}?`)) return;
+                        delete securityStaffPics[staffKey];
+                        persistSecurityStaffPics();
+                        renderSecurityStaffPics();
+                        showToast("Custom staff photo removed.", "success");
+                        return;
+                    }
+                    if (action === "upload") {
+                        securityStaffPicUploadTarget = { staffKey, staffName };
+                        const input = document.getElementById("settingsSecurityStaffPicsFileInput");
+                        if (input) {
+                            input.value = "";
+                            input.click();
+                        }
+                    }
+                });
+                document.getElementById("settingsSecurityStaffPicsFileInput")?.addEventListener("change", (event) => {
+                    const file = event.target?.files?.[0];
+                    if (!file || !securityStaffPicUploadTarget?.staffKey) return;
+                    if (!String(file.type || "").startsWith("image/")) {
+                        showToast("Please choose an image file.", "error");
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const dataUrl = String(reader.result || "");
+                        if (!dataUrl.startsWith("data:image/")) {
+                            showToast("Unable to read selected image.", "error");
+                            return;
+                        }
+                        openSecurityStaffPicEditor(dataUrl, securityStaffPicUploadTarget.staffName, securityStaffPicUploadTarget.staffKey);
+                    };
+                    reader.onerror = () => showToast("Unable to read selected image.", "error");
+                    reader.readAsDataURL(file);
+                });
+                document.getElementById("settingsSecurityStaffPicZoom")?.addEventListener("input", (event) => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.zoom = Math.max(1, Math.min(3, Number(event.target?.value || 1)));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicRotate")?.addEventListener("input", (event) => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.rotation = Math.max(-180, Math.min(180, Number(event.target?.value || 0)));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicOffsetX")?.addEventListener("input", (event) => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.offsetX = Math.max(-220, Math.min(220, Number(event.target?.value || 0)));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicOffsetY")?.addEventListener("input", (event) => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.offsetY = Math.max(-220, Math.min(220, Number(event.target?.value || 0)));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicRotateLeftButton")?.addEventListener("click", () => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.rotation = ((Number(securityStaffPicEditorState.rotation || 0) - 90 + 540) % 360) - 180;
+                    const rotateInput = document.getElementById("settingsSecurityStaffPicRotate");
+                    if (rotateInput) rotateInput.value = String(Math.round(securityStaffPicEditorState.rotation));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicRotateRightButton")?.addEventListener("click", () => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.rotation = ((Number(securityStaffPicEditorState.rotation || 0) + 90 + 540) % 360) - 180;
+                    const rotateInput = document.getElementById("settingsSecurityStaffPicRotate");
+                    if (rotateInput) rotateInput.value = String(Math.round(securityStaffPicEditorState.rotation));
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicResetButton")?.addEventListener("click", () => {
+                    if (!securityStaffPicEditorState) return;
+                    securityStaffPicEditorState.zoom = 1;
+                    securityStaffPicEditorState.rotation = 0;
+                    securityStaffPicEditorState.offsetX = 0;
+                    securityStaffPicEditorState.offsetY = 0;
+                    const zoomInput = document.getElementById("settingsSecurityStaffPicZoom");
+                    const rotateInput = document.getElementById("settingsSecurityStaffPicRotate");
+                    const offsetXInput = document.getElementById("settingsSecurityStaffPicOffsetX");
+                    const offsetYInput = document.getElementById("settingsSecurityStaffPicOffsetY");
+                    if (zoomInput) zoomInput.value = "1";
+                    if (rotateInput) rotateInput.value = "0";
+                    if (offsetXInput) offsetXInput.value = "0";
+                    if (offsetYInput) offsetYInput.value = "0";
+                    renderSecurityStaffPicEditorCanvas();
+                });
+                document.getElementById("settingsSecurityStaffPicApplyButton")?.addEventListener("click", applySecurityStaffPicEditor);
+                document.getElementById("settingsSecurityStaffPicCancelButton")?.addEventListener("click", closeSecurityStaffPicEditor);
+                document.getElementById("closeSettingsSecurityStaffPicEditorButton")?.addEventListener("click", closeSecurityStaffPicEditor);
+                const staffPicEditorModal = document.getElementById("settingsSecurityStaffPicEditorModal");
+                if (staffPicEditorModal && staffPicEditorModal.dataset.securityPicEditorWired !== "true") {
+                    staffPicEditorModal.dataset.securityPicEditorWired = "true";
+                    staffPicEditorModal.addEventListener("click", (event) => {
+                        if (event.target?.id === "settingsSecurityStaffPicEditorModal") closeSecurityStaffPicEditor();
+                    });
+                }
                 document.getElementById("settingsSecurityUsersSearch")?.addEventListener("input", (event) => {
                     securityUsersSearchTerm = String(event.target?.value || "");
                     renderSecurityUsers();
@@ -117782,6 +118259,7 @@
                         if (event.key !== "Escape") return;
                         if (settingsUsageInspectorModalOpen) setSettingsUsageInspectorModalOpen(false);
                         if (domainHealthTroubleshooterModalOpen) setDomainTroubleshooterModalOpen(false);
+                        if (securityStaffPicEditorOpen) closeSecurityStaffPicEditor();
                         if (securityUserDetailModalOpen) {
                             securityUserDetailSelection = null;
                             setSecurityUserModalOpen(false);
@@ -127605,6 +128083,8 @@
             function clientRegisterStaffPhotoForName(name) {
                 const raw = String(name || "").trim();
                 if (!raw) return "";
+                const customPhoto = securityStaffCustomPhotoForName(raw);
+                if (customPhoto) return customPhoto;
                 const directMap = {
                     "Jay Wilson": "/static/avatars/jay-wilson.png",
                     "Amie Thirlwell": "/static/avatars/amie-thirlwell.png",
