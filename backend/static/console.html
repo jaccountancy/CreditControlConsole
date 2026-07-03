@@ -130582,6 +130582,70 @@
                 };
             }
 
+            async function clientRegisterFetchCallStatsRowsFromDashboard(clientIdCandidates = []) {
+                const candidates = Array.isArray(clientIdCandidates)
+                    ? clientIdCandidates.map((value) => String(value || "").trim()).filter(Boolean)
+                    : [];
+                const queryCandidates = candidates
+                    .filter((value, index) => index < 4)
+                    .filter((value) => value.length >= 3);
+                if (!queryCandidates.length) return [];
+                let bestRows = [];
+                for (const candidate of queryCandidates) {
+                    try {
+                        const query = new URLSearchParams({
+                            search: candidate,
+                            matchStatus: "matched",
+                            page: "1",
+                            pageSize: "1000",
+                        });
+                        const response = await requestJSON(`${api.endpoints.clientCallStats}?${query.toString()}`, { method: "GET", suppressFailurePanel: true });
+                        const rows = Array.isArray(response?.clientCallStats?.rows) ? response.clientCallStats.rows : [];
+                        if (!rows.length) continue;
+                        const matchedRows = clientRegisterCallStatsLocalMatches(
+                            {},
+                            candidates
+                        ).concat(
+                            rows
+                                .filter((item) => String(item?.matchedStatus || "").trim().toLowerCase() === "matched")
+                                .filter((item) => {
+                                    const itemClientId = String(item?.clientId || "").trim().toLowerCase();
+                                    const itemClientName = String(item?.clientName || "").trim().toLowerCase();
+                                    return candidates.some((entry) => {
+                                        const lowered = entry.toLowerCase();
+                                        if (itemClientId && itemClientId === lowered) return true;
+                                        if (itemClientName && itemClientName === lowered) return true;
+                                        return itemClientName && lowered.length >= 3 && itemClientName.includes(lowered);
+                                    });
+                                })
+                                .map((item) => ({
+                                    id: String(item?.id || ""),
+                                    date: String(item?.callDate || ""),
+                                    time: String(item?.callTime || ""),
+                                    direction: String(item?.direction || ""),
+                                    staffMember: String(item?.staffMember || ""),
+                                    clientManager: String(item?.clientManager || ""),
+                                    fromNumber: String(item?.fromNumber || ""),
+                                    toNumber: String(item?.toNumber || ""),
+                                    durationSeconds: Number(item?.durationSeconds || 0),
+                                    outcome: String(item?.outcome || ""),
+                                }))
+                        );
+                        const deduped = [];
+                        const seen = new Set();
+                        matchedRows.forEach((row) => {
+                            const key = `${row.id}|${row.date}|${row.time}|${row.fromNumber}|${row.toNumber}`;
+                            if (seen.has(key)) return;
+                            seen.add(key);
+                            deduped.push(row);
+                        });
+                        if (deduped.length > bestRows.length) bestRows = deduped;
+                        if (bestRows.length) break;
+                    } catch (_) {}
+                }
+                return bestRows;
+            }
+
             async function loadClientRegisterClientPageCallStats({ force = false, silent = true } = {}) {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState?.rowId || "").trim();
@@ -130672,6 +130736,11 @@
                         const localRows = clientRegisterCallStatsLocalMatches(row, clientIdCandidates);
                         if (localRows.length) {
                             resolvedPayload = clientRegisterCallStatsPayloadFromRows(localRows);
+                        } else {
+                            const dashboardRows = await clientRegisterFetchCallStatsRowsFromDashboard(clientIdCandidates);
+                            if (dashboardRows.length) {
+                                resolvedPayload = clientRegisterCallStatsPayloadFromRows(dashboardRows);
+                            }
                         }
                     }
 
@@ -130776,6 +130845,12 @@
                         if (localRows.length) {
                             nextPayload = clientRegisterCallStatsPayloadFromRows(localRows);
                             rowCount = localRows.length;
+                        } else {
+                            const dashboardRows = await clientRegisterFetchCallStatsRowsFromDashboard(clientIdCandidates);
+                            if (dashboardRows.length) {
+                                nextPayload = clientRegisterCallStatsPayloadFromRows(dashboardRows);
+                                rowCount = dashboardRows.length;
+                            }
                         }
                     }
                     companiesHouseSettings.authRegisterClientPage = {
@@ -136495,6 +136570,22 @@
                 document.getElementById("chRegisterClientPageCallStatsSearchButton")?.addEventListener("click", () => {
                     void searchClientRegisterClientPageCallStats();
                 });
+                if (!window.__chRegisterClientPageCallStatsDelegated) {
+                    window.__chRegisterClientPageCallStatsDelegated = true;
+                    document.addEventListener("click", (event) => {
+                        const refreshButton = event?.target?.closest?.("#chRegisterClientPageCallStatsRefreshButton");
+                        if (refreshButton) {
+                            event.preventDefault();
+                            loadClientRegisterClientPageCallStats({ force: true, silent: false });
+                            return;
+                        }
+                        const searchButton = event?.target?.closest?.("#chRegisterClientPageCallStatsSearchButton");
+                        if (searchButton) {
+                            event.preventDefault();
+                            void searchClientRegisterClientPageCallStats();
+                        }
+                    });
+                }
                 document.getElementById("chRegisterClientPageOpenAddNoteModalButton")?.addEventListener("click", openClientRegisterClientPageAddNoteModal);
                 document.getElementById("chRegisterClientPageAddNoteModalCloseButton")?.addEventListener("click", closeClientRegisterClientPageAddNoteModal);
                 document.getElementById("chRegisterClientPageAddNoteModal")?.addEventListener("click", (event) => {
