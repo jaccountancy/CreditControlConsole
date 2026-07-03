@@ -57,6 +57,7 @@ from .companies_house import (
     get_company_detail,
     get_auth_register_client_page,
     log_auth_register_email_activity,
+    send_auth_register_client_email,
     sync_client_page_juk_invoice_presence,
     copy_client_page_juk_invoice_to_xero,
     get_submission_raw_response,
@@ -3643,6 +3644,15 @@ async def api_companies_house_auth_code_register_email_timeline_events(
 ):
     payload = await request.json()
     return {"status": "ok", **log_auth_register_email_activity(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/companies-house/auth-code-register/bulk-email/send")
+async def api_companies_house_auth_code_register_bulk_email_send(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await send_auth_register_client_email(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/companies-house/auth-code-register/{row_id}/client-page/juk-invoices/sync")

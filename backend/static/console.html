@@ -28022,6 +28022,84 @@
                 font-size: 12px;
                 font-weight: 700;
             }
+            #chAuthCodeRegisterBulkSelectionMeta {
+                margin-left: 0;
+                color: var(--blue);
+            }
+            .ch-auth-register-select-cell {
+                width: 38px;
+                text-align: center;
+                vertical-align: middle;
+            }
+            .ch-auth-register-select-cell input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+            }
+            .ch-register-bulk-email-modal-panel {
+                width: min(1200px, calc(100vw - 24px));
+            }
+            .ch-register-bulk-email-layout {
+                display: grid;
+                grid-template-columns: minmax(320px, 0.9fr) minmax(460px, 1.1fr);
+                gap: 14px;
+            }
+            .ch-register-bulk-email-preview {
+                margin-top: 10px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 10px;
+                background: var(--surface-soft);
+                display: grid;
+                gap: 8px;
+            }
+            .ch-register-bulk-email-preview h6 {
+                margin: 0;
+                font-size: 0.9rem;
+            }
+            #chRegisterBulkEmailPreviewFrame {
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                width: 100%;
+                min-height: 180px;
+                background: #fff;
+            }
+            .ch-register-bulk-email-progress-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .ch-register-bulk-email-progress-head h5 {
+                margin: 0;
+            }
+            .ch-register-bulk-email-progress-track {
+                margin: 10px 0;
+                height: 10px;
+                border-radius: 999px;
+                background: rgba(44, 108, 223, 0.12);
+                overflow: hidden;
+            }
+            .ch-register-bulk-email-progress-track > span {
+                display: block;
+                width: 0%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, rgba(44, 108, 223, 0.55), rgba(44, 108, 223, 0.95));
+                transition: width 0.2s ease;
+            }
+            #chRegisterBulkEmailProgressBody tr.is-success td {
+                background: rgba(39, 176, 95, 0.08);
+            }
+            #chRegisterBulkEmailProgressBody tr.is-error td {
+                background: rgba(218, 54, 51, 0.08);
+            }
+            @media (max-width: 1040px) {
+                .ch-register-bulk-email-layout {
+                    grid-template-columns: 1fr;
+                }
+            }
             .task-list-metrics {
                 min-width: 360px;
                 max-width: 520px;
@@ -40299,6 +40377,9 @@
                                         </span>
                                         <span class="icon-expand-label">Reset</span>
                                     </button>
+                                    <button class="primary-button" type="button" id="chAuthCodeRegisterEmailAllButton" hidden>Email All</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterClearBulkSelectionButton" hidden>Clear selection</button>
+                                    <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterBulkSelectionMeta" hidden>0 selected</span>
                                     <span class="ch-register-toolbar-meta" id="chAuthCodeRegisterTableMeta">0 rows</span>
                                     </div>
                                     <table class="ch-table" style="width: 100%; table-layout: fixed;">
@@ -41744,6 +41825,88 @@
                                             <button class="primary-button" type="submit" id="chRegisterEditSaveButton">Save</button>
                                         </div>
                                     </form>
+                                </section>
+                            </div>
+                            <div class="company-secretarial-modal" id="chRegisterBulkEmailModal" hidden>
+                                <section class="company-secretarial-modal-panel ch-register-bulk-email-modal-panel" role="dialog" aria-modal="true" aria-labelledby="chRegisterBulkEmailTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Client List</p>
+                                            <h4 id="chRegisterBulkEmailTitle">Mail merge wizard</h4>
+                                            <p class="detail-meta" id="chRegisterBulkEmailSummary">Prepare and send merged emails to selected clients.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="chRegisterBulkEmailCloseButton">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="ch-register-bulk-email-layout">
+                                        <article class="ch-register-upload-card">
+                                            <h5>Recipients</h5>
+                                            <p class="detail-meta" id="chRegisterBulkEmailRecipientsMeta">0 selected clients</p>
+                                            <div class="ch-companies-table-wrap">
+                                                <table class="ch-table" aria-label="Selected clients for mail merge">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Client</th>
+                                                            <th>Email</th>
+                                                            <th>Manager</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="chRegisterBulkEmailRecipientsBody"></tbody>
+                                                </table>
+                                            </div>
+                                        </article>
+                                        <article class="ch-register-upload-card">
+                                            <h5>Email content</h5>
+                                            <p class="detail-meta">Use merge fields: <code>{{client_name}}</code> <code>{{client_id}}</code> <code>{{company_number}}</code> <code>{{client_manager}}</code> <code>{{client_email}}</code> <code>{{today}}</code></p>
+                                            <label class="detail-meta" for="chRegisterBulkEmailSubjectInput">Subject template</label>
+                                            <input id="chRegisterBulkEmailSubjectInput" type="text" placeholder="Update for {{client_name}}">
+                                            <label class="detail-meta" for="chRegisterBulkEmailToOverrideInput">To override (optional)</label>
+                                            <input id="chRegisterBulkEmailToOverrideInput" type="email" placeholder="Leave blank to use each client email">
+                                            <label class="detail-meta" for="chRegisterBulkEmailBccInput">BCC override (optional)</label>
+                                            <input id="chRegisterBulkEmailBccInput" type="email" placeholder="Uses default if blank">
+                                            <div class="task-email-rich-toolbar" id="chRegisterBulkEmailToolbar" role="toolbar" aria-label="Mail merge formatting tools">
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="bold"><strong>B</strong></button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="italic"><em>I</em></button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="underline"><u>U</u></button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="insertUnorderedList">• List</button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="insertOrderedList">1. List</button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="createLink">Link</button>
+                                                <button class="ghost-button" type="button" data-auth-register-email-command="removeFormat">Clear</button>
+                                            </div>
+                                            <div id="chRegisterBulkEmailBodyEditor" class="task-email-rich-editor" contenteditable="true" role="textbox" aria-multiline="true"></div>
+                                            <label class="detail-meta" for="chRegisterBulkEmailPreviewSelect">Preview recipient</label>
+                                            <select id="chRegisterBulkEmailPreviewSelect"></select>
+                                            <div class="ch-register-bulk-email-preview">
+                                                <h6 id="chRegisterBulkEmailPreviewSubject">Subject preview</h6>
+                                                <iframe id="chRegisterBulkEmailPreviewFrame" title="Mail merge email preview"></iframe>
+                                            </div>
+                                        </article>
+                                    </div>
+                                    <article class="ch-register-upload-card">
+                                        <div class="ch-register-bulk-email-progress-head">
+                                            <h5>Send progress</h5>
+                                            <p class="detail-meta" id="chRegisterBulkEmailProgressMeta">Ready to send.</p>
+                                        </div>
+                                        <div class="ch-register-bulk-email-progress-track"><span id="chRegisterBulkEmailProgressBar"></span></div>
+                                        <div class="ch-companies-table-wrap">
+                                            <table class="ch-table" aria-label="Mail merge send progress">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Client</th>
+                                                        <th>Email</th>
+                                                        <th>Status</th>
+                                                        <th>Detail</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="chRegisterBulkEmailProgressBody"></tbody>
+                                            </table>
+                                        </div>
+                                    </article>
+                                    <div class="detail-actions">
+                                        <button class="primary-button" type="button" id="chRegisterBulkEmailSendButton">Send to selected clients</button>
+                                        <button class="ghost-button" type="button" id="chRegisterBulkEmailCancelSendButton" hidden>Stop after current email</button>
+                                    </div>
                                 </section>
                             </div>
                         </section>
@@ -49637,6 +49800,7 @@
                         juksibAutomationRunNow: config.endpoints?.juksibAutomationRunNow || "/api/juksib/automation/run-now",
                         clientPageJukInvoiceSync: config.endpoints?.clientPageJukInvoiceSync || "/api/companies-house/auth-code-register/:rowId/client-page/juk-invoices/sync",
                         clientPageJukInvoiceCopy: config.endpoints?.clientPageJukInvoiceCopy || "/api/companies-house/auth-code-register/:rowId/client-page/juk-invoices/copy",
+                        authRegisterBulkEmailSend: config.endpoints?.authRegisterBulkEmailSend || "/api/companies-house/auth-code-register/bulk-email/send",
                         meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
                         meReportRenameNominalAccount: config.endpoints?.meReportRenameNominalAccount || "/api/me-report/clients/:clientId/xero/nominal-accounts/rename",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
@@ -120057,6 +120221,23 @@
                     saving: false,
                 },
                 authRegisterSelectedRowId: "",
+                authRegisterBulkSelection: new Set(),
+                authRegisterBulkEmail: {
+                    open: false,
+                    sending: false,
+                    stopRequested: false,
+                    selectedIds: [],
+                    subjectTemplate: "Important update for {{client_name}}",
+                    bodyHtml: "<p>Hello {{client_name}},</p><p>We are writing with an update for your account.</p><p>Please reply to this email if you need anything.</p><p>Kind regards,<br>Jaccountancy</p>",
+                    toOverride: "",
+                    bccOverride: "",
+                    previewRowId: "",
+                    progressByRowId: {},
+                    startedAt: "",
+                    finishedAt: "",
+                    sentCount: 0,
+                    failedCount: 0,
+                },
                 authRegisterClientPage: {
                     open: false,
                     loading: false,
@@ -127622,6 +127803,439 @@
                 return row?.[columnKey] || "—";
             }
 
+            function authRegisterBulkSelectionSet() {
+                const current = companiesHouseSettings.authRegisterBulkSelection;
+                if (current instanceof Set) return current;
+                const next = new Set();
+                companiesHouseSettings.authRegisterBulkSelection = next;
+                return next;
+            }
+
+            function authRegisterBulkSelectionNormalisedIds() {
+                return Array.from(authRegisterBulkSelectionSet())
+                    .map((value) => String(value || "").trim())
+                    .filter(Boolean);
+            }
+
+            function authRegisterRowById(rowId = "") {
+                const safeRowId = String(rowId || "").trim();
+                if (!safeRowId) return null;
+                return (companiesHouseSettings.authRegisterRows || []).find((row) => String(row?.id || "").trim() === safeRowId) || null;
+            }
+
+            function authRegisterBulkSelectedRows() {
+                return authRegisterBulkSelectionNormalisedIds()
+                    .map((rowId) => authRegisterRowById(rowId))
+                    .filter((row) => !!row);
+            }
+
+            function authRegisterBulkEmailRecipientForRow(row = {}, toOverride = "") {
+                const override = String(toOverride || "").trim().toLowerCase();
+                if (override) return override;
+                return String(row?.clientEmail || "").trim().toLowerCase();
+            }
+
+            function clientRegisterMailMergeContext(row = {}) {
+                const now = new Date();
+                return {
+                    client_name: String(row?.displayName || row?.companyName || "").trim() || "Client",
+                    client_id: String(row?.clientId || "").trim(),
+                    company_number: String(row?.companyNumber || "").trim(),
+                    client_manager: String(row?.clientManager || "").trim() || "Client Manager",
+                    client_email: String(row?.clientEmail || "").trim(),
+                    today: now.toLocaleDateString("en-GB"),
+                };
+            }
+
+            function applyClientRegisterMailMergeTemplate(template = "", row = {}) {
+                const context = clientRegisterMailMergeContext(row);
+                return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, token) => {
+                    const key = String(token || "").trim().toLowerCase();
+                    return key in context ? String(context[key] || "") : match;
+                });
+            }
+
+            function authRegisterHtmlToText(value = "") {
+                const html = String(value || "");
+                if (!html.trim()) return "";
+                const probe = document.createElement("div");
+                probe.innerHTML = html;
+                const text = String(probe.textContent || probe.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
+                return text;
+            }
+
+            function syncAuthRegisterBulkSelectionWithRows(rows = []) {
+                const validIds = new Set((Array.isArray(rows) ? rows : []).map((row) => String(row?.id || "").trim()).filter(Boolean));
+                const selection = authRegisterBulkSelectionSet();
+                Array.from(selection).forEach((rowId) => {
+                    if (!validIds.has(String(rowId || "").trim())) selection.delete(rowId);
+                });
+            }
+
+            function clearAuthRegisterBulkSelection(options = {}) {
+                authRegisterBulkSelectionSet().clear();
+                if (options.render !== false) {
+                    renderAuthCodeRegisterDirectory(
+                        companiesHouseSettings.authRegisterRows || [],
+                        companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0
+                    );
+                }
+            }
+
+            function renderAuthRegisterBulkToolbar(pageRows = [], filteredRows = []) {
+                const emailButton = document.getElementById("chAuthCodeRegisterEmailAllButton");
+                const clearButton = document.getElementById("chAuthCodeRegisterClearBulkSelectionButton");
+                const meta = document.getElementById("chAuthCodeRegisterBulkSelectionMeta");
+                const headerToggle = document.getElementById("chAuthCodeRegisterSelectAllVisible");
+                const selection = authRegisterBulkSelectionSet();
+                const selectedCount = selection.size;
+                if (emailButton) {
+                    emailButton.hidden = selectedCount <= 0;
+                    emailButton.disabled = selectedCount <= 0;
+                    emailButton.textContent = selectedCount > 0 ? `Email All (${selectedCount.toLocaleString("en-GB")})` : "Email All";
+                }
+                if (clearButton) {
+                    clearButton.hidden = selectedCount <= 0;
+                    clearButton.disabled = selectedCount <= 0;
+                }
+                if (meta) {
+                    meta.hidden = selectedCount <= 0;
+                    meta.textContent = selectedCount > 0 ? `${selectedCount.toLocaleString("en-GB")} selected` : "0 selected";
+                }
+                if (headerToggle) {
+                    const visibleIds = (Array.isArray(pageRows) ? pageRows : []).map((row) => String(row?.id || "").trim()).filter(Boolean);
+                    const visibleCount = visibleIds.length;
+                    const selectedVisible = visibleIds.filter((rowId) => selection.has(rowId)).length;
+                    headerToggle.checked = visibleCount > 0 && selectedVisible === visibleCount;
+                    headerToggle.indeterminate = selectedVisible > 0 && selectedVisible < visibleCount;
+                    headerToggle.disabled = visibleCount === 0;
+                }
+            }
+
+            function authRegisterBulkEmailState() {
+                const state = companiesHouseSettings.authRegisterBulkEmail || {};
+                return state && typeof state === "object" ? state : {};
+            }
+
+            function authRegisterBulkEmailEnsureDefaults() {
+                const current = authRegisterBulkEmailState();
+                const next = {
+                    open: !!current.open,
+                    sending: !!current.sending,
+                    stopRequested: !!current.stopRequested,
+                    selectedIds: Array.isArray(current.selectedIds) ? current.selectedIds : [],
+                    subjectTemplate: String(current.subjectTemplate || "Important update for {{client_name}}"),
+                    bodyHtml: String(current.bodyHtml || "<p>Hello {{client_name}},</p><p>We are writing with an update for your account.</p><p>Please reply to this email if you need anything.</p><p>Kind regards,<br>Jaccountancy</p>"),
+                    toOverride: String(current.toOverride || ""),
+                    bccOverride: String(current.bccOverride || ""),
+                    previewRowId: String(current.previewRowId || ""),
+                    progressByRowId: current.progressByRowId && typeof current.progressByRowId === "object" ? current.progressByRowId : {},
+                    startedAt: String(current.startedAt || ""),
+                    finishedAt: String(current.finishedAt || ""),
+                    sentCount: Number(current.sentCount || 0),
+                    failedCount: Number(current.failedCount || 0),
+                };
+                companiesHouseSettings.authRegisterBulkEmail = next;
+                return next;
+            }
+
+            function openAuthRegisterBulkEmailModal() {
+                const selectedRows = authRegisterBulkSelectedRows().filter((row) => String(row?.clientEmail || "").trim());
+                if (!selectedRows.length) {
+                    showToast("Select at least one client with an email address.", "error");
+                    return;
+                }
+                const state = authRegisterBulkEmailEnsureDefaults();
+                const selectedIds = selectedRows.map((row) => String(row?.id || "").trim()).filter(Boolean);
+                companiesHouseSettings.authRegisterBulkEmail = {
+                    ...state,
+                    open: true,
+                    selectedIds,
+                    previewRowId: state.previewRowId && selectedIds.includes(state.previewRowId) ? state.previewRowId : selectedIds[0],
+                    progressByRowId: {},
+                    sentCount: 0,
+                    failedCount: 0,
+                    stopRequested: false,
+                    startedAt: "",
+                    finishedAt: "",
+                };
+                renderAuthRegisterBulkEmailModal();
+            }
+
+            function closeAuthRegisterBulkEmailModal() {
+                const modal = document.getElementById("chRegisterBulkEmailModal");
+                if (!modal) return;
+                const state = authRegisterBulkEmailEnsureDefaults();
+                if (state.sending) {
+                    companiesHouseSettings.authRegisterBulkEmail = {
+                        ...state,
+                        stopRequested: true,
+                    };
+                    renderAuthRegisterBulkEmailModal();
+                    showToast("Stopping after current email.", "info");
+                    return;
+                }
+                companiesHouseSettings.authRegisterBulkEmail = {
+                    ...state,
+                    open: false,
+                };
+                modal.hidden = true;
+                if (!document.querySelector(".company-secretarial-modal:not([hidden])")) {
+                    document.body.classList.remove("is-modal-open");
+                }
+            }
+
+            function renderAuthRegisterBulkEmailModal() {
+                const modal = document.getElementById("chRegisterBulkEmailModal");
+                const recipientsBody = document.getElementById("chRegisterBulkEmailRecipientsBody");
+                const recipientsMeta = document.getElementById("chRegisterBulkEmailRecipientsMeta");
+                const summary = document.getElementById("chRegisterBulkEmailSummary");
+                const subjectInput = document.getElementById("chRegisterBulkEmailSubjectInput");
+                const toOverrideInput = document.getElementById("chRegisterBulkEmailToOverrideInput");
+                const bccInput = document.getElementById("chRegisterBulkEmailBccInput");
+                const editor = document.getElementById("chRegisterBulkEmailBodyEditor");
+                const previewSelect = document.getElementById("chRegisterBulkEmailPreviewSelect");
+                const previewSubject = document.getElementById("chRegisterBulkEmailPreviewSubject");
+                const previewFrame = document.getElementById("chRegisterBulkEmailPreviewFrame");
+                const sendButton = document.getElementById("chRegisterBulkEmailSendButton");
+                const cancelButton = document.getElementById("chRegisterBulkEmailCancelSendButton");
+                const progressMeta = document.getElementById("chRegisterBulkEmailProgressMeta");
+                const progressBar = document.getElementById("chRegisterBulkEmailProgressBar");
+                const progressBody = document.getElementById("chRegisterBulkEmailProgressBody");
+                if (!modal || !recipientsBody || !recipientsMeta || !summary || !subjectInput || !editor || !previewSelect || !previewSubject || !previewFrame || !sendButton || !cancelButton || !progressMeta || !progressBar || !progressBody || !toOverrideInput || !bccInput) return;
+                const state = authRegisterBulkEmailEnsureDefaults();
+                const selectedRows = state.selectedIds.map((rowId) => authRegisterRowById(rowId)).filter((row) => !!row);
+                modal.hidden = !state.open;
+                if (state.open) document.body.classList.add("is-modal-open");
+                recipientsMeta.textContent = `${selectedRows.length.toLocaleString("en-GB")} selected client${selectedRows.length === 1 ? "" : "s"}.`;
+                summary.textContent = state.sending
+                    ? "Sending merged emails. Progress updates in real time."
+                    : "Review selected clients, then send a merged email to each.";
+                if (subjectInput.value !== state.subjectTemplate) subjectInput.value = state.subjectTemplate;
+                if (toOverrideInput.value !== state.toOverride) toOverrideInput.value = state.toOverride;
+                if (bccInput.value !== state.bccOverride) bccInput.value = state.bccOverride;
+                const sanitisedHtml = sanitizeClientRichNoteHTML(String(state.bodyHtml || ""));
+                if (editor.innerHTML !== sanitisedHtml) editor.innerHTML = sanitisedHtml || "<p><br></p>";
+                recipientsBody.innerHTML = selectedRows.length
+                    ? selectedRows.map((row) => {
+                        const rowId = String(row?.id || "").trim();
+                        const recipient = authRegisterBulkEmailRecipientForRow(row, state.toOverride);
+                        const progress = state.progressByRowId?.[rowId] || null;
+                        const status = String(progress?.status || "queued").trim();
+                        const statusLabel = status === "sent" ? "Ready" : status === "failed" ? "Failed" : "Queued";
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(String(row?.displayName || "Client"))}</strong><br><small>${escapeHTML(String(row?.clientId || "—"))}</small></td>
+                                <td>${recipient ? `<a href="mailto:${encodeURIComponent(recipient)}">${escapeHTML(recipient)}</a>` : "—"}</td>
+                                <td>${escapeHTML(String(row?.clientManager || "Unassigned"))}<br><small>${escapeHTML(statusLabel)}</small></td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : `<tr><td colspan="3" class="ch-empty-state">No selected clients available.</td></tr>`;
+                previewSelect.innerHTML = selectedRows.map((row) => (
+                    `<option value="${escapeHTML(String(row?.id || "").trim())}">${escapeHTML(String(row?.displayName || "Client"))}${row?.clientEmail ? ` · ${escapeHTML(String(row.clientEmail))}` : ""}</option>`
+                )).join("");
+                if (state.previewRowId && selectedRows.some((row) => String(row?.id || "").trim() === state.previewRowId)) {
+                    previewSelect.value = state.previewRowId;
+                } else if (selectedRows.length) {
+                    previewSelect.value = String(selectedRows[0]?.id || "").trim();
+                    companiesHouseSettings.authRegisterBulkEmail = {
+                        ...state,
+                        previewRowId: previewSelect.value,
+                    };
+                }
+                const previewRow = authRegisterRowById(String(previewSelect.value || "").trim()) || selectedRows[0] || null;
+                const mergedSubject = previewRow ? applyClientRegisterMailMergeTemplate(subjectInput.value, previewRow) : subjectInput.value;
+                const mergedHtml = previewRow ? applyClientRegisterMailMergeTemplate(editor.innerHTML, previewRow) : editor.innerHTML;
+                previewSubject.textContent = mergedSubject || "Subject preview";
+                const frameDoc = previewFrame.contentDocument;
+                if (frameDoc) {
+                    frameDoc.open();
+                    frameDoc.write(`
+                        <!doctype html>
+                        <html>
+                            <head><meta charset="utf-8"><style>body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;color:#1d2f45;padding:16px;margin:0;}a{color:#2c6cdf;}</style></head>
+                            <body>${mergedHtml || "<p>(No body)</p>"}</body>
+                        </html>
+                    `);
+                    frameDoc.close();
+                }
+                const progressRows = selectedRows.map((row) => {
+                    const rowId = String(row?.id || "").trim();
+                    const recipient = authRegisterBulkEmailRecipientForRow(row, state.toOverride);
+                    const progress = state.progressByRowId?.[rowId] || {};
+                    const status = String(progress?.status || "queued");
+                    const detail = String(progress?.detail || "");
+                    const rowClass = status === "sent" ? "is-success" : status === "failed" ? "is-error" : "";
+                    const statusLabel = status === "sent" ? "Sent" : status === "failed" ? "Failed" : status === "sending" ? "Sending…" : "Queued";
+                    return `
+                        <tr class="${rowClass}">
+                            <td>${escapeHTML(String(row?.displayName || "Client"))}</td>
+                            <td>${escapeHTML(recipient || "—")}</td>
+                            <td>${escapeHTML(statusLabel)}</td>
+                            <td>${escapeHTML(detail || "Waiting")}</td>
+                        </tr>
+                    `;
+                }).join("");
+                progressBody.innerHTML = progressRows || `<tr><td colspan="4" class="ch-empty-state">No progress yet.</td></tr>`;
+                const total = selectedRows.length;
+                const processed = Number(state.sentCount || 0) + Number(state.failedCount || 0);
+                const percent = total ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+                progressBar.style.width = `${percent}%`;
+                const startedAtMs = state.startedAt ? new Date(state.startedAt).getTime() : 0;
+                const elapsedMs = startedAtMs ? Math.max(0, Date.now() - startedAtMs) : 0;
+                const etaSeconds = processed > 0 && total > processed
+                    ? Math.max(0, Math.round(((elapsedMs / processed) * (total - processed)) / 1000))
+                    : 0;
+                const etaText = state.sending && total > processed ? ` · ETA ${etaSeconds.toLocaleString("en-GB")}s` : "";
+                progressMeta.textContent = state.sending
+                    ? `${processed.toLocaleString("en-GB")} / ${total.toLocaleString("en-GB")} processed${etaText}`
+                    : (state.finishedAt
+                        ? `Completed: ${state.sentCount.toLocaleString("en-GB")} sent, ${state.failedCount.toLocaleString("en-GB")} failed.`
+                        : "Ready to send.");
+                sendButton.disabled = state.sending || !selectedRows.length;
+                sendButton.textContent = state.sending ? "Sending..." : `Send to ${selectedRows.length.toLocaleString("en-GB")} clients`;
+                cancelButton.hidden = !state.sending;
+                cancelButton.disabled = !state.sending;
+            }
+
+            function syncAuthRegisterBulkEmailDraftFromModal() {
+                const subjectInput = document.getElementById("chRegisterBulkEmailSubjectInput");
+                const toOverrideInput = document.getElementById("chRegisterBulkEmailToOverrideInput");
+                const bccInput = document.getElementById("chRegisterBulkEmailBccInput");
+                const editor = document.getElementById("chRegisterBulkEmailBodyEditor");
+                if (!subjectInput || !toOverrideInput || !bccInput || !editor) return;
+                const state = authRegisterBulkEmailEnsureDefaults();
+                companiesHouseSettings.authRegisterBulkEmail = {
+                    ...state,
+                    subjectTemplate: String(subjectInput.value || ""),
+                    toOverride: String(toOverrideInput.value || "").trim(),
+                    bccOverride: String(bccInput.value || "").trim(),
+                    bodyHtml: sanitizeClientRichNoteHTML(String(editor.innerHTML || "")),
+                };
+            }
+
+            function applyAuthRegisterBulkEmailEditorCommand(command = "") {
+                const editor = document.getElementById("chRegisterBulkEmailBodyEditor");
+                if (!editor) return;
+                editor.focus();
+                if (command === "createLink") {
+                    const url = String(window.prompt("Enter URL", "https://") || "").trim();
+                    if (!url) return;
+                    document.execCommand("createLink", false, url);
+                } else {
+                    document.execCommand(command, false);
+                }
+                syncAuthRegisterBulkEmailDraftFromModal();
+                renderAuthRegisterBulkEmailModal();
+            }
+
+            async function runAuthRegisterBulkEmailSend() {
+                const state = authRegisterBulkEmailEnsureDefaults();
+                if (state.sending) return;
+                const selectedRows = state.selectedIds.map((rowId) => authRegisterRowById(rowId)).filter((row) => !!row);
+                if (!selectedRows.length) {
+                    showToast("No selected clients to email.", "error");
+                    return;
+                }
+                syncAuthRegisterBulkEmailDraftFromModal();
+                const current = authRegisterBulkEmailEnsureDefaults();
+                const initialProgress = {};
+                selectedRows.forEach((row) => {
+                    const rowId = String(row?.id || "").trim();
+                    initialProgress[rowId] = { status: "queued", detail: "Waiting" };
+                });
+                companiesHouseSettings.authRegisterBulkEmail = {
+                    ...current,
+                    sending: true,
+                    stopRequested: false,
+                    startedAt: new Date().toISOString(),
+                    finishedAt: "",
+                    sentCount: 0,
+                    failedCount: 0,
+                    progressByRowId: initialProgress,
+                };
+                renderAuthRegisterBulkEmailModal();
+                for (let index = 0; index < selectedRows.length; index += 1) {
+                    const latestState = authRegisterBulkEmailEnsureDefaults();
+                    if (latestState.stopRequested) break;
+                    const row = selectedRows[index];
+                    const rowId = String(row?.id || "").trim();
+                    const subject = applyClientRegisterMailMergeTemplate(latestState.subjectTemplate, row);
+                    const bodyHtml = applyClientRegisterMailMergeTemplate(latestState.bodyHtml, row);
+                    const bodyText = authRegisterHtmlToText(bodyHtml);
+                    const recipient = authRegisterBulkEmailRecipientForRow(row, latestState.toOverride);
+                    if (!recipient || recipient.indexOf("@") === -1) {
+                        companiesHouseSettings.authRegisterBulkEmail = {
+                            ...latestState,
+                            failedCount: Number(latestState.failedCount || 0) + 1,
+                            progressByRowId: {
+                                ...latestState.progressByRowId,
+                                [rowId]: { status: "failed", detail: "No valid recipient email" },
+                            },
+                        };
+                        renderAuthRegisterBulkEmailModal();
+                        continue;
+                    }
+                    companiesHouseSettings.authRegisterBulkEmail = {
+                        ...latestState,
+                        progressByRowId: {
+                            ...latestState.progressByRowId,
+                            [rowId]: { status: "sending", detail: "Sending..." },
+                        },
+                    };
+                    renderAuthRegisterBulkEmailModal();
+                    try {
+                        const response = await requestJSON(api.endpoints.authRegisterBulkEmailSend, {
+                            method: "POST",
+                            body: JSON.stringify({
+                                rowId,
+                                to: recipient,
+                                subject,
+                                bodyHtml,
+                                bodyText,
+                                bcc: String(latestState.bccOverride || "").trim(),
+                            }),
+                        });
+                        const provider = String(response?.provider || "").trim() || "sent";
+                        const nowState = authRegisterBulkEmailEnsureDefaults();
+                        companiesHouseSettings.authRegisterBulkEmail = {
+                            ...nowState,
+                            sentCount: Number(nowState.sentCount || 0) + 1,
+                            progressByRowId: {
+                                ...nowState.progressByRowId,
+                                [rowId]: { status: "sent", detail: `Sent via ${provider}` },
+                            },
+                        };
+                    } catch (error) {
+                        const nowState = authRegisterBulkEmailEnsureDefaults();
+                        companiesHouseSettings.authRegisterBulkEmail = {
+                            ...nowState,
+                            failedCount: Number(nowState.failedCount || 0) + 1,
+                            progressByRowId: {
+                                ...nowState.progressByRowId,
+                                [rowId]: { status: "failed", detail: String(error?.message || "Send failed") },
+                            },
+                        };
+                    }
+                    renderAuthRegisterBulkEmailModal();
+                }
+                const finalState = authRegisterBulkEmailEnsureDefaults();
+                companiesHouseSettings.authRegisterBulkEmail = {
+                    ...finalState,
+                    sending: false,
+                    stopRequested: false,
+                    finishedAt: new Date().toISOString(),
+                };
+                renderAuthRegisterBulkEmailModal();
+                const sent = Number(companiesHouseSettings.authRegisterBulkEmail?.sentCount || 0);
+                const failed = Number(companiesHouseSettings.authRegisterBulkEmail?.failedCount || 0);
+                showToast(
+                    `${sent.toLocaleString("en-GB")} email${sent === 1 ? "" : "s"} sent${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}.`,
+                    failed ? "error" : "success"
+                );
+            }
+
             function renderAuthRegisterHeader() {
                 const head = document.getElementById("chAuthCodeRegisterTableHead");
                 if (!head) return;
@@ -127629,7 +128243,7 @@
                 const sortKey = tableState.sortKey || "clientId";
                 const sortDirection = tableState.sortDirection === "asc" ? "asc" : "desc";
                 const columns = authRegisterVisibleColumns();
-                head.innerHTML = `<tr>${columns.map((column) => {
+                head.innerHTML = `<tr><th class="ch-auth-register-select-cell"><input id="chAuthCodeRegisterSelectAllVisible" type="checkbox" aria-label="Select all visible clients"></th>${columns.map((column) => {
                     const isActive = column.key === sortKey;
                     const sortGlyph = isActive ? (sortDirection === "asc" ? "▲" : "▼") : "↕";
                     return `<th><button class="ch-table-head-button ${isActive ? "is-active" : ""}" type="button" data-auth-register-sort="${escapeHTML(column.key)}">${escapeHTML(column.label)} <span class="ch-table-head-sort">${sortGlyph}</span></button></th>`;
@@ -127717,18 +128331,23 @@
                 }
                 const startIndex = (currentPage - 1) * AUTH_REGISTER_PAGE_SIZE;
                 const pageRows = filteredRows.slice(startIndex, startIndex + AUTH_REGISTER_PAGE_SIZE);
+                syncAuthRegisterBulkSelectionWithRows(list);
                 const selectedRowId = String(companiesHouseSettings.authRegisterSelectedRowId || "").trim();
                 if (selectedRowId && !list.some((row) => String(row?.id || "") === selectedRowId)) {
                     companiesHouseSettings.authRegisterSelectedRowId = "";
                 }
                 if (!filteredRows.length) {
-                    body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="${Math.max(1, visibleColumns.length + 1)}" class="ch-empty-state">${list.length ? "No directory rows match your filters." : "No auth code directory rows uploaded yet."}</td></tr>`;
                     if (!list.length) setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 } else {
                     body.innerHTML = pageRows.map((row) => {
                         const rowId = String(row?.id || "");
                         const isSelected = rowId && rowId === String(companiesHouseSettings.authRegisterSelectedRowId || "");
-                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}</tr>`;
+                        const isBulkSelected = authRegisterBulkSelectionSet().has(rowId);
+                        return `<tr data-auth-register-id="${escapeHTML(rowId)}" style="cursor: pointer;${isSelected ? " background: rgba(44, 108, 223, 0.08);" : ""}">
+                            <td class="ch-auth-register-select-cell"><input type="checkbox" data-auth-register-select-row="${escapeHTML(rowId)}" aria-label="Select ${escapeHTML(String(row?.displayName || row?.companyName || rowId || "client"))}" ${isBulkSelected ? "checked" : ""}></td>
+                            ${visibleColumns.map((column) => `<td style="white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; vertical-align: top;">${escapeHTML(authRegisterCellText(row, column.key))}</td>`).join("")}
+                        </tr>`;
                     }).join("");
                 }
                 if (pageMeta) pageMeta.textContent = `Page ${currentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}`;
@@ -127749,6 +128368,7 @@
                 if (!list.length) {
                     setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
                 }
+                renderAuthRegisterBulkToolbar(pageRows, filteredRows);
                 syncAuthRegisterOverrideButton();
                 setClientRegisterDataTab(companiesHouseSettings.registerDataTab || "clients");
             }
@@ -135333,6 +135953,10 @@
                 document.getElementById("chAuthCodeRegisterUploadButton")?.addEventListener("click", uploadAuthCodeRegisterFileHandler);
                 document.getElementById("chBmTasksUploadButton")?.addEventListener("click", uploadBmTasksFileHandler);
                 document.getElementById("chAuthCodeRegisterPopulateButton")?.addEventListener("click", populateAuthCodesFromDirectoryHandler);
+                document.getElementById("chAuthCodeRegisterEmailAllButton")?.addEventListener("click", openAuthRegisterBulkEmailModal);
+                document.getElementById("chAuthCodeRegisterClearBulkSelectionButton")?.addEventListener("click", () => {
+                    clearAuthRegisterBulkSelection();
+                });
                 document.getElementById("chAuthCodeRegisterOverrideButton")?.addEventListener("click", () => {
                     const rowId = String(companiesHouseSettings.authRegisterSelectedRowId || "").trim();
                     if (!rowId) {
@@ -135356,7 +135980,42 @@
                     event.preventDefault();
                     await saveClientRegisterEditModal();
                 });
+                document.getElementById("chAuthCodeRegisterTableHead")?.addEventListener("change", (event) => {
+                    const toggle = event.target?.closest?.("#chAuthCodeRegisterSelectAllVisible");
+                    if (!toggle) return;
+                    const checked = !!toggle.checked;
+                    const selection = authRegisterBulkSelectionSet();
+                    const pageRows = filteredAuthRegisterRows(companiesHouseSettings.authRegisterRows || []).slice(
+                        ((Math.max(1, Number((companiesHouseSettings.authRegisterTableState || {}).page || 1)) - 1) * AUTH_REGISTER_PAGE_SIZE),
+                        ((Math.max(1, Number((companiesHouseSettings.authRegisterTableState || {}).page || 1)) - 1) * AUTH_REGISTER_PAGE_SIZE) + AUTH_REGISTER_PAGE_SIZE
+                    );
+                    pageRows.forEach((row) => {
+                        const rowId = String(row?.id || "").trim();
+                        if (!rowId) return;
+                        if (checked) selection.add(rowId);
+                        else selection.delete(rowId);
+                    });
+                    renderAuthCodeRegisterDirectory(
+                        companiesHouseSettings.authRegisterRows || [],
+                        companiesHouseSettings.authRegisterTotalCount || companiesHouseSettings.authRegisterRows?.length || 0
+                    );
+                });
+                document.getElementById("chAuthCodeRegisterTableBody")?.addEventListener("change", (event) => {
+                    const checkbox = event.target?.closest?.("[data-auth-register-select-row]");
+                    if (!checkbox) return;
+                    const rowId = String(checkbox.getAttribute("data-auth-register-select-row") || "").trim();
+                    if (!rowId) return;
+                    const selection = authRegisterBulkSelectionSet();
+                    if (checkbox.checked) selection.add(rowId);
+                    else selection.delete(rowId);
+                    const pageRows = filteredAuthRegisterRows(companiesHouseSettings.authRegisterRows || []).slice(
+                        ((Math.max(1, Number((companiesHouseSettings.authRegisterTableState || {}).page || 1)) - 1) * AUTH_REGISTER_PAGE_SIZE),
+                        ((Math.max(1, Number((companiesHouseSettings.authRegisterTableState || {}).page || 1)) - 1) * AUTH_REGISTER_PAGE_SIZE) + AUTH_REGISTER_PAGE_SIZE
+                    );
+                    renderAuthRegisterBulkToolbar(pageRows, filteredAuthRegisterRows(companiesHouseSettings.authRegisterRows || []));
+                });
                 document.getElementById("chAuthCodeRegisterTableBody")?.addEventListener("click", (event) => {
+                    if (event.target?.closest?.("[data-auth-register-select-row]")) return;
                     const row = event.target?.closest?.("[data-auth-register-id]");
                     if (!row) return;
                     const rowId = String(row.getAttribute("data-auth-register-id") || "").trim();
@@ -135364,6 +136023,40 @@
                     selectAuthRegisterRow(rowId);
                     openClientRegisterClientPage(rowId);
                 });
+                document.getElementById("chRegisterBulkEmailCloseButton")?.addEventListener("click", closeAuthRegisterBulkEmailModal);
+                document.getElementById("chRegisterBulkEmailModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "chRegisterBulkEmailModal") closeAuthRegisterBulkEmailModal();
+                });
+                document.getElementById("chRegisterBulkEmailToolbar")?.addEventListener("click", (event) => {
+                    const button = event?.target?.closest?.("[data-note-command]");
+                    if (!button) return;
+                    event.preventDefault();
+                    const command = String(button.getAttribute("data-note-command") || "").trim();
+                    if (!command) return;
+                    applyAuthRegisterBulkEmailEditorCommand(command);
+                });
+                document.getElementById("chRegisterBulkEmailPreviewSelect")?.addEventListener("change", (event) => {
+                    const state = authRegisterBulkEmailEnsureDefaults();
+                    companiesHouseSettings.authRegisterBulkEmail = {
+                        ...state,
+                        previewRowId: String(event?.target?.value || "").trim(),
+                    };
+                    renderAuthRegisterBulkEmailModal();
+                });
+                ["chRegisterBulkEmailSubjectInput", "chRegisterBulkEmailToOverrideInput", "chRegisterBulkEmailBccInput"].forEach((id) => {
+                    document.getElementById(id)?.addEventListener("input", () => {
+                        syncAuthRegisterBulkEmailDraftFromModal();
+                        renderAuthRegisterBulkEmailModal();
+                    });
+                });
+                document.getElementById("chRegisterBulkEmailBodyEditor")?.addEventListener("input", () => {
+                    syncAuthRegisterBulkEmailDraftFromModal();
+                    renderAuthRegisterBulkEmailModal();
+                });
+                document.getElementById("chRegisterBulkEmailSendButton")?.addEventListener("click", () => {
+                    void runAuthRegisterBulkEmailSend();
+                });
+                document.getElementById("chRegisterBulkEmailCancelSendButton")?.addEventListener("click", closeAuthRegisterBulkEmailModal);
                 document.getElementById("chRegisterClientPageBackButton")?.addEventListener("click", () => {
                     closeClientRegisterClientPage();
                     renderAuthCodeRegisterDirectory(

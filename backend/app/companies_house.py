@@ -7970,6 +7970,194 @@ def log_auth_register_email_activity(user: dict, payload: dict | None = None) ->
     }
 
 
+def _strip_html_to_text(value: str) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</p\s*>", "\n\n", text)
+    text = re.sub(r"(?is)<li[^>]*>", "\n• ", text)
+    text = re.sub(r"(?is)<[^>]+>", "", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _send_auth_register_email_smtp(
+    *,
+    recipient: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    bcc_email: str,
+) -> None:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending emails.",
+        )
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((settings.smtp_from_name or "Jaccountancy", settings.smtp_from_email))
+    message["To"] = recipient
+    if bcc_email:
+        message["Bcc"] = bcc_email
+    message.set_content(body_text or " ")
+    if body_html:
+        message.add_alternative(body_html, subtype="html")
+    recipients = [recipient]
+    if bcc_email:
+        recipients.append(bcc_email)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=recipients)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+
+async def _send_auth_register_email_gmail(
+    *,
+    user: dict,
+    recipient: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    bcc_email: str,
+) -> dict:
+    connection_row = gmail_connection_for_user(user)
+    if not connection_row:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail is not connected for this user.")
+    connection_row = await refresh_gmail_connection(connection_row)
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr(("Jaccountancy", connection_row.get("gmail_email") or user.get("email") or ""))
+    message["To"] = recipient
+    if bcc_email:
+        message["Bcc"] = bcc_email
+    message.set_content(body_text or " ")
+    if body_html:
+        message.add_alternative(body_html, subtype="html")
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            GMAIL_SEND_URL,
+            headers={"Authorization": f'Bearer {connection_row["access_token"]}', "Content-Type": "application/json"},
+            json={"raw": raw},
+        )
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail send failed: {response.text[:500]}")
+    payload = response.json() if response.headers.get("content-type", "").lower().startswith("application/json") else {}
+    return payload if isinstance(payload, dict) else {}
+
+
+async def send_auth_register_client_email(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    safe_row_id = _coerce_text(body.get("rowId"), 120)
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    recipient = _coerce_text(body.get("to"), 250).lower()
+    if "@" not in recipient:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Valid recipient email is required.")
+    subject = _coerce_text(body.get("subject"), 300)
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required.")
+    body_html = _coerce_text(body.get("bodyHtml"), 120000)
+    body_text = _coerce_text(body.get("bodyText"), 120000)
+    if not body_text and body_html:
+        body_text = _strip_html_to_text(body_html)
+    if not body_text:
+        body_text = _coerce_text(body.get("body"), 120000)
+    if not body_text and not body_html:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email body is required.")
+
+    bcc_email = _coerce_text(body.get("bcc"), 250) or _workflow_bcc_email()
+    user_id = _coerce_text((user or {}).get("id"), 120) or None
+    actor_name = _coerce_text(
+        (user or {}).get("name")
+        or (user or {}).get("full_name")
+        or (user or {}).get("email")
+        or "User",
+        120,
+    )
+    row: dict | None = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _auth_register_client_page_row(cursor, safe_row_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+        connection.commit()
+
+    provider = "smtp"
+    provider_message_id = ""
+    if gmail_connection_for_user(user):
+        gmail_response = await _send_auth_register_email_gmail(
+            user=user,
+            recipient=recipient,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            bcc_email=bcc_email,
+        )
+        provider = "gmail"
+        provider_message_id = _coerce_text(gmail_response.get("id"), 220)
+    else:
+        _send_auth_register_email_smtp(
+            recipient=recipient,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            bcc_email=bcc_email,
+        )
+    event_payload = {
+        "source": "mail_merge",
+        "provider": provider,
+        "mailbox": _coerce_text((user or {}).get("email"), 200),
+        "messageId": provider_message_id,
+        "subject": subject,
+        "snippet": _coerce_text(body_text[:600], 700),
+        "direction": "sent",
+        "from": [_coerce_text((user or {}).get("email"), 200)],
+        "to": [recipient],
+        "cc": [],
+        "bcc": [bcc_email] if bcc_email else [],
+        "participants": [recipient],
+        "domains": [_email_domain(recipient)] if _email_domain(recipient) else [],
+        "matchType": "row_id",
+        "matchScore": 999,
+        "actorName": actor_name,
+        "action": "Email sent via mail merge",
+    }
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, 'client_email_sent', %s::jsonb, %s)
+                RETURNING created_at
+                """,
+                (safe_row_id, json.dumps(event_payload), user_id),
+            )
+            created = cursor.fetchone() or {}
+        connection.commit()
+
+    return {
+        "rowId": safe_row_id,
+        "provider": provider,
+        "messageId": provider_message_id,
+        "sentAt": created.get("created_at").isoformat() if created.get("created_at") else datetime.now(timezone.utc).isoformat(),
+        "recipient": recipient,
+        "subject": subject,
+        "displayName": _coerce_text(row.get("display_name") or row.get("company_name"), 250),
+        "clientId": _coerce_text(row.get("client_id"), 120),
+        "companyNumber": _coerce_text(row.get("company_number"), 40),
+    }
+
+
 COMPANY_SECRETARIAL_ALLOWED_MODES = {"api", "assisted", "manual"}
 COMPANY_SECRETARIAL_ALLOWED_STATUSES = {
     "DRAFT",
