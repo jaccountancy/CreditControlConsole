@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.header import decode_header
 from email.message import EmailMessage
-from email.utils import formataddr, parsedate_to_datetime
+from email.utils import formataddr, getaddresses, parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode, urljoin
 from uuid import UUID, uuid4
@@ -34,6 +34,8 @@ from xml.sax.saxutils import escape as xml_escape
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 from fastapi import HTTPException, status
 from psycopg import errors as pg_errors
 
@@ -104,6 +106,9 @@ PANEL_PAYMENT_LIMIT = 1000
 PANEL_AUDIT_LIMIT = 30
 PANEL_TIMELINE_LIMIT_PER_INVOICE = 12
 PANEL_CUSTOMER_NOTE_LIMIT_PER_CUSTOMER = 20
+GMAIL_WORKSPACE_AUTO_SYNC_MIN_INTERVAL = timedelta(minutes=5)
+_GMAIL_WORKSPACE_AUTO_SYNC_LOCK = asyncio.Lock()
+_GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT: datetime | None = None
 DATABASE_METRICS_CACHE_TTL = timedelta(seconds=30)
 DATABASE_HOT_TABLE_SIZE_BYTES = 80 * 1024 * 1024
 DATABASE_HOT_TABLE_RECORDS = 200000
@@ -17913,6 +17918,540 @@ GMAIL_MESSAGE_DETAIL_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messa
 GMAIL_MESSAGE_ATTACHMENT_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
 GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
 GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+
+
+def _gmail_workspace_service_account_raw_value() -> str:
+    settings = get_settings()
+    return _gmail_oauth_secret_value(settings.gmail_workspace_service_account_json) or _gmail_env_alias_value(
+        "GMAIL_WORKSPACE_SERVICE_ACCOUNT_JSON",
+        "GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON",
+        "GMAIL_SERVICE_ACCOUNT_JSON",
+    )
+
+
+def _gmail_workspace_service_account_info() -> dict:
+    raw_value = _gmail_workspace_service_account_raw_value()
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except Exception:
+        try:
+            parsed = json.loads(base64.b64decode(raw_value).decode("utf-8"))
+        except Exception:
+            return {}
+    if not isinstance(parsed, dict):
+        return {}
+    client_email = str(parsed.get("client_email") or "").strip()
+    private_key = str(parsed.get("private_key") or "").strip()
+    token_uri = str(parsed.get("token_uri") or "https://oauth2.googleapis.com/token").strip()
+    if not client_email or not private_key:
+        return {}
+    return {
+        "client_email": client_email,
+        "private_key": private_key,
+        "token_uri": token_uri or "https://oauth2.googleapis.com/token",
+        "project_id": str(parsed.get("project_id") or "").strip(),
+    }
+
+
+def gmail_workspace_delegation_configured() -> bool:
+    info = _gmail_workspace_service_account_info()
+    return bool(info.get("client_email") and info.get("private_key"))
+
+
+def _base64url_no_padding(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _gmail_workspace_jwt_assertion(service_account: dict, mailbox_email: str, scopes: str) -> str:
+    header_json = json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    now_ts = int(time.time())
+    payload = {
+        "iss": str(service_account.get("client_email") or "").strip(),
+        "scope": scopes,
+        "aud": str(service_account.get("token_uri") or "https://oauth2.googleapis.com/token").strip(),
+        "sub": mailbox_email,
+        "iat": now_ts,
+        "exp": now_ts + 3600,
+    }
+    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signing_input = f"{_base64url_no_padding(header_json)}.{_base64url_no_padding(payload_json)}".encode("ascii")
+    private_key_raw = str(service_account.get("private_key") or "").encode("utf-8")
+    private_key = serialization.load_pem_private_key(private_key_raw, password=None)
+    signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    return f"{signing_input.decode('ascii')}.{_base64url_no_padding(signature)}"
+
+
+async def _gmail_workspace_access_token(mailbox_email: str) -> str:
+    service_account = _gmail_workspace_service_account_info()
+    if not service_account:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Google Workspace delegation is not configured. "
+                "Set GMAIL_WORKSPACE_SERVICE_ACCOUNT_JSON with a service account key "
+                "that has domain-wide delegation enabled."
+            ),
+        )
+    assertion = _gmail_workspace_jwt_assertion(
+        service_account,
+        mailbox_email,
+        "https://www.googleapis.com/auth/gmail.readonly",
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            str(service_account.get("token_uri") or "https://oauth2.googleapis.com/token"),
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion,
+            },
+        )
+    if response.is_error:
+        detail = response.text[:500]
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Workspace delegated token request failed for {mailbox_email}: {detail}",
+        )
+    token = str((response.json() or {}).get("access_token") or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Workspace delegated token response did not include an access token for {mailbox_email}.",
+        )
+    return token
+
+
+def _gmail_workspace_normalise_mailbox_email(value: object) -> str:
+    email = str(value or "").strip().lower()
+    if "@" not in email or "." not in email.split("@", 1)[1]:
+        return ""
+    return email[:250]
+
+
+def _gmail_workspace_mailbox_row_payload(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "mailboxEmail": str(row.get("mailbox_email") or ""),
+        "enabled": bool(row.get("enabled")),
+        "allowDomainMatch": bool(row.get("allow_domain_match")),
+        "lookbackMinutes": int(row.get("lookback_minutes") or 180),
+        "lastSyncedAt": row.get("last_synced_at").isoformat() if row.get("last_synced_at") else "",
+        "lastSyncStatus": str(row.get("last_sync_status") or "never"),
+        "lastSyncError": str(row.get("last_sync_error") or ""),
+        "lastSyncMessageCount": int(row.get("last_sync_message_count") or 0),
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
+    }
+
+
+def list_gmail_workspace_mailboxes() -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM gmail_workspace_mailboxes
+                ORDER BY LOWER(mailbox_email) ASC
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {
+        "delegationConfigured": gmail_workspace_delegation_configured(),
+        "rows": [_gmail_workspace_mailbox_row_payload(row) for row in rows],
+    }
+
+
+def save_gmail_workspace_mailbox(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    mailbox_email = _gmail_workspace_normalise_mailbox_email(body.get("mailboxEmail"))
+    if not mailbox_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid mailbox email.")
+    enabled = bool(body.get("enabled", True))
+    allow_domain_match = bool(body.get("allowDomainMatch", True))
+    settings = get_settings()
+    default_lookback = max(10, min(int(settings.gmail_workspace_default_lookback_minutes or 180), 60 * 24 * 14))
+    try:
+        lookback_minutes = int(body.get("lookbackMinutes", default_lookback))
+    except Exception:
+        lookback_minutes = default_lookback
+    lookback_minutes = max(10, min(lookback_minutes, 60 * 24 * 14))
+    user_id = str((user or {}).get("id") or "").strip() or None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO gmail_workspace_mailboxes (
+                    mailbox_email,
+                    enabled,
+                    allow_domain_match,
+                    lookback_minutes,
+                    created_by_user_id,
+                    updated_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                ON CONFLICT (mailbox_email) DO UPDATE
+                SET enabled = EXCLUDED.enabled,
+                    allow_domain_match = EXCLUDED.allow_domain_match,
+                    lookback_minutes = EXCLUDED.lookback_minutes,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = NOW()
+                RETURNING *
+                """,
+                (mailbox_email, enabled, allow_domain_match, lookback_minutes, user_id, user_id),
+            )
+            saved_row = cursor.fetchone() or {}
+        connection.commit()
+    return {"row": _gmail_workspace_mailbox_row_payload(saved_row)}
+
+
+def remove_gmail_workspace_mailbox(user: dict, mailbox_id: str) -> dict:
+    safe_id = str(mailbox_id or "").strip()
+    if not safe_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mailbox id is required.")
+    removed_row = {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM gmail_workspace_mailboxes
+                WHERE id = %s
+                RETURNING *
+                """,
+                (safe_id,),
+            )
+            removed_row = cursor.fetchone() or {}
+            if removed_row:
+                cursor.execute(
+                    "DELETE FROM gmail_workspace_message_log WHERE mailbox_email = %s",
+                    (str(removed_row.get("mailbox_email") or "").strip().lower(),),
+                )
+        connection.commit()
+    if not removed_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mailbox not found.")
+    return {"removed": True, "row": _gmail_workspace_mailbox_row_payload(removed_row)}
+
+
+def _gmail_workspace_message_list_url(mailbox_email: str) -> str:
+    return f"https://gmail.googleapis.com/gmail/v1/users/{quote(mailbox_email, safe='')}/messages"
+
+
+def _gmail_workspace_message_detail_url(mailbox_email: str, message_id: str) -> str:
+    return f"https://gmail.googleapis.com/gmail/v1/users/{quote(mailbox_email, safe='')}/messages/{quote(message_id, safe='')}"
+
+
+def _gmail_workspace_addresses(value: str) -> list[str]:
+    parsed = getaddresses([value or ""])
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for _, email_value in parsed:
+        email_clean = _gmail_workspace_normalise_mailbox_email(email_value)
+        if not email_clean or email_clean in seen:
+            continue
+        seen.add(email_clean)
+        cleaned.append(email_clean)
+    return cleaned
+
+
+def _gmail_workspace_event_direction(mailbox_email: str, from_list: list[str]) -> str:
+    mailbox = _gmail_workspace_normalise_mailbox_email(mailbox_email)
+    return "sent" if mailbox and mailbox in from_list else "received"
+
+
+def _gmail_workspace_message_ids_seen(mailbox_email: str, message_ids: list[str]) -> set[str]:
+    if not message_ids:
+        return set()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT gmail_message_id
+                FROM gmail_workspace_message_log
+                WHERE mailbox_email = %s
+                  AND gmail_message_id = ANY(%s)
+                """,
+                (mailbox_email, message_ids),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return {str(row.get("gmail_message_id") or "").strip() for row in rows if row.get("gmail_message_id")}
+
+
+def _gmail_workspace_log_messages(mailbox_email: str, events: list[dict]) -> None:
+    if not events:
+        return
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for item in events:
+                message_id = str(item.get("messageId") or "").strip()
+                if not message_id:
+                    continue
+                occurred_at_raw = str(item.get("occurredAt") or "").strip()
+                occurred_at: datetime | None = None
+                if occurred_at_raw:
+                    try:
+                        occurred_at = datetime.fromisoformat(occurred_at_raw.replace("Z", "+00:00"))
+                    except Exception:
+                        occurred_at = None
+                cursor.execute(
+                    """
+                    INSERT INTO gmail_workspace_message_log (mailbox_email, gmail_message_id, received_at, created_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (mailbox_email, gmail_message_id) DO NOTHING
+                    """,
+                    (mailbox_email, message_id, occurred_at),
+                )
+        connection.commit()
+
+
+def _gmail_workspace_update_mailbox_sync_status(
+    mailbox_id: str,
+    *,
+    status_text: str,
+    message_count: int,
+    error_text: str = "",
+) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE gmail_workspace_mailboxes
+                SET last_synced_at = NOW(),
+                    last_sync_status = %s,
+                    last_sync_error = %s,
+                    last_sync_message_count = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (status_text[:30], error_text[:600], max(0, int(message_count or 0)), mailbox_id),
+            )
+        connection.commit()
+
+
+async def sync_gmail_workspace_mailboxes(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    if not gmail_workspace_delegation_configured():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google Workspace delegation is not configured. Set GMAIL_WORKSPACE_SERVICE_ACCOUNT_JSON.",
+        )
+    mailbox_filter = _gmail_workspace_normalise_mailbox_email(body.get("mailboxEmail"))
+    force_lookback = bool(body.get("forceLookback", False))
+    settings = get_settings()
+    default_lookback = max(10, min(int(settings.gmail_workspace_default_lookback_minutes or 180), 60 * 24 * 14))
+    sync_max = max(10, min(int(settings.gmail_workspace_sync_max_per_mailbox or 120), 500))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if mailbox_filter:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM gmail_workspace_mailboxes
+                    WHERE LOWER(mailbox_email) = %s
+                    LIMIT 1
+                    """,
+                    (mailbox_filter,),
+                )
+                single_row = cursor.fetchone()
+                rows = [single_row] if isinstance(single_row, dict) else []
+            else:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM gmail_workspace_mailboxes
+                    WHERE enabled = TRUE
+                    ORDER BY LOWER(mailbox_email) ASC
+                    """
+                )
+                rows = cursor.fetchall() or []
+        connection.commit()
+    rows = [row for row in rows if isinstance(row, dict)]
+    all_events: list[dict] = []
+    mailbox_results: list[dict] = []
+
+    for row in rows:
+        mailbox_email = _gmail_workspace_normalise_mailbox_email(row.get("mailbox_email"))
+        if not mailbox_email:
+            continue
+        mailbox_id = str(row.get("id") or "").strip()
+        allow_domain_match = bool(row.get("allow_domain_match"))
+        try:
+            lookback_minutes = int(row.get("lookback_minutes") or default_lookback)
+        except Exception:
+            lookback_minutes = default_lookback
+        lookback_minutes = max(10, min(lookback_minutes, 60 * 24 * 14))
+        if isinstance(body.get("lookbackMinutes"), int):
+            lookback_minutes = max(10, min(int(body.get("lookbackMinutes")), 60 * 24 * 14))
+        since_dt = utcnow() - timedelta(minutes=lookback_minutes)
+        last_synced = row.get("last_synced_at")
+        if isinstance(last_synced, datetime) and not force_lookback:
+            since_dt = min(since_dt, last_synced - timedelta(minutes=10))
+        since_token = since_dt.date().strftime("%Y/%m/%d")
+        mailbox_event_rows: list[dict] = []
+        try:
+            access_token = await _gmail_workspace_access_token(mailbox_email)
+            headers = {"Authorization": f"Bearer {access_token}"}
+            message_ids: list[str] = []
+            page_token = ""
+            max_pages = 6
+            async with httpx.AsyncClient(timeout=30) as client:
+                for _ in range(max_pages):
+                    params = {
+                        "q": f"after:{since_token}",
+                        "includeSpamTrash": "false",
+                        "maxResults": min(sync_max, 250),
+                    }
+                    if page_token:
+                        params["pageToken"] = page_token
+                    list_response = await client.get(
+                        _gmail_workspace_message_list_url(mailbox_email),
+                        headers=headers,
+                        params=params,
+                    )
+                    if list_response.is_error:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=f"Gmail list failed for {mailbox_email}: {list_response.text[:260]}",
+                        )
+                    payload_json = list_response.json() if list_response.content else {}
+                    rows_payload = payload_json.get("messages") if isinstance(payload_json, dict) else []
+                    if not isinstance(rows_payload, list):
+                        rows_payload = []
+                    for item in rows_payload:
+                        message_id = str((item or {}).get("id") or "").strip()
+                        if message_id and message_id not in message_ids:
+                            message_ids.append(message_id)
+                        if len(message_ids) >= sync_max:
+                            break
+                    page_token = str(payload_json.get("nextPageToken") or "").strip() if isinstance(payload_json, dict) else ""
+                    if not page_token or len(message_ids) >= sync_max:
+                        break
+                existing_ids = _gmail_workspace_message_ids_seen(mailbox_email, message_ids)
+                new_message_ids = [message_id for message_id in message_ids if message_id not in existing_ids]
+                for message_id in new_message_ids:
+                    detail_response = await client.get(
+                        _gmail_workspace_message_detail_url(mailbox_email, message_id),
+                        headers=headers,
+                        params={
+                            "format": "metadata",
+                            "metadataHeaders": ["Subject", "From", "To", "Cc", "Bcc", "Date"],
+                        },
+                    )
+                    if detail_response.is_error:
+                        continue
+                    payload_json = detail_response.json() if detail_response.content else {}
+                    if not isinstance(payload_json, dict):
+                        continue
+                    from_list = _gmail_workspace_addresses(_gmail_header_value(payload_json, "From"))
+                    to_list = _gmail_workspace_addresses(_gmail_header_value(payload_json, "To"))
+                    cc_list = _gmail_workspace_addresses(_gmail_header_value(payload_json, "Cc"))
+                    bcc_list = _gmail_workspace_addresses(_gmail_header_value(payload_json, "Bcc"))
+                    subject = _gmail_header_value(payload_json, "Subject")[:400]
+                    occurred_at_dt = _gmail_received_at(payload_json)
+                    occurred_at = occurred_at_dt.isoformat().replace("+00:00", "Z") if isinstance(occurred_at_dt, datetime) else ""
+                    mailbox_event_rows.append(
+                        {
+                            "direction": _gmail_workspace_event_direction(mailbox_email, from_list),
+                            "mailbox": mailbox_email,
+                            "provider": "gmail_workspace",
+                            "messageId": message_id,
+                            "occurredAt": occurred_at,
+                            "from": from_list,
+                            "to": to_list,
+                            "cc": cc_list,
+                            "bcc": bcc_list,
+                            "subject": subject,
+                            "snippet": str(payload_json.get("snippet") or "")[:1200],
+                            "allowDomainMatch": allow_domain_match,
+                            "clientHints": {"allowDomainMatch": allow_domain_match, "largeClient": allow_domain_match},
+                        }
+                    )
+            _gmail_workspace_log_messages(mailbox_email, mailbox_event_rows)
+            _gmail_workspace_update_mailbox_sync_status(
+                mailbox_id,
+                status_text="ok",
+                message_count=len(mailbox_event_rows),
+                error_text="",
+            )
+            all_events.extend(mailbox_event_rows)
+            mailbox_results.append(
+                {
+                    "mailboxEmail": mailbox_email,
+                    "status": "ok",
+                    "eventsCaptured": len(mailbox_event_rows),
+                    "allowDomainMatch": allow_domain_match,
+                }
+            )
+        except Exception as exc:
+            error_text = str(getattr(exc, "detail", "") or str(exc) or "Sync failed").strip()
+            if mailbox_id:
+                _gmail_workspace_update_mailbox_sync_status(
+                    mailbox_id,
+                    status_text="error",
+                    message_count=0,
+                    error_text=error_text,
+                )
+            mailbox_results.append(
+                {
+                    "mailboxEmail": mailbox_email,
+                    "status": "error",
+                    "eventsCaptured": 0,
+                    "error": error_text[:300],
+                }
+            )
+
+    return {
+        "delegationConfigured": gmail_workspace_delegation_configured(),
+        "mailboxesProcessed": len(mailbox_results),
+        "eventsCaptured": len(all_events),
+        "mailboxes": mailbox_results,
+        "events": all_events,
+    }
+
+
+async def maybe_auto_sync_gmail_workspace_timeline(user: dict, min_interval_minutes: int = 5) -> dict:
+    global _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT
+    if not gmail_workspace_delegation_configured():
+        return {"triggered": False, "reason": "not_configured"}
+    interval_minutes = max(1, min(int(min_interval_minutes or 5), 120))
+    minimum_interval = timedelta(minutes=interval_minutes)
+    now = utcnow()
+    if _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT and (now - _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT) < minimum_interval:
+        return {"triggered": False, "reason": "interval"}
+    if _GMAIL_WORKSPACE_AUTO_SYNC_LOCK.locked():
+        return {"triggered": False, "reason": "in_progress"}
+    async with _GMAIL_WORKSPACE_AUTO_SYNC_LOCK:
+        now = utcnow()
+        if _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT and (now - _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT) < minimum_interval:
+            return {"triggered": False, "reason": "interval"}
+        try:
+            sync_result = await sync_gmail_workspace_mailboxes(user, {"forceLookback": False})
+            events = sync_result.get("events") if isinstance(sync_result.get("events"), list) else []
+            if events:
+                from .companies_house import log_auth_register_email_activity
+
+                timeline_result = log_auth_register_email_activity(user, {"events": events})
+            else:
+                timeline_result = {"processedEvents": 0, "createdTimelineEvents": 0, "unmatchedEvents": 0}
+            _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT = utcnow()
+            return {
+                "triggered": True,
+                "sync": {
+                    "mailboxesProcessed": int(sync_result.get("mailboxesProcessed") or 0),
+                    "eventsCaptured": int(sync_result.get("eventsCaptured") or 0),
+                },
+                "timeline": {
+                    "processedEvents": int(timeline_result.get("processedEvents") or 0),
+                    "createdTimelineEvents": int(timeline_result.get("createdTimelineEvents") or 0),
+                    "unmatchedEvents": int(timeline_result.get("unmatchedEvents") or 0),
+                },
+            }
+        except Exception as exc:
+            logger.warning("gmail_workspace_auto_sync_failed: %s", str(exc)[:300])
+            _GMAIL_WORKSPACE_LAST_AUTO_SYNC_AT = utcnow()
+            return {"triggered": False, "reason": "error", "error": str(exc)[:220]}
 
 
 def _me_report_xero_connection(user: dict, client: dict | None = None) -> dict:

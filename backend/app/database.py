@@ -1747,6 +1747,53 @@ ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFA
 ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE TABLE IF NOT EXISTS gmail_workspace_mailboxes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    mailbox_email TEXT NOT NULL UNIQUE,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_domain_match BOOLEAN NOT NULL DEFAULT TRUE,
+    lookback_minutes INTEGER NOT NULL DEFAULT 180,
+    last_synced_at TIMESTAMPTZ,
+    last_sync_status TEXT NOT NULL DEFAULT 'never',
+    last_sync_error TEXT NOT NULL DEFAULT '',
+    last_sync_message_count INTEGER NOT NULL DEFAULT 0,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS mailbox_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS allow_domain_match BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS lookback_minutes INTEGER NOT NULL DEFAULT 180;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS last_sync_status TEXT NOT NULL DEFAULT 'never';
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS last_sync_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS last_sync_message_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE gmail_workspace_mailboxes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS gmail_workspace_mailboxes_email_idx
+ON gmail_workspace_mailboxes (LOWER(mailbox_email));
+CREATE INDEX IF NOT EXISTS gmail_workspace_mailboxes_enabled_idx
+ON gmail_workspace_mailboxes (enabled, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS gmail_workspace_message_log (
+    mailbox_email TEXT NOT NULL,
+    gmail_message_id TEXT NOT NULL,
+    received_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (mailbox_email, gmail_message_id)
+);
+
+ALTER TABLE gmail_workspace_message_log ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ;
+ALTER TABLE gmail_workspace_message_log ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS gmail_workspace_message_log_received_idx
+ON gmail_workspace_message_log (mailbox_email, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS submitted_employee_forms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2214,6 +2261,30 @@ ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DE
 ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE ch_bm_tasks_state ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS ch_task_tracker_state (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    rows JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ch_task_tracker_state ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE ch_task_tracker_state ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_task_tracker_state ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS ch_task_tracker_shared_state (
+    singleton_id INTEGER PRIMARY KEY DEFAULT 1 CHECK (singleton_id = 1),
+    rows JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ch_task_tracker_shared_state ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE ch_task_tracker_shared_state ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE ch_task_tracker_shared_state ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_task_tracker_shared_state ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS ch_drafts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

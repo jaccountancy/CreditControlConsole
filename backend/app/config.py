@@ -86,6 +86,9 @@ class Settings(BaseSettings):
         "https://www.googleapis.com/auth/gmail.readonly "
         "https://www.googleapis.com/auth/calendar.readonly"
     )
+    gmail_workspace_service_account_json: str | None = None
+    gmail_workspace_default_lookback_minutes: int = 180
+    gmail_workspace_sync_max_per_mailbox: int = 120
     companies_house_environment: str = "sandbox"
     companies_house_api_key: str | None = None
     companies_house_presenter_id: str | None = None

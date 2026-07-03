@@ -48,6 +48,7 @@ from .companies_house import (
     commit_clients_import,
     create_company_secretarial_filing,
     add_auth_register_client_note,
+    add_auth_register_timeline_event,
     dashboard_summary as companies_house_dashboard_summary,
     delete_company,
     export_companies_house_support_report,
@@ -55,6 +56,7 @@ from .companies_house import (
     get_companies_house_settings,
     get_company_detail,
     get_auth_register_client_page,
+    log_auth_register_email_activity,
     sync_client_page_juk_invoice_presence,
     copy_client_page_juk_invoice_to_xero,
     get_submission_raw_response,
@@ -62,6 +64,7 @@ from .companies_house import (
     list_company_secretarial_filings,
     list_companies,
     list_auth_code_register,
+    load_task_tracker_state,
     list_imports as list_companies_house_imports,
     list_submission_attempts,
     patch_company_secretarial_filing,
@@ -79,6 +82,7 @@ from .companies_house import (
     sync_companies_house_companies,
     test_companies_house_connection,
     upload_auth_code_register_csv,
+    save_task_tracker_state,
     update_auth_code_register_row,
     update_company,
     validate_company_secretarial_filing,
@@ -280,6 +284,8 @@ from .services import (
     fetch_gmail_profile,
     gmail_authorize_url,
     gmail_oauth_configured,
+    list_gmail_workspace_mailboxes,
+    maybe_auto_sync_gmail_workspace_timeline,
     merge_me_report_duplicate_contact,
     merge_me_report_contacts,
     rename_me_report_nominal_account,
@@ -310,6 +316,9 @@ from .services import (
     vault_upload_files,
     queue_bank_statement_retry,
     queue_bank_statement_upload,
+    remove_gmail_workspace_mailbox,
+    save_gmail_workspace_mailbox,
+    sync_gmail_workspace_mailboxes,
     store_gmail_connection,
     upload_me_report_submission_pdf,
     _process_bank_statement_upload,
@@ -3536,6 +3545,17 @@ def api_companies_house_tasks(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **payload}
 
 
+@app.get("/api/companies-house/task-tracker")
+def api_companies_house_task_tracker(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **load_task_tracker_state(user)}
+
+
+@app.post("/api/companies-house/task-tracker")
+async def api_companies_house_task_tracker_save(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **save_task_tracker_state(user, payload)}
+
+
 @app.post("/api/companies-house/auth-code-register/commit")
 async def api_companies_house_auth_code_register_commit(
     request: Request,
@@ -3580,9 +3600,10 @@ async def api_companies_house_auth_code_register_update(
 @app.get("/api/companies-house/auth-code-register/{row_id}/client-page")
 def api_companies_house_auth_code_register_client_page(
     row_id: str,
+    record_access: bool = Query(True),
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", **get_auth_register_client_page(row_id, user)}
+    return {"status": "ok", **get_auth_register_client_page(row_id, user, record_access=record_access)}
 
 
 @app.patch("/api/companies-house/auth-code-register/{row_id}/client-page")
@@ -3603,6 +3624,25 @@ async def api_companies_house_auth_code_register_client_page_add_note(
 ):
     payload = await request.json()
     return {"status": "ok", **add_auth_register_client_note(user, row_id, payload)}
+
+
+@app.post("/api/companies-house/auth-code-register/{row_id}/client-page/timeline-events")
+async def api_companies_house_auth_code_register_client_page_add_timeline_event(
+    row_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **add_auth_register_timeline_event(user, row_id, payload)}
+
+
+@app.post("/api/companies-house/auth-code-register/timeline/email-events")
+async def api_companies_house_auth_code_register_email_timeline_events(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **log_auth_register_email_activity(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/companies-house/auth-code-register/{row_id}/client-page/juk-invoices/sync")
@@ -5039,7 +5079,8 @@ async def api_notify_submitted_employee_forms(request: Request, user: dict = Dep
 
 
 @app.get("/api/notifications/pull")
-def api_pull_notifications(limit: int = Query(30), user: dict = Depends(require_panel_user)):
+async def api_pull_notifications(limit: int = Query(30), user: dict = Depends(require_panel_user)):
+    asyncio.create_task(maybe_auto_sync_gmail_workspace_timeline(user, min_interval_minutes=5))
     return {"status": "ok", **pull_user_notifications(user, limit=limit)}
 
 
@@ -5052,6 +5093,44 @@ async def api_update_me_report_settings(request: Request, user: dict = Depends(r
 @app.post("/api/gmail/disconnect")
 async def api_disconnect_gmail(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **disconnect_gmail_connection(user)}
+
+
+@app.get("/api/gmail/workspace-mailboxes")
+def api_list_gmail_workspace_mailboxes(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **list_gmail_workspace_mailboxes()}
+
+
+@app.post("/api/gmail/workspace-mailboxes")
+async def api_save_gmail_workspace_mailbox(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **save_gmail_workspace_mailbox(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.delete("/api/gmail/workspace-mailboxes/{mailbox_id}")
+def api_remove_gmail_workspace_mailbox(mailbox_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **remove_gmail_workspace_mailbox(user, mailbox_id)}
+
+
+@app.post("/api/gmail/workspace-mailboxes/sync")
+async def api_sync_gmail_workspace_mailboxes(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    sync_result = await sync_gmail_workspace_mailboxes(user, payload if isinstance(payload, dict) else {})
+    email_events = sync_result.get("events") if isinstance(sync_result.get("events"), list) else []
+    timeline_result = (
+        log_auth_register_email_activity(user, {"events": email_events})
+        if email_events
+        else {"processedEvents": 0, "createdTimelineEvents": 0, "unmatchedEvents": 0, "matches": []}
+    )
+    return {
+        "status": "ok",
+        "sync": {
+            "delegationConfigured": bool(sync_result.get("delegationConfigured")),
+            "mailboxesProcessed": int(sync_result.get("mailboxesProcessed") or 0),
+            "eventsCaptured": int(sync_result.get("eventsCaptured") or 0),
+            "mailboxes": sync_result.get("mailboxes") if isinstance(sync_result.get("mailboxes"), list) else [],
+        },
+        "timeline": timeline_result,
+    }
 
 
 @app.post("/api/me-report/bulk-submissions")

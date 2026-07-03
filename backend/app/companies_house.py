@@ -5394,6 +5394,11 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
             if 1900 <= year <= 3000:
                 sync_years.append(year)
     sync_years = sorted(set(sync_years), reverse=True)
+    def _bounded_int(raw: object, default: int, low: int, high: int) -> int:
+        try:
+            return max(low, min(high, int(float(raw))))
+        except Exception:
+            return default
     return {
         "status": _coerce_text(source.get("status"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
@@ -5438,6 +5443,11 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                 "memberState": _coerce_text(vat.get("memberState"), 40),
                 "vatNumber": _coerce_text(vat.get("vatNumber"), 120),
                 "vatAddress": _coerce_text(vat.get("vatAddress"), 1000),
+                "taskAutomation": {
+                    "cadence": "weekly" if _coerce_text((vat.get("taskAutomation") or {}).get("cadence"), 20).lower() == "weekly" else "monthly",
+                    "monthlyDueDay": _bounded_int((vat.get("taskAutomation") or {}).get("monthlyDueDay"), 7, 1, 28),
+                    "weeklyDueWeekday": _bounded_int((vat.get("taskAutomation") or {}).get("weeklyDueWeekday"), 5, 1, 7),
+                },
             },
             "payroll": {
                 "employersPayeReference": _coerce_text(
@@ -5462,6 +5472,11 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                     or payroll.get("rti_deadline"),
                     80,
                 ),
+                "taskAutomation": {
+                    "cadence": "weekly" if _coerce_text((payroll.get("taskAutomation") or {}).get("cadence"), 20).lower() == "weekly" else "monthly",
+                    "monthlyDueDay": _bounded_int((payroll.get("taskAutomation") or {}).get("monthlyDueDay"), 22, 1, 28),
+                    "weeklyDueWeekday": _bounded_int((payroll.get("taskAutomation") or {}).get("weeklyDueWeekday"), 5, 1, 7),
+                },
             },
             "p11d": {
                 "nextReturnDueDate": _coerce_text(p11d.get("nextReturnDueDate"), 80),
@@ -5490,6 +5505,9 @@ def _normalise_auth_register_juk_invoices(value: object) -> dict:
 def _serialise_auth_register_row(row: dict | None) -> dict:
     row = row or {}
     services = _normalise_auth_register_services(row.get("services") if isinstance(row.get("services"), dict) else {})
+    companies_house = _normalise_auth_register_companies_house(
+        row.get("companies_house") if isinstance(row.get("companies_house"), dict) else {}
+    )
     return {
         "id": str(row.get("id") or ""),
         "companyId": str(row.get("company_id") or ""),
@@ -5525,6 +5543,7 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "ignitionClientName": row.get("ignition_client_name") or "",
         "authCode": row.get("auth_code") or "",
         "services": services,
+        "companiesHouse": companies_house,
     }
 
 
@@ -5573,7 +5592,8 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        r.code_hint,
                        r.source_filename,
                        r.uploaded_at,
-                       p.services
+                       p.services,
+                       p.companies_house
                 FROM limited_register r
                 LEFT JOIN ch_companies c
                   ON c.company_number = r.company_number
@@ -5591,6 +5611,113 @@ def list_auth_code_register(limit: int = 300) -> dict:
         "totalCount": int(total_row.get("total") or 0),
         "rows": [_serialise_auth_register_row(row) for row in rows],
     }
+
+
+def _task_tracker_normalise_status(value: object) -> str:
+    allowed = {"open", "in-progress", "blocked", "done"}
+    status = str(value or "open").strip().lower()
+    return status if status in allowed else "open"
+
+
+def _task_tracker_normalise_priority(value: object) -> str:
+    allowed = {"high", "normal", "low"}
+    priority = str(value or "normal").strip().lower()
+    return priority if priority in allowed else "normal"
+
+
+def _normalise_task_tracker_rows(value: object) -> list[dict]:
+    rows_input = value if isinstance(value, list) else []
+    normalised_rows: list[dict] = []
+    for row in rows_input:
+        if not isinstance(row, dict):
+            continue
+        title = _coerce_text(row.get("title"), 300)
+        client_key = _coerce_text(row.get("clientKey"), 160)
+        if not title or not client_key:
+            continue
+        task_id = _coerce_text(row.get("id"), 200) or f"task-{uuid4().hex[:12]}"
+        normalised_rows.append(
+            {
+                "id": task_id,
+                "title": title,
+                "clientKey": client_key,
+                "status": _task_tracker_normalise_status(row.get("status")),
+                "priority": _task_tracker_normalise_priority(row.get("priority")),
+                "dueDate": _coerce_text(row.get("dueDate"), 40),
+                "createdAt": _coerce_text(row.get("createdAt"), 80),
+                "updatedAt": _coerce_text(row.get("updatedAt"), 80),
+                "source": _coerce_text(row.get("source"), 40) or "manual",
+                "serviceKey": _coerce_text(row.get("serviceKey"), 80),
+                "periodMonth": _coerce_text(row.get("periodMonth"), 20),
+                "completionReason": _coerce_text(row.get("completionReason"), 200),
+            }
+        )
+    return normalised_rows
+
+
+def load_task_tracker_state(user: dict) -> dict:
+    user_id = str((user or {}).get("id") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT rows, updated_at
+                FROM ch_task_tracker_shared_state
+                WHERE singleton_id = 1
+                LIMIT 1
+                """,
+            )
+            row = cursor.fetchone() or {}
+            if not row and user_id:
+                cursor.execute(
+                    """
+                    SELECT rows, updated_at
+                    FROM ch_task_tracker_state
+                    WHERE user_id = %s::uuid
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                )
+                row = cursor.fetchone() or {}
+        connection.commit()
+    rows = _normalise_task_tracker_rows(row.get("rows"))
+    updated_at = row.get("updated_at").isoformat() if row.get("updated_at") else ""
+    return {"rows": rows, "updatedAt": updated_at}
+
+
+def save_task_tracker_state(user: dict, payload: dict | None = None) -> dict:
+    user_id = str((user or {}).get("id") or "").strip() or None
+    body = payload if isinstance(payload, dict) else {}
+    rows = _normalise_task_tracker_rows(body.get("rows"))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ch_task_tracker_shared_state (
+                    singleton_id,
+                    rows,
+                    updated_by_user_id,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    1,
+                    %s::jsonb,
+                    %s,
+                    NOW(),
+                    NOW()
+                )
+                ON CONFLICT (singleton_id) DO UPDATE
+                SET rows = EXCLUDED.rows,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = NOW()
+                RETURNING updated_at
+                """,
+                (json.dumps(rows), user_id),
+            )
+            saved = cursor.fetchone() or {}
+        connection.commit()
+    updated_at = saved.get("updated_at").isoformat() if saved.get("updated_at") else ""
+    return {"rows": rows, "updatedAt": updated_at}
 
 
 def update_auth_code_register_row(user: dict, row_id: str, payload: dict) -> dict:
@@ -5981,6 +6108,12 @@ def _auth_register_timeline_label(event_type: str) -> str:
         "client_links_auto_matched": "Client links auto-matched",
         "xero_match_updated": "Xero organisation match updated",
         "ignition_match_updated": "Ignition client match updated",
+        "client_file_accessed": "Client file accessed",
+        "client_task_completed": "Task completed",
+        "client_task_restored": "Task restored",
+        "client_flow_started": "Workflow started",
+        "client_email_sent": "Email sent",
+        "client_email_received": "Email received",
     }
     if kind in known_labels:
         return known_labels[kind]
@@ -6007,9 +6140,23 @@ def _auth_register_timeline_compact_text(value: object, limit: int = 140) -> str
 def _auth_register_timeline_body(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""
+    direction = str(payload.get("direction") or "").strip().lower()
+    subject = str(payload.get("subject") or "").strip()
+    snippet = str(payload.get("snippet") or "").strip()
+    if direction in {"sent", "received"} or subject or snippet:
+        if subject:
+            return _auth_register_timeline_compact_text(subject, 220)
+        if snippet:
+            return _auth_register_timeline_compact_text(snippet, 220)
+        action_hint = "Email sent" if direction == "sent" else "Email received" if direction == "received" else ""
+        if action_hint:
+            return action_hint
     note_text = str(payload.get("note") or "").strip()
     if note_text:
         return _auth_register_timeline_compact_text(note_text, 500)
+    action_text = str(payload.get("action") or "").strip()
+    if action_text:
+        return _auth_register_timeline_compact_text(action_text, 220)
     change_rows = payload.get("changes")
     if isinstance(change_rows, list) and change_rows:
         parts: list[str] = []
@@ -6026,7 +6173,7 @@ def _auth_register_timeline_body(payload: object) -> str:
         if extra_count:
             parts.append(f"+{extra_count} more change{'s' if extra_count != 1 else ''}")
         if parts:
-            return " • ".join(parts)
+            return f"{len(parts)} field update{'s' if len(parts) != 1 else ''}"
     parts: list[str] = []
     for key, value in list(payload.items())[:4]:
         if isinstance(value, (dict, list)):
@@ -6035,7 +6182,56 @@ def _auth_register_timeline_body(payload: object) -> str:
         if not text or text == "—":
             continue
         parts.append(f"{_auth_register_timeline_compact_text(key, 60)}: {text}")
-    return " • ".join(parts)
+    return "; ".join(parts[:2])
+
+
+def _auth_register_timeline_details(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    direction = str(payload.get("direction") or "").strip().lower()
+    if direction in {"sent", "received"} or payload.get("subject") or payload.get("snippet"):
+        details: list[str] = []
+        subject = str(payload.get("subject") or "").strip()
+        snippet = str(payload.get("snippet") or "").strip()
+        mailbox = str(payload.get("mailbox") or "").strip()
+        from_value = payload.get("from")
+        to_value = payload.get("to")
+        if subject:
+            details.append(f"Subject: {_auth_register_timeline_compact_text(subject, 220)}")
+        if snippet:
+            details.append(f"Snippet: {_auth_register_timeline_compact_text(snippet, 260)}")
+        if isinstance(from_value, list) and from_value:
+            details.append(f"From: {_auth_register_timeline_compact_text(', '.join([str(item) for item in from_value[:5]]), 260)}")
+        if isinstance(to_value, list) and to_value:
+            details.append(f"To: {_auth_register_timeline_compact_text(', '.join([str(item) for item in to_value[:5]]), 260)}")
+        if mailbox:
+            details.append(f"Mailbox: {_auth_register_timeline_compact_text(mailbox, 180)}")
+        return details
+    note_text = str(payload.get("note") or "").strip()
+    if note_text:
+        return [_auth_register_timeline_compact_text(note_text, 500)]
+    change_rows = payload.get("changes")
+    if isinstance(change_rows, list) and change_rows:
+        details: list[str] = []
+        for item in change_rows[:12]:
+            if not isinstance(item, dict):
+                continue
+            field = _auth_register_timeline_compact_text(item.get("field"), 120)
+            before = _auth_register_timeline_compact_text(item.get("before"), 120)
+            after = _auth_register_timeline_compact_text(item.get("after"), 120)
+            if not field:
+                continue
+            details.append(f"{field}: {before} -> {after}")
+        return details
+    details: list[str] = []
+    for key, value in list(payload.items())[:12]:
+        if isinstance(value, (dict, list)):
+            continue
+        text = _auth_register_timeline_compact_text(value, 180)
+        if not text or text == "—":
+            continue
+        details.append(f"{_auth_register_timeline_compact_text(key, 90)}: {text}")
+    return details
 
 
 def _auth_register_timeline_source(event_type: str, payload: object) -> str:
@@ -6055,11 +6251,41 @@ def _auth_register_timeline_source(event_type: str, payload: object) -> str:
         return "Xero"
     if "ignition" in kind or "ignition" in source_raw:
         return "Ignition"
+    if "email" in kind or "email" in source_raw or "mailbox" in source_raw:
+        return "Email"
     if "auto" in kind or "automation" in source_raw:
         return "Automation"
-    if kind in {"client_profile_updated", "client_note_added"}:
+    if kind in {
+        "client_profile_updated",
+        "client_note_added",
+        "client_file_accessed",
+        "client_task_completed",
+        "client_task_restored",
+        "client_flow_started",
+        "client_email_sent",
+    }:
         return "User"
     return "System"
+
+
+def _auth_register_timeline_category(event_type: str, payload: object, source: str) -> str:
+    kind = str(event_type or "").strip().lower()
+    source_key = str(source or "").strip().lower()
+    if "access" in kind or "view" in kind:
+        return "access"
+    if "email" in kind:
+        return "email"
+    if "task" in kind:
+        return "task"
+    if "flow" in kind or "workflow" in kind:
+        return "flow"
+    if kind in {"client_profile_updated", "auth_code_register_row_updated"}:
+        return "field_update"
+    if "note" in kind:
+        return "note"
+    if "companies house" in source_key:
+        return "filing"
+    return "system"
 
 
 def _auth_register_timeline_actor(payload: object, source: str) -> str:
@@ -6085,12 +6311,22 @@ def _auth_register_timeline_entry(item: dict) -> dict:
     event_type = item.get("event_type") or ""
     payload = item.get("payload")
     source = _auth_register_timeline_source(event_type, payload)
+    actor = _auth_register_timeline_actor(payload, source)
+    category = _auth_register_timeline_category(event_type, payload, source)
+    title = _auth_register_timeline_label(event_type)
+    if str(event_type or "").strip().lower() == "client_file_accessed":
+        actor_name = actor if actor and actor not in {"System", "User"} else "User"
+        title = f"{actor_name} accessed client file"
+    details = _auth_register_timeline_details(payload)
     return {
         "at": item.get("created_at").isoformat() if item.get("created_at") else None,
-        "title": _auth_register_timeline_label(event_type),
+        "eventType": str(event_type or "").strip().lower(),
+        "category": category,
+        "title": title,
         "body": _auth_register_timeline_body(payload),
+        "details": details,
         "source": source,
-        "actor": _auth_register_timeline_actor(payload, source),
+        "actor": actor,
     }
 
 
@@ -6164,10 +6400,16 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
         ("vat", "memberState"): "VAT member state",
         ("vat", "vatNumber"): "VAT number",
         ("vat", "vatAddress"): "VAT address",
+        ("vat", "taskAutomation.cadence"): "VAT task cadence",
+        ("vat", "taskAutomation.monthlyDueDay"): "VAT monthly due day",
+        ("vat", "taskAutomation.weeklyDueWeekday"): "VAT weekly due weekday",
         ("payroll", "employersPayeReference"): "Employer PAYE reference",
         ("payroll", "accountsOfficeReference"): "Accounts Office reference",
         ("payroll", "firstPayday"): "First payday",
         ("payroll", "rtiDeadline"): "RTI deadline",
+        ("payroll", "taskAutomation.cadence"): "Payroll task cadence",
+        ("payroll", "taskAutomation.monthlyDueDay"): "Payroll monthly due day",
+        ("payroll", "taskAutomation.weeklyDueWeekday"): "Payroll weekly due weekday",
         ("p11d", "nextReturnDueDate"): "Next P11D due date",
         ("p11d", "latestSubmittedDate"): "Latest P11D submitted date",
         ("selfAssessment", "nextReturnDueDate"): "Self Assessment next due date",
@@ -6177,7 +6419,16 @@ def _auth_register_collect_profile_changes(before: dict, after: dict) -> list[di
     for (section_key, field_key), label in service_detail_fields.items():
         before_section = before_service_details.get(section_key) if isinstance(before_service_details.get(section_key), dict) else {}
         after_section = after_service_details.get(section_key) if isinstance(after_service_details.get(section_key), dict) else {}
-        add_change(label, before_section.get(field_key), after_section.get(field_key))
+        if "." in field_key:
+            path = field_key.split(".")
+            before_value: object = before_section
+            after_value: object = after_section
+            for token in path:
+                before_value = before_value.get(token) if isinstance(before_value, dict) else None
+                after_value = after_value.get(token) if isinstance(after_value, dict) else None
+            add_change(label, before_value, after_value)
+        else:
+            add_change(label, before_section.get(field_key), after_section.get(field_key))
 
     before_juk = before.get("jukInvoices") if isinstance(before.get("jukInvoices"), dict) else {}
     after_juk = after.get("jukInvoices") if isinstance(after.get("jukInvoices"), dict) else {}
@@ -6726,7 +6977,12 @@ def _auth_register_ignition_engagement_letters(
     }
 
 
-def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ignition_letters: bool = True) -> dict:
+def get_auth_register_client_page(
+    row_id: str,
+    user: dict | None = None,
+    sync_ignition_letters: bool = True,
+    record_access: bool = True,
+) -> dict:
     safe_row_id = str(row_id or "").strip()
     if not safe_row_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
@@ -6737,6 +6993,31 @@ def get_auth_register_client_page(row_id: str, user: dict | None = None, sync_ig
             row = _auth_register_client_page_row(cursor, safe_row_id)
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            if user_id and record_access:
+                actor_name = _coerce_text(
+                    (user or {}).get("name")
+                    or (user or {}).get("full_name")
+                    or (user or {}).get("email")
+                    or "User",
+                    120,
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_auth_code_register', %s, 'client_file_accessed', %s::jsonb, %s)
+                    """,
+                    (
+                        safe_row_id,
+                        json.dumps(
+                            {
+                                "source": "client_page",
+                                "actorName": actor_name,
+                                "action": "Viewed client file",
+                            }
+                        ),
+                        user_id,
+                    ),
+                )
             normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
                 str(row.get("display_name") or "").lower(), 250
             )
@@ -7315,7 +7596,7 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 ),
             )
         connection.commit()
-    return get_auth_register_client_page(safe_row_id, user, sync_ignition_letters=False)
+    return get_auth_register_client_page(safe_row_id, user, sync_ignition_letters=False, record_access=False)
 
 
 def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:
@@ -7370,6 +7651,260 @@ def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None 
             "createdByName": created.get("created_by_name") or "",
             "createdAt": created.get("created_at").isoformat() if created.get("created_at") else None,
         }
+    }
+
+
+def add_auth_register_timeline_event(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    if not safe_row_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
+    body = payload if isinstance(payload, dict) else {}
+    raw_event_type = _coerce_text(body.get("eventType"), 80).lower()
+    event_type = re.sub(r"[^a-z0-9_]+", "_", raw_event_type).strip("_") or "client_activity"
+    note = _coerce_text(body.get("note"), 1000)
+    source = _coerce_text(body.get("source"), 120) or "User"
+    action = _coerce_text(body.get("action"), 220)
+    actor_name = _coerce_text(
+        body.get("actorName")
+        or user.get("name")
+        or user.get("full_name")
+        or user.get("email")
+        or "User",
+        120,
+    )
+    user_id = _coerce_text(user.get("id"), 120) or None
+    created_row: dict | None = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _auth_register_client_page_row(cursor, safe_row_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
+            event_payload = {
+                "source": source,
+                "actorName": actor_name,
+                "note": note,
+                "action": action,
+            }
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', %s, %s, %s::jsonb, %s)
+                RETURNING created_at, event_type, payload
+                """,
+                (
+                    safe_row_id,
+                    event_type,
+                    json.dumps(event_payload),
+                    user_id,
+                ),
+            )
+            created_row = cursor.fetchone() or {}
+        connection.commit()
+    return {"timelineEntry": _auth_register_timeline_entry(created_row or {})}
+
+
+def _normalise_email_list(value: object) -> list[str]:
+    values: list[str] = []
+    if isinstance(value, str):
+        values = re.split(r"[,\s;]+", value)
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                values.extend(re.split(r"[,\s;]+", item))
+            elif isinstance(item, dict):
+                candidate = _coerce_text(item.get("email") or item.get("address"), 250)
+                if candidate:
+                    values.extend(re.split(r"[,\s;]+", candidate))
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = _coerce_text(item, 250).lower().strip("<>\"' ")
+        if "@" not in text:
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        cleaned.append(text)
+    return cleaned
+
+
+def _email_domain(value: str) -> str:
+    text = _coerce_text(value, 250).lower()
+    if "@" not in text:
+        return ""
+    return text.split("@", 1)[1].strip()
+
+
+def _email_event_kind(direction: str) -> str:
+    safe = str(direction or "").strip().lower()
+    if safe == "received":
+        return "client_email_received"
+    return "client_email_sent"
+
+
+def _auth_register_row_email_candidates(cursor) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT r.id,
+               r.company_number,
+               r.client_id,
+               COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
+               COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name
+        FROM ch_auth_code_register r
+        LEFT JOIN ch_companies c
+          ON c.company_number = r.company_number
+        """
+    )
+    return cursor.fetchall() or []
+
+
+def log_auth_register_email_activity(user: dict, payload: dict | None = None) -> dict:
+    body = payload if isinstance(payload, dict) else {}
+    events_input = body.get("events") if isinstance(body.get("events"), list) else [body]
+    user_id = _coerce_text((user or {}).get("id"), 120) or None
+    actor_name = _coerce_text(
+        (user or {}).get("name")
+        or (user or {}).get("full_name")
+        or (user or {}).get("email")
+        or "User",
+        120,
+    )
+    processed = 0
+    created = 0
+    matched_rows: list[dict] = []
+    unmatched = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            candidates = _auth_register_row_email_candidates(cursor)
+            for item in events_input:
+                if not isinstance(item, dict):
+                    continue
+                processed += 1
+                direction = _coerce_text(item.get("direction"), 20).lower() or "sent"
+                event_type = _email_event_kind(direction)
+                subject = _coerce_text(item.get("subject"), 400)
+                snippet = _coerce_text(item.get("snippet"), 1200)
+                mailbox = _coerce_text(item.get("mailbox"), 200)
+                provider = _coerce_text(item.get("provider"), 80)
+                message_id = _coerce_text(item.get("messageId"), 220)
+                occurred_at = _coerce_text(item.get("occurredAt"), 80)
+                from_list = _normalise_email_list(item.get("from"))
+                to_list = _normalise_email_list(item.get("to"))
+                cc_list = _normalise_email_list(item.get("cc"))
+                bcc_list = _normalise_email_list(item.get("bcc"))
+                participants = _normalise_email_list(item.get("participants"))
+                addresses = list(dict.fromkeys(from_list + to_list + cc_list + bcc_list + participants))
+                domains = [value for value in dict.fromkeys([_email_domain(address) for address in addresses]) if value]
+                client_hints = item.get("clientHints") if isinstance(item.get("clientHints"), dict) else {}
+                hint_row_id = _coerce_text(client_hints.get("rowId"), 120)
+                hint_company_number = normalise_company_number(client_hints.get("companyNumber"))
+                hint_client_id = _coerce_text(client_hints.get("clientId"), 120).lower()
+                allow_domain_match = bool(
+                    item.get("allowDomainMatch")
+                    or client_hints.get("allowDomainMatch")
+                    or client_hints.get("largeClient")
+                )
+
+                scored: list[tuple[int, dict, str]] = []
+                for row in candidates:
+                    row_id = str(row.get("id") or "").strip()
+                    if not row_id:
+                        continue
+                    score = 0
+                    match_type = ""
+                    if hint_row_id and row_id == hint_row_id:
+                        score += 200
+                        match_type = "row_hint"
+                    contact_email = _coerce_text(row.get("contact_email"), 250).lower()
+                    contact_domain = _email_domain(contact_email)
+                    if contact_email and contact_email in addresses:
+                        score += 100
+                        match_type = "email"
+                    elif contact_domain and contact_domain in domains and (allow_domain_match or hint_row_id or hint_company_number or hint_client_id):
+                        score += 40
+                        match_type = "domain"
+                    if hint_company_number and normalise_company_number(row.get("company_number")) == hint_company_number:
+                        score += 20
+                    if hint_client_id and _coerce_text(row.get("client_id"), 120).lower() == hint_client_id:
+                        score += 15
+                    if score > 0:
+                        scored.append((score, row, match_type or "heuristic"))
+
+                scored.sort(key=lambda value: value[0], reverse=True)
+                selected = scored[:25]
+                if not selected:
+                    unmatched += 1
+                    continue
+
+                for score_value, row, match_type in selected:
+                    row_id = str(row.get("id") or "").strip()
+                    if not row_id:
+                        continue
+                    if message_id:
+                        cursor.execute(
+                            """
+                            SELECT 1
+                            FROM audit_events
+                            WHERE entity_type = 'ch_auth_code_register'
+                              AND entity_id = %s
+                              AND event_type = %s
+                              AND payload->>'messageId' = %s
+                            LIMIT 1
+                            """,
+                            (row_id, event_type, message_id),
+                        )
+                        if cursor.fetchone():
+                            continue
+                    payload_row = {
+                        "source": "mailbox",
+                        "provider": provider or "mailbox",
+                        "mailbox": mailbox,
+                        "messageId": message_id,
+                        "subject": subject,
+                        "snippet": snippet,
+                        "direction": direction,
+                        "from": from_list,
+                        "to": to_list,
+                        "cc": cc_list,
+                        "bcc": bcc_list,
+                        "participants": addresses,
+                        "domains": domains,
+                        "matchType": match_type,
+                        "matchScore": score_value,
+                        "actorName": actor_name,
+                        "action": f"Email {direction}",
+                    }
+                    if occurred_at:
+                        payload_row["occurredAt"] = occurred_at
+                    cursor.execute(
+                        """
+                        INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                        VALUES ('ch_auth_code_register', %s, %s, %s::jsonb, %s)
+                        """,
+                        (
+                            row_id,
+                            event_type,
+                            json.dumps(payload_row),
+                            user_id,
+                        ),
+                    )
+                    created += 1
+                    matched_rows.append(
+                        {
+                            "rowId": row_id,
+                            "displayName": _coerce_text(row.get("display_name"), 250),
+                            "companyNumber": _coerce_text(row.get("company_number"), 40),
+                            "clientId": _coerce_text(row.get("client_id"), 120),
+                            "matchType": match_type,
+                            "matchScore": score_value,
+                        }
+                    )
+        connection.commit()
+    return {
+        "processedEvents": processed,
+        "createdTimelineEvents": created,
+        "unmatchedEvents": unmatched,
+        "matches": matched_rows,
     }
 
 
