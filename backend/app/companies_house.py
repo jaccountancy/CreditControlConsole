@@ -7131,7 +7131,7 @@ def get_auth_register_client_page(
     safe_row_id = str(row_id or "").strip()
     if not safe_row_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
-    user_id = _coerce_text((user or {}).get("id"), 120) if isinstance(user, dict) else ""
+    user_id = _coerce_user_uuid((user or {}).get("id") if isinstance(user, dict) else None)
     payroll_fallback: dict[str, str] = {}
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -7146,23 +7146,27 @@ def get_auth_register_client_page(
                     or "User",
                     120,
                 )
-                cursor.execute(
-                    """
-                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
-                    VALUES ('ch_auth_code_register', %s, 'client_file_accessed', %s::jsonb, %s)
-                    """,
-                    (
-                        safe_row_id,
-                        json.dumps(
-                            {
-                                "source": "client_page",
-                                "actorName": actor_name,
-                                "action": "Viewed client file",
-                            }
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                        VALUES ('ch_auth_code_register', %s, 'client_file_accessed', %s::jsonb, %s)
+                        """,
+                        (
+                            safe_row_id,
+                            json.dumps(
+                                {
+                                    "source": "client_page",
+                                    "actorName": actor_name,
+                                    "action": "Viewed client file",
+                                }
+                            ),
+                            user_id,
                         ),
-                        user_id,
-                    ),
-                )
+                    )
+                except (pg_errors.UndefinedTable, pg_errors.InvalidTextRepresentation, pg_errors.ForeignKeyViolation):
+                    # Access logging should never block client-page rendering.
+                    logger.warning("Skipping access audit insert for client-page row %s", safe_row_id)
             normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
                 str(row.get("display_name") or "").lower(), 250
             )
