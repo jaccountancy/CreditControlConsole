@@ -5558,6 +5558,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                            company_number,
                            company_name,
                            client_name,
+                           normalised_name,
                            client_type,
                            client_manager,
                            client_id,
@@ -5567,6 +5568,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                            contact_email,
                            contact_phone,
                            client_address,
+                           code_encrypted,
                            code_hint,
                            source_filename,
                            uploaded_at
@@ -5589,6 +5591,8 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        COALESCE(NULLIF(c.contact_email, ''), r.contact_email) AS contact_email,
                        COALESCE(NULLIF(c.contact_phone, ''), r.contact_phone) AS contact_phone,
                        COALESCE(NULLIF(c.client_address, ''), r.client_address) AS client_address,
+                       r.normalised_name,
+                       r.code_encrypted,
                        r.code_hint,
                        r.source_filename,
                        r.uploaded_at,
@@ -5604,6 +5608,18 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 (safe_limit,),
             )
             rows = cursor.fetchall() or []
+            for row in rows:
+                register_id = _coerce_text(row.get("id"), 120)
+                register_number = _coerce_text(row.get("company_number"), 40)
+                register_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
+                    str(row.get("display_name") or "").lower(), 250
+                )
+                row["auth_code"] = _decrypt_register_auth_code(
+                    _coerce_text(row.get("code_encrypted"), 5000),
+                    register_id,
+                    register_number,
+                    register_name,
+                )
             cursor.execute("SELECT COUNT(*) AS total FROM ch_auth_code_register")
             total_row = cursor.fetchone() or {}
         connection.commit()

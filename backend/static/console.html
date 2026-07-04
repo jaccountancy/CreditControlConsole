@@ -70312,7 +70312,8 @@
                 setText("companySecretarialWizardSnapshotManager", profile.manager || "Client Manager");
                 setText("companySecretarialWizardSnapshotSource", profile.tenantId || "Tenant not available");
                 setText("companySecretarialWizardSnapshotEmail", profile.companyNumber || "Company number not mapped");
-                setText("companySecretarialWizardSnapshotAuth", profile.authCodeHint ? `On file (${profile.authCodeHint})` : "Not stored");
+                const visibleAuthCode = String(profile.authCode || profile.filingAuthorityReference || profile.authCodeHint || "").trim();
+                setText("companySecretarialWizardSnapshotAuth", visibleAuthCode ? `On file (${visibleAuthCode})` : "Not stored");
 
                 const assignee = document.getElementById("companySecretarialWizardAssignee");
                 if (assignee && (force || !String(assignee.value || "").trim())) assignee.value = profile.manager || "Client Manager";
@@ -111422,7 +111423,7 @@
                 document.getElementById("identityVerificationEvidenceRefInput").value = details.evidenceRef;
                 document.getElementById("identityVerificationClientCheckedInput").checked = details.clientVerified;
                 const authCodeInput = document.getElementById("identityVerificationAuthCodeInput");
-                const authCodeHint = String(selectedCompany?.authCodeHint || "").trim();
+                const authCodeHint = String(selectedCompany?.authCode || selectedCompany?.filingAuthorityReference || selectedCompany?.authCodeHint || "").trim();
                 const authCodeOnFile = Boolean(selectedCompany?.authCodeOnFile);
                 if (authCodeInput) {
                     authCodeInput.value = "";
@@ -127788,6 +127789,7 @@
                     row.clientType,
                     row.clientId,
                     row.companyNumber,
+                    row.authCode,
                     row.authCodeHint,
                     row.clientManager,
                     row.vatNumber,
@@ -127822,6 +127824,7 @@
                         row?.clientType,
                         row?.clientId,
                         row?.companyNumber,
+                        row?.authCode,
                         row?.authCodeHint,
                         row?.clientManager,
                         row?.vatNumber,
@@ -127858,7 +127861,7 @@
 
             function authRegisterCellText(row, columnKey) {
                 if (columnKey === "uploadedAt") return row?.uploadedAt ? chFormatDateTime(row.uploadedAt) : "—";
-                if (columnKey === "authCodeHint") return row?.authCodeHint || "stored";
+                if (columnKey === "authCodeHint") return row?.authCode || row?.authCodeHint || "stored";
                 if (String(columnKey || "").startsWith("service_")) {
                     const serviceColumn = AUTH_REGISTER_SERVICE_COLUMNS.find((column) => column.key === columnKey);
                     const serviceKey = serviceColumn?.serviceKey || "";
@@ -133311,9 +133314,9 @@
                 setHidden("chRegisterClientPageInfoCompanyStatusWrap", isIndividual);
                 setHidden("chRegisterClientPageInfoCompanyUtr", isIndividual);
                 setHidden("chRegisterClientPageInfoDirectorsWrap", isIndividual);
-                setHidden("chRegisterClientPageInfoAuthCode", isIndividual);
+                setHidden("chRegisterClientPageInfoAuthCode", false);
                 setHidden("chRegisterClientPageInfoPersonalUtr", !isIndividual);
-                setHidden("chRegisterClientPageInfoPersonalChCodeWrap", true);
+                setHidden("chRegisterClientPageInfoPersonalChCodeWrap", false);
 
                 const openCompaniesHouseButton = document.getElementById("chRegisterClientPageOpenCompaniesHouseButton");
                 if (openCompaniesHouseButton) {
@@ -137817,7 +137820,7 @@
             }
 
             function chCompanyAuthCell(company) {
-                if (company.authCodeOnFile) return `<span class="ch-pill is-good">✓ ${escapeHTML(company.authCodeHint || "Stored")}</span>`;
+                if (company.authCodeOnFile) return `<span class="ch-pill is-good">✓ ${escapeHTML(company.authCode || company.filingAuthorityReference || company.authCodeHint || "Stored")}</span>`;
                 return `<span class="ch-pill is-warn">Missing</span>`;
             }
 
@@ -140150,7 +140153,7 @@
                     { label: "Last filed", value: company.lastFiledDate ? chFormatDate(company.lastFiledDate) : "—" },
                     { label: "Incorporated", value: company.incorporationDate ? chFormatDate(company.incorporationDate) : "—" },
                     { label: "Registered office", value: company.registeredOffice || "—" },
-                    { label: "Auth code", value: company.authCodeOnFile ? `On file (${company.authCodeHint || "stored"})` : "Not on file" },
+                    { label: "Auth code", value: company.authCodeOnFile ? `On file (${company.authCode || company.filingAuthorityReference || company.authCodeHint || "stored"})` : "Not on file" },
                     { label: "Officers", value: officers.length ? `${officers.length} on record` : "—" },
                     { label: "PSCs", value: pscs.length ? `${pscs.length} on record` : "—" },
                 ].map((item) => `<div><span>${escapeHTML(item.label)}</span><strong>${escapeHTML(String(item.value))}</strong></div>`).join("");
