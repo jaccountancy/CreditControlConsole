@@ -5493,12 +5493,70 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
 
 def _normalise_auth_register_juk_invoices(value: object) -> dict:
     source = value if isinstance(value, dict) else {}
+    def _safe_float(raw_value: object, default: float = 0.0) -> float:
+        try:
+            if raw_value in (None, ""):
+                return default
+            return float(Decimal(str(raw_value)))
+        except Exception:
+            return default
+    raw_rows = source.get("invoiceRows") if isinstance(source.get("invoiceRows"), list) else []
+    invoice_rows: list[dict] = []
+    for row in raw_rows[:1000]:
+        if not isinstance(row, dict):
+            continue
+        row_id = _coerce_text(row.get("id"), 120) or _coerce_text(row.get("invoiceNumber"), 120)
+        if not row_id:
+            continue
+        invoice_rows.append(
+            {
+                "id": row_id,
+                "invoiceNumber": _coerce_text(row.get("invoiceNumber"), 120),
+                "invoiceDate": _coerce_text(row.get("invoiceDate"), 80),
+                "dueDate": _coerce_text(row.get("dueDate"), 80),
+                "total": _safe_float(row.get("total"), 0.0),
+                "amountDue": _safe_float(row.get("amountDue"), 0.0),
+                "paymentStatus": _coerce_text(row.get("paymentStatus"), 80),
+                "status": _coerce_text(row.get("status"), 80),
+                "clientName": _coerce_text(row.get("clientName"), 250),
+                "clientId": _coerce_text(row.get("clientId"), 120),
+                "clientEmail": _coerce_text(row.get("clientEmail"), 250),
+                "companyNumber": _coerce_text(row.get("companyNumber"), 40),
+                "source": _coerce_text(row.get("source"), 40),
+            }
+        )
+    raw_sync = source.get("tenantSyncByKey") if isinstance(source.get("tenantSyncByKey"), dict) else {}
+    tenant_sync_by_key: dict[str, dict] = {}
+    for key, payload in list(raw_sync.items())[:1000]:
+        safe_key = _coerce_text(key, 120)
+        if not safe_key or not isinstance(payload, dict):
+            continue
+        tenant_sync_by_key[safe_key] = {
+            "status": _coerce_text(payload.get("status"), 40),
+            "present": bool(payload.get("present")),
+            "billId": _coerce_text(payload.get("billId"), 120),
+            "message": _coerce_text(payload.get("message"), 400),
+            "checkedAt": _coerce_text(payload.get("checkedAt"), 80),
+        }
     return {
         "billingCycle": _coerce_text(source.get("billingCycle"), 80),
         "defaultTemplate": _coerce_text(source.get("defaultTemplate"), 120),
         "lastInvoiceDate": _coerce_text(source.get("lastInvoiceDate"), 80),
         "outstandingAmount": _coerce_text(source.get("outstandingAmount"), 80),
         "notes": _coerce_text(source.get("notes"), 3000),
+        "matchedCustomerId": _coerce_text(source.get("matchedCustomerId"), 120),
+        "matchedCustomerName": _coerce_text(source.get("matchedCustomerName"), 250),
+        "confidence": max(0.0, min(1.0, _safe_float(source.get("confidence"), 0.0))),
+        "matchedBy": _coerce_text(source.get("matchedBy"), 160),
+        "lastSyncAt": _coerce_text(source.get("lastSyncAt"), 80),
+        "outstandingTotal": _safe_float(source.get("outstandingTotal"), 0.0),
+        "incrementalSummary": {
+            "createdCount": _bounded_int((source.get("incrementalSummary") or {}).get("createdCount"), 0, 0, 1000000),
+            "updatedCount": _bounded_int((source.get("incrementalSummary") or {}).get("updatedCount"), 0, 0, 1000000),
+        },
+        "invoiceRows": invoice_rows,
+        "tenantSyncByKey": tenant_sync_by_key,
+        "tenantSyncAt": _coerce_text(source.get("tenantSyncAt"), 80),
     }
 
 
@@ -7478,13 +7536,31 @@ async def sync_client_page_juk_invoice_presence(user: dict, row_id: str, payload
     invoices = payload.get("invoices")
     if not isinstance(invoices, list) or not invoices:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide at least one invoice to sync.")
+    check_outstanding_only = bool(payload.get("checkOutstandingOnly"))
     connection_row = xero_connection_for_user_tenant(user, requested_tenant_id, include_fallback=False)
+    checked_by_number: dict[str, tuple[bool, str]] = {}
     rows: list[dict] = []
     for item in invoices[:500]:
         invoice = item if isinstance(item, dict) else {}
         invoice_key = _client_page_juk_invoice_key(invoice)
         invoice_number = _coerce_text(invoice.get("invoiceNumber"), 120)
+        amount_due = _coerce_decimal(invoice.get("amountDue"), "jukInvoices.amountDue")
+        payment_status_text = _coerce_text(invoice.get("paymentStatus"), 80).lower()
+        status_text = _coerce_text(invoice.get("status"), 80).lower()
+        is_paid = bool(amount_due <= Decimal("0.01")) or any(token in f"{payment_status_text} {status_text}" for token in ("paid", "settled", "completed"))
         if not invoice_key:
+            continue
+        if check_outstanding_only and is_paid:
+            rows.append(
+                {
+                    "invoiceKey": invoice_key,
+                    "invoiceNumber": invoice_number,
+                    "present": True,
+                    "billId": "",
+                    "status": "skipped",
+                    "message": "Paid invoice skipped from Xero sync check.",
+                }
+            )
             continue
         if not invoice_number:
             rows.append(
@@ -7499,7 +7575,11 @@ async def sync_client_page_juk_invoice_presence(user: dict, row_id: str, payload
             )
             continue
         try:
-            present, bill_id = await _client_page_juk_destination_bill_for_number(connection_row, invoice_number)
+            if invoice_number in checked_by_number:
+                present, bill_id = checked_by_number[invoice_number]
+            else:
+                present, bill_id = await _client_page_juk_destination_bill_for_number(connection_row, invoice_number)
+                checked_by_number[invoice_number] = (present, bill_id)
             rows.append(
                 {
                     "invoiceKey": invoice_key,

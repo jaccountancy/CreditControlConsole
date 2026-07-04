@@ -120318,6 +120318,7 @@
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
+                    jukInvoicePersisting: false,
                     jukInvoiceTenantSyncBusy: false,
                     jukInvoiceTenantSyncByKey: {},
                     jukInvoiceTenantSyncAt: "",
@@ -128529,6 +128530,7 @@
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
+                    jukInvoicePersisting: false,
                     jukInvoiceTenantSyncBusy: false,
                     jukInvoiceTenantSyncByKey: {},
                     jukInvoiceTenantSyncAt: "",
@@ -131274,9 +131276,13 @@
 
             function clientRegisterJukInvoicesForRow(row = {}) {
                 const pageState = companiesHouseSettings?.authRegisterClientPage || {};
+                const payload = clientPagePayload() || {};
+                const profile = payload?.profile || {};
+                const persistedJuk = profile?.jukInvoices && typeof profile.jukInvoices === "object" ? profile.jukInvoices : {};
                 const lookup = pageState?.jukInvoiceLookup || {};
                 const lookupRows = Array.isArray(lookup?.rows) ? lookup.rows : [];
-                let rows = lookupRows.length ? lookupRows : clientRegisterJukInvoicesFromBatchMatch(row);
+                const persistedRows = Array.isArray(persistedJuk?.invoiceRows) ? persistedJuk.invoiceRows : [];
+                let rows = lookupRows.length ? lookupRows : (persistedRows.length ? persistedRows : clientRegisterJukInvoicesFromBatchMatch(row));
                 if (!rows.length) {
                     const candidates = clientRegisterJukCustomerCandidates(row);
                     const preferredCandidate = candidates.find((candidate) => Number(candidate?.invoiceCount || 0) > 0) || candidates[0] || null;
@@ -131290,7 +131296,8 @@
                     return !!(hasId || hasName);
                 });
                 if (rowsWithIdentity.length) {
-                    rows = rows.filter((invoice) => clientRegisterJukInvoiceMatchesRow(invoice, row));
+                    const matchedRows = rows.filter((invoice) => clientRegisterJukInvoiceMatchesRow(invoice, row));
+                    if (matchedRows.length) rows = matchedRows;
                 }
                 return rows
                     .filter((invoice) => {
@@ -131308,6 +131315,109 @@
                 return String(invoice?.id || invoice?.invoiceNumber || "").trim();
             }
 
+            function clientRegisterBuildPersistedJukInvoicesPayload() {
+                const payload = clientPagePayload() || {};
+                const profile = payload?.profile || {};
+                const current = profile?.jukInvoices && typeof profile.jukInvoices === "object" ? profile.jukInvoices : {};
+                const pageState = companiesHouseSettings?.authRegisterClientPage || {};
+                const lookup = pageState?.jukInvoiceLookup && typeof pageState.jukInvoiceLookup === "object"
+                    ? pageState.jukInvoiceLookup
+                    : {};
+                const lookupRows = Array.isArray(lookup?.rows) ? lookup.rows : [];
+                const syncMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                    ? pageState.jukInvoiceTenantSyncByKey
+                    : (current?.tenantSyncByKey && typeof current.tenantSyncByKey === "object" ? current.tenantSyncByKey : {});
+                const syncEntries = Object.entries(syncMap).slice(0, 1000);
+                const normalisedSyncMap = {};
+                syncEntries.forEach(([invoiceKey, value]) => {
+                    const key = String(invoiceKey || "").trim();
+                    if (!key || !value || typeof value !== "object") return;
+                    normalisedSyncMap[key] = {
+                        status: String(value.status || "").trim(),
+                        present: !!value.present,
+                        billId: String(value.billId || "").trim(),
+                        message: String(value.message || "").trim(),
+                        checkedAt: String(value.checkedAt || "").trim(),
+                    };
+                });
+                return {
+                    billingCycle: String(document.getElementById("chRegisterClientPageJukBillingCycle")?.value || current.billingCycle || ""),
+                    defaultTemplate: String(document.getElementById("chRegisterClientPageJukTemplate")?.value || current.defaultTemplate || ""),
+                    lastInvoiceDate: String(document.getElementById("chRegisterClientPageJukLastInvoiceDate")?.value || current.lastInvoiceDate || ""),
+                    outstandingAmount: String(document.getElementById("chRegisterClientPageJukOutstandingAmount")?.value || current.outstandingAmount || ""),
+                    notes: String(document.getElementById("chRegisterClientPageJukNotes")?.value || current.notes || ""),
+                    matchedCustomerId: String(lookup?.matchedCustomerId || current?.matchedCustomerId || "").trim(),
+                    matchedCustomerName: String(lookup?.matchedCustomerName || current?.matchedCustomerName || "").trim(),
+                    confidence: Number(lookup?.confidence ?? current?.confidence ?? 0) || 0,
+                    matchedBy: String(lookup?.matchedBy || current?.matchedBy || "").trim(),
+                    lastSyncAt: String(lookup?.lastSyncAt || current?.lastSyncAt || "").trim(),
+                    outstandingTotal: Number(lookup?.outstandingTotal ?? current?.outstandingTotal ?? 0) || 0,
+                    incrementalSummary: {
+                        createdCount: Number(lookup?.incrementalSummary?.createdCount ?? current?.incrementalSummary?.createdCount ?? 0) || 0,
+                        updatedCount: Number(lookup?.incrementalSummary?.updatedCount ?? current?.incrementalSummary?.updatedCount ?? 0) || 0,
+                    },
+                    invoiceRows: lookupRows.slice(0, 1000).map((invoice) => ({
+                        id: String(invoice?.id || invoice?.invoiceId || invoice?.xeroInvoiceId || invoice?.invoiceNumber || "").trim(),
+                        invoiceNumber: String(invoice?.invoiceNumber || invoice?.reference || invoice?.id || "").trim(),
+                        invoiceDate: String(invoice?.invoiceDate || invoice?.date || "").trim(),
+                        dueDate: String(invoice?.dueDate || "").trim(),
+                        total: Number(invoice?.total || 0) || 0,
+                        amountDue: Number(invoice?.amountDue || 0) || 0,
+                        paymentStatus: String(invoice?.paymentStatus || "").trim(),
+                        status: String(invoice?.status || "").trim(),
+                        clientName: String(invoice?.clientName || "").trim(),
+                        clientId: String(invoice?.clientId || "").trim(),
+                        clientEmail: String(invoice?.clientEmail || "").trim(),
+                        companyNumber: String(invoice?.companyNumber || "").trim(),
+                        source: String(invoice?.source || "").trim(),
+                    })).filter((invoice) => invoice.id || invoice.invoiceNumber),
+                    tenantSyncByKey: normalisedSyncMap,
+                    tenantSyncAt: String(pageState?.jukInvoiceTenantSyncAt || current?.tenantSyncAt || "").trim(),
+                };
+            }
+
+            async function persistClientRegisterJukInvoicesState(options = {}) {
+                const silent = options?.silent !== false;
+                const pageState = companiesHouseSettings?.authRegisterClientPage || {};
+                const rowId = String(pageState?.rowId || "").trim();
+                const payload = clientPagePayload() || {};
+                if (!rowId || !payload?.profile) return;
+                if (pageState?.jukInvoicePersisting) return;
+                const persistedJukInvoices = clientRegisterBuildPersistedJukInvoicesPayload();
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    jukInvoicePersisting: true,
+                };
+                try {
+                    const next = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ jukInvoices: persistedJukInvoices }),
+                        timeoutMs: 20000,
+                    });
+                    if (next && typeof next === "object") {
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...companiesHouseSettings.authRegisterClientPage,
+                            payload: next,
+                            jukInvoicePersisting: false,
+                        };
+                        renderClientRegisterClientPage();
+                    } else {
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...companiesHouseSettings.authRegisterClientPage,
+                            jukInvoicePersisting: false,
+                        };
+                    }
+                } catch (error) {
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoicePersisting: false,
+                    };
+                    if (!silent) {
+                        showToast(error?.message || "Unable to persist JUK invoice state.", "error");
+                    }
+                }
+            }
+
             async function syncClientRegisterJukInvoicesAgainstTenant(options = {}) {
                 const silent = !!options?.silent;
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
@@ -131319,7 +131429,7 @@
                 if (!rowId || !tenantId) return;
                 const invoices = clientRegisterJukInvoicesForRow(row);
                 if (!invoices.length) return;
-                const invoiceRows = invoices
+                const invoiceRowsAll = invoices
                     .map((invoice) => ({
                         id: clientRegisterJukInvoiceKey(invoice),
                         invoiceNumber: String(invoice?.invoiceNumber || "").trim(),
@@ -131328,9 +131438,39 @@
                         total: Number(invoice?.total || 0),
                         amountDue: Number(invoice?.amountDue || 0),
                         currency: "GBP",
+                        isPaid: (Number(invoice?.amountDue || 0) <= 0.01) || /paid|settled|completed/i.test(String(invoice?.paymentStatus || invoice?.status || "")),
                     }))
                     .filter((invoice) => invoice.id && invoice.invoiceNumber);
-                if (!invoiceRows.length) return;
+                if (!invoiceRowsAll.length) return;
+                const paidSyncMap = {};
+                invoiceRowsAll.forEach((invoice) => {
+                    if (!invoice.isPaid) return;
+                    paidSyncMap[invoice.id] = {
+                        status: "skipped",
+                        present: true,
+                        billId: "",
+                        message: "Paid invoice skipped from Xero sync check.",
+                        checkedAt: new Date().toISOString(),
+                    };
+                });
+                const invoiceRows = invoiceRowsAll.filter((invoice) => !invoice.isPaid);
+                if (!invoiceRows.length) {
+                    const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                        ? pageState.jukInvoiceTenantSyncByKey
+                        : {};
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukInvoiceTenantSyncBusy: false,
+                        jukInvoiceTenantSyncByKey: {
+                            ...currentMap,
+                            ...paidSyncMap,
+                        },
+                        jukInvoiceTenantSyncAt: new Date().toISOString(),
+                    };
+                    renderClientRegisterClientPage();
+                    void persistClientRegisterJukInvoicesState({ silent: true });
+                    return;
+                }
                 companiesHouseSettings.authRegisterClientPage = {
                     ...companiesHouseSettings.authRegisterClientPage,
                     jukInvoiceTenantSyncBusy: true,
@@ -131342,11 +131482,18 @@
                         body: JSON.stringify({
                             tenantId,
                             invoices: invoiceRows,
+                            checkOutstandingOnly: true,
                         }),
                     }, { rowId });
                     const result = response?.result && typeof response.result === "object" ? response.result : {};
                     const rows = Array.isArray(result?.rows) ? result.rows : [];
-                    const byKey = {};
+                    const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                        ? pageState.jukInvoiceTenantSyncByKey
+                        : {};
+                    const byKey = {
+                        ...currentMap,
+                        ...paidSyncMap,
+                    };
                     rows.forEach((entry) => {
                         const key = String(entry?.invoiceKey || "").trim();
                         if (!key) return;
@@ -131355,6 +131502,7 @@
                             present: !!entry?.present,
                             billId: String(entry?.billId || "").trim(),
                             message: String(entry?.message || "").trim(),
+                            checkedAt: String(result?.syncedAt || new Date().toISOString()),
                         };
                     });
                     companiesHouseSettings.authRegisterClientPage = {
@@ -131364,6 +131512,7 @@
                         jukInvoiceTenantSyncAt: String(result?.syncedAt || new Date().toISOString()),
                     };
                     renderClientRegisterClientPage();
+                    void persistClientRegisterJukInvoicesState({ silent: true });
                 } catch (error) {
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
@@ -131439,10 +131588,12 @@
                                 present: true,
                                 billId: String(result?.billId || "").trim(),
                                 message: String(result?.message || "Invoice copied to connected tenant.").trim(),
+                                checkedAt: new Date().toISOString(),
                             },
                         },
                     };
                     renderClientRegisterClientPage();
+                    void persistClientRegisterJukInvoicesState({ silent: true });
                     showToast(
                         result?.created ? "Invoice copied to connected Xero tenant." : "Invoice is already present in connected Xero tenant.",
                         "success"
@@ -131645,6 +131796,7 @@
                         jukInvoiceTenantSyncAt: "",
                     };
                     renderClientRegisterClientPage();
+                    void persistClientRegisterJukInvoicesState({ silent: true });
                     void syncClientRegisterJukInvoicesAgainstTenant({ silent: true });
                     window.setTimeout(() => {
                         const latest = companiesHouseSettings.authRegisterClientPage || {};
@@ -134080,10 +134232,24 @@
                 const jukFetchButton = document.getElementById("chRegisterClientPageJukFetchButton");
                 const jukFetchStatus = document.getElementById("chRegisterClientPageJukFetchStatus");
                 const jukActions = document.getElementById("chRegisterClientPageJukInvoiceActions");
-                const jukLookup = pageState?.jukInvoiceLookup || {};
+                const persistedLookupRows = Array.isArray(juk?.invoiceRows) ? juk.invoiceRows : [];
+                const jukLookup = pageState?.jukInvoiceLookup && typeof pageState.jukInvoiceLookup === "object"
+                    ? pageState.jukInvoiceLookup
+                    : (persistedLookupRows.length
+                        ? {
+                            matchedCustomerId: String(juk?.matchedCustomerId || "").trim(),
+                            matchedCustomerName: String(juk?.matchedCustomerName || "").trim(),
+                            confidence: Number(juk?.confidence || 0) || 0,
+                            matchedBy: String(juk?.matchedBy || "").trim(),
+                            lastSyncAt: String(juk?.lastSyncAt || "").trim(),
+                            rows: persistedLookupRows,
+                            outstandingTotal: Number(juk?.outstandingTotal || 0) || 0,
+                            incrementalSummary: (juk?.incrementalSummary && typeof juk.incrementalSummary === "object") ? juk.incrementalSummary : {},
+                        }
+                        : {});
                 const tenantSyncByKey = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
                     ? pageState.jukInvoiceTenantSyncByKey
-                    : {};
+                    : ((juk?.tenantSyncByKey && typeof juk.tenantSyncByKey === "object") ? juk.tenantSyncByKey : {});
                 const tenantSyncBusy = !!pageState?.jukInvoiceTenantSyncBusy;
                 const lookupAnimateUntil = Number(pageState?.jukInvoiceLookupAnimateUntil || 0);
                 const lookupAnimating = lookupAnimateUntil > Date.now();
@@ -134102,6 +134268,8 @@
                                 ? "Present in client Xero"
                                 : syncStatus === "missing"
                                     ? "Missing in client Xero"
+                                    : syncStatus === "skipped"
+                                        ? "Paid · no sync needed"
                                     : syncStatus === "error"
                                         ? "Sync check failed"
                                         : "Checking Xero…";
@@ -134109,6 +134277,8 @@
                                 ? "is-present"
                                 : syncStatus === "missing"
                                     ? "is-missing"
+                                    : syncStatus === "skipped"
+                                        ? "is-present"
                                     : syncStatus === "error"
                                         ? "is-error"
                                         : "";
@@ -134153,7 +134323,9 @@
                         const confidenceLabel = matchedName ? `AI confidence ${confidencePct}%` : "AI confidence pending";
                         const tenantSyncLabel = tenantSyncBusy
                             ? "Xero tenant sync checking…"
-                            : (pageState?.jukInvoiceTenantSyncAt ? `Xero tenant sync ${chFormatDateTime(pageState.jukInvoiceTenantSyncAt)}` : "Xero tenant sync pending");
+                            : ((pageState?.jukInvoiceTenantSyncAt || juk?.tenantSyncAt)
+                                ? `Xero tenant sync ${chFormatDateTime(pageState?.jukInvoiceTenantSyncAt || juk?.tenantSyncAt)}`
+                                : "Xero tenant sync pending");
                         const incremental = jukLookup?.incrementalSummary && typeof jukLookup.incrementalSummary === "object"
                             ? jukLookup.incrementalSummary
                             : {};
@@ -134592,6 +134764,23 @@
                         lastInvoiceDate: String(document.getElementById("chRegisterClientPageJukLastInvoiceDate")?.value || currentJukInvoices.lastInvoiceDate || ""),
                         outstandingAmount: String(document.getElementById("chRegisterClientPageJukOutstandingAmount")?.value || currentJukInvoices.outstandingAmount || ""),
                         notes: String(document.getElementById("chRegisterClientPageJukNotes")?.value || currentJukInvoices.notes || ""),
+                        matchedCustomerId: String(pageState?.jukInvoiceLookup?.matchedCustomerId || currentJukInvoices.matchedCustomerId || ""),
+                        matchedCustomerName: String(pageState?.jukInvoiceLookup?.matchedCustomerName || currentJukInvoices.matchedCustomerName || ""),
+                        confidence: Number(pageState?.jukInvoiceLookup?.confidence ?? currentJukInvoices.confidence ?? 0) || 0,
+                        matchedBy: String(pageState?.jukInvoiceLookup?.matchedBy || currentJukInvoices.matchedBy || ""),
+                        lastSyncAt: String(pageState?.jukInvoiceLookup?.lastSyncAt || currentJukInvoices.lastSyncAt || ""),
+                        outstandingTotal: Number(pageState?.jukInvoiceLookup?.outstandingTotal ?? currentJukInvoices.outstandingTotal ?? 0) || 0,
+                        incrementalSummary: {
+                            createdCount: Number(pageState?.jukInvoiceLookup?.incrementalSummary?.createdCount ?? currentJukInvoices?.incrementalSummary?.createdCount ?? 0) || 0,
+                            updatedCount: Number(pageState?.jukInvoiceLookup?.incrementalSummary?.updatedCount ?? currentJukInvoices?.incrementalSummary?.updatedCount ?? 0) || 0,
+                        },
+                        invoiceRows: Array.isArray(pageState?.jukInvoiceLookup?.rows)
+                            ? pageState.jukInvoiceLookup.rows.slice(0, 1000)
+                            : (Array.isArray(currentJukInvoices?.invoiceRows) ? currentJukInvoices.invoiceRows.slice(0, 1000) : []),
+                        tenantSyncByKey: pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                            ? pageState.jukInvoiceTenantSyncByKey
+                            : (currentJukInvoices?.tenantSyncByKey && typeof currentJukInvoices.tenantSyncByKey === "object" ? currentJukInvoices.tenantSyncByKey : {}),
+                        tenantSyncAt: String(pageState?.jukInvoiceTenantSyncAt || currentJukInvoices.tenantSyncAt || ""),
                     },
                 };
                 const profileChangedAreas = clientRegisterClientPageChangedAreas(profile, outbound);
