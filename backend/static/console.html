@@ -141236,21 +141236,12 @@
                 [
                     wireLoginButtons,
                     wireFailureDetailsPanel,
-                    wireSidebarNavigation,
                     wireSyncButtons,
                     wireFilters,
                     wireClientWorkspace,
                     wireSevenDayNoticeCard,
                     wireForms,
                     wireBulkActions,
-                    wireCompaniesHouseSettings,
-                    wireTaskTrackerUI,
-                    wireCompanySecretarialUI,
-                    wireHmrc648UI,
-                    wireCompaniesHouseUI,
-                    wireContactArchiveUI,
-                    wireSupplierReconciliationUI,
-                    bindClientCallStatsEvents,
                 ].forEach((wire) => {
                     try {
                         wire();
@@ -141258,23 +141249,59 @@
                         console.error(`Unable to initialise ${wire.name}`, error);
                     }
                 });
+                const scheduleDeferredWork = (task) => {
+                    if (typeof task !== "function") return;
+                    if (typeof window.requestIdleCallback === "function") {
+                        window.requestIdleCallback(() => {
+                            try {
+                                task();
+                            } catch (error) {
+                                console.error("Deferred startup task failed", error);
+                            }
+                        }, { timeout: 1500 });
+                        return;
+                    }
+                    window.setTimeout(() => {
+                        try {
+                            task();
+                        } catch (error) {
+                            console.error("Deferred startup task failed", error);
+                        }
+                    }, 0);
+                };
+                scheduleDeferredWork(() => {
+                    [
+                        wireCompaniesHouseSettings,
+                        wireTaskTrackerUI,
+                        wireCompanySecretarialUI,
+                        wireHmrc648UI,
+                        wireCompaniesHouseUI,
+                        wireContactArchiveUI,
+                        wireSupplierReconciliationUI,
+                        bindClientCallStatsEvents,
+                    ].forEach((wire) => {
+                        try {
+                            wire();
+                        } catch (error) {
+                            console.error(`Unable to initialise ${wire.name}`, error);
+                        }
+                    });
+                });
                 updateDedicatedLoadingScreen({
                     phase: "Syncing cloud data",
                     detail: "Fetching latest client, service, and billing records.",
                     progress: 52,
                 });
                 panelPayload = await hydrateFromAPI();
-                pullUserNotifications({ silent: true });
-                startNotificationPulling();
+                scheduleDeferredWork(() => {
+                    pullUserNotifications({ silent: true });
+                    startNotificationPulling();
+                });
                 updateDedicatedLoadingScreen({
                     phase: "Loading company workflows",
                     detail: "Finalising Companies House and register queue state in the background.",
                     progress: 74,
                 });
-                const companyQueuePromise = loadCompanySecretarialQueue()
-                    .catch((error) => {
-                        console.error("Unable to load company workflows in background", error);
-                    });
                 updateDedicatedLoadingScreen({
                     phase: "Applying live updates",
                     detail: "Painting your latest workspace view.",
@@ -141293,10 +141320,8 @@
                 if (activeView === "insights") {
                     loadInsights();
                 }
-                if (isIgnitionView()) {
+                if (activeView === "ignition" || activeView === "ignition-clients") {
                     loadIgnition();
-                } else {
-                    window.setTimeout(() => loadIgnition(), 0);
                 }
                 if (activeView === "me-report") {
                     loadMeReport();
@@ -141389,15 +141414,6 @@
                     phase: "Ready",
                     detail: "Workspace loaded successfully.",
                     progress: 100,
-                });
-                companyQueuePromise.then(() => {
-                    if (activeView === "confirmation-statements" || activeView === "client-auth-register") {
-                        try {
-                            renderAll();
-                        } catch (error) {
-                            console.error("Unable to refresh workspace after background company workflow load", error);
-                        }
-                    }
                 });
                 } catch (error) {
                     console.error("Unable to initialise workspace", error);

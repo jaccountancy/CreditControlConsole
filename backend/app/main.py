@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from .auth import (
     COOKIE_NAME,
@@ -394,6 +395,7 @@ SNACKCCOUNTANCY_PATH = BASE_DIR / "static" / "Snackccountancy.html"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(allowed_panel_origins()),
@@ -2542,9 +2544,9 @@ def logout(request: Request):
 def console_page(user: dict = Depends(require_user)):
     webpanel_index = WEB_PANEL_DIR / "index.html"
     if webpanel_index.exists():
-        return FileResponse(webpanel_index, headers={"Cache-Control": "no-store, max-age=0"})
+        return FileResponse(webpanel_index, headers={"Cache-Control": "no-cache, max-age=0, must-revalidate"})
     logger.warning("WebPanel index not found at %s; serving legacy console", webpanel_index)
-    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-store, max-age=0"})
+    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-cache, max-age=0, must-revalidate"})
 
 
 @app.get("/styles.css")
@@ -2573,7 +2575,7 @@ def webpanel_standalone(user: dict = Depends(require_user)):
 
 @app.get("/console", response_class=HTMLResponse)
 def legacy_console_page(user: dict = Depends(require_user)):
-    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-store, max-age=0"})
+    return FileResponse(LEGACY_CONSOLE_PATH, headers={"Cache-Control": "no-cache, max-age=0, must-revalidate"})
 
 
 @app.get("/snackccountancy", response_class=HTMLResponse)
