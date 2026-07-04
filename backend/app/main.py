@@ -3602,9 +3602,18 @@ async def api_companies_house_auth_code_register_update(
 def api_companies_house_auth_code_register_client_page(
     row_id: str,
     record_access: bool = Query(True),
+    sync_ignition_letters: bool = Query(False),
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", **get_auth_register_client_page(row_id, user, record_access=record_access)}
+    return {
+        "status": "ok",
+        **get_auth_register_client_page(
+            row_id,
+            user,
+            sync_ignition_letters=sync_ignition_letters,
+            record_access=record_access,
+        ),
+    }
 
 
 @app.patch("/api/companies-house/auth-code-register/{row_id}/client-page")

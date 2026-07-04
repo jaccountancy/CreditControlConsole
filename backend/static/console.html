@@ -133127,7 +133127,7 @@
                     button.textContent = "Syncing Ignition...";
                 }
                 try {
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page`);
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}/client-page?record_access=0&sync_ignition_letters=1`);
                     const latestState = companiesHouseSettings.authRegisterClientPage || {};
                     if (latestState.open && String(latestState.rowId || "").trim() === rowId) {
                         companiesHouseSettings.authRegisterClientPage = {
@@ -134495,7 +134495,7 @@
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
                 try {
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=1`);
+                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=1&sync_ignition_letters=0`);
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
@@ -134504,14 +134504,6 @@
                         jukSyncOutstandingOnly: payload?.profile?.jukInvoices?.syncOutstandingOnly !== false,
                     };
                     renderClientRegisterClientPage();
-                    const engagementLetters = Array.isArray(payload?.ignitionEngagementLetters) ? payload.ignitionEngagementLetters : [];
-                    if (!engagementLetters.length && isIgnitionConnected() && !isIgnitionSyncing) {
-                        window.setTimeout(() => {
-                            const latestState = companiesHouseSettings.authRegisterClientPage || {};
-                            if (!latestState.open || String(latestState.rowId || "").trim() !== safeRowId) return;
-                            void refreshClientRegisterEngagementLetters({ silentToast: true });
-                        }, 0);
-                    }
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
                     window.setTimeout(() => {
                         clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
