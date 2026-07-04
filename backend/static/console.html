@@ -134495,7 +134495,10 @@
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
                 try {
-                    const payload = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=1`);
+                    const payload = await requestJSON(
+                        `/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=1`,
+                        { suppressFailurePanel: true, timeoutMs: 15000 }
+                    );
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
@@ -134510,13 +134513,30 @@
                         clientRegisterAutoMatchClientLinks({ source: "automatic", promptForConfirmation: true });
                     }, 0);
                 } catch (error) {
+                    const existingRows = Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
+                    const fallbackRow = existingRows.find((item) => String(item?.id || "").trim() === safeRowId) || { id: safeRowId };
+                    const fallbackPayload = {
+                        row: fallbackRow,
+                        profile: {
+                            services: fallbackRow?.services || {},
+                            riskAssessment: fallbackRow?.riskAssessment || {},
+                            companiesHouse: fallbackRow?.companiesHouse || {},
+                            jukInvoices: fallbackRow?.jukInvoices || {},
+                            serviceDefinitions: [],
+                        },
+                        notes: [],
+                        timeline: [],
+                        ignitionEngagementLetters: [],
+                        degraded: true,
+                    };
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         loading: false,
                         loadingToastShown: false,
+                        payload: fallbackPayload,
                     };
                     renderClientRegisterClientPage();
-                    showToast(error?.message || "Unable to load client page.", "error");
+                    showToast("Client page opened in safe mode while live profile data reloads. You can continue working.", "warning");
                 }
             }
 
