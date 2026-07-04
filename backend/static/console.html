@@ -131170,6 +131170,26 @@
                             total,
                             amountDue,
                             paymentStatus,
+                            paymentDate: String(
+                                invoice?.paidAt
+                                || invoice?.paymentDate
+                                || invoice?.fullyPaidAt
+                                || invoice?.fullyPaidOn
+                                || invoice?.datePaid
+                                || ""
+                            ).trim(),
+                            paymentMethod: String(
+                                invoice?.paymentMethod
+                                || invoice?.paymentSource
+                                || invoice?.paymentChannel
+                                || ""
+                            ).trim(),
+                            paymentReference: String(
+                                invoice?.paymentReference
+                                || invoice?.paymentRef
+                                || invoice?.reference
+                                || ""
+                            ).trim(),
                             status: String(invoice?.status || "").trim() || "imported",
                             batchId,
                             source: "juksib",
@@ -131199,6 +131219,28 @@
                         total,
                         amountDue,
                         paymentStatus,
+                        paymentDate: String(
+                            invoice?.paymentDate
+                            || invoice?.paidAt
+                            || invoice?.fullyPaidAt
+                            || invoice?.fullyPaidOn
+                            || invoice?.datePaid
+                            || (Array.isArray(invoice?.payments) && invoice.payments[0]?.date)
+                            || ""
+                        ).trim(),
+                        paymentMethod: String(
+                            invoice?.paymentMethod
+                            || invoice?.paymentSource
+                            || invoice?.paymentChannel
+                            || (Array.isArray(invoice?.payments) && (invoice.payments[0]?.method || invoice.payments[0]?.type || invoice.payments[0]?.source))
+                            || ""
+                        ).trim(),
+                        paymentReference: String(
+                            invoice?.paymentReference
+                            || invoice?.paymentRef
+                            || (Array.isArray(invoice?.payments) && (invoice.payments[0]?.reference || invoice.payments[0]?.paymentReference))
+                            || ""
+                        ).trim(),
                         status: String(invoice?.controlStatus || invoice?.status || "").trim() || (amountDue <= 0.01 ? "paid" : "outstanding"),
                         clientName: String(
                             invoice?.jukContactName
@@ -133251,6 +133293,26 @@
                 return `Paid via ${sourceLabel}`;
             }
 
+            function clientRegisterInvoicePaidDateRaw(invoice = {}) {
+                return String(
+                    invoice?.paidAt
+                    || invoice?.paymentDate
+                    || invoice?.fullyPaidAt
+                    || invoice?.fullyPaidOn
+                    || invoice?.datePaid
+                    || ""
+                ).trim();
+            }
+
+            function clientRegisterInvoicePaymentReference(invoice = {}) {
+                return String(
+                    invoice?.paymentReference
+                    || invoice?.paymentRef
+                    || invoice?.reference
+                    || ""
+                ).trim();
+            }
+
             function clientRegisterHumaniseFilingToken(value) {
                 const token = String(value || "").trim();
                 if (!token) return "";
@@ -134312,23 +134374,19 @@
                 if (jukInvoicesBody) {
                     const clientInvoices = jukClientInvoices;
                     const outstanding = clientInvoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
+                    const hasTenantLink = Boolean(String(row?.xeroTenantId || row?.xero_tenant_id || "").trim());
                     jukInvoicesBody.innerHTML = clientInvoices.length
                         ? clientInvoices.slice(0, 500).map((invoice) => {
                             const amountDue = Number(invoice?.amountDue || 0);
                             const paymentStatusText = String(invoice?.paymentStatus || "").trim();
                             const statusText = String(invoice?.status || "imported").trim();
+                            const paidDateRaw = clientRegisterInvoicePaidDateRaw(invoice);
+                            const paidDateLabel = paidDateRaw ? formatDate(paidDateRaw) : "";
+                            const paymentSourceLabel = clientRegisterInvoicePaymentSourceLabel(invoice);
+                            const paymentReference = clientRegisterInvoicePaymentReference(invoice);
                             const invoiceKey = clientRegisterJukInvoiceKey(invoice);
                             const tenantSync = tenantSyncByKey[invoiceKey] || null;
                             const syncStatus = String(tenantSync?.status || "").trim().toLowerCase();
-                            const syncBubbleText = syncStatus === "present"
-                                ? "Present in client Xero"
-                                : syncStatus === "missing"
-                                    ? "Missing in client Xero"
-                                    : syncStatus === "skipped"
-                                        ? "Paid · no sync needed"
-                                    : syncStatus === "error"
-                                        ? "Sync check failed"
-                                        : "Checking Xero…";
                             const syncBubbleClass = syncStatus === "present"
                                 ? "is-present"
                                 : syncStatus === "missing"
@@ -134342,6 +134400,24 @@
                             const paidByAmount = Number.isFinite(amountDue) && amountDue <= 0;
                             const paidByStatus = /paid|settled|completed/i.test(`${paymentStatusText} ${statusText}`);
                             const isPaid = paidByAmount || paidByStatus;
+                            const syncBubbleText = syncStatus === "present"
+                                ? "Present in client Xero"
+                                : syncStatus === "missing"
+                                    ? "Missing in client Xero"
+                                    : syncStatus === "skipped"
+                                        ? "Paid · no sync needed"
+                                    : syncStatus === "error"
+                                        ? "Sync check failed"
+                                        : isPaid
+                                            ? "Paid · no sync needed"
+                                            : (hasTenantLink ? "Checking Xero…" : "Connect tenant to sync");
+                            const paymentCellMarkup = isPaid
+                                ? `<strong>${escapeHTML(paymentStatusText || "Paid")}</strong><small>${escapeHTML([
+                                    paidDateLabel ? `Paid ${paidDateLabel}` : "",
+                                    paymentSourceLabel || "",
+                                    paymentReference ? `Ref ${paymentReference}` : "",
+                                ].filter(Boolean).join(" · ") || "Payment recorded")}</small>`
+                                : escapeHTML(paymentStatusText || "—");
                             const rowClass = isPaid ? "is-paid" : "is-outstanding";
                             const hoverTitle = isPaid ? clientRegisterInvoiceHoverTitle(invoice) : "";
                             return `
@@ -134351,7 +134427,7 @@
                                 <td>${escapeHTML(invoice.dueDate ? formatDate(invoice.dueDate) : "—")}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.total || 0))}</td>
                                 <td>${escapeHTML(formatCurrency(invoice.amountDue || 0))}</td>
-                                <td>${escapeHTML(invoice.paymentStatus || "—")}</td>
+                                <td>${paymentCellMarkup}</td>
                                 <td>${escapeHTML(invoice.status || "imported")}</td>
                                 <td><span class="ch-juk-xero-sync-badge ${syncBubbleClass}" title="${escapeHTML(tenantSync?.message || syncBubbleText)}">${escapeHTML(syncBubbleText)}</span></td>
                                 <td>${showCopyButton ? `<button class="ch-juk-xero-copy-button" type="button" data-client-page-juk-copy="${escapeHTML(invoiceKey)}" ${tenantSyncBusy ? "disabled" : ""}>Copy to connected Xero</button>` : "—"}</td>
