@@ -131053,6 +131053,20 @@
                     });
                     node.addEventListener("change", (event) => {
                         if (!event?.isTrusted) return;
+                        if (id === "chRegisterClientPageInfoType") {
+                            const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                            const payload = pageState?.payload && typeof pageState.payload === "object" ? pageState.payload : null;
+                            const row = payload?.row && typeof payload.row === "object" ? payload.row : null;
+                            if (row) {
+                                row.clientType = String(node.value || row.clientType || "").trim();
+                                companiesHouseSettings.authRegisterClientPage = {
+                                    ...pageState,
+                                    payload,
+                                };
+                            }
+                            renderClientRegisterClientPage();
+                            setClientRegisterClientPageTab(String(pageState.activeTab || "client-info"));
+                        }
                         markClientRegisterClientPageDirty({ showPrompt: true });
                     });
                 });
@@ -131668,6 +131682,19 @@
                 return next;
             }
 
+            function clientRegisterApplyClientTypeServiceRules(servicesState = {}, row = {}) {
+                const next = { ...(servicesState || {}) };
+                const isIndividualClient = clientRegisterIsIndividualClient(row);
+                if (isIndividualClient) {
+                    next.accounts = false;
+                    next.ct600Return = false;
+                    next.confirmationStatement = false;
+                } else {
+                    next.selfAssessmentReturn = false;
+                }
+                return next;
+            }
+
             function clientRegisterServiceState(profileServices = {}, includeDraftServiceState = false) {
                 const next = {};
                 Object.entries(profileServices || {}).forEach(([key, value]) => {
@@ -131680,7 +131707,11 @@
                         next[key] = !!checkbox.checked;
                     });
                 }
-                return clientRegisterApplyLinkedServiceRules(next);
+                const payload = clientPagePayload() || {};
+                return clientRegisterApplyClientTypeServiceRules(
+                    clientRegisterApplyLinkedServiceRules(next),
+                    payload?.row || {}
+                );
             }
 
             function clientRegisterClientPageTabDefinitions({ includeDraftServiceState = false } = {}) {
@@ -131717,6 +131748,7 @@
                 ];
                 const visibilityFilteredCompositeTabs = compositeServiceTabs.filter((item) => {
                     if (isIndividualClient && item.id === "service-accounts-returns") return false;
+                    if (isIndividualClient && item.id === "service-confirmation-statement") return false;
                     if (!isIndividualClient && item.id === "service-self-assessment") return false;
                     return true;
                 });
@@ -131734,6 +131766,7 @@
                 const visibleServiceDefinitions = serviceDefinitions.filter((service) => {
                     const key = String(service?.key || "").trim();
                     if (isIndividualClient && (key === "accounts" || key === "ct600Return")) return false;
+                    if (isIndividualClient && key === "confirmationStatement") return false;
                     if (!isIndividualClient && key === "selfAssessmentReturn") return false;
                     return true;
                 });
@@ -133087,7 +133120,10 @@
                 if (!pageState.open) return;
                 const row = payload?.row || {};
                 const profile = payload?.profile || {};
-                const services = clientRegisterApplyLinkedServiceRules(profile?.services || {});
+                const services = clientRegisterApplyClientTypeServiceRules(
+                    clientRegisterApplyLinkedServiceRules(profile?.services || {}),
+                    row
+                );
                 const risk = profile?.riskAssessment || {};
                 const chMeta = profile?.companiesHouse || {};
                 const serviceDetails = chMeta?.serviceDetails || {};
@@ -133252,8 +133288,11 @@
                 assignReadOnly("chRegisterClientPageInfoAddress", clientAddress);
                 assignReadOnly("chRegisterClientPageInfoAuthCode", String(row?.authCode || row?.authCodeHint || "").trim());
                 fitClientInfoPrimaryFields();
-                assignReadOnly("chRegisterClientPageInfoCompanyUtr", String(row?.companyUtr || "").trim());
-                assignReadOnly("chRegisterClientPageInfoPersonalUtr", String(row?.personalUtr || "").trim());
+                const isIndividual = clientRegisterIsIndividualClient(row);
+                const companyUtr = String(row?.companyUtr || "").trim();
+                const personalUtr = String(row?.personalUtr || "").trim();
+                assignReadOnly("chRegisterClientPageInfoCompanyUtr", isIndividual ? "" : (companyUtr || personalUtr));
+                assignReadOnly("chRegisterClientPageInfoPersonalUtr", isIndividual ? (personalUtr || companyUtr) : "");
                 assignReadOnly("chRegisterClientPageInfoCompanyStatus", String(row?.companyStatus || "").trim());
                 assignReadOnly("chRegisterClientPageInfoPersonalChCode", String(row?.filingAuthorityReference || "").trim());
                 const directorsText = clientRegisterDirectorNamesFromOfficers(row?.officers || []);
@@ -133262,7 +133301,6 @@
                 renderClientRegisterDirectorsCards(row?.officers || [], directorsText, clientLinks);
                 renderClientRegisterAddressMap(clientAddress);
 
-                const isIndividual = clientRegisterIsIndividualClient(row);
                 const setHidden = (id, hidden) => {
                     const node = document.getElementById(id);
                     if (!node) return;
@@ -133273,8 +133311,9 @@
                 setHidden("chRegisterClientPageInfoCompanyStatusWrap", isIndividual);
                 setHidden("chRegisterClientPageInfoCompanyUtr", isIndividual);
                 setHidden("chRegisterClientPageInfoDirectorsWrap", isIndividual);
+                setHidden("chRegisterClientPageInfoAuthCode", isIndividual);
                 setHidden("chRegisterClientPageInfoPersonalUtr", !isIndividual);
-                setHidden("chRegisterClientPageInfoPersonalChCodeWrap", !isIndividual);
+                setHidden("chRegisterClientPageInfoPersonalChCodeWrap", true);
 
                 const openCompaniesHouseButton = document.getElementById("chRegisterClientPageOpenCompaniesHouseButton");
                 if (openCompaniesHouseButton) {
@@ -133713,6 +133752,7 @@
                 const visibleServiceDefinitions = serviceDefinitions.filter((service) => {
                     const key = String(service?.key || "").trim();
                     if (isIndividualClient && (key === "accounts" || key === "ct600Return")) return false;
+                    if (isIndividualClient && key === "confirmationStatement") return false;
                     if (!isIndividualClient && key === "selfAssessmentReturn") return false;
                     return true;
                 });
@@ -134345,7 +134385,10 @@
                     if (!key) return;
                     services[key] = !!checkbox.checked;
                 });
-                const linkedServices = clientRegisterApplyLinkedServiceRules(services);
+                const linkedServices = clientRegisterApplyClientTypeServiceRules(
+                    clientRegisterApplyLinkedServiceRules(services),
+                    { clientType: String(document.getElementById("chRegisterClientPageInfoType")?.value || payload?.row?.clientType || "").trim() }
+                );
                 const vatNumberInput = document.getElementById("chRegisterClientPageVatNumber");
                 const vatMemberStateInput = document.getElementById("chRegisterClientPageVatMemberState");
                 const normalisedVatNumber = clientRegisterNormaliseVatNumber(vatNumberInput?.value || "");
