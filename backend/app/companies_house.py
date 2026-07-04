@@ -7519,7 +7519,14 @@ def get_auth_register_client_page_safe(
             sync_ignition_letters=sync_ignition_letters,
             record_access=record_access,
         )
-    except HTTPException:
+    except HTTPException as exc:
+        if int(getattr(exc, "status_code", 500) or 500) >= 500:
+            logger.exception(
+                "Client-page render hit HTTP %s; returning fallback payload for row %s",
+                getattr(exc, "status_code", 500),
+                row_id,
+            )
+            return _auth_register_client_page_fallback_payload(row_id)
         raise
     except Exception:
         logger.exception("Client-page render failed; returning fallback payload for row %s", row_id)
