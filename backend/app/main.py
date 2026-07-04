@@ -56,7 +56,7 @@ from .companies_house import (
     export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
-    get_auth_register_client_page,
+    get_auth_register_client_page_safe,
     log_auth_register_email_activity,
     send_auth_register_client_email,
     sync_client_page_juk_invoice_presence,
@@ -3609,7 +3609,7 @@ def api_companies_house_auth_code_register_client_page(
 ):
     return {
         "status": "ok",
-        **get_auth_register_client_page(
+        **get_auth_register_client_page_safe(
             row_id,
             user,
             sync_ignition_letters=sync_ignition_letters,

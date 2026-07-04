@@ -7487,6 +7487,45 @@ def get_auth_register_client_page(
     }
 
 
+def _auth_register_client_page_fallback_payload(row_id: str) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    fallback_row = _serialise_auth_register_row({"id": safe_row_id})
+    return {
+        "row": fallback_row,
+        "profile": {
+            "services": _normalise_auth_register_services({}),
+            "riskAssessment": _normalise_auth_register_risk_assessment({}),
+            "companiesHouse": _normalise_auth_register_companies_house({}),
+            "jukInvoices": _normalise_auth_register_juk_invoices({}),
+            "serviceDefinitions": list(AUTH_REGISTER_SERVICE_DEFINITIONS),
+        },
+        "notes": [],
+        "timeline": [],
+        "ignitionEngagementLetters": [],
+        "degraded": True,
+    }
+
+
+def get_auth_register_client_page_safe(
+    row_id: str,
+    user: dict | None = None,
+    sync_ignition_letters: bool = True,
+    record_access: bool = True,
+) -> dict:
+    try:
+        return get_auth_register_client_page(
+            row_id,
+            user=user,
+            sync_ignition_letters=sync_ignition_letters,
+            record_access=record_access,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Client-page render failed; returning fallback payload for row %s", row_id)
+        return _auth_register_client_page_fallback_payload(row_id)
+
+
 def _client_page_juk_invoice_key(payload: dict) -> str:
     if not isinstance(payload, dict):
         return ""
@@ -7874,7 +7913,12 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
                 ),
             )
         connection.commit()
-    return get_auth_register_client_page(safe_row_id, user, sync_ignition_letters=False, record_access=False)
+    return get_auth_register_client_page_safe(
+        safe_row_id,
+        user,
+        sync_ignition_letters=False,
+        record_access=False,
+    )
 
 
 def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:
