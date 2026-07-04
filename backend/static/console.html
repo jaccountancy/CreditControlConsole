@@ -136909,20 +136909,13 @@
                         clientFilter: clientKey,
                     });
                 });
-                const handleClientRegisterJukFetchClick = (event) => {
-                    event?.preventDefault?.();
-                    void openClientRegisterJukInvoiceLookupModal(event);
-                };
-                document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", handleClientRegisterJukFetchClick);
-                document.getElementById("chRegisterClientPageJukOutstandingOnlyToggle")?.addEventListener("change", (event) => {
-                    const checked = !!event?.target?.checked;
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        jukSyncOutstandingOnly: checked,
+                if (!window.__chRegisterClientPageHandleJukFetchClick) {
+                    window.__chRegisterClientPageHandleJukFetchClick = (event) => {
+                        event?.preventDefault?.();
+                        void openClientRegisterJukInvoiceLookupModal(event);
                     };
-                    renderClientRegisterClientPage();
-                    void persistClientRegisterJukInvoicesState({ silent: true });
-                });
+                }
+                const handleClientRegisterJukFetchClick = window.__chRegisterClientPageHandleJukFetchClick;
                 if (!window.__chRegisterClientPageJukFetchDelegated) {
                     window.__chRegisterClientPageJukFetchDelegated = true;
                     document.addEventListener("click", (event) => {
@@ -136930,15 +136923,26 @@
                         if (!button) return;
                         handleClientRegisterJukFetchClick(event);
                     });
+                    document.addEventListener("change", (event) => {
+                        const toggle = event?.target?.closest?.("#chRegisterClientPageJukOutstandingOnlyToggle");
+                        if (!toggle) return;
+                        const checked = !!toggle.checked;
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...companiesHouseSettings.authRegisterClientPage,
+                            jukSyncOutstandingOnly: checked,
+                        };
+                        renderClientRegisterClientPage();
+                        void persistClientRegisterJukInvoicesState({ silent: true });
+                    });
+                    document.addEventListener("click", (event) => {
+                        const button = event?.target?.closest?.("[data-client-page-juk-copy]");
+                        if (!button) return;
+                        event.preventDefault();
+                        const invoiceKey = String(button.getAttribute("data-client-page-juk-copy") || "").trim();
+                        if (!invoiceKey) return;
+                        copyClientRegisterJukInvoiceToConnectedXero(invoiceKey);
+                    });
                 }
-                document.getElementById("chRegisterClientPageJukInvoicesBody")?.addEventListener("click", (event) => {
-                    const button = event.target?.closest?.("[data-client-page-juk-copy]");
-                    if (!button) return;
-                    event.preventDefault();
-                    const invoiceKey = String(button.getAttribute("data-client-page-juk-copy") || "").trim();
-                    if (!invoiceKey) return;
-                    copyClientRegisterJukInvoiceToConnectedXero(invoiceKey);
-                });
                 document.getElementById("chRegisterClientPageEngagementLettersBody")?.addEventListener("click", (event) => {
                     const button = event.target?.closest?.("[data-client-page-engagement-letter-open]");
                     if (!button) return;
