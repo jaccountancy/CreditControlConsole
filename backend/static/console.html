@@ -41418,6 +41418,10 @@
                                         <p class="detail-meta">Invoices processed through JUK Invoices for this client.</p>
                                         <div class="detail-actions ch-register-juk-invoice-actions" id="chRegisterClientPageJukInvoiceActions">
                                             <button class="ghost-button" type="button" id="chRegisterClientPageJukFetchButton">Get invoices</button>
+                                            <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700;">
+                                                <input type="checkbox" id="chRegisterClientPageJukOutstandingOnlyToggle" checked>
+                                                Sync outstanding only
+                                            </label>
                                             <span class="ch-settings-status is-muted" id="chRegisterClientPageJukFetchStatus">No invoice sync run for this client yet.</span>
                                         </div>
                                         <h5 style="margin: 8px 0 8px;">Invoices linked to this client</h5>
@@ -120319,6 +120323,7 @@
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
                     jukInvoicePersisting: false,
+                    jukSyncOutstandingOnly: true,
                     jukInvoiceTenantSyncBusy: false,
                     jukInvoiceTenantSyncByKey: {},
                     jukInvoiceTenantSyncAt: "",
@@ -128531,6 +128536,7 @@
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
                     jukInvoicePersisting: false,
+                    jukSyncOutstandingOnly: true,
                     jukInvoiceTenantSyncBusy: false,
                     jukInvoiceTenantSyncByKey: {},
                     jukInvoiceTenantSyncAt: "",
@@ -131315,6 +131321,17 @@
                 return String(invoice?.id || invoice?.invoiceNumber || "").trim();
             }
 
+            function clientRegisterJukInvoiceSyncSignature(invoice = {}) {
+                return JSON.stringify({
+                    invoiceNumber: String(invoice?.invoiceNumber || "").trim(),
+                    amountDue: Number(invoice?.amountDue || 0),
+                    total: Number(invoice?.total || 0),
+                    dueDate: String(invoice?.dueDate || "").trim(),
+                    paymentStatus: String(invoice?.paymentStatus || "").trim().toLowerCase(),
+                    status: String(invoice?.status || "").trim().toLowerCase(),
+                });
+            }
+
             function clientRegisterBuildPersistedJukInvoicesPayload() {
                 const payload = clientPagePayload() || {};
                 const profile = payload?.profile || {};
@@ -131327,6 +131344,9 @@
                 const syncMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
                     ? pageState.jukInvoiceTenantSyncByKey
                     : (current?.tenantSyncByKey && typeof current.tenantSyncByKey === "object" ? current.tenantSyncByKey : {});
+                const syncOutstandingOnly = typeof pageState?.jukSyncOutstandingOnly === "boolean"
+                    ? pageState.jukSyncOutstandingOnly
+                    : (current?.syncOutstandingOnly !== false);
                 const syncEntries = Object.entries(syncMap).slice(0, 1000);
                 const normalisedSyncMap = {};
                 syncEntries.forEach(([invoiceKey, value]) => {
@@ -131338,6 +131358,7 @@
                         billId: String(value.billId || "").trim(),
                         message: String(value.message || "").trim(),
                         checkedAt: String(value.checkedAt || "").trim(),
+                        signature: String(value.signature || "").trim(),
                     };
                 });
                 return {
@@ -131373,6 +131394,7 @@
                     })).filter((invoice) => invoice.id || invoice.invoiceNumber),
                     tenantSyncByKey: normalisedSyncMap,
                     tenantSyncAt: String(pageState?.jukInvoiceTenantSyncAt || current?.tenantSyncAt || "").trim(),
+                    syncOutstandingOnly,
                 };
             }
 
@@ -131429,6 +131451,17 @@
                 if (!rowId || !tenantId) return;
                 const invoices = clientRegisterJukInvoicesForRow(row);
                 if (!invoices.length) return;
+                const persistedJuk = (payload?.profile?.jukInvoices && typeof payload.profile.jukInvoices === "object")
+                    ? payload.profile.jukInvoices
+                    : {};
+                const outstandingOnly = typeof pageState?.jukSyncOutstandingOnly === "boolean"
+                    ? pageState.jukSyncOutstandingOnly
+                    : (persistedJuk?.syncOutstandingOnly !== false);
+                const maxAgeMs = 15 * 60 * 1000;
+                const nowMs = Date.now();
+                const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
+                    ? pageState.jukInvoiceTenantSyncByKey
+                    : {};
                 const invoiceRowsAll = invoices
                     .map((invoice) => ({
                         id: clientRegisterJukInvoiceKey(invoice),
@@ -131439,25 +131472,33 @@
                         amountDue: Number(invoice?.amountDue || 0),
                         currency: "GBP",
                         isPaid: (Number(invoice?.amountDue || 0) <= 0.01) || /paid|settled|completed/i.test(String(invoice?.paymentStatus || invoice?.status || "")),
+                        signature: clientRegisterJukInvoiceSyncSignature(invoice),
                     }))
                     .filter((invoice) => invoice.id && invoice.invoiceNumber);
                 if (!invoiceRowsAll.length) return;
                 const paidSyncMap = {};
                 invoiceRowsAll.forEach((invoice) => {
-                    if (!invoice.isPaid) return;
+                    if (!outstandingOnly || !invoice.isPaid) return;
                     paidSyncMap[invoice.id] = {
                         status: "skipped",
                         present: true,
                         billId: "",
                         message: "Paid invoice skipped from Xero sync check.",
                         checkedAt: new Date().toISOString(),
+                        signature: invoice.signature,
                     };
                 });
-                const invoiceRows = invoiceRowsAll.filter((invoice) => !invoice.isPaid);
+                const staleOutstandingRows = invoiceRowsAll.filter((invoice) => {
+                    if (outstandingOnly && invoice.isPaid) return false;
+                    const existing = currentMap[invoice.id];
+                    if (!existing || typeof existing !== "object") return true;
+                    const checkedAtMs = Date.parse(String(existing.checkedAt || ""));
+                    if (!Number.isFinite(checkedAtMs) || (nowMs - checkedAtMs) > maxAgeMs) return true;
+                    if (String(existing.signature || "").trim() !== String(invoice.signature || "").trim()) return true;
+                    return false;
+                });
+                const invoiceRows = staleOutstandingRows;
                 if (!invoiceRows.length) {
-                    const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
-                        ? pageState.jukInvoiceTenantSyncByKey
-                        : {};
                     companiesHouseSettings.authRegisterClientPage = {
                         ...companiesHouseSettings.authRegisterClientPage,
                         jukInvoiceTenantSyncBusy: false,
@@ -131482,14 +131523,15 @@
                         body: JSON.stringify({
                             tenantId,
                             invoices: invoiceRows,
-                            checkOutstandingOnly: true,
+                            checkOutstandingOnly: outstandingOnly,
                         }),
                     }, { rowId });
                     const result = response?.result && typeof response.result === "object" ? response.result : {};
                     const rows = Array.isArray(result?.rows) ? result.rows : [];
-                    const currentMap = pageState?.jukInvoiceTenantSyncByKey && typeof pageState.jukInvoiceTenantSyncByKey === "object"
-                        ? pageState.jukInvoiceTenantSyncByKey
-                        : {};
+                    const requestSignatureByKey = {};
+                    invoiceRows.forEach((invoice) => {
+                        requestSignatureByKey[invoice.id] = String(invoice.signature || "");
+                    });
                     const byKey = {
                         ...currentMap,
                         ...paidSyncMap,
@@ -131503,6 +131545,7 @@
                             billId: String(entry?.billId || "").trim(),
                             message: String(entry?.message || "").trim(),
                             checkedAt: String(result?.syncedAt || new Date().toISOString()),
+                            signature: requestSignatureByKey[key] || "",
                         };
                     });
                     companiesHouseSettings.authRegisterClientPage = {
@@ -131589,6 +131632,7 @@
                                 billId: String(result?.billId || "").trim(),
                                 message: String(result?.message || "Invoice copied to connected tenant.").trim(),
                                 checkedAt: new Date().toISOString(),
+                                signature: clientRegisterJukInvoiceSyncSignature(invoice),
                             },
                         },
                     };
@@ -134230,6 +134274,7 @@
                 assign("chRegisterClientPageJukNotes", juk.notes || "");
                 const jukInvoicesBody = document.getElementById("chRegisterClientPageJukInvoicesBody");
                 const jukFetchButton = document.getElementById("chRegisterClientPageJukFetchButton");
+                const jukOutstandingOnlyToggle = document.getElementById("chRegisterClientPageJukOutstandingOnlyToggle");
                 const jukFetchStatus = document.getElementById("chRegisterClientPageJukFetchStatus");
                 const jukActions = document.getElementById("chRegisterClientPageJukInvoiceActions");
                 const persistedLookupRows = Array.isArray(juk?.invoiceRows) ? juk.invoiceRows : [];
@@ -134251,8 +134296,14 @@
                     ? pageState.jukInvoiceTenantSyncByKey
                     : ((juk?.tenantSyncByKey && typeof juk.tenantSyncByKey === "object") ? juk.tenantSyncByKey : {});
                 const tenantSyncBusy = !!pageState?.jukInvoiceTenantSyncBusy;
+                const syncOutstandingOnly = typeof pageState?.jukSyncOutstandingOnly === "boolean"
+                    ? pageState.jukSyncOutstandingOnly
+                    : (juk?.syncOutstandingOnly !== false);
                 const lookupAnimateUntil = Number(pageState?.jukInvoiceLookupAnimateUntil || 0);
                 const lookupAnimating = lookupAnimateUntil > Date.now();
+                if (jukOutstandingOnlyToggle) {
+                    jukOutstandingOnlyToggle.checked = syncOutstandingOnly;
+                }
                 if (jukInvoicesBody) {
                     const clientInvoices = jukClientInvoices;
                     const outstanding = clientInvoices.reduce((sum, invoice) => sum + Number(invoice?.amountDue || 0), 0);
@@ -134326,6 +134377,7 @@
                             : ((pageState?.jukInvoiceTenantSyncAt || juk?.tenantSyncAt)
                                 ? `Xero tenant sync ${chFormatDateTime(pageState?.jukInvoiceTenantSyncAt || juk?.tenantSyncAt)}`
                                 : "Xero tenant sync pending");
+                        const syncModeLabel = syncOutstandingOnly ? "Mode: outstanding only" : "Mode: all invoices";
                         const incremental = jukLookup?.incrementalSummary && typeof jukLookup.incrementalSummary === "object"
                             ? jukLookup.incrementalSummary
                             : {};
@@ -134333,7 +134385,7 @@
                             ? `Changes: +${Number(incremental.createdCount || 0).toLocaleString("en-GB")} new, ${Number(incremental.updatedCount || 0).toLocaleString("en-GB")} updated`
                             : "No invoice changes detected";
                         jukFetchStatus.textContent = clientInvoices.length
-                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${incrementalLabel} · ${tenantSyncLabel} · ${syncLabel}`
+                            ? `${clientInvoices.length.toLocaleString("en-GB")} invoice${clientInvoices.length === 1 ? "" : "s"} · ${formatCurrency(outstanding)} outstanding · ${matchLabel} · ${confidenceLabel} · ${incrementalLabel} · ${syncModeLabel} · ${tenantSyncLabel} · ${syncLabel}`
                             : `No invoices loaded. ${matchLabel}. Use Get invoices to auto-run AI matching across Xero contacts.`;
                         jukFetchStatus.classList.remove("is-muted", "is-success", "is-error");
                         jukFetchStatus.classList.add(clientInvoices.length ? "is-success" : "is-muted");
@@ -134421,6 +134473,7 @@
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
                     jukInvoiceLookupAnimateUntil: 0,
+                    jukSyncOutstandingOnly: true,
                     jukInvoiceTenantSyncBusy: false,
                     jukInvoiceTenantSyncByKey: {},
                     jukInvoiceTenantSyncAt: "",
@@ -134448,6 +134501,7 @@
                         loading: false,
                         loadingToastShown: false,
                         payload,
+                        jukSyncOutstandingOnly: payload?.profile?.jukInvoices?.syncOutstandingOnly !== false,
                     };
                     renderClientRegisterClientPage();
                     const engagementLetters = Array.isArray(payload?.ignitionEngagementLetters) ? payload.ignitionEngagementLetters : [];
@@ -136767,6 +136821,15 @@
                     void openClientRegisterJukInvoiceLookupModal(event);
                 };
                 document.getElementById("chRegisterClientPageJukFetchButton")?.addEventListener("click", handleClientRegisterJukFetchClick);
+                document.getElementById("chRegisterClientPageJukOutstandingOnlyToggle")?.addEventListener("change", (event) => {
+                    const checked = !!event?.target?.checked;
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        jukSyncOutstandingOnly: checked,
+                    };
+                    renderClientRegisterClientPage();
+                    void persistClientRegisterJukInvoicesState({ silent: true });
+                });
                 if (!window.__chRegisterClientPageJukFetchDelegated) {
                     window.__chRegisterClientPageJukFetchDelegated = true;
                     document.addEventListener("click", (event) => {

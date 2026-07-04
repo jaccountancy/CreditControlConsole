@@ -167,6 +167,8 @@ CH_CONNECTION_TEST_GATEWAY_MAX_ELAPSED_SECONDS = 8.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
 CH_COMPANY_SNAPSHOT_CACHE_TTL = timedelta(hours=12)
+CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_TTL_SECONDS = 10 * 60
+CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_MAX_ENTRIES = 5000
 CH_GUIDANCE_VERSION = "ch-guidance-2026-06-14"
 CH_GUIDANCE_URL = "https://www.gov.uk/government/publications/technical-interface-specifications-for-companies-house-software/important-information-for-software-developers-read-first"
 CH_SANDBOX_PACKAGE_REFERENCE = "0012"
@@ -175,6 +177,8 @@ logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
 _CH_AUTO_SYNC_THREAD: threading.Thread | None = None
 _CH_AUTO_SYNC_STOP = threading.Event()
+_CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_LOCK = threading.Lock()
+_CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE: dict[str, tuple[float, bool, str]] = {}
 
 
 def _mask(value: str) -> str:
@@ -7464,10 +7468,56 @@ def _client_page_juk_invoice_bill_payload(invoice: dict, account_code: str) -> d
     }
 
 
+def _client_page_juk_invoice_cache_key(connection_row: dict, invoice_number: str) -> str:
+    tenant_id = _coerce_text((connection_row or {}).get("tenant_id"), 120).lower()
+    safe_number = str(invoice_number or "").strip().lower()
+    return f"{tenant_id}::{safe_number}"
+
+
+def _client_page_juk_invoice_cache_get(connection_row: dict, invoice_number: str) -> tuple[bool, str] | None:
+    cache_key = _client_page_juk_invoice_cache_key(connection_row, invoice_number)
+    if not cache_key or cache_key.endswith("::"):
+        return None
+    now = time.time()
+    with _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_LOCK:
+        cached = _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.get(cache_key)
+        if not cached:
+            return None
+        expires_at, present, bill_id = cached
+        if expires_at <= now:
+            _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.pop(cache_key, None)
+            return None
+        return bool(present), str(bill_id or "")
+
+
+def _client_page_juk_invoice_cache_set(connection_row: dict, invoice_number: str, present: bool, bill_id: str = "") -> None:
+    cache_key = _client_page_juk_invoice_cache_key(connection_row, invoice_number)
+    if not cache_key or cache_key.endswith("::"):
+        return
+    now = time.time()
+    expires_at = now + float(CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_TTL_SECONDS)
+    with _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_LOCK:
+        _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE[cache_key] = (expires_at, bool(present), str(bill_id or ""))
+        stale_keys = [key for key, value in _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.items() if value[0] <= now]
+        for key in stale_keys:
+            _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.pop(key, None)
+        overflow = len(_CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE) - CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE_MAX_ENTRIES
+        if overflow > 0:
+            oldest_keys = sorted(
+                _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.items(),
+                key=lambda item: item[1][0],
+            )[:overflow]
+            for key, _ in oldest_keys:
+                _CLIENT_PAGE_JUK_INVOICE_CHECK_CACHE.pop(key, None)
+
+
 async def _client_page_juk_destination_bill_for_number(connection_row: dict, invoice_number: str) -> tuple[bool, str]:
     safe_number = str(invoice_number or "").strip()
     if not safe_number:
         return False, ""
+    cached = _client_page_juk_invoice_cache_get(connection_row, safe_number)
+    if cached is not None:
+        return cached
     where = f'Type=="ACCPAY"&&InvoiceNumber=="{_xero_where_literal(safe_number)}"'
     rows = await fetch_paginated_collection(
         connection_row,
@@ -7483,7 +7533,9 @@ async def _client_page_juk_destination_bill_for_number(connection_row: dict, inv
         if row_number != safe_number.lower():
             continue
         bill_id = str(row.get("InvoiceID") or row.get("InvoiceId") or "").strip()
+        _client_page_juk_invoice_cache_set(connection_row, safe_number, True, bill_id)
         return True, bill_id
+    _client_page_juk_invoice_cache_set(connection_row, safe_number, False, "")
     return False, ""
 
 
@@ -7626,6 +7678,7 @@ async def copy_client_page_juk_invoice_to_xero(user: dict, row_id: str, payload:
     connection_row = xero_connection_for_user_tenant(user, requested_tenant_id, include_fallback=False)
     exists, existing_bill_id = await _client_page_juk_destination_bill_for_number(connection_row, invoice_number)
     if exists:
+        _client_page_juk_invoice_cache_set(connection_row, invoice_number, True, existing_bill_id)
         return {
             "invoiceKey": invoice_key,
             "invoiceNumber": invoice_number,
@@ -7645,6 +7698,7 @@ async def copy_client_page_juk_invoice_to_xero(user: dict, row_id: str, payload:
     bill_id = _coerce_text((first or {}).get("InvoiceID") or (first or {}).get("InvoiceId"), 120)
     if not bill_id:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero did not return the created bill ID.")
+    _client_page_juk_invoice_cache_set(connection_row, invoice_number, True, bill_id)
     return {
         "invoiceKey": invoice_key,
         "invoiceNumber": invoice_number,
