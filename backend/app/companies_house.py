@@ -5317,6 +5317,21 @@ def _normalise_auth_register_risk_assessment(value: object) -> dict:
 
 def _normalise_auth_register_companies_house(value: object) -> dict:
     source = value if isinstance(value, dict) else {}
+    def _safe_float(raw_value: object, default: float = 0.0) -> float:
+        try:
+            if raw_value in (None, ""):
+                return default
+            if isinstance(raw_value, str):
+                cleaned = raw_value.strip().replace(",", "")
+                if cleaned.startswith("£"):
+                    cleaned = cleaned[1:].strip()
+                if not cleaned:
+                    return default
+                return float(Decimal(cleaned))
+            return float(Decimal(str(raw_value)))
+        except Exception:
+            return default
+
     service_details = source.get("serviceDetails") if isinstance(source.get("serviceDetails"), dict) else {}
     accounts_returns = service_details.get("accountsReturns") if isinstance(service_details.get("accountsReturns"), dict) else {}
     confirmation_statement = service_details.get("confirmationStatement") if isinstance(service_details.get("confirmationStatement"), dict) else {}
@@ -5351,7 +5366,7 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
                     "startDate": _coerce_text(item.get("startDate"), 80),
                     "endDate": _coerce_text(item.get("endDate"), 80),
                     "state": _coerce_text(item.get("state"), 80),
-                    "amount": float(item.get("amount") or 0),
+                    "amount": _safe_float(item.get("amount"), 0.0),
                     "currency": _coerce_text(item.get("currency"), 20),
                     "pdfUrl": _coerce_text(item.get("pdfUrl"), 1200),
                     "proposalUrl": _coerce_text(item.get("proposalUrl"), 1200),
