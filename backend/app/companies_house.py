@@ -4245,6 +4245,25 @@ def _coerce_text(value: object, limit: int = 500) -> str:
     return text[:limit]
 
 
+def _to_iso8601(value: object, *, allow_none: bool = False) -> str | None:
+    if value in (None, ""):
+        return None if allow_none else ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value.strip()
+    iso_value = getattr(value, "isoformat", None)
+    if callable(iso_value):
+        try:
+            return str(iso_value())
+        except Exception:
+            pass
+    text = _coerce_text(value, 120)
+    if not text and allow_none:
+        return None
+    return text
+
+
 def _decode_upload(content: bytes) -> str:
     if not content:
         return ""
@@ -5591,14 +5610,14 @@ def _serialise_auth_register_row(row: dict | None) -> dict:
         "pscs": row.get("pscs") if isinstance(row.get("pscs"), list) else [],
         "filingHistory": row.get("filing_history") if isinstance(row.get("filing_history"), list) else [],
         "registeredOffice": row.get("registered_office") or "",
-        "incorporationDate": row.get("incorporation_date").isoformat() if row.get("incorporation_date") else "",
-        "nextMadeUpToDate": row.get("next_made_up_to_date").isoformat() if row.get("next_made_up_to_date") else "",
-        "nextDueDate": row.get("next_due_date").isoformat() if row.get("next_due_date") else "",
-        "lastFiledDate": row.get("last_filed_date").isoformat() if row.get("last_filed_date") else "",
-        "companiesHouseLastSyncAt": row.get("last_synced_at").isoformat() if row.get("last_synced_at") else "",
-        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
+        "incorporationDate": _to_iso8601(row.get("incorporation_date")) or "",
+        "nextMadeUpToDate": _to_iso8601(row.get("next_made_up_to_date")) or "",
+        "nextDueDate": _to_iso8601(row.get("next_due_date")) or "",
+        "lastFiledDate": _to_iso8601(row.get("last_filed_date")) or "",
+        "companiesHouseLastSyncAt": _to_iso8601(row.get("last_synced_at")) or "",
+        "updatedAt": _to_iso8601(row.get("updated_at")) or "",
         "sourceFilename": row.get("source_filename") or "",
-        "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+        "uploadedAt": _to_iso8601(row.get("uploaded_at"), allow_none=True),
         "xeroTenantId": row.get("xero_tenant_id") or "",
         "xeroTenantName": row.get("xero_tenant_name") or "",
         "ignitionClientId": row.get("ignition_client_id") or "",
@@ -6397,7 +6416,7 @@ def _auth_register_timeline_entry(item: dict) -> dict:
         title = f"{actor_name} accessed client file"
     details = _auth_register_timeline_details(payload)
     return {
-        "at": item.get("created_at").isoformat() if item.get("created_at") else None,
+        "at": _to_iso8601(item.get("created_at"), allow_none=True),
         "eventType": str(event_type or "").strip().lower(),
         "category": category,
         "title": title,
@@ -7164,7 +7183,7 @@ def get_auth_register_client_page(
                             user_id,
                         ),
                     )
-                except (pg_errors.UndefinedTable, pg_errors.InvalidTextRepresentation, pg_errors.ForeignKeyViolation):
+                except Exception:
                     # Access logging should never block client-page rendering.
                     logger.warning("Skipping access audit insert for client-page row %s", safe_row_id)
             normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
@@ -7189,20 +7208,24 @@ def get_auth_register_client_page(
             notes_rows = []
             notes_present = bool((cursor.fetchone() or {}).get("present"))
             if notes_present:
-                cursor.execute(
-                    """
-                    SELECT n.id,
-                           n.note,
-                           n.created_by_name,
-                           n.created_at
-                    FROM ch_auth_register_client_notes n
-                    WHERE n.register_row_id = %s
-                    ORDER BY n.created_at DESC
-                    LIMIT 250
-                    """,
-                    (safe_row_id,),
-                )
-                notes_rows = cursor.fetchall() or []
+                try:
+                    cursor.execute(
+                        """
+                        SELECT n.id,
+                               n.note,
+                               n.created_by_name,
+                               n.created_at
+                        FROM ch_auth_register_client_notes n
+                        WHERE n.register_row_id = %s
+                        ORDER BY n.created_at DESC
+                        LIMIT 250
+                        """,
+                        (safe_row_id,),
+                    )
+                    notes_rows = cursor.fetchall() or []
+                except Exception:
+                    logger.warning("Skipping client note history load for client-page row %s", safe_row_id)
+                    notes_rows = []
             cursor.execute(
                 """
                 SELECT EXISTS (
@@ -7216,32 +7239,36 @@ def get_auth_register_client_page(
             audit_rows = []
             audit_present = bool((cursor.fetchone() or {}).get("present"))
             if audit_present:
-                company_id = str(row.get("company_id") or "").strip()
-                if company_id:
-                    cursor.execute(
-                        """
-                        SELECT created_at, event_type, payload
-                        FROM audit_events
-                        WHERE (entity_type = 'ch_auth_code_register' AND entity_id = %s)
-                           OR (entity_type IN ('ch_company', 'ch_auth_code') AND entity_id = %s)
-                        ORDER BY created_at DESC
-                        LIMIT 250
-                        """,
-                        (safe_row_id, company_id),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        SELECT created_at, event_type, payload
-                        FROM audit_events
-                        WHERE entity_type = 'ch_auth_code_register'
-                          AND entity_id = %s
-                        ORDER BY created_at DESC
-                        LIMIT 250
-                        """,
-                        (safe_row_id,),
-                    )
-                audit_rows = cursor.fetchall() or []
+                try:
+                    company_id = str(row.get("company_id") or "").strip()
+                    if company_id:
+                        cursor.execute(
+                            """
+                            SELECT created_at, event_type, payload
+                            FROM audit_events
+                            WHERE (entity_type = 'ch_auth_code_register' AND entity_id = %s)
+                               OR (entity_type IN ('ch_company', 'ch_auth_code') AND entity_id = %s)
+                            ORDER BY created_at DESC
+                            LIMIT 250
+                            """,
+                            (safe_row_id, company_id),
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT created_at, event_type, payload
+                            FROM audit_events
+                            WHERE entity_type = 'ch_auth_code_register'
+                              AND entity_id = %s
+                            ORDER BY created_at DESC
+                            LIMIT 250
+                            """,
+                            (safe_row_id,),
+                        )
+                    audit_rows = cursor.fetchall() or []
+                except Exception:
+                    logger.warning("Skipping audit timeline load for client-page row %s", safe_row_id)
+                    audit_rows = []
             cached_companies_house = _normalise_auth_register_companies_house(row.get("companies_house"))
             cached_letters = (
                 cached_companies_house.get("ignitionEngagementLetters")
@@ -7421,7 +7448,7 @@ def get_auth_register_client_page(
                 "id": str(note_row.get("id") or ""),
                 "note": note_row.get("note") or "",
                 "createdByName": note_row.get("created_by_name") or "",
-                "createdAt": note_row.get("created_at").isoformat() if note_row.get("created_at") else None,
+                "createdAt": _to_iso8601(note_row.get("created_at"), allow_none=True),
             }
             for note_row in notes_rows
         ],
