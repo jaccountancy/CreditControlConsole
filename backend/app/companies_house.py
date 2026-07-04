@@ -7928,6 +7928,38 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
     )
 
 
+def save_auth_register_client_page_safe(user: dict, row_id: str, payload: dict | None = None) -> dict:
+    safe_row_id = str(row_id or "").strip()
+    try:
+        return save_auth_register_client_page(user, safe_row_id, payload)
+    except HTTPException as exc:
+        if int(getattr(exc, "status_code", 500) or 500) >= 500:
+            logger.exception(
+                "Client-page save hit HTTP %s; returning safe payload for row %s",
+                getattr(exc, "status_code", 500),
+                safe_row_id,
+            )
+            response = get_auth_register_client_page_safe(
+                safe_row_id,
+                user,
+                sync_ignition_letters=False,
+                record_access=False,
+            )
+            response["saveDegraded"] = True
+            return response
+        raise
+    except Exception:
+        logger.exception("Client-page save failed; returning safe payload for row %s", safe_row_id)
+        response = get_auth_register_client_page_safe(
+            safe_row_id,
+            user,
+            sync_ignition_letters=False,
+            record_access=False,
+        )
+        response["saveDegraded"] = True
+        return response
+
+
 def add_auth_register_client_note(user: dict, row_id: str, payload: dict | None = None) -> dict:
     safe_row_id = str(row_id or "").strip()
     if not safe_row_id:

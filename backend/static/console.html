@@ -52608,6 +52608,11 @@
                 const startedAt = performance.now();
                 const resolvedEndpoint = endpointURL(template, params);
                 const method = String(fetchOptions.method || "GET").toUpperCase();
+                const autoSuppressFailurePanel = (
+                    method === "PATCH"
+                    && /\/api\/companies-house\/auth-code-register\/[^/]+\/client-page(?:\?|$)/.test(resolvedEndpoint)
+                );
+                const shouldSuppressFailurePanel = suppressFailurePanel || autoSuppressFailurePanel;
                 if (trackActivity) logAPIActivity("api.started", activityContext);
                 let response;
                 const timeout = Number(timeoutMs || 0);
@@ -52636,7 +52641,7 @@
                                 error: timeoutError.message
                             });
                         }
-                        if (!suppressFailurePanel) {
+                        if (!shouldSuppressFailurePanel) {
                             openFailureDetailsPanel({
                                 title: "Request timed out",
                                 summary: `The ${activityContext?.label || "request"} took too long to complete.`,
@@ -52654,7 +52659,7 @@
                             error: error?.message || String(error || "Network request failed")
                         });
                     }
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Network request failed",
                             summary: `Unable to reach API for ${activityContext?.label || "request"}.`,
@@ -52685,7 +52690,7 @@
                             response: sanitiseActivityValue(payload)
                         });
                     }
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Authentication required",
                             summary: `Session/authentication failed for ${activityContext?.label || "request"}.`,
@@ -52721,7 +52726,7 @@
                             response: sanitiseActivityValue(payload)
                         });
                     }
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: specialisedFailure?.title || "API request failed",
                             summary: specialisedFailure?.summary || `Backend returned an error for ${activityContext?.label || "request"}.`,

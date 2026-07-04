@@ -79,7 +79,7 @@ from .companies_house import (
     save_companies_house_settings,
     submit_company_secretarial_filing,
     sync_xero_lock_date_company_records,
-    save_auth_register_client_page,
+    save_auth_register_client_page_safe,
     submission_reconciliation_report,
     sync_companies_house_companies,
     test_companies_house_connection,
@@ -3625,7 +3625,7 @@ async def api_companies_house_auth_code_register_client_page_save(
     user: dict = Depends(require_panel_user),
 ):
     payload = await request.json()
-    return {"status": "ok", **save_auth_register_client_page(user, row_id, payload)}
+    return {"status": "ok", **save_auth_register_client_page_safe(user, row_id, payload)}
 
 
 @app.post("/api/companies-house/auth-code-register/{row_id}/client-page/notes")
