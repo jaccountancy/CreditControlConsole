@@ -7152,6 +7152,15 @@ def get_auth_register_client_page(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Row ID is required.")
     user_id = _coerce_user_uuid((user or {}).get("id") if isinstance(user, dict) else None)
     payroll_fallback: dict[str, str] = {}
+
+    def _recover_failed_transaction(connection) -> None:
+        # Any SQL error aborts the current transaction in Postgres; recover so
+        # optional telemetry/history failures never break client-page reads.
+        try:
+            connection.rollback()
+        except Exception:
+            logger.warning("Unable to rollback failed transaction for client-page row %s", safe_row_id)
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             row = _auth_register_client_page_row(cursor, safe_row_id)
@@ -7186,6 +7195,7 @@ def get_auth_register_client_page(
                 except Exception:
                     # Access logging should never block client-page rendering.
                     logger.warning("Skipping access audit insert for client-page row %s", safe_row_id)
+                    _recover_failed_transaction(connection)
             normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
                 str(row.get("display_name") or "").lower(), 250
             )
@@ -7226,6 +7236,7 @@ def get_auth_register_client_page(
                 except Exception:
                     logger.warning("Skipping client note history load for client-page row %s", safe_row_id)
                     notes_rows = []
+                    _recover_failed_transaction(connection)
             cursor.execute(
                 """
                 SELECT EXISTS (
@@ -7269,6 +7280,7 @@ def get_auth_register_client_page(
                 except Exception:
                     logger.warning("Skipping audit timeline load for client-page row %s", safe_row_id)
                     audit_rows = []
+                    _recover_failed_transaction(connection)
             cached_companies_house = _normalise_auth_register_companies_house(row.get("companies_house"))
             cached_letters = (
                 cached_companies_house.get("ignitionEngagementLetters")
@@ -7298,6 +7310,7 @@ def get_auth_register_client_page(
                 except Exception:
                     logger.exception("Unable to sync Ignition engagement letters for client-page row %s", safe_row_id)
                     synced_letters, sync_meta = [], {"syncStartYear": 0, "syncEndYear": 0, "syncedYears": [], "lastSyncedAt": "", "totalLetters": 0}
+                    _recover_failed_transaction(connection)
                 ignition_engagement_letters = synced_letters if synced_letters else list(cached_letters)
                 ignition_engagement_sync = sync_meta if synced_letters else dict(cached_sync)
                 if (
@@ -7335,6 +7348,7 @@ def get_auth_register_client_page(
                             "Unable to persist Ignition engagement letters cache for client-page row %s",
                             safe_row_id,
                         )
+                        _recover_failed_transaction(connection)
                     row["companies_house"] = next_companies_house
             if user_id:
                 try:
@@ -7380,6 +7394,7 @@ def get_auth_register_client_page(
                     }
                 except Exception:
                     payroll_fallback = {}
+                    _recover_failed_transaction(connection)
         connection.commit()
 
     try:
