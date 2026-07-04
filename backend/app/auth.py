@@ -161,7 +161,7 @@ def xero_scope_string(configured_scopes: str, include_payroll_scopes: bool = Fal
 def xero_scope_string_all_available(configured_scopes: str) -> str:
     # Reconnect must only request scopes already configured for this app.
     # Expanding/replacing scopes here can trigger Xero "invalid_scope".
-    return xero_scope_string(configured_scopes, include_payroll_scopes=False)
+    return xero_scope_string(configured_scopes, include_payroll_scopes=True)
 
 
 def allowed_panel_origins() -> set[str]:
