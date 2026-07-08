@@ -1920,15 +1920,52 @@
             await recalculateBasket();
         }
 
+        async function handleGlobalTap(event) {
+            const isTouch = event.type === "touchend";
+            if (isTouch) state.lastTouchInteractionAt = Date.now();
+            if (!isTouch && Date.now() - Number(state.lastTouchInteractionAt || 0) < 550) return;
+
+            const productArea = closestFromEvent(event, "#productList");
+            if (productArea) {
+                await handleProductListInteraction(event);
+                return;
+            }
+
+            const checkoutBtn = closestFromEvent(event, "#primaryCheckoutBtn");
+            if (checkoutBtn) {
+                event.preventDefault();
+                handlePrimaryCheckout();
+                return;
+            }
+
+            const loadBtn = closestFromEvent(event, "#loadCheckoutBtn");
+            if (loadBtn) {
+                event.preventDefault();
+                mountCheckout();
+                return;
+            }
+
+            const confirmBtn = closestFromEvent(event, "#confirmCardBtn");
+            if (confirmBtn) {
+                event.preventDefault();
+                confirmPayment();
+            }
+        }
+
         ui.productList.addEventListener("touchend", async (event) => {
+            if (event.defaultPrevented) return;
             state.lastTouchInteractionAt = Date.now();
             await handleProductListInteraction(event);
         }, { passive: false });
 
         ui.productList.addEventListener("click", async (event) => {
+            if (event.defaultPrevented) return;
             if (Date.now() - Number(state.lastTouchInteractionAt || 0) < 550) return;
             await handleProductListInteraction(event);
         });
+
+        document.addEventListener("touchend", handleGlobalTap, { capture: true, passive: false });
+        document.addEventListener("click", handleGlobalTap, true);
 
         document.addEventListener("click", (event) => {
             if (!closestFromEvent(event, "#productList")) {
