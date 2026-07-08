@@ -785,7 +785,6 @@
         </section>
 
         <section class="card products" aria-label="Products">
-            <h2 class="section-title">Snackccountancy</h2>
             <div class="product-list" id="productList">
                 <article class="snack-product" data-sku-card="can_of_pop">
                     <div class="emoji" aria-hidden="true">🥤</div>
@@ -1772,29 +1771,15 @@
             if (showMessage) setStatus("Basket cleared.");
         }
 
-        ui.productList.addEventListener("pointerdown", (event) => {
-            const button = event.target.closest("button[data-sku]");
-            if (!button) return;
-            event.preventDefault();
-            startPressAndHold(button, event);
-        });
-
-        ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
-            ui.productList.addEventListener(eventName, () => clearHoldState());
-        });
-
         ui.productList.addEventListener("click", async (event) => {
             const button = event.target.closest("button[data-sku]");
             if (button) {
-                if (button.getAttribute("data-skip-click") === "1") {
-                    button.setAttribute("data-skip-click", "0");
-                    return;
-                }
+                event.preventDefault();
                 const sku = String(button.getAttribute("data-sku") || "");
                 const action = String(button.getAttribute("data-action") || "");
                 if (!sku || !action) return;
                 updateQuantity(sku, action);
-                await recalculateBasket();
+                queueRecalculateBasket();
                 return;
             }
 
