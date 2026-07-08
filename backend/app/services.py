@@ -6932,6 +6932,70 @@ def call_stats_client_search_payload(user: dict, client_id: str) -> dict:
     }
 
 
+def call_stats_client_assign_rows_payload(user: dict, client_id: str, payload: dict | None = None) -> dict:
+    requested_payload = payload if isinstance(payload, dict) else {}
+    requested_row_ids = requested_payload.get("rowIds") if isinstance(requested_payload.get("rowIds"), list) else []
+    row_ids: list[str] = []
+    seen_row_ids: set[str] = set()
+    for raw_row_id in requested_row_ids:
+        clean_row_id = str(raw_row_id or "").strip()
+        if not clean_row_id:
+            continue
+        if clean_row_id in seen_row_ids:
+            continue
+        seen_row_ids.add(clean_row_id)
+        row_ids.append(clean_row_id)
+    if not row_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one call row id is required.")
+    row_ids = row_ids[:5000]
+
+    client_payload = _call_stats_lookup_client_by_id(client_id)
+    canonical_client_id = str(client_payload.get("clientId") or client_id or "").strip()
+    canonical_client_name = str(client_payload.get("clientName") or "").strip()
+    canonical_client_manager = str(client_payload.get("clientManager") or "").strip()
+    if not canonical_client_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client id is required.")
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE call_records_processed
+                SET client_id = %s,
+                    client_name = COALESCE(NULLIF(%s, ''), client_name),
+                    client_manager = COALESCE(NULLIF(%s, ''), client_manager),
+                    matched_status = 'matched',
+                    ignored = FALSE,
+                    match_source = CASE
+                        WHEN COALESCE(match_source, '') = '' THEN 'client_page_assignment'
+                        ELSE match_source
+                    END,
+                    updated_at = %s
+                WHERE id::text = ANY(%s)
+                  AND (user_id = %s OR user_id IS NULL)
+                RETURNING id::text AS id
+                """,
+                (
+                    canonical_client_id,
+                    canonical_client_name,
+                    canonical_client_manager,
+                    now,
+                    row_ids,
+                    user["id"],
+                ),
+            )
+            updated_rows = cursor.fetchall() or []
+        connection.commit()
+    updated_row_ids = [str(row.get("id") or "").strip() for row in updated_rows if str(row.get("id") or "").strip()]
+    logs = call_stats_client_logs_payload(user, canonical_client_id, {})
+    return {
+        "clientId": str(logs.get("clientId") or canonical_client_id).strip(),
+        "updatedCount": len(updated_row_ids),
+        "updatedRowIds": updated_row_ids,
+        "clientCallLogs": logs,
+    }
+
+
 async def call_stats_generate_ai_report(user: dict, payload: dict | None = None) -> dict:
     clean_payload = payload if isinstance(payload, dict) else {}
     month_value = str(clean_payload.get("month") or "").strip()

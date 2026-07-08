@@ -49841,6 +49841,7 @@
                         clientCallStatsUnmatchedAction: config.endpoints?.clientCallStatsUnmatchedAction || "/api/client-call-stats/unmatched/action",
                         clientCallStatsClientLogs: config.endpoints?.clientCallStatsClientLogs || "/api/client-call-stats/clients/:clientId",
                         clientCallStatsClientSearch: config.endpoints?.clientCallStatsClientSearch || "/api/client-call-stats/clients/:clientId/search",
+                        clientCallStatsClientAssignRows: config.endpoints?.clientCallStatsClientAssignRows || "/api/client-call-stats/clients/:clientId/assign-rows",
                         clientCallStatsAiReport: config.endpoints?.clientCallStatsAiReport || "/api/client-call-stats/ai-report",
                         clientCallStatsAiReports: config.endpoints?.clientCallStatsAiReports || "/api/client-call-stats/ai-reports",
                         clientCallStatsFilterPresetSuggestions: config.endpoints?.clientCallStatsFilterPresetSuggestions || "/api/client-call-stats/filter-presets/suggest",
@@ -130724,6 +130725,23 @@
                 return bestRows;
             }
 
+            async function persistClientRegisterCallStatsRows(clientId = "", payload = null) {
+                const cleanClientId = String(clientId || "").trim();
+                const rowIds = (Array.isArray(payload?.rows) ? payload.rows : [])
+                    .map((item) => String(item?.id || "").trim())
+                    .filter(Boolean);
+                if (!cleanClientId || !rowIds.length) return null;
+                try {
+                    return await requestJSON(
+                        api.endpoints.clientCallStatsClientAssignRows,
+                        { method: "POST", body: JSON.stringify({ rowIds }), suppressFailurePanel: true, timeoutMs: 15000 },
+                        { clientId: cleanClientId }
+                    );
+                } catch (_) {
+                    return null;
+                }
+            }
+
             async function loadClientRegisterClientPageCallStats({ force = false, silent = true } = {}) {
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState?.rowId || "").trim();
@@ -130769,10 +130787,11 @@
                     let resolvedSearchAt = current.searchAt || "";
                     let resolvedSearchUpdatedCount = Number(current.searchUpdatedCount || 0);
                     let lastError = null;
+                    let usedFallbackRows = false;
 
                     for (const candidateId of clientIdCandidates) {
                         try {
-                            const response = await requestJSON(api.endpoints.clientCallStatsClientLogs, { method: "GET", suppressFailurePanel: true }, { clientId: candidateId });
+                            const response = await requestJSON(api.endpoints.clientCallStatsClientLogs, { method: "GET", suppressFailurePanel: true, timeoutMs: 15000 }, { clientId: candidateId });
                             const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
                             const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
                             if (!resolvedPayload || rowCount > (Array.isArray(resolvedPayload?.rows) ? resolvedPayload.rows.length : 0)) {
@@ -130789,7 +130808,7 @@
                     if (resolvedRowCount === 0) {
                         for (const candidateId of clientIdCandidates) {
                             try {
-                                const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId: candidateId });
+                                const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true, timeoutMs: 15000 }, { clientId: candidateId });
                                 const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
                                 const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
                                 const canonicalised = Number(response?.canonicalisedCount || payload?.canonicalisedCount || 0);
@@ -130814,11 +130833,20 @@
                         const localRows = clientRegisterCallStatsLocalMatches(row, clientIdCandidates);
                         if (localRows.length) {
                             resolvedPayload = clientRegisterCallStatsPayloadFromRows(localRows);
+                            usedFallbackRows = true;
                         } else {
                             const dashboardRows = await clientRegisterFetchCallStatsRowsFromDashboard(clientIdCandidates);
                             if (dashboardRows.length) {
                                 resolvedPayload = clientRegisterCallStatsPayloadFromRows(dashboardRows);
+                                usedFallbackRows = true;
                             }
+                        }
+                    }
+                    if (usedFallbackRows) {
+                        const persisted = await persistClientRegisterCallStatsRows(resolvedClientId || clientId, resolvedPayload);
+                        if (persisted?.clientCallLogs) {
+                            resolvedPayload = persisted.clientCallLogs;
+                            resolvedClientId = String(persisted?.clientId || resolvedClientId || clientId).trim() || resolvedClientId;
                         }
                     }
 
@@ -130895,7 +130923,7 @@
 
                     for (const candidateId of clientIdCandidates) {
                         try {
-                            const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true }, { clientId: candidateId });
+                            const response = await requestJSON(api.endpoints.clientCallStatsClientSearch, { method: "POST", suppressFailurePanel: true, timeoutMs: 15000 }, { clientId: candidateId });
                             const payload = response?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
                             const rowCount = Array.isArray(payload?.rows) ? payload.rows.length : 0;
                             const canonicalised = Number(response?.canonicalisedCount || payload?.canonicalisedCount || 0);
@@ -130916,19 +130944,30 @@
 
                     const nextPageState = companiesHouseSettings.authRegisterClientPage || {};
                     if (!nextPageState.open || String(nextPageState.rowId || "").trim() !== rowId) return;
-                    const nextPayload = bestResponse?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
+                    let nextPayload = bestResponse?.clientCallLogs || { summary: {}, benchmark: {}, rows: [] };
                     let rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : 0;
+                    let usedFallbackRows = false;
                     if (!rowCount) {
                         const localRows = clientRegisterCallStatsLocalMatches(row, clientIdCandidates);
                         if (localRows.length) {
                             nextPayload = clientRegisterCallStatsPayloadFromRows(localRows);
                             rowCount = localRows.length;
+                            usedFallbackRows = true;
                         } else {
                             const dashboardRows = await clientRegisterFetchCallStatsRowsFromDashboard(clientIdCandidates);
                             if (dashboardRows.length) {
                                 nextPayload = clientRegisterCallStatsPayloadFromRows(dashboardRows);
                                 rowCount = dashboardRows.length;
+                                usedFallbackRows = true;
                             }
+                        }
+                    }
+                    if (usedFallbackRows) {
+                        const persisted = await persistClientRegisterCallStatsRows(bestClientId || clientId, nextPayload);
+                        if (persisted?.clientCallLogs) {
+                            nextPayload = persisted.clientCallLogs;
+                            bestClientId = String(persisted?.clientId || bestClientId || clientId).trim() || bestClientId;
+                            rowCount = Array.isArray(nextPayload?.rows) ? nextPayload.rows.length : rowCount;
                         }
                     }
                     companiesHouseSettings.authRegisterClientPage = {
@@ -133281,6 +133320,7 @@
                             ...latestState,
                             loading: false,
                             loadingToastShown: false,
+                            engagementLettersAutoSyncAttempted: true,
                             payload,
                         };
                         renderClientRegisterClientPage();
@@ -134658,6 +134698,7 @@
                     showCompletedTasks: false,
                     engagementLetterPreviewId: "",
                     engagementLetterPreviewUrl: "",
+                    engagementLettersAutoSyncAttempted: false,
                     payload: null,
                     jukInvoiceLookupBusy: false,
                     jukInvoiceLookup: null,
@@ -134743,6 +134784,16 @@
                 try {
                     renderClientRegisterClientPage();
                     loadClientRegisterClientPageCallStats({ force: false, silent: true });
+                    const letters = Array.isArray(payload?.ignitionEngagementLetters) ? payload.ignitionEngagementLetters : [];
+                    if (!letters.length && isIgnitionConnected()) {
+                        companiesHouseSettings.authRegisterClientPage = {
+                            ...companiesHouseSettings.authRegisterClientPage,
+                            engagementLettersAutoSyncAttempted: true,
+                        };
+                        window.setTimeout(() => {
+                            refreshClientRegisterEngagementLetters({ silentToast: true });
+                        }, 0);
+                    }
                     window.setTimeout(() => {
                         clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
                         clientRegisterAutoMatchClientLinks({ source: "automatic", promptForConfirmation: true });
@@ -135170,14 +135221,20 @@
                 try {
                     renderClientRegisterClientPage();
                     let updatedRow = currentRow;
+                    let registerUpdateFailedMessage = "";
                     if (registerChanged) {
-                        const registerResult = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}`, {
-                            method: "POST",
-                            body: JSON.stringify(registerOutbound),
-                            timeoutMs: 20000,
-                        });
-                        if (registerResult?.row && typeof registerResult.row === "object") {
-                            updatedRow = registerResult.row;
+                        try {
+                            const registerResult = await requestJSON(`/api/companies-house/auth-code-register/${encodeURIComponent(rowId)}`, {
+                                method: "POST",
+                                body: JSON.stringify(registerOutbound),
+                                timeoutMs: 20000,
+                            });
+                            if (registerResult?.row && typeof registerResult.row === "object") {
+                                updatedRow = registerResult.row;
+                            }
+                        } catch (registerError) {
+                            registerUpdateFailedMessage = String(registerError?.message || "Unable to save Client Info updates.").trim();
+                            if (!profileChangedAreas.length) throw registerError;
                         }
                     }
                     let next = payload;
@@ -135224,6 +135281,14 @@
                     );
                     renderClientRegisterClientPage();
                     if (!silent) showToast("Client page saved.", "success");
+                    if (registerUpdateFailedMessage) {
+                        setClientRegisterWriteFailure(
+                            `${registerUpdateFailedMessage} Service/profile changes were saved.`,
+                            "retry-save"
+                        );
+                        renderClientRegisterClientPage();
+                        if (!silent) showToast(registerUpdateFailedMessage, "warning");
+                    }
                 } catch (error) {
                     const message = String(error?.message || "Unable to save client page.").trim();
                     companiesHouseSettings.authRegisterClientPage = {

@@ -190,6 +190,7 @@ from .services import (
     call_stats_unmatched_numbers,
     call_stats_apply_number_action,
     call_stats_client_logs_payload,
+    call_stats_client_assign_rows_payload,
     call_stats_client_search_payload,
     call_stats_generate_ai_report,
     call_stats_ai_reports_history,
@@ -4846,6 +4847,18 @@ def api_client_call_stats_client_search(
 ):
     require_panel_write_user(user, "search and update client call records")
     result = call_stats_client_search_payload(user, client_id)
+    return {"status": "ok", **result}
+
+
+@app.post("/api/client-call-stats/clients/{client_id}/assign-rows")
+async def api_client_call_stats_client_assign_rows(
+    client_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    require_panel_write_user(user, "assign client call rows")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    result = call_stats_client_assign_rows_payload(user, client_id, payload if isinstance(payload, dict) else {})
     return {"status": "ok", **result}
 
 

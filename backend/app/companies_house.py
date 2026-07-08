@@ -8032,12 +8032,23 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
     user_id = user.get("id") if isinstance(user, dict) else None
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'ch_auth_register_client_profiles'
+                """
+            )
+            profile_columns = {str(item.get("column_name") or "").strip() for item in (cursor.fetchall() or [])}
+            has_juk_invoices_column = "juk_invoices" in profile_columns
+
             cursor.execute("SELECT id FROM ch_auth_code_register WHERE id = %s", (safe_row_id,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client register row not found.")
             cursor.execute(
-                """
-                SELECT services, risk_assessment, companies_house, juk_invoices
+                f"""
+                SELECT services, risk_assessment, companies_house, {'juk_invoices' if has_juk_invoices_column else "'{{}}'::jsonb AS juk_invoices"}
                 FROM ch_auth_register_client_profiles
                 WHERE register_row_id = %s
                 LIMIT 1
@@ -8061,67 +8072,108 @@ def save_auth_register_client_page(user: dict, row_id: str, payload: dict | None
             juk_invoices = _normalise_auth_register_juk_invoices(
                 payload.get("jukInvoices") if "jukInvoices" in payload else existing.get("juk_invoices")
             )
-            cursor.execute(
-                """
-                INSERT INTO ch_auth_register_client_profiles (
-                    register_row_id,
-                    services,
-                    risk_assessment,
-                    companies_house,
-                    juk_invoices,
-                    updated_by_user_id,
-                    created_by_user_id,
-                    updated_at
-                )
-                VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
-                ON CONFLICT (register_row_id) DO UPDATE
-                SET services = EXCLUDED.services,
-                    risk_assessment = EXCLUDED.risk_assessment,
-                    companies_house = EXCLUDED.companies_house,
-                    juk_invoices = EXCLUDED.juk_invoices,
-                    updated_by_user_id = EXCLUDED.updated_by_user_id,
-                    updated_at = NOW()
-                """,
-                (
-                    safe_row_id,
-                    json.dumps(services),
-                    json.dumps(risk_assessment),
-                    json.dumps(companies_house),
-                    json.dumps(juk_invoices),
-                    user_id,
-                    user_id,
-                ),
-            )
-            touched = [key for key in ("services", "riskAssessment", "companiesHouse", "jukInvoices") if key in payload]
-            cursor.execute(
-                """
-                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
-                VALUES ('ch_auth_code_register', %s, 'client_profile_updated', %s::jsonb, %s)
-                """,
-                (
-                    safe_row_id,
-                    json.dumps(
-                        {
-                            "sections": touched,
-                            "changes": _auth_register_collect_profile_changes(
-                                {
-                                    "services": previous_services,
-                                    "riskAssessment": previous_risk_assessment,
-                                    "companiesHouse": previous_companies_house,
-                                    "jukInvoices": previous_juk_invoices,
-                                },
-                                {
-                                    "services": services,
-                                    "riskAssessment": risk_assessment,
-                                    "companiesHouse": companies_house,
-                                    "jukInvoices": juk_invoices,
-                                },
-                            ),
-                        }
+            if has_juk_invoices_column:
+                cursor.execute(
+                    """
+                    INSERT INTO ch_auth_register_client_profiles (
+                        register_row_id,
+                        services,
+                        risk_assessment,
+                        companies_house,
+                        juk_invoices,
+                        updated_by_user_id,
+                        created_by_user_id,
+                        updated_at
+                    )
+                    VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
+                    ON CONFLICT (register_row_id) DO UPDATE
+                    SET services = EXCLUDED.services,
+                        risk_assessment = EXCLUDED.risk_assessment,
+                        companies_house = EXCLUDED.companies_house,
+                        juk_invoices = EXCLUDED.juk_invoices,
+                        updated_by_user_id = EXCLUDED.updated_by_user_id,
+                        updated_at = NOW()
+                    """,
+                    (
+                        safe_row_id,
+                        json.dumps(services),
+                        json.dumps(risk_assessment),
+                        json.dumps(companies_house),
+                        json.dumps(juk_invoices),
+                        user_id,
+                        user_id,
                     ),
-                    user_id,
-                ),
-            )
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO ch_auth_register_client_profiles (
+                        register_row_id,
+                        services,
+                        risk_assessment,
+                        companies_house,
+                        updated_by_user_id,
+                        created_by_user_id,
+                        updated_at
+                    )
+                    VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
+                    ON CONFLICT (register_row_id) DO UPDATE
+                    SET services = EXCLUDED.services,
+                        risk_assessment = EXCLUDED.risk_assessment,
+                        companies_house = EXCLUDED.companies_house,
+                        updated_by_user_id = EXCLUDED.updated_by_user_id,
+                        updated_at = NOW()
+                    """,
+                    (
+                        safe_row_id,
+                        json.dumps(services),
+                        json.dumps(risk_assessment),
+                        json.dumps(companies_house),
+                        user_id,
+                        user_id,
+                    ),
+                )
+            touched = [key for key in ("services", "riskAssessment", "companiesHouse", "jukInvoices") if key in payload]
+            cursor.execute("SAVEPOINT client_profile_audit_event")
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_auth_code_register', %s, 'client_profile_updated', %s::jsonb, %s)
+                    """,
+                    (
+                        safe_row_id,
+                        json.dumps(
+                            {
+                                "sections": touched,
+                                "changes": _auth_register_collect_profile_changes(
+                                    {
+                                        "services": previous_services,
+                                        "riskAssessment": previous_risk_assessment,
+                                        "companiesHouse": previous_companies_house,
+                                        "jukInvoices": previous_juk_invoices,
+                                    },
+                                    {
+                                        "services": services,
+                                        "riskAssessment": risk_assessment,
+                                        "companiesHouse": companies_house,
+                                        "jukInvoices": juk_invoices,
+                                    },
+                                ),
+                            }
+                        ),
+                        user_id,
+                    ),
+                )
+                cursor.execute("RELEASE SAVEPOINT client_profile_audit_event")
+            except Exception:
+                cursor.execute("ROLLBACK TO SAVEPOINT client_profile_audit_event")
+                cursor.execute("RELEASE SAVEPOINT client_profile_audit_event")
+                logger.warning(
+                    "Skipping client_profile_updated audit event for row %s due to audit insert failure.",
+                    safe_row_id,
+                    exc_info=True,
+                )
         connection.commit()
     return get_auth_register_client_page_safe(
         safe_row_id,
