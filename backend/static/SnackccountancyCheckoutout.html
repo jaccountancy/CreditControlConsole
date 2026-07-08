@@ -1097,6 +1097,12 @@
             return `${base}${path}`;
         }
 
+        function closestFromEvent(event, selector) {
+            const target = event?.target;
+            if (!(target instanceof Element)) return null;
+            return target.closest(selector);
+        }
+
         function money(pence) {
             return ((Number(pence) || 0) / 100).toFixed(2);
         }
@@ -1869,7 +1875,7 @@
         }
 
         ui.productList.addEventListener("click", async (event) => {
-            const helpBtn = event.target.closest("button[data-help-sku]");
+            const helpBtn = closestFromEvent(event, "button[data-help-sku]");
             if (helpBtn) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1883,13 +1889,13 @@
                 return;
             }
 
-            if (event.target.closest(".help-pop")) {
+            if (closestFromEvent(event, ".help-pop")) {
                 event.preventDefault();
                 event.stopPropagation();
                 return;
             }
 
-            const button = event.target.closest("button[data-sku]");
+            const button = closestFromEvent(event, "button[data-sku]");
             if (button) {
                 event.preventDefault();
                 closeAllHelpPopovers();
@@ -1901,7 +1907,7 @@
                 return;
             }
 
-            const card = event.target.closest("[data-sku-card]");
+            const card = closestFromEvent(event, "[data-sku-card]");
             if (!card || state.isPaymentLocked) return;
             closeAllHelpPopovers();
             const sku = String(card.getAttribute("data-sku-card") || "");
@@ -1912,13 +1918,13 @@
         });
 
         document.addEventListener("click", (event) => {
-            if (!event.target.closest("#productList")) {
+            if (!closestFromEvent(event, "#productList")) {
                 closeAllHelpPopovers();
             }
         });
 
         ui.quickReaddChips.addEventListener("click", async (event) => {
-            const chip = event.target.closest("button[data-readd-sku]");
+            const chip = closestFromEvent(event, "button[data-readd-sku]");
             if (!chip || state.isPaymentLocked) return;
             const sku = String(chip.getAttribute("data-readd-sku") || "");
             const qty = Math.max(1, Number(chip.getAttribute("data-readd-qty") || 1));
