@@ -1060,41 +1060,52 @@
             lastTouchInteractionAt: 0,
         };
 
+        function pickNodeById(id) {
+            const nodes = Array.from(document.querySelectorAll(`[id="${id}"]`));
+            if (!nodes.length) return null;
+            const visible = nodes.find((node) => node.getClientRects().length > 0);
+            return visible || nodes[0];
+        }
+
+        function qtyNodesForSku(sku) {
+            return Array.from(document.querySelectorAll(`[id="qty-${sku}"]`));
+        }
+
         const ui = {
-            productList: document.getElementById("productList"),
-            basketLines: document.getElementById("basketLines"),
-            basketEmpty: document.getElementById("basketEmpty"),
-            basketTotal: document.getElementById("basketTotal"),
-            subtotalAmount: document.getElementById("subtotalAmount"),
-            savingsAmount: document.getElementById("savingsAmount"),
-            finalTotalAmount: document.getElementById("finalTotalAmount"),
-            itemCount: document.getElementById("itemCount"),
-            primaryCheckoutBtn: document.getElementById("primaryCheckoutBtn"),
-            checkoutExtras: document.getElementById("checkoutExtras"),
-            checkoutStatus: document.getElementById("checkoutStatus"),
-            retryBanner: document.getElementById("retryBanner"),
-            retryMessage: document.getElementById("retryMessage"),
-            retryActionBtn: document.getElementById("retryActionBtn"),
-            quickReaddWrap: document.getElementById("quickReaddWrap"),
-            quickReaddChips: document.getElementById("quickReaddChips"),
-            walletReadiness: document.getElementById("walletReadiness"),
-            expressCheckout: document.getElementById("expressCheckout"),
-            paymentElement: document.getElementById("paymentElement"),
-            loadCheckoutBtn: document.getElementById("loadCheckoutBtn"),
-            confirmCardBtn: document.getElementById("confirmCardBtn"),
-            clearBasketBtn: document.getElementById("clearBasketBtn"),
-            stickyPayBar: document.getElementById("stickyPayBar"),
-            stickyPayCount: document.getElementById("stickyPayCount"),
-            stickyPayTotal: document.getElementById("stickyPayTotal"),
-            stickyPayNowBtn: document.getElementById("stickyPayNowBtn"),
-            successSheet: document.getElementById("successSheet"),
-            successOrderNumber: document.getElementById("successOrderNumber"),
-            successOrderTotal: document.getElementById("successOrderTotal"),
-            buyAgainBtn: document.getElementById("buyAgainBtn"),
-            closeSuccessBtn: document.getElementById("closeSuccessBtn"),
-            undoToast: document.getElementById("undoToast"),
-            undoCopy: document.getElementById("undoCopy"),
-            undoBtn: document.getElementById("undoBtn"),
+            productList: pickNodeById("productList"),
+            basketLines: pickNodeById("basketLines"),
+            basketEmpty: pickNodeById("basketEmpty"),
+            basketTotal: pickNodeById("basketTotal"),
+            subtotalAmount: pickNodeById("subtotalAmount"),
+            savingsAmount: pickNodeById("savingsAmount"),
+            finalTotalAmount: pickNodeById("finalTotalAmount"),
+            itemCount: pickNodeById("itemCount"),
+            primaryCheckoutBtn: pickNodeById("primaryCheckoutBtn"),
+            checkoutExtras: pickNodeById("checkoutExtras"),
+            checkoutStatus: pickNodeById("checkoutStatus"),
+            retryBanner: pickNodeById("retryBanner"),
+            retryMessage: pickNodeById("retryMessage"),
+            retryActionBtn: pickNodeById("retryActionBtn"),
+            quickReaddWrap: pickNodeById("quickReaddWrap"),
+            quickReaddChips: pickNodeById("quickReaddChips"),
+            walletReadiness: pickNodeById("walletReadiness"),
+            expressCheckout: pickNodeById("expressCheckout"),
+            paymentElement: pickNodeById("paymentElement"),
+            loadCheckoutBtn: pickNodeById("loadCheckoutBtn"),
+            confirmCardBtn: pickNodeById("confirmCardBtn"),
+            clearBasketBtn: pickNodeById("clearBasketBtn"),
+            stickyPayBar: pickNodeById("stickyPayBar"),
+            stickyPayCount: pickNodeById("stickyPayCount"),
+            stickyPayTotal: pickNodeById("stickyPayTotal"),
+            stickyPayNowBtn: pickNodeById("stickyPayNowBtn"),
+            successSheet: pickNodeById("successSheet"),
+            successOrderNumber: pickNodeById("successOrderNumber"),
+            successOrderTotal: pickNodeById("successOrderTotal"),
+            buyAgainBtn: pickNodeById("buyAgainBtn"),
+            closeSuccessBtn: pickNodeById("closeSuccessBtn"),
+            undoToast: pickNodeById("undoToast"),
+            undoCopy: pickNodeById("undoCopy"),
+            undoBtn: pickNodeById("undoBtn"),
         };
 
         function snackPublicUrl(pathname) {
@@ -1216,12 +1227,11 @@
         }
 
         function animateQuantityFeedback(sku, action) {
-            const qtyNode = document.getElementById(`qty-${sku}`);
-            if (qtyNode) {
+            qtyNodesForSku(sku).forEach((qtyNode) => {
                 qtyNode.classList.remove("is-pop");
                 void qtyNode.offsetWidth;
                 qtyNode.classList.add("is-pop");
-            }
+            });
             const cardNode = ui.productList.querySelector(`[data-sku-card="${sku}"]`);
             if (cardNode) {
                 const className = action === "inc" ? "is-add" : "is-remove";
@@ -1371,7 +1381,7 @@
             event?.stopPropagation?.();
             const sku = String(button.getAttribute("data-help-sku") || "");
             if (!sku) return;
-            const pop = document.getElementById(`help-${sku}`);
+            const pop = pickNodeById(`help-${sku}`);
             if (!pop) return;
             const willShow = Boolean(pop.hidden);
             closeAllHelpPopovers(sku);
@@ -1472,8 +1482,7 @@
                 state.lastRemoved = { sku, quantity: 1 };
                 showUndoToast(sku);
             }
-            const node = document.getElementById(`qty-${sku}`);
-            if (node) node.textContent = String(state.quantities[sku]);
+            qtyNodesForSku(sku).forEach((node) => { node.textContent = String(state.quantities[sku]); });
             animateQuantityFeedback(sku, action);
         }
 
@@ -1578,8 +1587,7 @@
             state.products.forEach((product) => {
                 const match = items.find((item) => item.sku === product.sku);
                 state.quantities[product.sku] = Number(match?.quantity || 0);
-                const node = document.getElementById(`qty-${product.sku}`);
-                if (node) node.textContent = String(state.quantities[product.sku]);
+                qtyNodesForSku(product.sku).forEach((node) => { node.textContent = String(state.quantities[product.sku]); });
             });
             await recalculateBasket();
             scrollToWalletCta();
@@ -1918,8 +1926,7 @@
         async function clearBasket(showMessage = true) {
             Object.keys(state.quantities).forEach((sku) => { state.quantities[sku] = 0; });
             state.products.forEach((product) => {
-                const node = document.getElementById(`qty-${product.sku}`);
-                if (node) node.textContent = "0";
+                qtyNodesForSku(product.sku).forEach((node) => { node.textContent = "0"; });
             });
             state.basket = localBasket([]);
             renderBasketUi(state.basket);
@@ -1937,8 +1944,8 @@
                 event.stopPropagation();
                 const sku = String(helpBtn.getAttribute("data-help-sku") || "");
                 if (!sku) return;
-                const pop = document.getElementById(`help-${sku}`);
-                if (!pop) return;
+            const pop = pickNodeById(`help-${sku}`);
+            if (!pop) return;
                 const willShow = Boolean(pop.hidden);
                 closeAllHelpPopovers(sku);
                 pop.hidden = !willShow;
@@ -2034,8 +2041,7 @@
             const qty = Math.max(1, Number(chip.getAttribute("data-readd-qty") || 1));
             if (!sku) return;
             state.quantities[sku] = Number(state.quantities[sku] || 0) + qty;
-            const node = document.getElementById(`qty-${sku}`);
-            if (node) node.textContent = String(state.quantities[sku]);
+            qtyNodesForSku(sku).forEach((node) => { node.textContent = String(state.quantities[sku]); });
             animateQuantityFeedback(sku, "inc");
             await recalculateBasket();
         });
@@ -2075,8 +2081,7 @@
             if (!state.lastRemoved?.sku) return;
             const sku = state.lastRemoved.sku;
             state.quantities[sku] = Number(state.quantities[sku] || 0) + Number(state.lastRemoved.quantity || 1);
-            const node = document.getElementById(`qty-${sku}`);
-            if (node) node.textContent = String(state.quantities[sku]);
+            qtyNodesForSku(sku).forEach((node) => { node.textContent = String(state.quantities[sku]); });
             hideUndoToast();
             await recalculateBasket();
         });
