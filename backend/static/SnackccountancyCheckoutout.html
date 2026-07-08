@@ -1447,6 +1447,25 @@
             });
         }
 
+        // WP/Builder-safe inline hooks used by the static HTML buttons.
+        window.snackQtyTap = function snackQtyTap(button, sku, action, event) {
+            const target = button instanceof Element
+                ? button
+                : ui.productList.querySelector(`button.qty-btn[data-sku="${String(sku || "")}"][data-action="${String(action || "")}"]`);
+            if (!target) return false;
+            applyQuantityFromButton(target, event);
+            return false;
+        };
+
+        window.snackHelpTap = function snackHelpTap(button, sku, event) {
+            const target = button instanceof Element
+                ? button
+                : ui.productList.querySelector(`button[data-help-sku="${String(sku || "")}"]`);
+            if (!target) return false;
+            toggleHelpFromButton(target, event);
+            return false;
+        };
+
         function renderBasketUi(basket) {
             const subtotal = Number(basket?.subtotal_pence || basket?.total_paid_pence || 0);
             const savings = Number(
