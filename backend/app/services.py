@@ -51438,7 +51438,7 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         description = (
             f"Bad debt write off for invoice {invoice_number} dated {_invoice_date_description(invoice.get('invoice_date'))}. "
             f"The outstanding balance of {amount_label} has been assessed as irrecoverable. "
-            f"Raised via jeNIUS AI Credit Control Console to account code {account_code} "
+            f"Raised via Jenius AI to account code {account_code} "
             "Irrecoverable Receivables / Bad Debt Write Off and allocated directly against the original invoice."
         )
         credit_note_payload = {

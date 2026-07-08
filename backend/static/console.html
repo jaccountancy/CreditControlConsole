@@ -22096,38 +22096,60 @@
             .xero-transaction-list,
             .xero-credit-list {
                 display: grid;
-                gap: 12px;
+                gap: 8px;
             }
             .xero-transaction-row,
             .xero-credit-row {
                 border: 1px solid var(--line);
-                border-radius: 16px;
+                border-radius: 12px;
                 background: rgba(255, 255, 255, 0.78);
-                padding: 14px 16px;
+                padding: 10px 12px;
             }
             .xero-transaction-head,
             .xero-credit-head {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) auto;
-                gap: 12px;
+                gap: 8px;
                 align-items: start;
+            }
+            .xero-transaction-head > div,
+            .xero-credit-head > div {
+                min-width: 0;
             }
             .xero-transaction-head strong,
             .xero-credit-head strong {
                 display: block;
             }
+            .xero-transaction-head span,
+            .xero-credit-head span {
+                margin-top: 2px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
             .xero-line-items {
                 display: grid;
-                gap: 8px;
-                margin-top: 12px;
-                padding-top: 12px;
+                gap: 5px;
+                margin-top: 8px;
+                padding-top: 8px;
                 border-top: 1px solid var(--line);
             }
             .xero-line-item {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) auto;
-                gap: 12px;
+                gap: 8px;
                 align-items: center;
+            }
+            .xero-line-item span {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                font-size: 0.76rem;
+                line-height: 1.2;
+            }
+            .xero-line-item strong {
+                font-size: 0.86rem;
+                line-height: 1.15;
             }
             .allocation-form {
                 display: grid;
@@ -68046,6 +68068,20 @@
                 return source?.sourceType === "overpayment" ? "Cash overpayment" : "Credit note";
             }
 
+            function compactUnallocatedRowLabel(value, fallback = "") {
+                const raw = String(value || "").replace(/\s+/g, " ").trim();
+                if (!raw) return fallback;
+                const cleaned = cleanInvoiceServiceDescription(raw) || cleanInvoiceDescriptionPart(raw) || raw;
+                const planMatch = cleaned.match(/\b([a-z0-9& ]{2,40}\bplan)\b/i);
+                let label = planMatch ? titleCaseInvoiceDescription(planMatch[1]) : cleaned;
+                label = label
+                    .replace(/\b(subscription|invoice|services?)\b/gi, "")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (!label) label = planMatch ? titleCaseInvoiceDescription(planMatch[1]) : cleaned;
+                return label.length > 44 ? `${label.slice(0, 41)}...` : label;
+            }
+
             function renderTransactionEmpty(target, eyebrow, title, body) {
                 target.innerHTML = "";
                 const empty = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
@@ -68171,7 +68207,7 @@
                             <div class="xero-line-items">
                                 ${lines.map((line) => `
                                     <div class="xero-line-item">
-                                        <span>${escapeHTML(line.description || line.Description || "Invoice line")}</span>
+                                        <span title="${escapeHTML(line.description || line.Description || "Invoice line")}">${escapeHTML(compactUnallocatedRowLabel(line.description || line.Description || "Invoice line", "Invoice line"))}</span>
                                         <strong>${formatXeroCurrency(xeroLineAmount(line), invoice.currencyCode)}</strong>
                                     </div>
                                 `).join("")}
@@ -68194,11 +68230,12 @@
                     creditSources.forEach((source) => {
                         const row = document.createElement("article");
                         row.className = "xero-credit-row is-highlighted";
+                        const compactReference = compactUnallocatedRowLabel(source.reference || source.description || "", "");
                         row.innerHTML = `
                             <div class="xero-credit-head">
                                 <div>
                                     <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
-                                    <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+                                    <span title="${escapeHTML(source.reference || source.description || "")}">${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${compactReference ? ` · ${escapeHTML(compactReference)}` : ""}</span>
                                 </div>
                                 <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
                             </div>
@@ -68225,11 +68262,12 @@
                     allocatedCredits.forEach((source) => {
                         const row = document.createElement("article");
                         row.className = "xero-credit-row";
+                        const compactReference = compactUnallocatedRowLabel(source.reference || source.description || "", "");
                         row.innerHTML = `
                             <div class="xero-credit-head">
                                 <div>
                                     <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
-                                    <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+                                    <span title="${escapeHTML(source.reference || source.description || "")}">${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${compactReference ? ` · ${escapeHTML(compactReference)}` : ""}</span>
                                 </div>
                                 <strong>${formatXeroCurrency(source.appliedAmount || 0, source.currencyCode)}</strong>
                             </div>
@@ -128469,6 +128507,7 @@
             }
 
             function setClientRegisterClientPageTab(tab) {
+                const previousActiveTab = String(companiesHouseSettings?.authRegisterClientPage?.activeTab || "").trim();
                 const availableTabs = clientRegisterClientPageTabDefinitions({ includeDraftServiceState: true });
                 const availableIds = new Set(availableTabs.map((item) => String(item?.id || "")));
                 const requested = String(tab || "").trim();
@@ -128520,7 +128559,8 @@
                         companiesHouseAutoRefreshed: true,
                     };
                 }
-                if (next === "juk-invoices") {
+                const enteringJukInvoicesTab = next === "juk-invoices" && previousActiveTab !== "juk-invoices";
+                if (enteringJukInvoicesTab) {
                     window.setTimeout(() => {
                         const latestState = companiesHouseSettings.authRegisterClientPage || {};
                         if (!latestState.open || String(latestState.activeTab || "").trim() !== "juk-invoices") return;
