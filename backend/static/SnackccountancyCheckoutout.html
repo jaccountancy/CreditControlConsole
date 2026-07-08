@@ -101,7 +101,14 @@
             gap: 10px;
         }
 
-        .product {
+        /* Protect this page from theme CSS collisions on embedded WordPress pages. */
+        #checkoutoutApp .product-list > .snack-product {
+            display: grid !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .snack-product {
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
             background: var(--surface-soft);
@@ -114,7 +121,7 @@
             transition: transform 160ms ease, box-shadow 180ms ease, border-color 180ms ease;
         }
 
-        .product:active {
+        .snack-product:active {
             transform: translateY(0);
             box-shadow: 0 8px 18px rgba(21, 70, 129, 0.12);
             border-color: #bdd4ea;
@@ -447,11 +454,11 @@
             animation: qtyPop 220ms ease;
         }
 
-        .product.is-add {
+        .snack-product.is-add {
             animation: cardPulseAdd 230ms ease;
         }
 
-        .product.is-remove {
+        .snack-product.is-remove {
             animation: cardPulseRemove 210ms ease;
         }
 
@@ -693,7 +700,7 @@
         }
 
         @media (hover: hover) and (pointer: fine) {
-            .product:hover {
+            .snack-product:hover {
                 transform: translateY(-1px);
                 box-shadow: 0 10px 24px rgba(21, 70, 129, 0.08);
                 border-color: #bdd4ea;
@@ -729,7 +736,7 @@
             .products,
             .checkout { padding: 12px; }
 
-            .product {
+            .snack-product {
                 grid-template-columns: 42px minmax(0, 1fr);
             }
 
@@ -1146,7 +1153,7 @@
             ui.productList.innerHTML = "";
             state.products.forEach((product) => {
                 const card = document.createElement("article");
-                card.className = "product";
+                card.className = "snack-product";
                 card.setAttribute("data-sku-card", product.sku);
                 const quantity = Number(state.quantities[product.sku] || 0);
                 const emoji = product.emoji || "🛒";
