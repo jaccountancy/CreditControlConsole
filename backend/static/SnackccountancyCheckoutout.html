@@ -183,7 +183,8 @@
 
         .checkout {
             padding: 14px;
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 10px;
             position: static;
         }
@@ -326,6 +327,10 @@
         .wallet-area {
             display: grid;
             gap: 8px;
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid #d6e4f2;
+            background: linear-gradient(180deg, rgba(247, 251, 255, 0.75), rgba(255, 255, 255, 0));
         }
 
         .wallet-readiness {
@@ -796,7 +801,7 @@
                 <div class="chip-row" id="quickReaddChips"></div>
             </div>
 
-            <div class="wallet-area">
+            <div class="wallet-area" id="basketCheckoutEmbed">
                 <p class="small">Express checkout (Apple Pay, Google Pay, Link)</p>
                 <div class="wallet-readiness" id="walletReadiness">Checking wallet readiness…</div>
                 <div id="expressCheckout"></div>
@@ -1208,7 +1213,8 @@
 
         function scrollToWalletCta() {
             setReviewMode("ready");
-            ui.expressCheckout.scrollIntoView({ behavior: "smooth", block: "center" });
+            const checkoutTarget = document.getElementById("basketCheckoutEmbed") || ui.expressCheckout;
+            checkoutTarget.scrollIntoView({ behavior: "smooth", block: "center" });
             window.setTimeout(() => {
                 if (!state.elements) {
                     mountCheckout();

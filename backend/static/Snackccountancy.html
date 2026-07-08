@@ -25,7 +25,7 @@
             font-family: "Manrope", "Segoe UI", sans-serif;
             color: var(--ink);
             background: radial-gradient(circle at 14% 8%, #edf8ff 0%, #f8fbff 35%, #ffffff 100%);
-            padding-bottom: 200px;
+            padding-bottom: 92px;
         }
         .wrap {
             width: min(760px, 100%);
@@ -55,7 +55,7 @@
         #snackApp .sub { margin-top: 4px; color: var(--muted); font-size: 0.92rem; }
         #snackApp .products {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
         }
         #snackApp .product-button {
@@ -199,6 +199,12 @@
         }
         .basket-total { font-size: 1.36rem; font-weight: 900; color: var(--blue); }
         .wallet-row { display: grid; gap: 10px; }
+        .checkout-panel {
+            display: grid;
+            gap: 10px;
+            border-top: 1px solid var(--line);
+            padding-top: 8px;
+        }
         #expressCheckout {
             min-height: 54px;
             border: 1px dashed #c2d6ea;
@@ -209,7 +215,6 @@
         #paymentElement { margin-top: 8px; }
         [hidden] { display: none !important; }
         @media (max-width: 420px) {
-            .signin-row { grid-template-columns: 1fr; }
             .wrap { padding: 10px 10px 24px; }
             .card { padding: 12px; }
             .sub { font-size: 0.88rem; }
@@ -217,27 +222,40 @@
                 font-size: clamp(0.64rem, 4.5vw, 0.98rem);
             }
             #snackApp .product-button {
-                grid-template-columns: 40px minmax(0, 1fr);
-                padding: 11px;
+                grid-template-columns: 34px minmax(0, 1fr);
+                padding: 9px;
+                min-height: 98px;
+                gap: 6px 8px;
             }
             #snackApp .picon {
-                width: 40px;
-                height: 40px;
-                font-size: 1.25rem;
+                width: 34px;
+                height: 34px;
+                font-size: 1.05rem;
             }
+            #snackApp .pname { font-size: 0.88rem; line-height: 1.18; }
+            #snackApp .pdesc,
+            #snackApp .tap-hint { display: none; }
             #snackApp .pprice {
                 grid-column: 1 / -1;
-                justify-self: end;
-                font-size: 1.25rem;
+                justify-self: start;
+                font-size: 1.03rem;
+            }
+            #snackApp .qty-badge {
+                min-width: 22px;
+                height: 22px;
+                font-size: 0.72rem;
             }
             .basket-row {
                 align-items: center;
             }
             .basket-total {
-                font-size: 1.2rem;
+                font-size: 1.08rem;
             }
             .btn {
                 width: 100%;
+            }
+            .sticky {
+                padding: 8px 10px 10px;
             }
         }
     </style>
@@ -260,23 +278,6 @@
             <div class="item"><span class="dot">✔</span><span>Every 10th paid order is half price.</span></div>
             <div class="item"><span class="dot">✔</span><span>Rewards stack for effective 55% discount on eligible cans.</span></div>
             <div class="status" id="rewardLiveStatus">Guest checkout is enabled. Sign in for tracked rewards.</div>
-        </section>
-
-        <section class="card signin-grid">
-            <h2 style="margin:0;font-size:1.02rem;">Account</h2>
-            <div class="signin-row">
-                <input id="nameInput" placeholder="Your name (optional)" autocomplete="name">
-                <input id="emailInput" placeholder="Email for rewards" autocomplete="email" inputmode="email">
-            </div>
-            <div class="signin-row">
-                <button class="btn btn-main" id="emailSignInBtn" type="button">Sign in for rewards</button>
-                <button class="btn btn-soft" id="logoutBtn" type="button" hidden>Log out</button>
-            </div>
-            <div class="signin-row">
-                <button class="btn btn-soft" type="button" disabled>Google login (coming next)</button>
-                <button class="btn btn-soft" type="button" disabled>Apple/Facebook (coming next)</button>
-            </div>
-            <div class="muted">Once signed in, you stay signed in on this device until you log out.</div>
         </section>
 
         <section class="card" id="ordersCard" hidden>
@@ -324,6 +325,27 @@
                 description: "Premium branded can.",
                 category: "premium_can",
                 price_pence: 169,
+            },
+            {
+                sku: "coffee_or_hot_chocolate",
+                name: "Coffees or Hot Chocolate",
+                description: "Fresh hot drinks station.",
+                category: "hot_drink",
+                price_pence: 299,
+            },
+            {
+                sku: "noodle_snackpot",
+                name: "Noodle Snackpot",
+                description: "Quick hot noodle pot snack.",
+                category: "snackpot",
+                price_pence: 350,
+            },
+            {
+                sku: "ice_lollys",
+                name: "Ice Lollys",
+                description: "Frozen sweet treat selection.",
+                category: "ice_lolly",
+                price_pence: 185,
             },
         ];
 
@@ -424,7 +446,14 @@
                 button.className = "product-button";
                 button.setAttribute("data-add-sku", product.sku);
 
-                const icon = product.sku === "premium_can_of_pop" ? "⚡" : "🥤";
+                const iconBySku = {
+                    can_of_pop: "🥤",
+                    premium_can_of_pop: "⚡",
+                    coffee_or_hot_chocolate: "☕",
+                    noodle_snackpot: "🍜",
+                    ice_lollys: "🍧",
+                };
+                const icon = iconBySku[product.sku] || "🛒";
                 button.innerHTML = `
                     <span class="qty-badge" id="qty-${product.sku}">${qty}</span>
                     <div class="picon">${icon}</div>
@@ -609,7 +638,7 @@
                 });
             } catch (_) {
                 ui.checkoutStatus.className = "status warn";
-                ui.checkoutStatus.textContent = "Unable to reach checkout server. Please try again.";
+                ui.checkoutStatus.textContent = "Checkout API blocked or unavailable. If this is on jaccountancy.co.uk, check PANEL_ALLOWED_ORIGINS includes this domain.";
                 return null;
             }
 

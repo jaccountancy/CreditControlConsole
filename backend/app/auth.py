@@ -170,7 +170,11 @@ def allowed_panel_origins() -> set[str]:
         "PANEL_ALLOWED_ORIGINS",
         "https://jenius.jaccountancy.co.uk",
     )
-    origins = {base_url.rstrip("/")}
+    origins = {
+        base_url.rstrip("/"),
+        "https://jaccountancy.co.uk",
+        "https://www.jaccountancy.co.uk",
+    }
     origins.update(
         origin.strip().rstrip("/")
         for origin in panel_allowed_origins.split(",")
