@@ -388,6 +388,9 @@ def _seed_default_products() -> None:
     defaults = [
         ("can_of_pop", "Can of Pop", "Standard chilled can.", "standard_can", 100, 1),
         ("premium_can_of_pop", "Premium Can of Pop", "Premium branded can.", "premium_can", 169, 2),
+        ("coffee_or_hot_chocolate", "Coffees or Hot Chocolate", "Fresh hot drinks station.", "hot_drink", 299, 3),
+        ("noodle_snackpot", "Noodle Snackpot", "Quick hot noodle pot snack.", "snackpot", 350, 4),
+        ("ice_lollys", "Ice Lollys", "Frozen sweet treat selection.", "ice_lolly", 185, 5),
     ]
     with get_connection() as connection:
         with connection.cursor() as cursor:

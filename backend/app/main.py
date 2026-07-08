@@ -394,6 +394,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_PANEL_DIR = BASE_DIR.parent / "WebPanel"
 LEGACY_CONSOLE_PATH = BASE_DIR / "static" / "console.html"
 SNACKCCOUNTANCY_PATH = BASE_DIR / "static" / "Snackccountancy.html"
+SNACKCCOUNTANCY_CHECKOUTOUT_PATH = BASE_DIR / "static" / "SnackccountancyCheckoutout.html"
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
@@ -2588,6 +2589,16 @@ def snackccountancy_page():
 @app.get("/snackccountancy/account", response_class=HTMLResponse)
 def snackccountancy_account_page():
     return FileResponse(SNACKCCOUNTANCY_PATH)
+
+
+@app.get("/snackccountancy-checkoutout", response_class=HTMLResponse)
+def snackccountancy_checkoutout_page():
+    return FileResponse(SNACKCCOUNTANCY_CHECKOUTOUT_PATH)
+
+
+@app.get("/snackccountancy/checkoutout", response_class=HTMLResponse)
+def snackccountancy_checkoutout_alias_page():
+    return FileResponse(SNACKCCOUNTANCY_CHECKOUTOUT_PATH)
 
 
 @app.get("/snackccountancy/success", response_class=HTMLResponse)

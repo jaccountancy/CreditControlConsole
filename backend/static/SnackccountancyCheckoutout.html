@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Snackccountancy Checkoutout</title>
+    <meta name="description" content="Snackccountancy Checkoutout with Apple Pay and Stripe Express Checkout.">
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        :root {
+            --bg-top: #f2f8ff;
+            --bg-bottom: #fff9f2;
+            --surface: #ffffff;
+            --surface-soft: #f7fbff;
+            --ink: #19304d;
+            --muted: #617994;
+            --line: #d2e2f1;
+            --blue: #0e5bb0;
+            --blue-deep: #0a3f80;
+            --orange: #ff6f2d;
+            --orange-soft: #fff0e5;
+            --ok: #0f9b60;
+            --warn: #a55b16;
+            --shadow: 0 16px 40px rgba(19, 64, 118, 0.12);
+            --radius-xl: 22px;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 85% 10%, rgba(255, 156, 69, 0.18), transparent 35%),
+                radial-gradient(circle at 5% 20%, rgba(47, 125, 212, 0.14), transparent 42%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+            padding: 18px;
+        }
+
+        .shell {
+            width: min(1080px, 100%);
+            margin: 0 auto;
+            display: grid;
+            gap: 14px;
+            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+            align-items: start;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow);
+        }
+
+        .hero {
+            grid-column: 1 / -1;
+            padding: 18px;
+            border-top: 4px solid var(--orange);
+            display: grid;
+            gap: 6px;
+            background:
+                linear-gradient(140deg, rgba(255, 244, 232, 0.72), rgba(242, 248, 255, 0.88));
+        }
+
+        .brand {
+            margin: 0;
+            font-size: clamp(1.35rem, 2.6vw, 2rem);
+            letter-spacing: -0.02em;
+        }
+
+        .brand .snack { color: var(--orange); }
+        .brand .acct { color: var(--blue-deep); }
+
+        .sub {
+            margin: 0;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .products {
+            padding: 14px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .section-title {
+            margin: 0 0 4px;
+            font-size: 1.05rem;
+        }
+
+        .product-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .product {
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            background: var(--surface-soft);
+            padding: 12px;
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .emoji {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            font-size: 1.45rem;
+            background: #ecf4ff;
+        }
+
+        .name {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--blue-deep);
+        }
+
+        .desc {
+            margin: 2px 0 0;
+            color: var(--muted);
+            font-size: 0.86rem;
+            font-weight: 600;
+        }
+
+        .price {
+            margin: 0;
+            font-size: 1.16rem;
+            font-weight: 900;
+            color: var(--blue);
+            text-align: right;
+        }
+
+        .controls {
+            margin-top: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px;
+            border-radius: 999px;
+            border: 1px solid #c5d9ef;
+            background: #fff;
+        }
+
+        .qty-btn {
+            border: 0;
+            background: #edf5ff;
+            color: var(--blue-deep);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            font-size: 1rem;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .qty {
+            min-width: 26px;
+            text-align: center;
+            font-weight: 800;
+        }
+
+        .checkout {
+            padding: 14px;
+            display: grid;
+            gap: 10px;
+            position: sticky;
+            top: 18px;
+        }
+
+        .basket-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .total {
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: var(--blue-deep);
+        }
+
+        .basket-lines {
+            display: grid;
+            gap: 8px;
+            max-height: 220px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .basket-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            border-bottom: 1px dashed #d7e5f2;
+            padding-bottom: 8px;
+            font-size: 0.92rem;
+        }
+
+        .basket-line small {
+            color: var(--muted);
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .basket-empty {
+            border: 1px dashed #c5d9ef;
+            border-radius: var(--radius-md);
+            background: #f8fbff;
+            color: var(--muted);
+            padding: 12px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .status {
+            border-radius: var(--radius-md);
+            border: 1px dashed #bfd6ec;
+            background: #f5f9ff;
+            color: #284664;
+            padding: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .status.warn {
+            border-color: #ffd7ae;
+            background: #fff7ef;
+            color: var(--warn);
+        }
+
+        .wallet-area {
+            display: grid;
+            gap: 8px;
+        }
+
+        #expressCheckout {
+            min-height: 56px;
+            border: 1px dashed #c7dbf0;
+            border-radius: var(--radius-md);
+            background: #fcfeff;
+            padding: 8px;
+        }
+
+        #paymentElement {
+            border: 1px solid #d6e3f2;
+            border-radius: var(--radius-md);
+            background: #fff;
+            padding: 10px;
+        }
+
+        .btn {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            padding: 11px 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .btn-main {
+            background: linear-gradient(135deg, var(--blue), var(--blue-deep));
+            color: #fff;
+        }
+
+        .btn-soft {
+            background: #fff;
+            color: var(--ink);
+            border-color: var(--line);
+        }
+
+        .btn-wallet {
+            background: #10151f;
+            color: #fff;
+        }
+
+        .small {
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        [hidden] { display: none !important; }
+
+        @media (max-width: 960px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .checkout {
+                position: static;
+            }
+        }
+
+        @media (max-width: 520px) {
+            body { padding: 10px; }
+
+            .hero,
+            .products,
+            .checkout { padding: 12px; }
+
+            .product {
+                grid-template-columns: 42px minmax(0, 1fr);
+            }
+
+            .emoji {
+                width: 42px;
+                height: 42px;
+                font-size: 1.2rem;
+            }
+
+            .price {
+                grid-column: 1 / -1;
+                text-align: left;
+                margin-top: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell" id="checkoutoutApp">
+        <section class="card hero">
+            <h1 class="brand"><span class="snack">SNACK</span><span class="acct">CCOUNTANCY CHECKOUTOUT</span></h1>
+            <p class="sub">Select products, build your basket, and pay quickly with Apple Pay or card.</p>
+        </section>
+
+        <section class="card products" aria-label="Products">
+            <h2 class="section-title">Menu</h2>
+            <div class="product-list" id="productList"></div>
+            <button class="btn btn-soft" id="clearBasketBtn" type="button">Clear basket</button>
+        </section>
+
+        <aside class="card checkout" aria-label="Checkout">
+            <div class="basket-head">
+                <h2 class="section-title" style="margin:0;">Basket</h2>
+                <div class="total">£<span id="basketTotal">0.00</span></div>
+            </div>
+            <p class="small"><span id="itemCount">0</span> item(s) selected</p>
+            <div class="basket-lines" id="basketLines"></div>
+            <div class="basket-empty" id="basketEmpty">Add items to start checkout.</div>
+            <div class="status" id="checkoutStatus">Ready when you are.</div>
+
+            <div class="wallet-area">
+                <p class="small">Express checkout (Apple Pay, Google Pay, Link)</p>
+                <div id="expressCheckout"></div>
+                <button class="btn btn-wallet" id="loadCheckoutBtn" type="button">Load Apple Pay / Express Checkout</button>
+                <div id="paymentElement" hidden></div>
+                <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Pay with Card</button>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        const PUBLIC_BASE_URL = window.SNACK_PUBLIC_BASE_URL || "https://jaccountancy.co.uk";
+        const API_BASE_URL = window.SNACK_API_BASE_URL || "https://jenius.jaccountancy.co.uk";
+
+        const FALLBACK_PRODUCTS = [
+            { sku: "can_of_pop", name: "Can of Pop", description: "Chilled soft drink can.", category: "standard_can", price_pence: 100, emoji: "🥤" },
+            { sku: "premium_can_of_pop", name: "Premium Can of Pop", description: "Premium branded fizzy can.", category: "premium_can", price_pence: 169, emoji: "⚡" },
+            { sku: "coffee_or_hot_chocolate", name: "Coffees or Hot Chocolate", description: "Fresh hot drinks station.", category: "hot_drink", price_pence: 299, emoji: "☕" },
+            { sku: "noodle_snackpot", name: "Noodle Snackpot", description: "Quick hot noodle pot snack.", category: "snackpot", price_pence: 350, emoji: "🍜" },
+            { sku: "ice_lollys", name: "Ice Lollys", description: "Frozen sweet treat selection.", category: "ice_lolly", price_pence: 185, emoji: "🍧" },
+        ];
+
+        const state = {
+            products: [],
+            quantities: {},
+            basket: null,
+            stripe: null,
+            elements: null,
+            cardMounted: false,
+            currentOrderNumber: "",
+            currentPaymentIntentId: "",
+        };
+
+        const ui = {
+            productList: document.getElementById("productList"),
+            basketLines: document.getElementById("basketLines"),
+            basketEmpty: document.getElementById("basketEmpty"),
+            basketTotal: document.getElementById("basketTotal"),
+            itemCount: document.getElementById("itemCount"),
+            checkoutStatus: document.getElementById("checkoutStatus"),
+            expressCheckout: document.getElementById("expressCheckout"),
+            paymentElement: document.getElementById("paymentElement"),
+            loadCheckoutBtn: document.getElementById("loadCheckoutBtn"),
+            confirmCardBtn: document.getElementById("confirmCardBtn"),
+            clearBasketBtn: document.getElementById("clearBasketBtn"),
+        };
+
+        function snackPublicUrl(pathname) {
+            const base = String(PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+            const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
+            return `${base}${path}`;
+        }
+
+        function snackApiUrl(pathname) {
+            const base = String(API_BASE_URL || "").replace(/\/+$/, "");
+            const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
+            return `${base}${path}`;
+        }
+
+        function money(pence) {
+            return ((Number(pence) || 0) / 100).toFixed(2);
+        }
+
+        function selectedItems() {
+            return state.products
+                .map((product) => ({ sku: product.sku, quantity: Number(state.quantities[product.sku] || 0) }))
+                .filter((item) => item.quantity > 0);
+        }
+
+        function localBasket(items) {
+            const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+            const subtotal = items.reduce((sum, item) => {
+                const product = state.products.find((row) => row.sku === item.sku);
+                return sum + (Number(product?.price_pence || 0) * item.quantity);
+            }, 0);
+            return {
+                item_count: itemCount,
+                total_paid_pence: subtotal,
+                lines: items.map((item) => {
+                    const product = state.products.find((row) => row.sku === item.sku);
+                    const unitPrice = Number(product?.price_pence || 0);
+                    return {
+                        sku: item.sku,
+                        name: String(product?.name || item.sku),
+                        quantity: item.quantity,
+                        line_total_pence: unitPrice * item.quantity,
+                    };
+                }),
+            };
+        }
+
+        function renderProducts() {
+            ui.productList.innerHTML = "";
+            state.products.forEach((product) => {
+                const card = document.createElement("article");
+                card.className = "product";
+                const quantity = Number(state.quantities[product.sku] || 0);
+                const emoji = product.emoji || "🛒";
+                card.innerHTML = `
+                    <div class="emoji" aria-hidden="true">${emoji}</div>
+                    <div>
+                        <h3 class="name">${product.name}</h3>
+                        <p class="desc">${product.description || ""}</p>
+                        <div class="controls" role="group" aria-label="Quantity controls for ${product.name}">
+                            <button class="qty-btn" type="button" data-action="dec" data-sku="${product.sku}" aria-label="Decrease ${product.name}">−</button>
+                            <span class="qty" id="qty-${product.sku}">${quantity}</span>
+                            <button class="qty-btn" type="button" data-action="inc" data-sku="${product.sku}" aria-label="Increase ${product.name}">+</button>
+                        </div>
+                    </div>
+                    <p class="price">£${money(product.price_pence)}</p>
+                `;
+                ui.productList.appendChild(card);
+            });
+        }
+
+        function renderBasketUi(basket) {
+            const total = Number(basket?.total_paid_pence || 0);
+            const count = Number(basket?.item_count || 0);
+            const lines = Array.isArray(basket?.lines) ? basket.lines : [];
+
+            ui.basketTotal.textContent = money(total);
+            ui.itemCount.textContent = String(count);
+
+            ui.basketLines.innerHTML = "";
+            if (!lines.length) {
+                ui.basketEmpty.hidden = false;
+                return;
+            }
+
+            ui.basketEmpty.hidden = true;
+            lines.forEach((line) => {
+                const row = document.createElement("div");
+                row.className = "basket-line";
+                row.innerHTML = `
+                    <div>
+                        <strong>${line.name}</strong>
+                        <small>${line.quantity} × item</small>
+                    </div>
+                    <strong>£${money(line.line_total_pence)}</strong>
+                `;
+                ui.basketLines.appendChild(row);
+            });
+        }
+
+        function setStatus(message, warn = false) {
+            ui.checkoutStatus.textContent = message;
+            ui.checkoutStatus.className = warn ? "status warn" : "status";
+        }
+
+        function updateQuantity(sku, action) {
+            const current = Number(state.quantities[sku] || 0);
+            if (action === "inc") {
+                state.quantities[sku] = current + 1;
+            } else {
+                state.quantities[sku] = Math.max(0, current - 1);
+            }
+            const node = document.getElementById(`qty-${sku}`);
+            if (node) node.textContent = String(state.quantities[sku]);
+        }
+
+        async function loadProducts() {
+            state.products = [...FALLBACK_PRODUCTS];
+            FALLBACK_PRODUCTS.forEach((product) => {
+                if (!(product.sku in state.quantities)) state.quantities[product.sku] = 0;
+            });
+            renderProducts();
+
+            try {
+                const response = await fetch(snackApiUrl("/api/snackccountancy/products"), { credentials: "include" });
+                if (!response.ok) return;
+                const data = await response.json();
+                const apiProducts = Array.isArray(data?.products) ? data.products : [];
+                if (!apiProducts.length) return;
+
+                const fallbackBySku = new Map(FALLBACK_PRODUCTS.map((item) => [item.sku, item]));
+                state.products = apiProducts.map((item) => {
+                    const fallback = fallbackBySku.get(item.sku) || {};
+                    return {
+                        sku: item.sku,
+                        name: item.name,
+                        description: item.description || fallback.description || "",
+                        category: item.category || fallback.category || "",
+                        price_pence: Number(item.price_pence || 0),
+                        emoji: fallback.emoji || "🛒",
+                    };
+                });
+                state.products.forEach((product) => {
+                    if (!(product.sku in state.quantities)) state.quantities[product.sku] = 0;
+                });
+                renderProducts();
+            } catch (_) {
+                setStatus("Loaded with local product defaults.");
+            }
+        }
+
+        async function recalculateBasket() {
+            const items = selectedItems();
+            if (!items.length) {
+                state.basket = localBasket([]);
+                renderBasketUi(state.basket);
+                setStatus("Add items to start checkout.");
+                return;
+            }
+
+            state.basket = localBasket(items);
+            renderBasketUi(state.basket);
+            setStatus("Basket updated. Load express checkout when ready.");
+
+            try {
+                const response = await fetch(snackApiUrl("/api/snackccountancy/calculate-basket"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ items }),
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                const basket = data?.basket;
+                if (!basket) return;
+
+                state.basket = {
+                    item_count: Number(basket.item_count || 0),
+                    total_paid_pence: Number(basket.total_paid_pence || 0),
+                    lines: Array.isArray(basket.items)
+                        ? basket.items.map((item) => ({
+                            name: item.name || item.sku,
+                            quantity: Number(item.quantity || 0),
+                            line_total_pence: Number(item.line_total_pence || 0),
+                        }))
+                        : state.basket.lines,
+                };
+                renderBasketUi(state.basket);
+            } catch (_) {
+                setStatus("Using local totals for now. Final total is confirmed at payment.");
+            }
+        }
+
+        async function createPayment() {
+            const items = selectedItems();
+            if (!items.length) {
+                setStatus("Add items before checkout.", true);
+                return null;
+            }
+
+            let response;
+            try {
+                response = await fetch(snackApiUrl("/api/snackccountancy/create-payment"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ items }),
+                });
+            } catch (_) {
+                setStatus("Unable to contact checkout server.", true);
+                return null;
+            }
+
+            if (!response.ok) {
+                let detail = "Unable to create payment session.";
+                try {
+                    const data = await response.json();
+                    detail = data?.detail?.message || data?.detail || detail;
+                } catch (_) {}
+                setStatus(detail, true);
+                return null;
+            }
+
+            const data = await response.json();
+            state.currentOrderNumber = data.order_number || "";
+            state.currentPaymentIntentId = data.stripe_payment_intent_id || "";
+            return data;
+        }
+
+        async function claimPaidSession() {
+            if (!state.currentOrderNumber || !state.currentPaymentIntentId) return;
+            try {
+                await fetch(snackApiUrl("/api/snackccountancy/claim-paid-session"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        order_number: state.currentOrderNumber,
+                        payment_intent_id: state.currentPaymentIntentId,
+                    }),
+                });
+            } catch (_) {}
+        }
+
+        async function mountCheckout() {
+            ui.loadCheckoutBtn.disabled = true;
+            setStatus("Preparing secure checkout...");
+
+            const payment = await createPayment();
+            if (!payment) {
+                ui.loadCheckoutBtn.disabled = false;
+                return;
+            }
+
+            if (!payment.publishable_key) {
+                setStatus("Stripe publishable key is not configured yet.", true);
+                ui.loadCheckoutBtn.disabled = false;
+                return;
+            }
+
+            try {
+                state.stripe = Stripe(payment.publishable_key);
+                state.elements = state.stripe.elements({ clientSecret: payment.client_secret });
+
+                ui.expressCheckout.innerHTML = "";
+                const express = state.elements.create("expressCheckout", {
+                    buttonTheme: { applePay: "black", googlePay: "black", link: "dark" },
+                    layout: { maxColumns: 1, maxRows: 3, overflow: "auto" },
+                });
+                express.mount("#expressCheckout");
+
+                express.on("confirm", async (event) => {
+                    event?.resolve?.();
+                    await confirmPayment();
+                });
+
+                ui.paymentElement.hidden = false;
+                ui.confirmCardBtn.hidden = false;
+                if (!state.cardMounted) {
+                    const paymentElement = state.elements.create("payment");
+                    paymentElement.mount("#paymentElement");
+                    state.cardMounted = true;
+                }
+
+                setStatus("Express checkout is ready. Apple Pay will appear on supported devices.");
+            } catch (_) {
+                setStatus("Checkout could not be loaded. Please try again.", true);
+            } finally {
+                ui.loadCheckoutBtn.disabled = false;
+            }
+        }
+
+        async function confirmPayment() {
+            if (!state.stripe || !state.elements) {
+                setStatus("Load checkout first.", true);
+                return;
+            }
+
+            const { error } = await state.stripe.confirmPayment({
+                elements: state.elements,
+                redirect: "if_required",
+                confirmParams: {
+                    return_url: `${snackPublicUrl("/snackccountancy-checkoutout")}?order_number=${encodeURIComponent(state.currentOrderNumber || "")}`,
+                },
+            });
+
+            if (error) {
+                setStatus(error.message || "Payment could not be completed.", true);
+                return;
+            }
+
+            await claimPaidSession();
+            setStatus(`Payment received. Order ${state.currentOrderNumber} confirmed.`);
+            ui.clearBasketBtn.click();
+        }
+
+        ui.productList.addEventListener("click", async (event) => {
+            const button = event.target.closest("button[data-sku]");
+            if (!button) return;
+            const sku = String(button.getAttribute("data-sku") || "");
+            const action = String(button.getAttribute("data-action") || "");
+            if (!sku || !action) return;
+            updateQuantity(sku, action);
+            await recalculateBasket();
+        });
+
+        ui.loadCheckoutBtn.addEventListener("click", mountCheckout);
+        ui.confirmCardBtn.addEventListener("click", confirmPayment);
+
+        ui.clearBasketBtn.addEventListener("click", async () => {
+            Object.keys(state.quantities).forEach((sku) => { state.quantities[sku] = 0; });
+            state.products.forEach((product) => {
+                const node = document.getElementById(`qty-${product.sku}`);
+                if (node) node.textContent = "0";
+            });
+            state.basket = localBasket([]);
+            renderBasketUi(state.basket);
+            setStatus("Basket cleared.");
+        });
+
+        (async function bootstrap() {
+            await loadProducts();
+            state.basket = localBasket([]);
+            renderBasketUi(state.basket);
+
+            const params = new URLSearchParams(window.location.search);
+            const redirectedPaymentIntent = params.get("payment_intent") || "";
+            const redirectedOrderNumber = params.get("order_number") || "";
+            if (redirectedPaymentIntent && redirectedOrderNumber) {
+                state.currentPaymentIntentId = redirectedPaymentIntent;
+                state.currentOrderNumber = redirectedOrderNumber;
+                await claimPaidSession();
+                setStatus(`Payment received. Order ${redirectedOrderNumber} confirmed.`);
+            }
+        })();
+    </script>
+</body>
+</html>
