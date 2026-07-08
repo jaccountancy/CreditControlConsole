@@ -1461,17 +1461,34 @@
                 if (!apiProducts.length) return;
 
                 const fallbackBySku = new Map(FALLBACK_PRODUCTS.map((item) => [item.sku, item]));
-                state.products = apiProducts.map((item) => {
-                    const fallback = fallbackBySku.get(item.sku) || {};
-                    return {
-                        sku: item.sku,
-                        name: item.name,
-                        description: item.description || fallback.description || "",
-                        category: item.category || fallback.category || "",
-                        price_pence: Number(item.price_pence || 0),
-                        emoji: fallback.emoji || "🛒",
-                    };
-                });
+                const apiBySku = new Map(
+                    apiProducts
+                        .filter((item) => item && item.sku)
+                        .map((item) => [item.sku, item])
+                );
+                state.products = [
+                    ...FALLBACK_PRODUCTS.map((fallback) => {
+                        const api = apiBySku.get(fallback.sku) || {};
+                        return {
+                            sku: fallback.sku,
+                            name: api.name || fallback.name,
+                            description: api.description || fallback.description || "",
+                            category: api.category || fallback.category || "",
+                            price_pence: Number(api.price_pence ?? fallback.price_pence ?? 0),
+                            emoji: fallback.emoji || "🛒",
+                        };
+                    }),
+                    ...apiProducts
+                        .filter((item) => item && item.sku && !fallbackBySku.has(item.sku))
+                        .map((item) => ({
+                            sku: item.sku,
+                            name: item.name || item.sku,
+                            description: item.description || "",
+                            category: item.category || "",
+                            price_pence: Number(item.price_pence || 0),
+                            emoji: "🛒",
+                        })),
+                ];
                 state.products.forEach((product) => {
                     if (!(product.sku in state.quantities)) state.quantities[product.sku] = 0;
                 });
