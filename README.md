@@ -41,5 +41,9 @@ Set these GitHub repository secrets:
 - `WP_APP_PASSWORD` (WordPress Application Password for that user)
 - `WP_PAGE_TITLE` (optional)
 - `WP_PAGE_STATUS` (optional, default is `publish`)
+- `WP_USE_IFRAME_EMBED` (optional, recommended: `true`)
+- `WP_EMBED_SRC_URL` (optional, default: `https://jenius.jaccountancy.co.uk/snackccountancy-checkoutout`)
+
+Recommended mode is iframe embed (`WP_USE_IFRAME_EMBED=true`) because many WordPress setups sanitize or block inline `<script>` in page content, which breaks checkout JavaScript.
 
 After secrets are set, any push changing `backend/static/SnackccountancyCheckoutout.html` will trigger an automatic WordPress page update.
