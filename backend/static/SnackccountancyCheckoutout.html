@@ -286,30 +286,9 @@
             cursor: pointer;
         }
 
-        .review-toggle {
-            display: flex;
-            gap: 8px;
-            padding: 4px;
-            border-radius: 999px;
-            background: #eef5ff;
-            border: 1px solid #cfe0f1;
-        }
-
-        .review-tab {
-            flex: 1;
-            min-height: 38px;
-            border: 0;
-            border-radius: 999px;
-            background: transparent;
-            color: #335572;
-            font-weight: 800;
-            cursor: pointer;
-        }
-
-        .review-tab.is-active {
-            background: #fff;
-            box-shadow: 0 5px 12px rgba(21, 70, 129, 0.12);
-            color: var(--blue-deep);
+        .checkout-cta {
+            width: 100%;
+            margin-top: 6px;
         }
 
         .pricing-breakdown {
@@ -717,12 +696,6 @@
             }
         }
 
-        body.is-ready-to-pay .sub,
-        body.is-ready-to-pay #quickReaddWrap,
-        body.is-ready-to-pay #retryBanner {
-            display: none !important;
-        }
-
         @media (min-width: 961px) {
             .shell {
                 grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
@@ -889,35 +862,34 @@
                 <div class="total">£<span id="basketTotal">0.00</span></div>
             </div>
             <p class="small"><span id="itemCount">0</span> item(s) selected</p>
-            <div class="review-toggle" role="tablist" aria-label="Checkout mode">
-                <button class="review-tab is-active" id="reviewEditTab" role="tab" aria-selected="true" type="button">Edit basket</button>
-                <button class="review-tab" id="reviewReadyTab" role="tab" aria-selected="false" type="button">Ready to pay</button>
-            </div>
-            <div class="basket-lines" id="basketLines"></div>
-            <div class="basket-empty" id="basketEmpty">Add items to start checkout.</div>
-            <div class="pricing-breakdown">
-                <div class="pricing-line"><span>Subtotal</span><strong>£<span id="subtotalAmount">0.00</span></strong></div>
-                <div class="pricing-line"><span>Savings</span><strong>-£<span id="savingsAmount">0.00</span></strong></div>
-                <div class="pricing-line"><span>Total</span><strong>£<span id="finalTotalAmount">0.00</span></strong></div>
-            </div>
-            <div class="status" id="checkoutStatus" role="status" aria-live="polite">Ready when you are.</div>
-            <div class="status retry" id="retryBanner" hidden>
-                <span id="retryMessage">Network issue while preparing checkout.</span>
-                <button class="retry-btn" id="retryActionBtn" type="button">Retry</button>
-            </div>
+            <button class="btn btn-main checkout-cta" id="primaryCheckoutBtn" type="button">Checkout</button>
+            <div id="checkoutExtras" hidden>
+                <div class="basket-lines" id="basketLines"></div>
+                <div class="basket-empty" id="basketEmpty">Add items to start checkout.</div>
+                <div class="pricing-breakdown">
+                    <div class="pricing-line"><span>Subtotal</span><strong>£<span id="subtotalAmount">0.00</span></strong></div>
+                    <div class="pricing-line"><span>Savings</span><strong>-£<span id="savingsAmount">0.00</span></strong></div>
+                    <div class="pricing-line"><span>Total</span><strong>£<span id="finalTotalAmount">0.00</span></strong></div>
+                </div>
+                <div class="status" id="checkoutStatus" role="status" aria-live="polite">Ready when you are.</div>
+                <div class="status retry" id="retryBanner" hidden>
+                    <span id="retryMessage">Network issue while preparing checkout.</span>
+                    <button class="retry-btn" id="retryActionBtn" type="button">Retry</button>
+                </div>
 
-            <div class="quick-readd" id="quickReaddWrap" hidden>
-                <p class="small">Quick add from your last order</p>
-                <div class="chip-row" id="quickReaddChips"></div>
-            </div>
+                <div class="quick-readd" id="quickReaddWrap" hidden>
+                    <p class="small">Quick add from your last order</p>
+                    <div class="chip-row" id="quickReaddChips"></div>
+                </div>
 
-            <div class="wallet-area" id="basketCheckoutEmbed">
-                <p class="small">Express checkout (Apple Pay, Google Pay, Link)</p>
-                <div class="wallet-readiness" id="walletReadiness">Checking wallet readiness…</div>
-                <div id="expressCheckout"></div>
-                <button class="btn btn-wallet" id="loadCheckoutBtn" type="button">Refresh Checkout Amount</button>
-                <div id="paymentElement" hidden></div>
-                <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Pay with Card</button>
+                <div class="wallet-area" id="basketCheckoutEmbed">
+                    <p class="small">Express checkout (Apple Pay, Google Pay, Link)</p>
+                    <div class="wallet-readiness" id="walletReadiness">Checking wallet readiness…</div>
+                    <div id="expressCheckout"></div>
+                    <button class="btn btn-wallet" id="loadCheckoutBtn" type="button">Refresh Checkout Amount</button>
+                    <div id="paymentElement" hidden></div>
+                    <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Pay with Card</button>
+                </div>
             </div>
         </aside>
     </main>
@@ -1002,8 +974,8 @@
             savingsAmount: document.getElementById("savingsAmount"),
             finalTotalAmount: document.getElementById("finalTotalAmount"),
             itemCount: document.getElementById("itemCount"),
-            reviewEditTab: document.getElementById("reviewEditTab"),
-            reviewReadyTab: document.getElementById("reviewReadyTab"),
+            primaryCheckoutBtn: document.getElementById("primaryCheckoutBtn"),
+            checkoutExtras: document.getElementById("checkoutExtras"),
             checkoutStatus: document.getElementById("checkoutStatus"),
             retryBanner: document.getElementById("retryBanner"),
             retryMessage: document.getElementById("retryMessage"),
@@ -1062,19 +1034,9 @@
             state.pendingRetryAction = null;
         }
 
-        function setReviewMode(mode) {
-            state.reviewMode = mode === "ready" ? "ready" : "edit";
-            const isReady = state.reviewMode === "ready";
-            ui.reviewReadyTab.classList.toggle("is-active", isReady);
-            ui.reviewReadyTab.setAttribute("aria-selected", String(isReady));
-            ui.reviewEditTab.classList.toggle("is-active", !isReady);
-            ui.reviewEditTab.setAttribute("aria-selected", String(!isReady));
-            ui.productList.style.opacity = isReady ? "0.64" : "1";
-            ui.productList.style.pointerEvents = isReady ? "none" : "auto";
-            document.body.classList.toggle("is-ready-to-pay", isReady);
-            if (isReady) {
-                setStatus("Review complete. Proceed to pay.");
-            }
+        function ensureCheckoutExtrasVisible() {
+            if (ui.checkoutExtras) ui.checkoutExtras.hidden = false;
+            if (ui.primaryCheckoutBtn) ui.primaryCheckoutBtn.hidden = true;
         }
 
         function selectedItems() {
@@ -1118,8 +1080,7 @@
             ui.confirmCardBtn.disabled = disabled;
             ui.clearBasketBtn.disabled = disabled;
             ui.stickyPayNowBtn.disabled = disabled;
-            ui.reviewEditTab.disabled = disabled;
-            ui.reviewReadyTab.disabled = disabled;
+            if (ui.primaryCheckoutBtn) ui.primaryCheckoutBtn.disabled = disabled;
             ui.undoBtn.disabled = disabled;
             ui.productList.querySelectorAll(".qty-btn").forEach((node) => { node.disabled = disabled; });
         }
@@ -1322,7 +1283,7 @@
         }
 
         function scrollToWalletCta() {
-            setReviewMode("ready");
+            ensureCheckoutExtrasVisible();
             const checkoutTarget = document.getElementById("basketCheckoutEmbed") || ui.expressCheckout;
             checkoutTarget.scrollIntoView({ behavior: "smooth", block: "center" });
             window.setTimeout(() => {
@@ -1859,12 +1820,14 @@
             await recalculateBasket();
         });
 
+        ui.primaryCheckoutBtn.addEventListener("click", () => {
+            ensureCheckoutExtrasVisible();
+            mountCheckout();
+        });
         ui.loadCheckoutBtn.addEventListener("click", mountCheckout);
         ui.confirmCardBtn.addEventListener("click", confirmPayment);
         ui.stickyPayNowBtn.addEventListener("click", scrollToWalletCta);
         ui.clearBasketBtn.addEventListener("click", async () => clearBasket(true));
-        ui.reviewEditTab.addEventListener("click", () => setReviewMode("edit"));
-        ui.reviewReadyTab.addEventListener("click", () => setReviewMode("ready"));
         ui.retryActionBtn.addEventListener("click", async () => {
             const action = state.pendingRetryAction;
             hideRetryBanner();
@@ -1901,7 +1864,6 @@
             state.basket = localBasket([]);
             renderBasketUi(state.basket);
             renderQuickReadd();
-            setReviewMode("edit");
 
             const params = new URLSearchParams(window.location.search);
             const redirectedPaymentIntent = params.get("payment_intent") || "";
