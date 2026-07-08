@@ -1343,12 +1343,54 @@
                 `;
                 ui.productList.appendChild(card);
             });
+            bindDirectProductButtons();
         }
 
         function closeAllHelpPopovers(exceptSku = "") {
             ui.productList.querySelectorAll(".help-pop").forEach((node) => {
                 if (exceptSku && node.id === `help-${exceptSku}`) return;
                 node.hidden = true;
+            });
+        }
+
+        async function applyQuantityFromButton(button, event) {
+            if (!button || state.isPaymentLocked) return;
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            closeAllHelpPopovers();
+            const sku = String(button.getAttribute("data-sku") || "");
+            const action = String(button.getAttribute("data-action") || "");
+            if (!sku || !action) return;
+            updateQuantity(sku, action);
+            queueRecalculateBasket();
+        }
+
+        function toggleHelpFromButton(button, event) {
+            if (!button) return;
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            const sku = String(button.getAttribute("data-help-sku") || "");
+            if (!sku) return;
+            const pop = document.getElementById(`help-${sku}`);
+            if (!pop) return;
+            const willShow = Boolean(pop.hidden);
+            closeAllHelpPopovers(sku);
+            pop.hidden = !willShow;
+        }
+
+        function bindDirectProductButtons() {
+            ui.productList.querySelectorAll("button.qty-btn").forEach((button) => {
+                if (button.dataset.boundTap === "1") return;
+                button.dataset.boundTap = "1";
+                button.addEventListener("touchend", (event) => applyQuantityFromButton(button, event), { passive: false });
+                button.addEventListener("click", (event) => applyQuantityFromButton(button, event));
+            });
+
+            ui.productList.querySelectorAll("button[data-help-sku]").forEach((button) => {
+                if (button.dataset.boundTap === "1") return;
+                button.dataset.boundTap = "1";
+                button.addEventListener("touchend", (event) => toggleHelpFromButton(button, event), { passive: false });
+                button.addEventListener("click", (event) => toggleHelpFromButton(button, event));
             });
         }
 
@@ -1935,6 +1977,7 @@
             const isTouch = event.type === "touchend";
             if (isTouch) state.lastTouchInteractionAt = Date.now();
             if (!isTouch && Date.now() - Number(state.lastTouchInteractionAt || 0) < 550) return;
+            if (closestFromEvent(event, "button.qty-btn, button[data-help-sku]")) return;
 
             const productArea = closestFromEvent(event, "#productList");
             if (productArea) {
@@ -2054,6 +2097,7 @@
         (async function bootstrap() {
             updateWalletReadinessBeforeMount();
             await loadProducts();
+            bindDirectProductButtons();
             state.basket = localBasket([]);
             renderBasketUi(state.basket);
             renderQuickReadd();
