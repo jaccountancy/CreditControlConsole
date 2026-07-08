@@ -1046,6 +1046,7 @@
             },
             valueAnimations: {},
             lastDeltaPopAt: 0,
+            lastTouchInteractionAt: 0,
         };
 
         const ui = {
@@ -1876,7 +1877,7 @@
             if (showMessage) setStatus("Basket cleared.");
         }
 
-        ui.productList.addEventListener("click", async (event) => {
+        async function handleProductListInteraction(event) {
             const helpBtn = closestFromEvent(event, "button[data-help-sku]");
             if (helpBtn) {
                 event.preventDefault();
@@ -1917,6 +1918,16 @@
             updateQuantity(sku, "inc");
             triggerFeedbackDot(event?.clientX, event?.clientY);
             await recalculateBasket();
+        }
+
+        ui.productList.addEventListener("touchend", async (event) => {
+            state.lastTouchInteractionAt = Date.now();
+            await handleProductListInteraction(event);
+        }, { passive: false });
+
+        ui.productList.addEventListener("click", async (event) => {
+            if (Date.now() - Number(state.lastTouchInteractionAt || 0) < 550) return;
+            await handleProductListInteraction(event);
         });
 
         document.addEventListener("click", (event) => {
@@ -1938,12 +1949,28 @@
             await recalculateBasket();
         });
 
-        ui.primaryCheckoutBtn.addEventListener("click", () => {
+        const handlePrimaryCheckout = () => {
             ensureCheckoutExtrasVisible();
             mountCheckout();
-        });
+        };
+
+        ui.primaryCheckoutBtn.addEventListener("click", handlePrimaryCheckout);
+        ui.primaryCheckoutBtn.addEventListener("touchend", (event) => {
+            event.preventDefault();
+            handlePrimaryCheckout();
+        }, { passive: false });
+
         ui.loadCheckoutBtn.addEventListener("click", mountCheckout);
+        ui.loadCheckoutBtn.addEventListener("touchend", (event) => {
+            event.preventDefault();
+            mountCheckout();
+        }, { passive: false });
+
         ui.confirmCardBtn.addEventListener("click", confirmPayment);
+        ui.confirmCardBtn.addEventListener("touchend", (event) => {
+            event.preventDefault();
+            confirmPayment();
+        }, { passive: false });
         ui.stickyPayNowBtn.addEventListener("click", scrollToWalletCta);
         ui.clearBasketBtn.addEventListener("click", async () => clearBasket(true));
         ui.retryActionBtn.addEventListener("click", async () => {
