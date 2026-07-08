@@ -1,0 +1,44 @@
+name: Publish Snackccountancy Page
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - backend/static/SnackccountancyCheckoutout.html
+      - scripts/publish_wordpress_page.py
+      - .github/workflows/publish-snackccountancy.yml
+  workflow_dispatch:
+    inputs:
+      source_file:
+        description: "Repository file path to publish"
+        required: false
+        default: "backend/static/SnackccountancyCheckoutout.html"
+      page_slug:
+        description: "WordPress page slug"
+        required: false
+        default: "snackccountancy"
+
+jobs:
+  publish-wordpress-page:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Publish page to WordPress
+        env:
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_PAGE_TITLE: ${{ secrets.WP_PAGE_TITLE }}
+          WP_PAGE_STATUS: ${{ secrets.WP_PAGE_STATUS }}
+          WP_SOURCE_FILE: ${{ github.event.inputs.source_file || 'backend/static/SnackccountancyCheckoutout.html' }}
+          WP_PAGE_SLUG: ${{ github.event.inputs.page_slug || 'snackccountancy' }}
+        run: |
+          python scripts/publish_wordpress_page.py
