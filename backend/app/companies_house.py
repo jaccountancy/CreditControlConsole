@@ -5439,6 +5439,7 @@ def _normalise_auth_register_companies_house(value: object) -> dict:
             return default
     return {
         "status": _coerce_text(source.get("status"), 80),
+        "incorporationDate": _coerce_text(source.get("incorporationDate"), 80),
         "nextConfirmationDate": _coerce_text(source.get("nextConfirmationDate"), 80),
         "lastFiledDate": _coerce_text(source.get("lastFiledDate"), 80),
         "authCodeStatus": _coerce_text(source.get("authCodeStatus"), 80),
@@ -5716,12 +5717,180 @@ def list_auth_code_register(limit: int = 300) -> dict:
                     register_number,
                     register_name,
                 )
+                if not row.get("auth_code"):
+                    company_id = _coerce_text(row.get("company_id"), 120)
+                    if company_id:
+                        row["auth_code"] = _load_company_auth_code(company_id)
             cursor.execute("SELECT COUNT(*) AS total FROM ch_auth_code_register")
             total_row = cursor.fetchone() or {}
         connection.commit()
     return {
         "totalCount": int(total_row.get("total") or 0),
         "rows": [_serialise_auth_register_row(row) for row in rows],
+    }
+
+
+def backfill_auth_register_company_incorporation_dates(
+    user: dict | None = None,
+    *,
+    dry_run: bool = False,
+    limit: int = 10000,
+) -> dict:
+    safe_limit = max(100, min(int(limit or 10000), 50000))
+    candidate_cte = f"""
+        WITH source_rows AS (
+            SELECT
+                NULLIF(TRIM(r.company_number), '') AS company_number,
+                NULLIF(TRIM(COALESCE(r.company_name, r.client_name, '')), '') AS display_name,
+                NULLIF(TRIM(r.client_id), '') AS client_id,
+                NULLIF(TRIM(r.client_address), '') AS client_address,
+                LOWER(TRIM(COALESCE(r.client_type, ''))) AS client_type,
+                NULLIF(
+                    TRIM(
+                        COALESCE(
+                            p.companies_house->>'incorporationDate',
+                            p.companies_house->>'incorporation_date',
+                            ''
+                        )
+                    ),
+                    ''
+                ) AS incorporation_text
+            FROM ch_auth_code_register r
+            JOIN ch_auth_register_client_profiles p
+              ON p.register_row_id = r.id
+            WHERE NULLIF(TRIM(r.company_number), '') IS NOT NULL
+            ORDER BY r.uploaded_at DESC, r.id DESC
+            LIMIT {safe_limit}
+        ),
+        parsed_rows AS (
+            SELECT
+                company_number,
+                display_name,
+                client_id,
+                client_address,
+                incorporation_text,
+                CASE
+                    WHEN incorporation_text ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$' THEN incorporation_text::date
+                    ELSE NULL
+                END AS incorporation_date
+            FROM source_rows
+            WHERE client_type NOT LIKE '%individual%'
+              AND client_type NOT LIKE '%self%'
+              AND client_type NOT LIKE '%sole%'
+        ),
+        candidate_rows AS (
+            SELECT
+                company_number,
+                MIN(incorporation_date) AS incorporation_date,
+                MAX(display_name) AS display_name,
+                MAX(client_id) AS client_id,
+                MAX(client_address) AS client_address
+            FROM parsed_rows
+            WHERE incorporation_date IS NOT NULL
+            GROUP BY company_number
+        )
+    """
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                candidate_cte
+                + """
+                SELECT
+                    (SELECT COUNT(*) FROM source_rows) AS source_rows,
+                    (SELECT COUNT(*) FROM parsed_rows WHERE incorporation_text IS NULL) AS missing_in_profile,
+                    (SELECT COUNT(*) FROM parsed_rows WHERE incorporation_text IS NOT NULL AND incorporation_date IS NULL) AS invalid_format,
+                    (SELECT COUNT(*) FROM candidate_rows) AS candidate_companies
+                """
+            )
+            snapshot = cursor.fetchone() or {}
+            source_rows = int(snapshot.get("source_rows") or 0)
+            missing_in_profile = int(snapshot.get("missing_in_profile") or 0)
+            invalid_format = int(snapshot.get("invalid_format") or 0)
+            candidate_companies = int(snapshot.get("candidate_companies") or 0)
+
+            cursor.execute(
+                candidate_cte
+                + """
+                SELECT COUNT(*) AS existing_missing
+                FROM candidate_rows cand
+                JOIN ch_companies c
+                  ON c.company_number = cand.company_number
+                WHERE c.incorporation_date IS NULL
+                """
+            )
+            existing_missing = int((cursor.fetchone() or {}).get("existing_missing") or 0)
+
+            cursor.execute(
+                candidate_cte
+                + """
+                SELECT COUNT(*) AS missing_company_rows
+                FROM candidate_rows cand
+                LEFT JOIN ch_companies c
+                  ON c.company_number = cand.company_number
+                WHERE c.company_number IS NULL
+                """
+            )
+            missing_company_rows = int((cursor.fetchone() or {}).get("missing_company_rows") or 0)
+
+            updated_existing = 0
+            inserted_companies = 0
+            if not dry_run and candidate_companies > 0:
+                cursor.execute(
+                    candidate_cte
+                    + """
+                    UPDATE ch_companies c
+                    SET incorporation_date = cand.incorporation_date,
+                        updated_at = NOW()
+                    FROM candidate_rows cand
+                    WHERE c.company_number = cand.company_number
+                      AND c.incorporation_date IS NULL
+                    RETURNING c.company_number
+                    """
+                )
+                updated_existing = len(cursor.fetchall() or [])
+
+                cursor.execute(
+                    candidate_cte
+                    + """
+                    INSERT INTO ch_companies (
+                        company_number,
+                        company_name,
+                        client_name,
+                        client_id,
+                        client_address,
+                        incorporation_date,
+                        last_synced_at,
+                        updated_at
+                    )
+                    SELECT
+                        cand.company_number,
+                        COALESCE(cand.display_name, ''),
+                        COALESCE(cand.display_name, ''),
+                        COALESCE(cand.client_id, ''),
+                        COALESCE(cand.client_address, ''),
+                        cand.incorporation_date,
+                        NOW(),
+                        NOW()
+                    FROM candidate_rows cand
+                    LEFT JOIN ch_companies c
+                      ON c.company_number = cand.company_number
+                    WHERE c.company_number IS NULL
+                    ON CONFLICT (company_number) DO NOTHING
+                    RETURNING company_number
+                    """
+                )
+                inserted_companies = len(cursor.fetchall() or [])
+        connection.commit()
+    return {
+        "dryRun": bool(dry_run),
+        "sourceRowsChecked": source_rows,
+        "candidatesWithDate": candidate_companies,
+        "missingInProfile": missing_in_profile,
+        "invalidDateFormat": invalid_format,
+        "existingMissingDate": existing_missing,
+        "missingCompanyRows": missing_company_rows,
+        "updatedExistingCompanies": updated_existing,
+        "insertedCompanies": inserted_companies,
     }
 
 
@@ -7220,6 +7389,10 @@ def get_auth_register_client_page(
                 _coerce_text(row.get("company_number"), 40),
                 normalised_name,
             )
+            if not row.get("auth_code"):
+                company_id = _coerce_text(row.get("company_id"), 120)
+                if company_id:
+                    row["auth_code"] = _load_company_auth_code(company_id)
             cursor.execute(
                 """
                 SELECT EXISTS (
@@ -7428,6 +7601,12 @@ def get_auth_register_client_page(
 
         # Keep client-page loads fast and deterministic: never do live CH network calls here.
         # Use already-stored register/company dates as fallback when profile account dates are missing.
+        if not companies_house_profile.get("incorporationDate"):
+            fallback_incorporation_date = row.get("incorporation_date")
+            if isinstance(fallback_incorporation_date, date):
+                companies_house_profile["incorporationDate"] = fallback_incorporation_date.isoformat()
+            elif isinstance(fallback_incorporation_date, str) and fallback_incorporation_date.strip():
+                companies_house_profile["incorporationDate"] = fallback_incorporation_date.strip()
         if not accounts_returns.get("companyYearEnd"):
             fallback_year_end = row.get("next_made_up_to_date")
             if isinstance(fallback_year_end, date):

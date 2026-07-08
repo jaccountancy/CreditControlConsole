@@ -40463,6 +40463,7 @@
                                                 <span class="ch-client-status-badge ch-client-plan-badge is-self-assessment" id="chRegisterClientPageSelfAssessmentStatusBadge" hidden>Self Assessment client</span>
                                             </div>
                                             <span class="ch-client-id-badge" id="chRegisterClientPageClientIdBadge">CLIENT ID --</span>
+                                            <button class="ghost-button" type="button" id="chRegisterClientPageBackfillIncorporationDatesButton">Backfill Incorporation Dates</button>
                                             <button class="primary-button" type="button" id="chRegisterClientPageUploadFilesButton" hidden>Upload files</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPagePopulateCodesButton" hidden>Populate missing company auth codes</button>
                                             <button class="ghost-button" type="button" id="chRegisterClientPageReloadDirectoryButton" hidden>Reload directory</button>
@@ -40595,7 +40596,7 @@
                                                 <input id="chRegisterClientPageInfoName" type="text" readonly>
                                             </label>
                                             <label>Client manager
-                                                <input id="chRegisterClientPageInfoManager" type="text" readonly>
+                                                <select id="chRegisterClientPageInfoManager"></select>
                                             </label>
                                             <label>Client ID
                                                 <input id="chRegisterClientPageInfoId" type="text" readonly>
@@ -40622,10 +40623,10 @@
                                                 <input id="chRegisterClientPageInfoAuthCode" type="text" readonly>
                                             </label>
                                             <label>Company UTR
-                                                <input id="chRegisterClientPageInfoCompanyUtr" type="text" readonly>
+                                                <input id="chRegisterClientPageInfoCompanyUtr" type="text">
                                             </label>
                                             <label>Personal UTR
-                                                <input id="chRegisterClientPageInfoPersonalUtr" type="text" readonly>
+                                                <input id="chRegisterClientPageInfoPersonalUtr" type="text">
                                             </label>
                                             <label id="chRegisterClientPageInfoCompanyStatusWrap">Company status
                                                 <input id="chRegisterClientPageInfoCompanyStatus" type="text" readonly>
@@ -129782,7 +129783,8 @@
                     return;
                 }
 
-                if (!overview && !cacheEntry?.loading) {
+                const payrollErrorText = String(cacheEntry?.error || "").trim();
+                if (!overview && !cacheEntry?.loading && !payrollErrorText) {
                     void ensureClientPagePayrollOverview(tenantId);
                 }
 
@@ -132113,6 +132115,48 @@
                 return raw.includes("individual") || raw.includes("self") || raw.includes("sole");
             }
 
+            function clientRegisterActiveManagerNames() {
+                const rows = Array.isArray(securityUsersData?.users) ? securityUsersData.users : [];
+                const names = rows
+                    .filter((user) => normaliseSecurityUserStatus(user?.status) === "active")
+                    .map((user) => String(user?.full_name || user?.fullName || user?.name || user?.email || "").trim())
+                    .filter(Boolean);
+                return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right, "en-GB", { sensitivity: "base" }));
+            }
+
+            function clientRegisterRenderManagerSelect(currentValue = "") {
+                const select = document.getElementById("chRegisterClientPageInfoManager");
+                if (!select) return;
+                const current = String(currentValue || "").trim();
+                const options = clientRegisterActiveManagerNames();
+                if (current && !options.some((name) => String(name).trim().toLowerCase() === current.toLowerCase())) {
+                    options.unshift(current);
+                }
+                select.innerHTML = [
+                    '<option value="">Unassigned</option>',
+                    ...options.map((name) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`),
+                ].join("");
+                select.value = current;
+                if (!select.value) select.value = "";
+            }
+
+            function clientRegisterResolvedIncorporationDate(row = {}, profile = {}) {
+                const companiesHouse = profile?.companiesHouse && typeof profile.companiesHouse === "object"
+                    ? profile.companiesHouse
+                    : {};
+                const candidates = [
+                    row?.incorporationDate,
+                    row?.incorporation_date,
+                    companiesHouse?.incorporationDate,
+                    companiesHouse?.incorporation_date,
+                ];
+                for (const candidate of candidates) {
+                    const text = String(candidate || "").trim();
+                    if (text) return text;
+                }
+                return "";
+            }
+
             function clientRegisterDirectorNamesFromOfficers(officers) {
                 if (!Array.isArray(officers)) return "";
                 const names = officers
@@ -133543,7 +133587,7 @@
                     node.value = value == null ? "" : String(value);
                 };
                 assignReadOnly("chRegisterClientPageInfoName", clientRegisterClientDisplayName(row));
-                assignReadOnly("chRegisterClientPageInfoManager", String(row?.clientManager || "").trim() || "Unassigned");
+                clientRegisterRenderManagerSelect(String(row?.clientManager || "").trim());
                 assignReadOnly("chRegisterClientPageInfoId", String(row?.clientId || "").trim());
                 assignReadOnly("chRegisterClientPageInfoType", clientRegisterClientTypeSelectValue(row?.clientType || ""));
                 assignReadOnly("chRegisterClientPageInfoCompanyNumber", String(row?.companyNumber || "").trim());
@@ -133557,8 +133601,8 @@
                 const isIndividual = clientRegisterIsIndividualClient(row);
                 const companyUtr = String(row?.companyUtr || "").trim();
                 const personalUtr = String(row?.personalUtr || "").trim();
-                assignReadOnly("chRegisterClientPageInfoCompanyUtr", isIndividual ? "" : (companyUtr || personalUtr));
-                assignReadOnly("chRegisterClientPageInfoPersonalUtr", isIndividual ? (personalUtr || companyUtr) : "");
+                assignReadOnly("chRegisterClientPageInfoCompanyUtr", isIndividual ? "" : companyUtr);
+                assignReadOnly("chRegisterClientPageInfoPersonalUtr", isIndividual ? personalUtr : "");
                 assignReadOnly("chRegisterClientPageInfoCompanyStatus", String(row?.companyStatus || "").trim());
                 assignReadOnly("chRegisterClientPageInfoPersonalChCode", String(row?.filingAuthorityReference || "").trim());
                 const directorsText = clientRegisterDirectorNamesFromOfficers(row?.officers || []);
@@ -133643,6 +133687,12 @@
                     if (hasXeroTenantMatch) {
                         xeroHint.textContent = `Xero matched: ${xeroWorkspaceLabel(xeroTenant.tenantName, xeroTenant.tenantId, "Connected organisation")}`;
                     }
+                }
+                const backfillIncorporationButton = document.getElementById("chRegisterClientPageBackfillIncorporationDatesButton");
+                if (backfillIncorporationButton) {
+                    const running = !!companiesHouseSettings?.authRegisterIncorporationBackfillRunning;
+                    backfillIncorporationButton.disabled = running;
+                    backfillIncorporationButton.textContent = running ? "Backfilling..." : "Backfill Incorporation Dates";
                 }
 
                 const syncProxyButtonState = (proxyId, sourceId) => {
@@ -133851,7 +133901,8 @@
                 const vatWarningText = document.getElementById("chRegisterClientVatWarningText");
                 const vatWarningActionButton = document.getElementById("chRegisterClientVatWarningActionButton");
                 const vatScanEntry = lockTenantId ? (clientPageVatScanCache.get(lockTenantId) || null) : null;
-                if (lockTenantId && !hasVatRegistration && !vatScanEntry?.loading && !vatScanEntry?.data) {
+                const vatScanErrorText = String(vatScanEntry?.error || "").trim();
+                if (lockTenantId && !hasVatRegistration && !vatScanEntry?.loading && !vatScanEntry?.data && !vatScanErrorText) {
                     void ensureClientPageVatScan(lockTenantId);
                 }
                 const vatScanCount = Number(vatScanEntry?.data?.count || 0);
@@ -133904,7 +133955,8 @@
                         managerPhotoNode.src = managerPhoto;
                     }
                 }
-                const incorporatedYear = String(row?.incorporationDate || "").trim().slice(0, 4);
+                const incorporatedDate = clientRegisterResolvedIncorporationDate(row, profile);
+                const incorporatedYear = incorporatedDate.slice(0, 4);
                 const jukClientInvoices = clientRegisterJukInvoicesForRow(row);
                 const earliestJukInvoiceDate = jukClientInvoices.reduce((earliest, invoice) => {
                     const invoiceDate = parseDateValue(invoice?.invoiceDate || "");
@@ -133924,7 +133976,7 @@
                 setText("chRegisterClientRelationshipOpenTasks", formatCurrency(outstandingBalance));
                 setText(
                     "chRegisterClientRelationshipSince",
-                    `Incorporated ${incorporatedYear || "unknown"} · ${invoiceHistoryLabel} · ${allTaskCount.toLocaleString("en-GB")} tracked task${allTaskCount === 1 ? "" : "s"}`
+                    `${isIndividual ? "Individual client" : `Incorporated ${incorporatedYear || "date not recorded"}`} · ${invoiceHistoryLabel} · ${allTaskCount.toLocaleString("en-GB")} tracked task${allTaskCount === 1 ? "" : "s"}`
                 );
                 const dataVatNumber = String(vatDetails.vatNumber || row?.vatNumber || "").trim();
                 const dataVatFrequency = String(vatDetails.frequency || "").trim();
@@ -134476,7 +134528,7 @@
 
                 assignReadOnly("chRegisterClientPageChCompanyNumber", String(row?.companyNumber || "").trim());
                 assignReadOnly("chRegisterClientPageChCompanyStatus", String(row?.companyStatus || "").trim());
-                assignReadOnly("chRegisterClientPageChIncorporationDate", String(row?.incorporationDate || "").trim());
+                assignReadOnly("chRegisterClientPageChIncorporationDate", incorporatedDate);
                 assignReadOnly("chRegisterClientPageChNextMadeUpTo", String(row?.nextMadeUpToDate || "").trim());
                 assignReadOnly("chRegisterClientPageChNextDueDate", String(row?.nextDueDate || "").trim());
                 assignReadOnly("chRegisterClientPageChLastFiledDateReadOnly", String(row?.lastFiledDate || "").trim());
@@ -134575,25 +134627,26 @@
                 };
                 syncActiveViewShell();
                 renderClientRegisterClientPage();
+                let payload = null;
+                let loadError = null;
                 try {
-                    const payload = await requestJSON(
+                    payload = await requestJSON(
                         `/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=1`,
                         { suppressFailurePanel: true, timeoutMs: 15000 }
                     );
-                    companiesHouseSettings.authRegisterClientPage = {
-                        ...companiesHouseSettings.authRegisterClientPage,
-                        loading: false,
-                        loadingToastShown: false,
-                        payload,
-                        jukSyncOutstandingOnly: payload?.profile?.jukInvoices?.syncOutstandingOnly !== false,
-                    };
-                    renderClientRegisterClientPage();
-                    loadClientRegisterClientPageCallStats({ force: false, silent: true });
-                    window.setTimeout(() => {
-                        clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
-                        clientRegisterAutoMatchClientLinks({ source: "automatic", promptForConfirmation: true });
-                    }, 0);
                 } catch (error) {
+                    loadError = error;
+                    try {
+                        payload = await requestJSON(
+                            `/api/companies-house/auth-code-register/${encodeURIComponent(safeRowId)}/client-page?record_access=0`,
+                            { suppressFailurePanel: true, timeoutMs: 30000 }
+                        );
+                    } catch (retryError) {
+                        loadError = retryError || error;
+                        payload = null;
+                    }
+                }
+                if (!payload || typeof payload !== "object") {
                     const existingRows = Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
                     const fallbackRow = existingRows.find((item) => String(item?.id || "").trim() === safeRowId) || { id: safeRowId };
                     const fallbackPayload = {
@@ -134617,7 +134670,33 @@
                         payload: fallbackPayload,
                     };
                     renderClientRegisterClientPage();
-                    showToast("Client page opened in safe mode while live profile data reloads. You can continue working.", "warning");
+                    const reason = String(loadError?.message || "").trim();
+                    showToast(
+                        `Client page opened in safe mode while live profile data reloads.${reason ? ` ${reason}` : ""}`,
+                        "warning"
+                    );
+                    return;
+                }
+                companiesHouseSettings.authRegisterClientPage = {
+                    ...companiesHouseSettings.authRegisterClientPage,
+                    loading: false,
+                    loadingToastShown: false,
+                    payload,
+                    jukSyncOutstandingOnly: payload?.profile?.jukInvoices?.syncOutstandingOnly !== false,
+                };
+                try {
+                    renderClientRegisterClientPage();
+                    loadClientRegisterClientPageCallStats({ force: false, silent: true });
+                    window.setTimeout(() => {
+                        clientRegisterAutoMatchXeroTenant({ source: "automatic", promptForConfirmation: true });
+                        clientRegisterAutoMatchClientLinks({ source: "automatic", promptForConfirmation: true });
+                    }, 0);
+                } catch (error) {
+                    console.error("Client page render failed after successful payload load", error);
+                    showToast(
+                        `Client profile loaded, but one section failed to render: ${String(error?.message || "Unknown error")}`,
+                        "error"
+                    );
                 }
             }
 
@@ -134687,14 +134766,84 @@
                 }
             }
 
+            async function runClientRegisterIncorporationBackfillFromUi() {
+                if (companiesHouseSettings?.authRegisterIncorporationBackfillRunning) return;
+                companiesHouseSettings.authRegisterIncorporationBackfillRunning = true;
+                renderClientRegisterClientPage();
+                try {
+                    const dryRunPayload = await requestJSON("/api/companies-house/auth-code-register/backfill-incorporation-dates?dry_run=true&limit=10000", {
+                        method: "POST",
+                    });
+                    const dryRun = dryRunPayload?.result || {};
+                    const candidates = Number(dryRun?.candidatesWithDate || 0);
+                    const existingMissing = Number(dryRun?.existingMissingDate || 0);
+                    const missingRows = Number(dryRun?.missingCompanyRows || 0);
+                    const sourceRows = Number(dryRun?.sourceRowsChecked || 0);
+                    if (candidates <= 0) {
+                        showToast(
+                            `No company incorporation-date candidates found in cached profile data (checked ${sourceRows.toLocaleString("en-GB")} rows).`,
+                            "info"
+                        );
+                        return;
+                    }
+                    const shouldApply = window.confirm(
+                        `Backfill company incorporation dates?\n\n`
+                        + `Source rows checked: ${sourceRows.toLocaleString("en-GB")}\n`
+                        + `Candidates with date: ${candidates.toLocaleString("en-GB")}\n`
+                        + `Existing companies missing date: ${existingMissing.toLocaleString("en-GB")}\n`
+                        + `Missing company rows to create: ${missingRows.toLocaleString("en-GB")}`
+                    );
+                    if (!shouldApply) {
+                        showToast("Backfill cancelled after dry run.", "info");
+                        return;
+                    }
+                    const applyPayload = await requestJSON("/api/companies-house/auth-code-register/backfill-incorporation-dates?dry_run=false&limit=10000", {
+                        method: "POST",
+                    });
+                    const result = applyPayload?.result || {};
+                    const updatedExisting = Number(result?.updatedExistingCompanies || 0);
+                    const insertedCompanies = Number(result?.insertedCompanies || 0);
+                    showToast(
+                        `Incorporation backfill complete: ${updatedExisting.toLocaleString("en-GB")} updated, ${insertedCompanies.toLocaleString("en-GB")} created.`,
+                        (updatedExisting > 0 || insertedCompanies > 0) ? "success" : "info"
+                    );
+                    const pageState = companiesHouseSettings.authRegisterClientPage || {};
+                    const rowId = String(pageState.rowId || "").trim();
+                    if (rowId) {
+                        const latestPayload = await clientRegisterFetchClientPagePayload(rowId);
+                        if (latestPayload && typeof latestPayload === "object") {
+                            companiesHouseSettings.authRegisterClientPage = {
+                                ...companiesHouseSettings.authRegisterClientPage,
+                                payload: latestPayload,
+                                loading: false,
+                                loadingToastShown: false,
+                            };
+                        }
+                        renderClientRegisterClientPage();
+                    } else {
+                        await loadAuthCodeRegisterDirectory(true);
+                    }
+                } catch (error) {
+                    showToast(error?.message || "Unable to run incorporation-date backfill.", "error");
+                } finally {
+                    companiesHouseSettings.authRegisterIncorporationBackfillRunning = false;
+                    renderClientRegisterClientPage();
+                }
+            }
+
             async function saveClientRegisterClientPage(options = {}) {
                 const silent = !!options?.silent;
                 const pageState = companiesHouseSettings.authRegisterClientPage || {};
                 const rowId = String(pageState.rowId || "").trim();
-                if (!rowId) return;
-                if (pageState.saving) {
+                if (!rowId) {
+                    if (!silent) showToast("Unable to save: client context is missing. Reload this client page and try again.", "error");
                     return;
                 }
+                if (pageState.saving) {
+                    if (!silent) showToast("A save is already in progress.", "info");
+                    return;
+                }
+                try {
                 const payload = clientPagePayload() || {};
                 const profile = payload.profile || {};
                 const currentRisk = profile.riskAssessment || {};
@@ -134781,6 +134930,8 @@
                     clientEmail: String(document.getElementById("chRegisterClientPageInfoEmail")?.value || currentRow?.clientEmail || "").trim(),
                     clientPhone: String(document.getElementById("chRegisterClientPageInfoPhone")?.value || currentRow?.clientPhone || "").trim(),
                     clientAddress: String(document.getElementById("chRegisterClientPageInfoAddress")?.value || currentRow?.clientAddress || "").trim(),
+                    companyUtr: String(document.getElementById("chRegisterClientPageInfoCompanyUtr")?.value || currentRow?.companyUtr || "").trim(),
+                    personalUtr: String(document.getElementById("chRegisterClientPageInfoPersonalUtr")?.value || currentRow?.personalUtr || "").trim(),
                     sourceFilename: String(currentRow?.sourceFilename || "").trim(),
                     authCode: String(document.getElementById("chRegisterClientPageInfoAuthCode")?.value || "").trim(),
                 };
@@ -134794,6 +134945,8 @@
                     ["clientEmail", currentRow?.clientEmail || ""],
                     ["clientPhone", currentRow?.clientPhone || ""],
                     ["clientAddress", currentRow?.clientAddress || ""],
+                    ["companyUtr", currentRow?.companyUtr || ""],
+                    ["personalUtr", currentRow?.personalUtr || ""],
                     ["authCode", ""],
                 ].some(([key, currentValue]) => {
                     const nextValue = String(registerOutbound?.[key] || "").trim();
@@ -135007,6 +135160,18 @@
                     );
                     renderClientRegisterClientPage();
                     if (!silent) showToast("Client page saved.", "success");
+                } catch (error) {
+                    const message = String(error?.message || "Unable to save client page.").trim();
+                    companiesHouseSettings.authRegisterClientPage = {
+                        ...companiesHouseSettings.authRegisterClientPage,
+                        saving: false,
+                        saveState: "error",
+                        saveError: message,
+                    };
+                    setClientRegisterWriteFailure(`${message} No local changes were committed.`, "retry-save");
+                    renderClientRegisterClientPage();
+                    if (!silent) showToast(message, "error");
+                }
                 } catch (error) {
                     const message = String(error?.message || "Unable to save client page.").trim();
                     companiesHouseSettings.authRegisterClientPage = {
@@ -136800,6 +136965,9 @@
                 });
                 document.getElementById("chRegisterClientPageReloadDirectoryButton")?.addEventListener("click", () => {
                     document.getElementById("chAuthCodeRegisterReloadButton")?.click();
+                });
+                document.getElementById("chRegisterClientPageBackfillIncorporationDatesButton")?.addEventListener("click", () => {
+                    void runClientRegisterIncorporationBackfillFromUi();
                 });
                 document.getElementById("chRegisterClientHealthExplainButton")?.addEventListener("click", () => {
                     const pageState = companiesHouseSettings.authRegisterClientPage || {};

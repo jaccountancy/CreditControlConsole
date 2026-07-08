@@ -66,6 +66,7 @@ from .companies_house import (
     list_company_secretarial_filings,
     list_companies,
     list_auth_code_register,
+    backfill_auth_register_company_incorporation_dates,
     load_task_tracker_state,
     list_imports as list_companies_house_imports,
     list_submission_attempts,
@@ -3586,6 +3587,16 @@ async def api_companies_house_auth_code_register_populate(
 ):
     payload = await request.json()
     result = populate_auth_codes_from_register(user, payload)
+    return {"status": "ok", "result": result}
+
+
+@app.post("/api/companies-house/auth-code-register/backfill-incorporation-dates")
+def api_companies_house_auth_code_register_backfill_incorporation_dates(
+    dry_run: bool = Query(False),
+    limit: int = Query(10000, ge=100, le=50000),
+    user: dict = Depends(require_panel_user),
+):
+    result = backfill_auth_register_company_incorporation_dates(user, dry_run=dry_run, limit=limit)
     return {"status": "ok", "result": result}
 
 
