@@ -1031,8 +1031,10 @@
     </section>
 
     <script>
-        const PUBLIC_BASE_URL = window.SNACK_PUBLIC_BASE_URL || "https://jaccountancy.co.uk";
-        const API_BASE_URL = window.SNACK_API_BASE_URL || "https://jenius.jaccountancy.co.uk";
+        const DEFAULT_PUBLIC_BASE_URL = "https://jaccountancy.co.uk";
+        const DEFAULT_API_BASE_URL = "https://jenius.jaccountancy.co.uk";
+        const PUBLIC_BASE_URL = window.SNACK_PUBLIC_BASE_URL || DEFAULT_PUBLIC_BASE_URL;
+        const API_BASE_URL = window.SNACK_API_BASE_URL || DEFAULT_API_BASE_URL;
         const LAST_ORDER_STORAGE_KEY = "snackccountancy_last_order_v1";
 
         const FALLBACK_PRODUCTS = [
@@ -1134,6 +1136,12 @@
 
         function snackApiUrl(pathname) {
             const base = String(API_BASE_URL || "").replace(/\/+$/, "");
+            const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
+            return `${base}${path}`;
+        }
+
+        function snackApiHardFallbackUrl(pathname) {
+            const base = String(DEFAULT_API_BASE_URL || "").replace(/\/+$/, "");
             const path = String(pathname || "/").startsWith("/") ? pathname : `/${pathname || ""}`;
             return `${base}${path}`;
         }
@@ -1786,20 +1794,34 @@
             }
 
             let response;
+            const requestBody = JSON.stringify({ items });
+            const requestInit = {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: requestBody,
+            };
+            const primaryUrl = snackApiUrl("/api/snackccountancy/create-payment");
+            const fallbackUrl = snackApiHardFallbackUrl("/api/snackccountancy/create-payment");
             try {
-                response = await fetch(snackApiUrl("/api/snackccountancy/create-payment"), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ items }),
-                });
+                response = await fetch(primaryUrl, requestInit);
             } catch (_) {
-                setStatus("Unable to contact checkout server.", true);
-                showRetryBanner("Network issue while creating payment.", async () => {
-                    hideRetryBanner();
-                    await mountCheckout();
-                });
-                return null;
+                if (fallbackUrl !== primaryUrl) {
+                    try {
+                        response = await fetch(fallbackUrl, requestInit);
+                    } catch (_) {
+                        response = null;
+                    }
+                }
+
+                if (!response) {
+                    setStatus("Unable to contact checkout server.", true);
+                    showRetryBanner("Network issue while creating payment.", async () => {
+                        hideRetryBanner();
+                        await mountCheckout();
+                    });
+                    return null;
+                }
             }
 
             if (!response.ok) {
