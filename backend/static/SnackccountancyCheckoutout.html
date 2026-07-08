@@ -118,11 +118,13 @@
             border-radius: var(--radius-lg);
             background: var(--surface-soft);
             padding: 12px;
+            padding-bottom: 30px;
             display: grid;
             grid-template-columns: 48px minmax(0, 1fr) auto;
             gap: 10px;
             align-items: center;
             cursor: pointer;
+            position: relative;
             transition: transform 160ms ease, box-shadow 180ms ease, border-color 180ms ease;
         }
 
@@ -162,6 +164,51 @@
             font-weight: 900;
             color: var(--blue);
             text-align: right;
+            padding-bottom: 10px;
+        }
+
+        .help-trigger {
+            position: absolute;
+            right: 10px;
+            bottom: 8px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1px solid #b7cde4;
+            background: #fff;
+            color: var(--blue-deep);
+            font-size: 0.74rem;
+            font-weight: 900;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .help-pop {
+            position: absolute;
+            right: 8px;
+            bottom: 36px;
+            width: min(260px, calc(100% - 16px));
+            border-radius: 10px;
+            border: 1px solid #c8daec;
+            background: #fff;
+            box-shadow: 0 10px 24px rgba(20, 58, 104, 0.15);
+            padding: 8px 10px;
+            color: #234667;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.35;
+            z-index: 8;
+        }
+
+        .help-pop[hidden] {
+            display: none !important;
+        }
+
+        .help-pop p {
+            margin: 0;
         }
 
         .controls {
@@ -718,6 +765,7 @@
                 grid-template-columns: 34px minmax(0, 1fr) auto;
                 gap: 8px;
                 padding: 10px;
+                padding-bottom: 28px;
                 border-radius: 14px;
             }
 
@@ -761,6 +809,22 @@
                 align-self: center;
                 font-size: 0.98rem;
                 white-space: nowrap;
+                padding-bottom: 6px;
+            }
+
+            .help-trigger {
+                right: 8px;
+                bottom: 6px;
+                width: 20px;
+                height: 20px;
+                font-size: 0.7rem;
+            }
+
+            .help-pop {
+                right: 6px;
+                bottom: 32px;
+                width: min(230px, calc(100% - 12px));
+                font-size: 0.74rem;
             }
 
             .sticky-pay-inner {
@@ -798,6 +862,10 @@
                         </div>
                     </div>
                     <p class="price">£1.00</p>
+                    <button class="help-trigger" type="button" data-help-sku="can_of_pop" aria-label="What's included for Can of Pop">?</button>
+                    <div class="help-pop" id="help-can_of_pop" hidden>
+                        <p>Any can of pop that is NOT Redbull or Monster.</p>
+                    </div>
                 </article>
                 <article class="snack-product" data-sku-card="premium_can_of_pop">
                     <div class="emoji" aria-hidden="true">⚡</div>
@@ -811,6 +879,10 @@
                         </div>
                     </div>
                     <p class="price">£1.69</p>
+                    <button class="help-trigger" type="button" data-help-sku="premium_can_of_pop" aria-label="What's included for Premium Can of Pop">?</button>
+                    <div class="help-pop" id="help-premium_can_of_pop" hidden>
+                        <p>Any Redbull or Monster can.</p>
+                    </div>
                 </article>
                 <article class="snack-product" data-sku-card="coffee_or_hot_chocolate">
                     <div class="emoji" aria-hidden="true">☕</div>
@@ -824,6 +896,10 @@
                         </div>
                     </div>
                     <p class="price">£2.99</p>
+                    <button class="help-trigger" type="button" data-help-sku="coffee_or_hot_chocolate" aria-label="What's included for Coffees or Hot Chocolate">?</button>
+                    <div class="help-pop" id="help-coffee_or_hot_chocolate" hidden>
+                        <p>Any hot drink from the Coffee Machine.</p>
+                    </div>
                 </article>
                 <article class="snack-product" data-sku-card="noodle_snackpot">
                     <div class="emoji" aria-hidden="true">🍜</div>
@@ -837,6 +913,10 @@
                         </div>
                     </div>
                     <p class="price">£3.50</p>
+                    <button class="help-trigger" type="button" data-help-sku="noodle_snackpot" aria-label="What's included for Noodle Snackpot">?</button>
+                    <div class="help-pop" id="help-noodle_snackpot" hidden>
+                        <p>Any flavour Noddle Pot on display.</p>
+                    </div>
                 </article>
                 <article class="snack-product" data-sku-card="ice_lollys">
                     <div class="emoji" aria-hidden="true">🍧</div>
@@ -850,6 +930,10 @@
                         </div>
                     </div>
                     <p class="price">£1.85</p>
+                    <button class="help-trigger" type="button" data-help-sku="ice_lollys" aria-label="What's included for Ice Lollys">?</button>
+                    <div class="help-pop" id="help-ice_lollys" hidden>
+                        <p>Any lolly from the freezer.</p>
+                    </div>
                 </article>
             </div>
             <button class="btn btn-soft" id="clearBasketBtn" type="button">Clear basket</button>
@@ -923,11 +1007,11 @@
         const LAST_ORDER_STORAGE_KEY = "snackccountancy_last_order_v1";
 
         const FALLBACK_PRODUCTS = [
-            { sku: "can_of_pop", name: "Can of Pop", description: "Chilled soft drink can.", category: "standard_can", price_pence: 100, emoji: "🥤" },
-            { sku: "premium_can_of_pop", name: "Premium Can of Pop", description: "Premium branded fizzy can.", category: "premium_can", price_pence: 169, emoji: "⚡" },
-            { sku: "coffee_or_hot_chocolate", name: "Coffees or Hot Chocolate", description: "Fresh hot drinks station.", category: "hot_drink", price_pence: 299, emoji: "☕" },
-            { sku: "noodle_snackpot", name: "Noodle Snackpot", description: "Quick hot noodle pot snack.", category: "snackpot", price_pence: 350, emoji: "🍜" },
-            { sku: "ice_lollys", name: "Ice Lollys", description: "Frozen sweet treat selection.", category: "ice_lolly", price_pence: 185, emoji: "🍧" },
+            { sku: "can_of_pop", name: "Can of Pop", description: "Chilled soft drink can.", category: "standard_can", price_pence: 100, emoji: "🥤", included: "Any can of pop that is NOT Redbull or Monster." },
+            { sku: "premium_can_of_pop", name: "Premium Can of Pop", description: "Premium branded fizzy can.", category: "premium_can", price_pence: 169, emoji: "⚡", included: "Any Redbull or Monster can." },
+            { sku: "coffee_or_hot_chocolate", name: "Coffees or Hot Chocolate", description: "Fresh hot drinks station.", category: "hot_drink", price_pence: 299, emoji: "☕", included: "Any hot drink from the Coffee Machine." },
+            { sku: "noodle_snackpot", name: "Noodle Snackpot", description: "Quick hot noodle pot snack.", category: "snackpot", price_pence: 350, emoji: "🍜", included: "Any flavour Noddle Pot on display." },
+            { sku: "ice_lollys", name: "Ice Lollys", description: "Frozen sweet treat selection.", category: "ice_lolly", price_pence: 185, emoji: "🍧", included: "Any lolly from the freezer." },
         ];
 
         const state = {
@@ -1232,8 +1316,19 @@
                         </div>
                     </div>
                     <p class="price">£${money(product.price_pence)}</p>
+                    <button class="help-trigger" type="button" data-help-sku="${product.sku}" aria-label="What's included for ${product.name}">?</button>
+                    <div class="help-pop" id="help-${product.sku}" hidden>
+                        <p>${product.included || "See venue for included options."}</p>
+                    </div>
                 `;
                 ui.productList.appendChild(card);
+            });
+        }
+
+        function closeAllHelpPopovers(exceptSku = "") {
+            ui.productList.querySelectorAll(".help-pop").forEach((node) => {
+                if (exceptSku && node.id === `help-${exceptSku}`) return;
+                node.hidden = true;
             });
         }
 
@@ -1468,6 +1563,7 @@
                             category: api.category || fallback.category || "",
                             price_pence: Number(api.price_pence ?? fallback.price_pence ?? 0),
                             emoji: fallback.emoji || "🛒",
+                            included: api.included || fallback.included || "",
                         };
                     }),
                     ...apiProducts
@@ -1479,6 +1575,7 @@
                             category: item.category || "",
                             price_pence: Number(item.price_pence || 0),
                             emoji: "🛒",
+                            included: item.included || "",
                         })),
                 ];
                 state.products.forEach((product) => {
@@ -1772,9 +1869,30 @@
         }
 
         ui.productList.addEventListener("click", async (event) => {
+            const helpBtn = event.target.closest("button[data-help-sku]");
+            if (helpBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                const sku = String(helpBtn.getAttribute("data-help-sku") || "");
+                if (!sku) return;
+                const pop = document.getElementById(`help-${sku}`);
+                if (!pop) return;
+                const willShow = Boolean(pop.hidden);
+                closeAllHelpPopovers(sku);
+                pop.hidden = !willShow;
+                return;
+            }
+
+            if (event.target.closest(".help-pop")) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
             const button = event.target.closest("button[data-sku]");
             if (button) {
                 event.preventDefault();
+                closeAllHelpPopovers();
                 const sku = String(button.getAttribute("data-sku") || "");
                 const action = String(button.getAttribute("data-action") || "");
                 if (!sku || !action) return;
@@ -1785,11 +1903,18 @@
 
             const card = event.target.closest("[data-sku-card]");
             if (!card || state.isPaymentLocked) return;
+            closeAllHelpPopovers();
             const sku = String(card.getAttribute("data-sku-card") || "");
             if (!sku) return;
             updateQuantity(sku, "inc");
             triggerFeedbackDot(event?.clientX, event?.clientY);
             await recalculateBasket();
+        });
+
+        document.addEventListener("click", (event) => {
+            if (!event.target.closest("#productList")) {
+                closeAllHelpPopovers();
+            }
         });
 
         ui.quickReaddChips.addEventListener("click", async (event) => {
