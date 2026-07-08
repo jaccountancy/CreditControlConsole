@@ -1098,7 +1098,9 @@
         }
 
         function closestFromEvent(event, selector) {
-            const target = event?.target;
+            const rawTarget = event?.target;
+            if (rawTarget instanceof Element) return rawTarget.closest(selector);
+            const target = rawTarget && rawTarget.parentElement ? rawTarget.parentElement : null;
             if (!(target instanceof Element)) return null;
             return target.closest(selector);
         }
