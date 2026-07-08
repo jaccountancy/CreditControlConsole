@@ -3041,6 +3041,28 @@ def _load_company_auth_code(company_id: str) -> str:
         return ""
 
 
+def _normalise_company_auth_code(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _is_valid_company_auth_code(value: object) -> bool:
+    return bool(re.fullmatch(r"[A-Z0-9]{6}", _normalise_company_auth_code(value)))
+
+
+def _select_best_auth_code(register_code: object, company_code: object) -> str:
+    register_raw = str(register_code or "").strip()
+    company_raw = str(company_code or "").strip()
+    register_normalised = _normalise_company_auth_code(register_raw)
+    company_normalised = _normalise_company_auth_code(company_raw)
+    if _is_valid_company_auth_code(company_normalised):
+        return company_normalised
+    if _is_valid_company_auth_code(register_normalised):
+        return register_normalised
+    if company_raw:
+        return company_raw
+    return register_raw
+
+
 def _reconcile_submission_status_code(status_code: str) -> str:
     code = _xml_text(status_code).upper()
     if code in {"ACCEPT", "ACCEPTED"} or code.startswith("ACCEPT"):
@@ -5711,16 +5733,17 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 register_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
                     str(row.get("display_name") or "").lower(), 250
                 )
-                row["auth_code"] = _decrypt_register_auth_code(
+                register_auth_code = _decrypt_register_auth_code(
                     _coerce_text(row.get("code_encrypted"), 5000),
                     register_id,
                     register_number,
                     register_name,
                 )
-                if not row.get("auth_code"):
-                    company_id = _coerce_text(row.get("company_id"), 120)
-                    if company_id:
-                        row["auth_code"] = _load_company_auth_code(company_id)
+                company_auth_code = ""
+                company_id = _coerce_text(row.get("company_id"), 120)
+                if company_id:
+                    company_auth_code = _load_company_auth_code(company_id)
+                row["auth_code"] = _select_best_auth_code(register_auth_code, company_auth_code)
             cursor.execute("SELECT COUNT(*) AS total FROM ch_auth_code_register")
             total_row = cursor.fetchone() or {}
         connection.commit()
@@ -7383,16 +7406,17 @@ def get_auth_register_client_page(
             normalised_name = _coerce_text(row.get("normalised_name"), 250) or _coerce_text(
                 str(row.get("display_name") or "").lower(), 250
             )
-            row["auth_code"] = _decrypt_register_auth_code(
+            register_auth_code = _decrypt_register_auth_code(
                 _coerce_text(row.get("code_encrypted"), 5000),
                 safe_row_id,
                 _coerce_text(row.get("company_number"), 40),
                 normalised_name,
             )
-            if not row.get("auth_code"):
-                company_id = _coerce_text(row.get("company_id"), 120)
-                if company_id:
-                    row["auth_code"] = _load_company_auth_code(company_id)
+            company_auth_code = ""
+            company_id = _coerce_text(row.get("company_id"), 120)
+            if company_id:
+                company_auth_code = _load_company_auth_code(company_id)
+            row["auth_code"] = _select_best_auth_code(register_auth_code, company_auth_code)
             cursor.execute(
                 """
                 SELECT EXISTS (

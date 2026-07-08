@@ -59768,8 +59768,24 @@
                 if (refreshButton.dataset.submittedEmployeeFormsWired !== "true") {
                     refreshButton.dataset.submittedEmployeeFormsWired = "true";
                     refreshButton.addEventListener("click", async () => {
-                        await loadSubmittedEmployeeForms(true);
-                        showToast("Submitted employee forms refreshed.", "success");
+                        if (submittedEmployeeFormsLoading || submittedEmployeeFormsSyncing || submittedEmployeeFormsSetupState.running) return;
+                        submittedEmployeeFormsSyncing = true;
+                        renderSubmittedEmployeeFormsScreen();
+                        try {
+                            const { syncMeta } = await submittedEmployeeFormsSyncRequest({ mode: "fetch", lookbackDays: 28 });
+                            const imported = Number(syncMeta?.imported || 0);
+                            showToast(
+                                `Submitted employee forms refreshed from Gmail. ${imported.toLocaleString("en-GB")} submission${imported === 1 ? "" : "s"} synced.`,
+                                "success"
+                            );
+                        } catch (error) {
+                            console.error("Unable to refresh submitted employee forms from Gmail", error);
+                            showToast(error?.message || "Unable to refresh submitted employee forms from Gmail.", "error");
+                            await loadSubmittedEmployeeForms(true);
+                        } finally {
+                            submittedEmployeeFormsSyncing = false;
+                            renderSubmittedEmployeeFormsScreen();
+                        }
                     });
                 }
                 if (syncButton.dataset.submittedEmployeeFormsWired !== "true") {
@@ -134933,7 +134949,11 @@
                     companyUtr: String(document.getElementById("chRegisterClientPageInfoCompanyUtr")?.value || currentRow?.companyUtr || "").trim(),
                     personalUtr: String(document.getElementById("chRegisterClientPageInfoPersonalUtr")?.value || currentRow?.personalUtr || "").trim(),
                     sourceFilename: String(currentRow?.sourceFilename || "").trim(),
-                    authCode: String(document.getElementById("chRegisterClientPageInfoAuthCode")?.value || "").trim(),
+                    authCode: (() => {
+                        const raw = String(document.getElementById("chRegisterClientPageInfoAuthCode")?.value || "").trim().toUpperCase();
+                        const normalised = raw.replace(/[^A-Z0-9]/g, "");
+                        return /^[A-Z0-9]{6}$/.test(normalised) ? normalised : "";
+                    })(),
                 };
                 const registerChanged = [
                     ["displayName", currentRow?.displayName || currentRow?.companyName || ""],
@@ -134947,12 +134967,16 @@
                     ["clientAddress", currentRow?.clientAddress || ""],
                     ["companyUtr", currentRow?.companyUtr || ""],
                     ["personalUtr", currentRow?.personalUtr || ""],
-                    ["authCode", ""],
+                    ["authCode", currentRow?.authCode || ""],
                 ].some(([key, currentValue]) => {
                     const nextValue = String(registerOutbound?.[key] || "").trim();
                     const baseline = String(currentValue || "").trim();
                     if (key === "vatNumber") {
                         return clientRegisterNormaliseVatNumber(nextValue) !== clientRegisterNormaliseVatNumber(baseline);
+                    }
+                    if (key === "authCode") {
+                        const normaliseAuthCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        return normaliseAuthCode(nextValue) !== normaliseAuthCode(baseline);
                     }
                     return nextValue !== baseline;
                 });
