@@ -31,7 +31,28 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate WordPress publish configuration
+        id: wp_config
+        env:
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL || vars.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME || vars.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD || vars.WP_APP_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "${WP_BASE_URL}" ]] && missing+=("WP_BASE_URL")
+          [[ -z "${WP_USERNAME}" ]] && missing+=("WP_USERNAME")
+          [[ -z "${WP_APP_PASSWORD}" ]] && missing+=("WP_APP_PASSWORD")
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping publish. Missing required repository Secrets/Variables: ${missing[*]}"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish page to WordPress
+        if: steps.wp_config.outputs.ready == 'true'
         env:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL || vars.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME || vars.WP_USERNAME }}
@@ -44,3 +65,8 @@ jobs:
           WP_PAGE_SLUG: ${{ github.event.inputs.page_slug || 'snackccountancy' }}
         run: |
           python scripts/publish_wordpress_page.py
+
+      - name: Publish skipped notice
+        if: steps.wp_config.outputs.ready != 'true'
+        run: |
+          echo "Publish skipped. Configure repo Secrets/Variables first: ${{ steps.wp_config.outputs.missing }}"
