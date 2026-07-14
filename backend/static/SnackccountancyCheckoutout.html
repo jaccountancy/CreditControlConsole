@@ -2068,7 +2068,22 @@
             const isTouch = event.type === "touchend";
             if (isTouch) state.lastTouchInteractionAt = Date.now();
             if (!isTouch && Date.now() - Number(state.lastTouchInteractionAt || 0) < 550) return;
-            if (closestFromEvent(event, "button.qty-btn, button[data-help-sku]")) return;
+
+            const qtyButton = closestFromEvent(event, "button.qty-btn");
+            if (qtyButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                await applyQuantityFromButton(qtyButton, event);
+                return;
+            }
+
+            const helpButton = closestFromEvent(event, "button[data-help-sku]");
+            if (helpButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleHelpFromButton(helpButton, event);
+                return;
+            }
 
             const productArea = closestFromEvent(event, "#productList");
             if (productArea) {
