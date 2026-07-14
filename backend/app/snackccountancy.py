@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import base64
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -22,6 +23,7 @@ SNACK_SESSION_COOKIE_NAME = "snackccountancy_session"
 SNACK_SESSION_LABEL = "Snackccountancy checkout"
 SNACK_SESSION_TTL_DAYS = 180
 UK_TZ = ZoneInfo("Europe/London")
+SKU_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 @dataclass
@@ -1676,6 +1678,11 @@ def snack_products_admin_upsert(payload: dict[str, Any]) -> dict[str, Any]:
 
     if price_pence < 0 and not product_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="price_pence must be >= 0.")
+    if sku and not SKU_PATTERN.fullmatch(sku):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sku must use lowercase letters, numbers, underscore or hyphen (max 64 chars).",
+        )
 
     with get_connection() as connection:
         with connection.cursor() as cursor:

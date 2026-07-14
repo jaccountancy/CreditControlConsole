@@ -1141,6 +1141,7 @@
                         src="${src}"
                         title="Snackccountancy Checkout"
                         loading="eager"
+                        allow="payment *"
                         referrerpolicy="strict-origin-when-cross-origin">
                     </iframe>
                 </div>
@@ -1158,6 +1159,19 @@
 
         function money(pence) {
             return ((Number(pence) || 0) / 100).toFixed(2);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function escapeAttr(value) {
+            return escapeHtml(value);
         }
 
         function setStatus(message, warn = false) {
@@ -1435,21 +1449,26 @@
                 card.setAttribute("data-sku-card", product.sku);
                 const quantity = Number(state.quantities[product.sku] || 0);
                 const emoji = product.emoji || "🛒";
+                const safeSku = escapeAttr(product.sku);
+                const jsSku = JSON.stringify(String(product.sku || ""));
+                const safeName = escapeHtml(product.name);
+                const safeDescription = escapeHtml(product.description || "");
+                const safeIncluded = escapeHtml(product.included || "See venue for included options.");
                 card.innerHTML = `
                     <div class="emoji" aria-hidden="true">${emoji}</div>
                     <div>
-                        <h3 class="name">${product.name}</h3>
-                        <p class="desc">${product.description || ""}</p>
-                        <div class="controls" role="group" aria-label="Quantity controls for ${product.name}">
-                            <button class="qty-btn" type="button" data-action="dec" data-sku="${product.sku}" aria-label="Decrease ${product.name} quantity" onclick="return window.snackQtyTap(this,'${product.sku}','dec',event)">−</button>
-                            <span class="qty" id="qty-${product.sku}" aria-live="polite">${quantity}</span>
-                            <button class="qty-btn" type="button" data-action="inc" data-sku="${product.sku}" aria-label="Increase ${product.name} quantity" onclick="return window.snackQtyTap(this,'${product.sku}','inc',event)">+</button>
+                        <h3 class="name">${safeName}</h3>
+                        <p class="desc">${safeDescription}</p>
+                        <div class="controls" role="group" aria-label="Quantity controls for ${safeName}">
+                            <button class="qty-btn" type="button" data-action="dec" data-sku="${safeSku}" aria-label="Decrease ${safeName} quantity" onclick='return window.snackQtyTap(this, ${jsSku}, "dec", event)'>−</button>
+                            <span class="qty" id="qty-${safeSku}" aria-live="polite">${quantity}</span>
+                            <button class="qty-btn" type="button" data-action="inc" data-sku="${safeSku}" aria-label="Increase ${safeName} quantity" onclick='return window.snackQtyTap(this, ${jsSku}, "inc", event)'>+</button>
                         </div>
                     </div>
                     <p class="price">£${money(product.price_pence)}</p>
-                    <button class="help-trigger" type="button" data-help-sku="${product.sku}" aria-label="What's included for ${product.name}" onclick="return window.snackHelpTap(this,'${product.sku}',event)">?</button>
-                    <div class="help-pop" id="help-${product.sku}" hidden>
-                        <p>${product.included || "See venue for included options."}</p>
+                    <button class="help-trigger" type="button" data-help-sku="${safeSku}" aria-label="What's included for ${safeName}" onclick='return window.snackHelpTap(this, ${jsSku}, event)'>?</button>
+                    <div class="help-pop" id="help-${safeSku}" hidden>
+                        <p>${safeIncluded}</p>
                     </div>
                 `;
                 ui.productList.appendChild(card);
@@ -1536,9 +1555,10 @@
             lines.forEach((line) => {
                 const row = document.createElement("div");
                 row.className = "basket-line";
+                const safeLineName = escapeHtml(line.name);
                 row.innerHTML = `
                     <div>
-                        <strong>${line.name}</strong>
+                        <strong>${safeLineName}</strong>
                         <small>${line.quantity} × item</small>
                     </div>
                     <strong>£${money(line.line_total_pence)}</strong>
@@ -1771,7 +1791,7 @@
 
             state.basket = localBasket(items);
             renderBasketUi(state.basket);
-            setStatus("Basket updated. Preparing checkout...");
+            setStatus(state.currentStep === "checkout" ? "Basket updated. Preparing checkout..." : "Basket updated.");
             hideRetryBanner();
 
             try {
@@ -1809,7 +1829,9 @@
                 });
             }
 
-            scheduleCheckoutPreparation();
+            if (state.currentStep === "checkout") {
+                scheduleCheckoutPreparation();
+            }
         }
 
         async function createPayment() {
@@ -2086,38 +2108,6 @@
                 return;
             }
 
-            const helpBtn = closestFromEvent(event, "button[data-help-sku]");
-            if (helpBtn) {
-                event.preventDefault();
-                event.stopPropagation();
-                const sku = String(helpBtn.getAttribute("data-help-sku") || "");
-                if (!sku) return;
-            const pop = pickNodeById(`help-${sku}`);
-            if (!pop) return;
-                const willShow = Boolean(pop.hidden);
-                closeAllHelpPopovers(sku);
-                pop.hidden = !willShow;
-                return;
-            }
-
-            if (closestFromEvent(event, ".help-pop")) {
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            }
-
-            const button = closestFromEvent(event, "button[data-sku]");
-            if (button) {
-                event.preventDefault();
-                closeAllHelpPopovers();
-                const sku = String(button.getAttribute("data-sku") || "");
-                const action = String(button.getAttribute("data-action") || "");
-                if (!sku || !action) return;
-                updateQuantity(sku, action);
-                queueRecalculateBasket();
-                return;
-            }
-
             const card = closestFromEvent(event, "[data-sku-card]");
             if (!card || state.isPaymentLocked) return;
             closeAllHelpPopovers();
@@ -2232,6 +2222,7 @@
         });
 
         (async function bootstrap() {
+            if (mountWordPressIframeFallback()) return;
             initMenuFooterObserver();
             await loadProducts();
             state.basket = localBasket([]);
