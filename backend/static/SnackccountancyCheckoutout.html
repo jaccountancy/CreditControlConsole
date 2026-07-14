@@ -1049,6 +1049,10 @@
             valueAnimations: {},
             lastDeltaPopAt: 0,
             lastTouchInteractionAt: 0,
+            touchStartX: null,
+            touchStartY: null,
+            touchMoved: false,
+            menuFooterInView: true,
         };
 
         function pickNodeById(id) {
@@ -1086,6 +1090,7 @@
             paymentElement: pickNodeById("paymentElement"),
             confirmCardBtn: pickNodeById("confirmCardBtn"),
             clearBasketBtn: pickNodeById("clearBasketBtn"),
+            menuFooter: document.querySelector(".menu-footer"),
             stickyPayBar: pickNodeById("stickyPayBar"),
             stickyPayCount: pickNodeById("stickyPayCount"),
             stickyPayTotal: pickNodeById("stickyPayTotal"),
@@ -1369,7 +1374,7 @@
         }
 
         function updateStickyPayBar(count, totalPence) {
-            const hasItems = count > 0 && state.currentStep === "menu";
+            const hasItems = count > 0 && state.currentStep === "menu" && !state.menuFooterInView;
             animateCountValue(Number(count || 0));
             animatePenceValue("sticky", ui.stickyPayTotal, Number(totalPence || 0));
             ui.stickyPayBar.hidden = !hasItems;
@@ -1378,6 +1383,24 @@
                 return;
             }
             requestAnimationFrame(() => ui.stickyPayBar.classList.add("is-visible"));
+        }
+
+        function initMenuFooterObserver() {
+            if (!ui.menuFooter || !("IntersectionObserver" in window)) {
+                state.menuFooterInView = false;
+                return;
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                const entry = entries[0];
+                state.menuFooterInView = Boolean(entry?.isIntersecting);
+                updateStickyPayBar(
+                    Number(state.basket?.item_count || 0),
+                    Number(state.basket?.total_paid_pence || 0)
+                );
+            }, { threshold: 0.05 });
+
+            observer.observe(ui.menuFooter);
         }
 
         function resetCheckoutUi() {
@@ -2057,6 +2080,12 @@
         }
 
         async function handleProductListInteraction(event) {
+            // Quantity/help buttons are handled by inline hooks (`snackQtyTap` / `snackHelpTap`).
+            // Ignore them here to prevent duplicate increments on touch devices.
+            if (closestFromEvent(event, "button[data-sku], button[data-help-sku], .help-pop")) {
+                return;
+            }
+
             const helpBtn = closestFromEvent(event, "button[data-help-sku]");
             if (helpBtn) {
                 event.preventDefault();
@@ -2101,9 +2130,36 @@
 
         ui.productList.addEventListener("touchend", async (event) => {
             if (event.defaultPrevented) return;
+            if (state.touchMoved) {
+                state.touchStartX = null;
+                state.touchStartY = null;
+                state.touchMoved = false;
+                return;
+            }
+            state.touchStartX = null;
+            state.touchStartY = null;
+            state.touchMoved = false;
             state.lastTouchInteractionAt = Date.now();
             await handleProductListInteraction(event);
         }, { passive: false });
+
+        ui.productList.addEventListener("touchstart", (event) => {
+            const touch = event.changedTouches?.[0];
+            state.touchStartX = Number(touch?.clientX || 0);
+            state.touchStartY = Number(touch?.clientY || 0);
+            state.touchMoved = false;
+        }, { passive: true });
+
+        ui.productList.addEventListener("touchmove", (event) => {
+            if (state.touchMoved) return;
+            const touch = event.changedTouches?.[0];
+            if (!touch) return;
+            const dx = Math.abs(Number(touch.clientX) - Number(state.touchStartX || 0));
+            const dy = Math.abs(Number(touch.clientY) - Number(state.touchStartY || 0));
+            if (dx > 10 || dy > 10) {
+                state.touchMoved = true;
+            }
+        }, { passive: true });
 
         ui.productList.addEventListener("click", async (event) => {
             if (event.defaultPrevented) return;
@@ -2176,6 +2232,7 @@
         });
 
         (async function bootstrap() {
+            initMenuFooterObserver();
             await loadProducts();
             state.basket = localBasket([]);
             renderBasketUi(state.basket);
