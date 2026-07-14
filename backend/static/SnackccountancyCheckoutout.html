@@ -343,33 +343,18 @@
             cursor: pointer;
         }
 
-        .checkout-cta {
-            width: 100%;
-            margin-top: 6px;
-        }
-
-        .pricing-breakdown {
+        .menu-footer {
             display: grid;
-            gap: 6px;
-            border: 1px dashed #ccdded;
-            border-radius: 12px;
-            padding: 10px;
-            background: #f9fcff;
-        }
-
-        .pricing-line {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
             gap: 8px;
-            color: #32526f;
-            font-size: 0.86rem;
-            font-weight: 700;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #d6e4f2;
         }
 
-        .pricing-line strong {
-            color: var(--blue-deep);
-            font-size: 0.95rem;
+        .back-btn {
+            width: auto;
+            min-height: 42px;
+            padding: 8px 12px;
         }
 
         .wallet-area {
@@ -414,14 +399,6 @@
             background: #1fa45f;
         }
 
-        #expressCheckout {
-            min-height: 56px;
-            border: 1px dashed #c7dbf0;
-            border-radius: var(--radius-md);
-            background: #fcfeff;
-            padding: 8px;
-        }
-
         #paymentElement {
             border: 1px solid #d6e3f2;
             border-radius: var(--radius-md);
@@ -449,11 +426,6 @@
             background: #fff;
             color: var(--ink);
             border-color: var(--line);
-        }
-
-        .btn-wallet {
-            background: #10151f;
-            color: #fff;
         }
 
         .btn:disabled {
@@ -877,7 +849,7 @@
             <h1 class="brand"><span class="snack">SNACK</span><span class="acct">CCOUNTANCY</span></h1>
         </section>
 
-        <section class="card products" aria-label="Products">
+        <section class="card products" id="menuStep" aria-label="Products">
             <div class="product-list" id="productList">
                 <article class="snack-product" data-sku-card="can_of_pop">
                     <div class="emoji" aria-hidden="true">🥤</div>
@@ -966,24 +938,23 @@
                 </article>
             </div>
             <button class="btn btn-soft" id="clearBasketBtn" type="button">Clear basket</button>
+            <div class="menu-footer">
+                <p class="small"><span id="menuItemCount">0</span> item(s) • £<span id="menuTotal">0.00</span></p>
+                <button class="btn btn-main" id="reviewBasketBtn" type="button">Review Basket</button>
+            </div>
         </section>
 
-        <aside class="card checkout" aria-label="Checkout">
+        <aside class="card checkout" id="checkoutStep" aria-label="Checkout" hidden>
+            <button class="btn btn-soft back-btn" id="backToMenuBtn" type="button">Back to menu</button>
             <div class="basket-head">
                 <h2 class="section-title" style="margin:0;">Basket</h2>
                 <div class="total">£<span id="basketTotal">0.00</span></div>
             </div>
             <p class="small"><span id="itemCount">0</span> item(s) selected</p>
-            <button class="btn btn-main checkout-cta" id="primaryCheckoutBtn" type="button">Checkout</button>
-            <div id="checkoutExtras" hidden>
+            <div id="checkoutExtras">
                 <div class="basket-lines" id="basketLines"></div>
                 <div class="basket-empty" id="basketEmpty">Add items to start checkout.</div>
-                <div class="pricing-breakdown">
-                    <div class="pricing-line"><span>Subtotal</span><strong>£<span id="subtotalAmount">0.00</span></strong></div>
-                    <div class="pricing-line"><span>Savings</span><strong>-£<span id="savingsAmount">0.00</span></strong></div>
-                    <div class="pricing-line"><span>Total</span><strong>£<span id="finalTotalAmount">0.00</span></strong></div>
-                </div>
-                <div class="status" id="checkoutStatus" role="status" aria-live="polite">Ready when you are.</div>
+                <div class="status" id="checkoutStatus" role="status" aria-live="polite">Add items to start checkout.</div>
                 <div class="status retry" id="retryBanner" hidden>
                     <span id="retryMessage">Network issue while preparing checkout.</span>
                     <button class="retry-btn" id="retryActionBtn" type="button">Retry</button>
@@ -995,10 +966,7 @@
                 </div>
 
                 <div class="wallet-area" id="basketCheckoutEmbed">
-                    <p class="small">Express checkout (Apple Pay, Google Pay, Link)</p>
-                    <div class="wallet-readiness" id="walletReadiness">Checking wallet readiness…</div>
-                    <div id="expressCheckout"></div>
-                    <button class="btn btn-wallet" id="loadCheckoutBtn" type="button">Refresh Checkout Amount</button>
+                    <p class="small">Checkout methods</p>
                     <div id="paymentElement" hidden></div>
                     <button class="btn btn-main" id="confirmCardBtn" type="button" hidden>Pay with Card</button>
                 </div>
@@ -1060,7 +1028,7 @@
             prepareVersion: 0,
             basketRecalcTimerId: null,
             isPaymentLocked: false,
-            hasGuidedToPay: false,
+            currentStep: "menu",
             qtyHold: { active: false, startTimer: null, repeatTimer: null },
             lastOrder: null,
             reviewMode: "edit",
@@ -1068,9 +1036,6 @@
             undoToastTimer: null,
             pendingRetryAction: null,
             displayedTotals: {
-                subtotal: null,
-                savings: null,
-                final: null,
                 basket: null,
                 sticky: null,
                 count: null,
@@ -1092,26 +1057,25 @@
         }
 
         const ui = {
+            menuStep: pickNodeById("menuStep"),
+            checkoutStep: pickNodeById("checkoutStep"),
             productList: pickNodeById("productList"),
             basketLines: pickNodeById("basketLines"),
             basketEmpty: pickNodeById("basketEmpty"),
             basketTotal: pickNodeById("basketTotal"),
-            subtotalAmount: pickNodeById("subtotalAmount"),
-            savingsAmount: pickNodeById("savingsAmount"),
-            finalTotalAmount: pickNodeById("finalTotalAmount"),
+            menuItemCount: pickNodeById("menuItemCount"),
+            menuTotal: pickNodeById("menuTotal"),
             itemCount: pickNodeById("itemCount"),
-            primaryCheckoutBtn: pickNodeById("primaryCheckoutBtn"),
             checkoutExtras: pickNodeById("checkoutExtras"),
             checkoutStatus: pickNodeById("checkoutStatus"),
             retryBanner: pickNodeById("retryBanner"),
             retryMessage: pickNodeById("retryMessage"),
             retryActionBtn: pickNodeById("retryActionBtn"),
+            reviewBasketBtn: pickNodeById("reviewBasketBtn"),
+            backToMenuBtn: pickNodeById("backToMenuBtn"),
             quickReaddWrap: pickNodeById("quickReaddWrap"),
             quickReaddChips: pickNodeById("quickReaddChips"),
-            walletReadiness: pickNodeById("walletReadiness"),
-            expressCheckout: pickNodeById("expressCheckout"),
             paymentElement: pickNodeById("paymentElement"),
-            loadCheckoutBtn: pickNodeById("loadCheckoutBtn"),
             confirmCardBtn: pickNodeById("confirmCardBtn"),
             clearBasketBtn: pickNodeById("clearBasketBtn"),
             stickyPayBar: pickNodeById("stickyPayBar"),
@@ -1184,6 +1148,7 @@
         }
 
         function setStatus(message, warn = false) {
+            if (!ui.checkoutStatus) return;
             ui.checkoutStatus.textContent = message;
             ui.checkoutStatus.className = warn ? "status warn" : "status";
         }
@@ -1201,7 +1166,28 @@
 
         function ensureCheckoutExtrasVisible() {
             if (ui.checkoutExtras) ui.checkoutExtras.hidden = false;
-            if (ui.primaryCheckoutBtn) ui.primaryCheckoutBtn.hidden = true;
+        }
+
+        function setStep(step, updateUrl = true) {
+            const targetStep = step === "checkout" ? "checkout" : "menu";
+            if (targetStep === "checkout" && !selectedItems().length) {
+                setStatus("Add items before checkout.", true);
+                return setStep("menu", updateUrl);
+            }
+            state.currentStep = targetStep;
+            if (ui.menuStep) ui.menuStep.hidden = targetStep !== "menu";
+            if (ui.checkoutStep) ui.checkoutStep.hidden = targetStep !== "checkout";
+            updateStickyPayBar(Number(state.basket?.item_count || 0), Number(state.basket?.total_paid_pence || 0));
+
+            if (updateUrl) {
+                const url = new URL(window.location.href);
+                if (targetStep === "checkout") {
+                    url.searchParams.set("step", "checkout");
+                } else {
+                    url.searchParams.delete("step");
+                }
+                window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+            }
         }
 
         function selectedItems() {
@@ -1241,30 +1227,13 @@
         function setInteractionLock(locked) {
             state.isPaymentLocked = Boolean(locked);
             const disabled = Boolean(locked);
-            ui.loadCheckoutBtn.disabled = disabled;
-            ui.confirmCardBtn.disabled = disabled;
-            ui.clearBasketBtn.disabled = disabled;
-            ui.stickyPayNowBtn.disabled = disabled;
-            if (ui.primaryCheckoutBtn) ui.primaryCheckoutBtn.disabled = disabled;
-            ui.undoBtn.disabled = disabled;
+            if (ui.confirmCardBtn) ui.confirmCardBtn.disabled = disabled;
+            if (ui.clearBasketBtn) ui.clearBasketBtn.disabled = disabled;
+            if (ui.stickyPayNowBtn) ui.stickyPayNowBtn.disabled = disabled;
+            if (ui.reviewBasketBtn) ui.reviewBasketBtn.disabled = disabled || !selectedItems().length;
+            if (ui.backToMenuBtn) ui.backToMenuBtn.disabled = disabled;
+            if (ui.undoBtn) ui.undoBtn.disabled = disabled;
             ui.productList.querySelectorAll(".qty-btn").forEach((node) => { node.disabled = disabled; });
-        }
-
-        function setWalletReadiness(ready, text) {
-            ui.walletReadiness.textContent = text;
-            ui.walletReadiness.classList.toggle("is-ready", Boolean(ready));
-        }
-
-        function updateWalletReadinessBeforeMount() {
-            if (window.ApplePaySession) {
-                setWalletReadiness(true, "Apple Pay should be available");
-                return;
-            }
-            if (window.PaymentRequest) {
-                setWalletReadiness(true, "Wallets available if configured");
-                return;
-            }
-            setWalletReadiness(false, "Wallet support depends on browser");
         }
 
         function triggerFeedbackDot(clientX, clientY) {
@@ -1355,7 +1324,7 @@
         }
 
         function updateStickyPayBar(count, totalPence) {
-            const hasItems = count > 0;
+            const hasItems = count > 0 && state.currentStep === "menu";
             animateCountValue(Number(count || 0));
             animatePenceValue("sticky", ui.stickyPayTotal, Number(totalPence || 0));
             ui.stickyPayBar.hidden = !hasItems;
@@ -1370,11 +1339,11 @@
             state.elements = null;
             state.cardMounted = false;
             state.checkoutPreparedSignature = "";
-            ui.expressCheckout.innerHTML = "";
-            ui.paymentElement.innerHTML = "";
-            ui.paymentElement.hidden = true;
-            ui.confirmCardBtn.hidden = true;
-            updateWalletReadinessBeforeMount();
+            if (ui.paymentElement) {
+                ui.paymentElement.innerHTML = "";
+                ui.paymentElement.hidden = true;
+            }
+            if (ui.confirmCardBtn) ui.confirmCardBtn.hidden = true;
         }
 
         function renderProducts() {
@@ -1475,21 +1444,17 @@
         };
 
         function renderBasketUi(basket) {
-            const subtotal = Number(basket?.subtotal_pence || basket?.total_paid_pence || 0);
-            const savings = Number(
-                basket?.savings_pence
-                || basket?.discount_total_pence
-                || basket?.weekly_discount_pence
-                || 0
-            ) + Number(basket?.milestone_discount_pence || 0);
             const total = Number(basket?.total_paid_pence || 0);
             const count = Number(basket?.item_count || 0);
             const lines = Array.isArray(basket?.lines) ? basket.lines : [];
 
-            animatePenceValue("subtotal", ui.subtotalAmount, subtotal);
-            animatePenceValue("savings", ui.savingsAmount, Math.max(0, savings));
-            animatePenceValue("final", ui.finalTotalAmount, total);
             animatePenceValue("basket", ui.basketTotal, total);
+            if (ui.menuItemCount) ui.menuItemCount.textContent = String(count);
+            if (ui.menuTotal) ui.menuTotal.textContent = money(total);
+            if (ui.reviewBasketBtn) {
+                ui.reviewBasketBtn.disabled = count <= 0;
+                ui.reviewBasketBtn.textContent = count > 0 ? `Review Basket (${count})` : "Review Basket";
+            }
             const priorBasketTotal = state.displayedTotals.basket;
             if (priorBasketTotal !== null && priorBasketTotal !== total) {
                 pulseNode(ui.basketTotal, "is-total-pulse");
@@ -1519,23 +1484,21 @@
         }
 
         function scrollToWalletCta() {
+            if (!selectedItems().length) return;
+            if (state.currentStep !== "checkout") {
+                setStep("checkout");
+            }
+            if (state.currentStep !== "checkout") return;
             ensureCheckoutExtrasVisible();
-            const checkoutTarget = document.getElementById("basketCheckoutEmbed") || ui.expressCheckout;
+            const checkoutTarget = document.getElementById("basketCheckoutEmbed") || ui.paymentElement;
             checkoutTarget.scrollIntoView({ behavior: "smooth", block: "center" });
             window.setTimeout(() => {
                 if (!state.elements) {
                     mountCheckout();
                 } else {
-                    ui.loadCheckoutBtn.focus();
+                    ui.confirmCardBtn?.focus();
                 }
             }, 120);
-        }
-
-        function guideFirstAddToPay(previousCount, newCount) {
-            if (previousCount !== 0 || newCount <= 0 || state.hasGuidedToPay) return;
-            state.hasGuidedToPay = true;
-            setStatus("Great choice. Taking you straight to pay.");
-            scrollToWalletCta();
         }
 
         function updateQuantity(sku, action) {
@@ -1732,19 +1695,18 @@
         }
 
         async function recalculateBasket() {
-            const previousCount = Number(state.basket?.item_count || 0);
             const items = selectedItems();
             if (!items.length) {
                 state.basket = localBasket([]);
                 renderBasketUi(state.basket);
                 resetCheckoutUi();
                 setStatus("Add items to start checkout.");
+                setStep("menu");
                 return;
             }
 
             state.basket = localBasket(items);
             renderBasketUi(state.basket);
-            guideFirstAddToPay(previousCount, Number(state.basket.item_count || 0));
             setStatus("Basket updated. Preparing checkout...");
             hideRetryBanner();
 
@@ -1900,7 +1862,6 @@
             const prepareVersion = state.prepareVersion + 1;
             state.prepareVersion = prepareVersion;
             state.checkoutPreparing = true;
-            ui.loadCheckoutBtn.disabled = true;
             setStatus("Preparing secure checkout...");
             hideRetryBanner();
 
@@ -1908,7 +1869,6 @@
             if (!payment) {
                 if (prepareVersion !== state.prepareVersion) return;
                 state.checkoutPreparing = false;
-                ui.loadCheckoutBtn.disabled = false;
                 return;
             }
 
@@ -1916,7 +1876,6 @@
                 if (prepareVersion !== state.prepareVersion) return;
                 setStatus("Stripe publishable key is not configured yet.", true);
                 state.checkoutPreparing = false;
-                ui.loadCheckoutBtn.disabled = false;
                 return;
             }
 
@@ -1926,32 +1885,18 @@
                 state.elements = state.stripe.elements({ clientSecret: payment.client_secret });
                 state.cardMounted = false;
 
-                ui.expressCheckout.innerHTML = "";
-                ui.paymentElement.innerHTML = "";
-                const express = state.elements.create("expressCheckout", {
-                    buttonTheme: { applePay: "black", googlePay: "black", link: "dark" },
-                    layout: { maxColumns: 1, maxRows: 3, overflow: "auto" },
-                });
-                express.mount("#expressCheckout");
-
-                express.on("confirm", async (event) => {
-                    event?.resolve?.();
-                    await confirmPayment();
-                });
-
                 ui.paymentElement.hidden = false;
                 ui.confirmCardBtn.hidden = false;
+                ui.paymentElement.innerHTML = "";
                 if (!state.cardMounted) {
                     const paymentElement = state.elements.create("payment");
                     paymentElement.mount("#paymentElement");
                     state.cardMounted = true;
                 }
 
-                setWalletReadiness(true, "Wallet checkout ready");
                 state.checkoutPreparedSignature = signature;
                 setStatus("Checkout is ready. Tap Apple Pay or confirm card payment.");
             } catch (_) {
-                setWalletReadiness(false, "Wallet setup failed, card still available");
                 setStatus("Checkout could not be loaded. Please try again.", true);
                 showRetryBanner("Checkout setup failed.", async () => {
                     hideRetryBanner();
@@ -1960,7 +1905,6 @@
             } finally {
                 if (prepareVersion !== state.prepareVersion) return;
                 state.checkoutPreparing = false;
-                ui.loadCheckoutBtn.disabled = false;
             }
         }
 
@@ -2018,6 +1962,7 @@
             hideUndoToast();
             state.lastRemoved = null;
             hideRetryBanner();
+            setStep("menu");
             if (showMessage) setStatus("Basket cleared.");
         }
 
@@ -2091,20 +2036,6 @@
                 return;
             }
 
-            const checkoutBtn = closestFromEvent(event, "#primaryCheckoutBtn");
-            if (checkoutBtn) {
-                event.preventDefault();
-                handlePrimaryCheckout();
-                return;
-            }
-
-            const loadBtn = closestFromEvent(event, "#loadCheckoutBtn");
-            if (loadBtn) {
-                event.preventDefault();
-                mountCheckout();
-                return;
-            }
-
             const confirmBtn = closestFromEvent(event, "#confirmCardBtn");
             if (confirmBtn) {
                 event.preventDefault();
@@ -2145,22 +2076,19 @@
             await recalculateBasket();
         });
 
-        const handlePrimaryCheckout = () => {
+        ui.reviewBasketBtn?.addEventListener("click", async () => {
+            if (!selectedItems().length) {
+                setStatus("Add items before checkout.", true);
+                return;
+            }
+            setStep("checkout");
             ensureCheckoutExtrasVisible();
-            mountCheckout();
-        };
+            await mountCheckout();
+        });
 
-        ui.primaryCheckoutBtn.addEventListener("click", handlePrimaryCheckout);
-        ui.primaryCheckoutBtn.addEventListener("touchend", (event) => {
-            event.preventDefault();
-            handlePrimaryCheckout();
-        }, { passive: false });
-
-        ui.loadCheckoutBtn.addEventListener("click", mountCheckout);
-        ui.loadCheckoutBtn.addEventListener("touchend", (event) => {
-            event.preventDefault();
-            mountCheckout();
-        }, { passive: false });
+        ui.backToMenuBtn?.addEventListener("click", () => {
+            setStep("menu");
+        });
 
         ui.confirmCardBtn.addEventListener("click", confirmPayment);
         ui.confirmCardBtn.addEventListener("touchend", (event) => {
@@ -2199,12 +2127,14 @@
         });
 
         (async function bootstrap() {
-            updateWalletReadinessBeforeMount();
             await loadProducts();
             bindDirectProductButtons();
             state.basket = localBasket([]);
             renderBasketUi(state.basket);
             renderQuickReadd();
+
+            const requestedStep = new URLSearchParams(window.location.search).get("step");
+            setStep(requestedStep === "checkout" ? "checkout" : "menu", false);
 
             const params = new URLSearchParams(window.location.search);
             const redirectedPaymentIntent = params.get("payment_intent") || "";
