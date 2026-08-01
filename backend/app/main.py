@@ -32,6 +32,7 @@ from .auth import (
     current_user_from_request,
     require_api_user,
     require_panel_user,
+    require_panel_roles,
     require_panel_write_user,
     require_user,
     set_session_cookie,
@@ -5140,9 +5141,15 @@ async def api_xero_payroll_diagnostic(tenant_id: str, user: dict = Depends(requi
 
 @app.post("/api/submitted-employee-forms/publish/{form_id}")
 async def api_publish_submitted_employee_form(form_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_roles(
+        user,
+        {"owner", "admin", "finance_admin"},
+        "publish payroll employee submissions",
+    )
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     tenant_id = str((payload or {}).get("tenantId") or "").strip() if isinstance(payload, dict) else ""
-    result = await publish_submitted_employee_form(user, form_id, tenant_id=tenant_id or None)
+    dry_run = bool((payload or {}).get("dryRun", False)) if isinstance(payload, dict) else False
+    result = await publish_submitted_employee_form(user, form_id, tenant_id=tenant_id or None, dry_run=dry_run)
     return {"status": "ok", "publication": result}
 
 

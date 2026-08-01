@@ -20016,6 +20016,162 @@ def _submitted_forms_normalized_employee_name(value: str | None) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
 
+def _submitted_forms_normalized_ni(value: str | None) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "", str(value or "").strip()).upper()
+
+
+def _submitted_forms_normalized_email(value: str | None) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).lower()
+
+
+def _submitted_forms_normalized_dob(value: str | None) -> str:
+    return _submitted_employee_forms_normalise_date(str(value or "")) or ""
+
+
+def _submitted_forms_duplicate_evaluation(target_row: dict, existing_rows: list[dict]) -> dict:
+    extracted = target_row.get("extracted_fields") if isinstance(target_row.get("extracted_fields"), dict) else {}
+    target_id = str(target_row.get("id") or "").strip()
+    target_ni = _submitted_forms_normalized_ni(extracted.get("nationalInsuranceNumber"))
+    target_email = _submitted_forms_normalized_email(target_row.get("employee_email") or extracted.get("employeeEmail"))
+    target_dob = _submitted_forms_normalized_dob(extracted.get("dateOfBirth"))
+    target_name = _submitted_forms_normalized_employee_name(
+        " ".join(
+            part for part in [
+                str(target_row.get("employee_first_name") or "").strip(),
+                str(target_row.get("employee_last_name") or "").strip(),
+            ] if part
+        ) or target_row.get("employee_full_name")
+    )
+    target_start = _submitted_employee_forms_normalise_date(str(extracted.get("startDate") or "")) or ""
+
+    strong_matches: list[dict] = []
+    moderate_matches: list[dict] = []
+    for row in existing_rows:
+        row_id = str(row.get("id") or "").strip()
+        if not row_id or row_id == target_id:
+            continue
+        row_extracted = row.get("extracted_fields") if isinstance(row.get("extracted_fields"), dict) else {}
+        row_ni = _submitted_forms_normalized_ni(row_extracted.get("nationalInsuranceNumber"))
+        row_email = _submitted_forms_normalized_email(row.get("employee_email") or row_extracted.get("employeeEmail"))
+        row_dob = _submitted_forms_normalized_dob(row_extracted.get("dateOfBirth"))
+        row_name = _submitted_forms_normalized_employee_name(
+            " ".join(
+                part for part in [
+                    str(row.get("employee_first_name") or "").strip(),
+                    str(row.get("employee_last_name") or "").strip(),
+                ] if part
+            ) or row.get("employee_full_name")
+        )
+        row_start = _submitted_employee_forms_normalise_date(str(row_extracted.get("startDate") or "")) or ""
+        reasons: list[str] = []
+        strength = "none"
+        if target_ni and row_ni and target_ni == row_ni:
+            reasons.append("NI exact match")
+            strength = "strong"
+        if target_email and row_email and target_email == row_email:
+            reasons.append("Email exact match")
+            if strength != "strong":
+                strength = "strong"
+        if target_name and target_dob and row_name and row_dob and target_name == row_name and target_dob == row_dob:
+            reasons.append("Name + DOB match")
+            if strength != "strong":
+                strength = "strong"
+        if target_name and target_start and row_name and row_start and target_name == row_name and target_start == row_start:
+            reasons.append("Name + start-date match")
+            if strength == "none":
+                strength = "moderate"
+        if not reasons:
+            continue
+        match = {
+            "submissionId": row_id,
+            "xeroStatus": str(row.get("xero_status") or ""),
+            "employeeName": str(row.get("employee_full_name") or ""),
+            "employeeEmail": str(row.get("employee_email") or ""),
+            "reasons": reasons,
+            "strength": strength,
+        }
+        if strength == "strong":
+            strong_matches.append(match)
+        else:
+            moderate_matches.append(match)
+    return {
+        "strong": strong_matches,
+        "moderate": moderate_matches,
+        "blockPublish": bool(strong_matches),
+    }
+
+
+def _submitted_forms_xero_duplicate_evaluation(target_row: dict, xero_employees: list[dict]) -> dict:
+    extracted = target_row.get("extracted_fields") if isinstance(target_row.get("extracted_fields"), dict) else {}
+    target_ni = _submitted_forms_normalized_ni(extracted.get("nationalInsuranceNumber"))
+    target_email = _submitted_forms_normalized_email(target_row.get("employee_email") or extracted.get("employeeEmail"))
+    target_dob = _submitted_forms_normalized_dob(extracted.get("dateOfBirth"))
+    target_name = _submitted_forms_normalized_employee_name(
+        " ".join(
+            part for part in [
+                str(target_row.get("employee_first_name") or "").strip(),
+                str(target_row.get("employee_last_name") or "").strip(),
+            ] if part
+        ) or target_row.get("employee_full_name")
+    )
+    target_start = _submitted_employee_forms_normalise_date(str(extracted.get("startDate") or "")) or ""
+    strong_matches: list[dict] = []
+    moderate_matches: list[dict] = []
+
+    for employee in xero_employees:
+        if not isinstance(employee, dict):
+            continue
+        employee_id = str(employee.get("EmployeeID") or employee.get("employeeID") or employee.get("employeeId") or "").strip()
+        employee_email = _submitted_forms_normalized_email(employee.get("Email") or employee.get("email"))
+        employee_ni = _submitted_forms_normalized_ni(employee.get("NationalInsuranceNumber") or employee.get("nationalInsuranceNumber"))
+        employee_dob = _submitted_forms_normalized_dob(employee.get("DateOfBirth") or employee.get("dateOfBirth"))
+        employee_name = _submitted_forms_normalized_employee_name(
+            " ".join(
+                part for part in [
+                    str(employee.get("FirstName") or employee.get("firstName") or "").strip(),
+                    str(employee.get("LastName") or employee.get("lastName") or "").strip(),
+                ] if part
+            )
+        )
+        employee_start = _submitted_employee_forms_normalise_date(str(employee.get("StartDate") or employee.get("DateOfJoining") or "")) or ""
+
+        reasons: list[str] = []
+        strength = "none"
+        if target_ni and employee_ni and target_ni == employee_ni:
+            reasons.append("Xero NI exact match")
+            strength = "strong"
+        if target_email and employee_email and target_email == employee_email:
+            reasons.append("Xero email exact match")
+            if strength != "strong":
+                strength = "strong"
+        if target_name and target_dob and employee_name and employee_dob and target_name == employee_name and target_dob == employee_dob:
+            reasons.append("Xero name + DOB match")
+            if strength != "strong":
+                strength = "strong"
+        if target_name and target_start and employee_name and employee_start and target_name == employee_name and target_start == employee_start:
+            reasons.append("Xero name + start-date match")
+            if strength == "none":
+                strength = "moderate"
+        if not reasons:
+            continue
+        payload = {
+            "employeeId": employee_id,
+            "employeeName": str(employee.get("FullName") or f"{employee.get('FirstName') or ''} {employee.get('LastName') or ''}").strip(),
+            "employeeEmail": employee_email,
+            "reasons": reasons,
+            "strength": strength,
+        }
+        if strength == "strong":
+            strong_matches.append(payload)
+        else:
+            moderate_matches.append(payload)
+    return {
+        "strong": strong_matches,
+        "moderate": moderate_matches,
+        "blockPublish": bool(strong_matches),
+    }
+
+
 def _submitted_forms_xero_employee_name_strict(row: dict) -> str:
     first = re.sub(r"\s+", " ", str(row.get("FirstName") or row.get("firstName") or "")).strip()
     last = re.sub(r"\s+", " ", str(row.get("LastName") or row.get("lastName") or "")).strip()
@@ -22765,7 +22921,12 @@ def _submitted_forms_decimal(value) -> Decimal:
         return Decimal("0")
 
 
-async def publish_submitted_employee_form(user: dict, form_id: str, tenant_id: str | None = None) -> dict:
+async def publish_submitted_employee_form(
+    user: dict,
+    form_id: str,
+    tenant_id: str | None = None,
+    dry_run: bool = False,
+) -> dict:
     row = _submitted_forms_submission_row(user, form_id)
     clean_user_id = str(user.get("id") or "").strip()
     connection_row = _submitted_forms_target_connection(user, tenant_id or str(row.get("xero_tenant_id") or ""))
@@ -22797,12 +22958,48 @@ async def publish_submitted_employee_form(user: dict, form_id: str, tenant_id: s
         "pension": "MANUAL_REQUIRED",
         "finalVerification": "PENDING",
     }
+    all_rows_for_user = _submitted_employee_forms_query_rows(clean_user_id)
+    duplicate_summary = _submitted_forms_duplicate_evaluation(row, all_rows_for_user)
+    if duplicate_summary.get("blockPublish"):
+        _submitted_forms_update_workflow_status(
+            submission_id,
+            workflow_status="needs-review",
+            section_status=section_status,
+            xero_status="needs-review",
+            xero_note="Strong duplicate match detected. Manual reviewer decision required before publish.",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Strong duplicate match detected. Publish blocked pending manual decision.",
+                "duplicateSummary": duplicate_summary,
+            },
+        )
+    xero_employees_payload = await xero_api_get(connection_row, XERO_PAYROLL_EMPLOYEES_URL)
+    xero_employees = _payroll_headcount_rows(xero_employees_payload, "Employees", "Employee")
+    xero_duplicate_summary = _submitted_forms_xero_duplicate_evaluation(row, xero_employees)
+    if xero_duplicate_summary.get("blockPublish"):
+        _submitted_forms_update_workflow_status(
+            submission_id,
+            workflow_status="needs-review",
+            section_status=section_status,
+            xero_status="needs-review",
+            xero_note="Strong Xero duplicate match detected. Manual reviewer decision required before publish.",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Strong Xero duplicate match detected. Publish blocked pending manual decision.",
+                "duplicateSummary": xero_duplicate_summary,
+            },
+        )
+
     _submitted_forms_update_workflow_status(
         submission_id,
         workflow_status="publishing",
         section_status=section_status,
-        xero_status="publishing",
-        xero_note=f"Publishing to {clean_tenant_name}.",
+        xero_status="publishing" if not dry_run else "pending",
+        xero_note=f"{'Dry run prepared for' if dry_run else 'Publishing to'} {clean_tenant_name}.",
     )
 
     created_employee_id = ""
@@ -22821,6 +23018,53 @@ async def publish_submitted_employee_form(user: dict, form_id: str, tenant_id: s
 
         _employee_publication_update_run(run_id, status_value="CREATING_EMPLOYEE", current_step="CREATING_EMPLOYEE")
         employee_payload = _submitted_forms_employee_create_payload(row)
+        if dry_run:
+            _employee_publication_log_step(
+                run_id,
+                step_name="DRY_RUN",
+                status_value="completed",
+                request_payload={
+                    "employee": employee_payload,
+                "duplicateSummary": duplicate_summary,
+                "xeroDuplicateSummary": xero_duplicate_summary,
+                "tenantId": clean_tenant_id,
+                "tenantName": clean_tenant_name,
+            },
+                response_payload={"dryRun": True},
+                http_status=200,
+            )
+            _employee_publication_update_run(
+                run_id,
+                status_value="COMPLETED",
+                current_step="DRY_RUN",
+                completed=True,
+            )
+            _submitted_forms_update_workflow_status(
+                submission_id,
+                workflow_status="ready-to-publish",
+                section_status={
+                    **section_status,
+                    "personalDetails": "READY",
+                    "employment": "READY",
+                    "basePay": "READY",
+                    "workingPattern": "READY",
+                    "paymentMethod": "READY",
+                    "finalVerification": "READY",
+                },
+                xero_status="pending",
+                xero_note="Dry run completed successfully. No Xero write actions were made.",
+            )
+            return {
+                "runId": run_id,
+                "submissionId": submission_id,
+                "xeroTenantId": clean_tenant_id,
+                "xeroTenantName": clean_tenant_name,
+                "status": "DRY_RUN_READY",
+                "dryRun": True,
+                "duplicateSummary": duplicate_summary,
+                "xeroDuplicateSummary": xero_duplicate_summary,
+                "previewPayload": {"employee": employee_payload},
+            }
         create_result = await _xero_payroll_create_employee(connection_row, employee_payload)
         created_employee_id = str(create_result.get("employeeId") or "").strip()
         if not created_employee_id:
@@ -22965,6 +23209,9 @@ async def publish_submitted_employee_form(user: dict, form_id: str, tenant_id: s
             "xeroEmployeeId": created_employee_id,
             "status": "PARTIAL",
             "sectionStatus": section_status,
+            "duplicateSummary": duplicate_summary,
+            "xeroDuplicateSummary": xero_duplicate_summary,
+            "dryRun": False,
         }
     except Exception as exc:
         error_message = _sync_error_message(exc)

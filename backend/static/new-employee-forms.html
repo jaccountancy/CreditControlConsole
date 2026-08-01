@@ -192,6 +192,7 @@
                     <td>
                         <div class="actions">
                             <button type="button" data-action="publish" data-id="${escapeAttr(id)}">Publish</button>
+                            <button type="button" data-action="dry-run" data-id="${escapeAttr(id)}">Dry Run</button>
                             <button type="button" data-action="diagnostic" data-id="${escapeAttr(id)}">Diagnostic</button>
                         </div>
                         <div class="hint">CSV: <span class="mono">${escapeHtml(String(row.csvSha256 || "-").slice(0, 14))}</span></div>
@@ -258,16 +259,16 @@
         setStateText("Diagnostic complete");
     }
 
-    async function publishRow(formId, tenantId) {
+    async function publishRow(formId, tenantId, dryRun = false) {
         if (!formId) return;
-        setStateText("Publishing submission...");
+        setStateText(dryRun ? "Running publish dry run..." : "Publishing submission...");
         await request(`/api/submitted-employee-forms/publish/${encodeURIComponent(formId)}`, {
             method: "POST",
             headers: {"content-type": "application/json"},
-            body: JSON.stringify({tenantId: tenantId || ""})
+            body: JSON.stringify({tenantId: tenantId || "", dryRun})
         });
         await loadForms();
-        setStateText("Publish complete");
+        setStateText(dryRun ? "Dry run complete" : "Publish complete");
     }
 
     els.loadFormsButton.addEventListener("click", async () => {
@@ -304,7 +305,9 @@
         const tenantId = tenantFromRow(row);
         try {
             if (action === "publish") {
-                await publishRow(id, tenantId);
+                await publishRow(id, tenantId, false);
+            } else if (action === "dry-run") {
+                await publishRow(id, tenantId, true);
             } else if (action === "diagnostic") {
                 await runDiagnosticForTenant(tenantId);
             }
