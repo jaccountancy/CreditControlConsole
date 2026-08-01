@@ -22,7 +22,8 @@ class Settings(BaseSettings):
         "accounting.contacts accounting.settings accounting.attachments "
         "accounting.reports.banksummary.read accounting.reports.balancesheet.read "
         "accounting.reports.profitandloss.read accounting.reports.trialbalance.read "
-        "payroll.employees payroll.payruns"
+        "payroll.employees payroll.employees.read payroll.payruns payroll.payruns.read "
+        "payroll.settings payroll.settings.read"
     )
     xero_enable_payroll_scopes: bool = Field(
         default=False,

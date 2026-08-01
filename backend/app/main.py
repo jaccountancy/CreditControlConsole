@@ -248,6 +248,8 @@ from .services import (
     sync_run_has_working_data,
     send_me_report_email,
     send_ignition_renewals_email,
+    xero_payroll_diagnostic_payload,
+    publish_submitted_employee_form,
     submitted_employee_forms_payload,
     notify_submitted_employee_form_managers,
     pull_user_notifications,
@@ -5126,6 +5128,22 @@ async def api_sync_submitted_employee_forms(request: Request, user: dict = Depen
             lookback_days=lookback_days,
         ),
     }
+
+
+@app.get("/api/admin/xero/payroll-diagnostic/{tenant_id}")
+async def api_xero_payroll_diagnostic(tenant_id: str, user: dict = Depends(require_panel_user)):
+    return {
+        "status": "ok",
+        "diagnostic": await xero_payroll_diagnostic_payload(user, tenant_id),
+    }
+
+
+@app.post("/api/submitted-employee-forms/publish/{form_id}")
+async def api_publish_submitted_employee_form(form_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    tenant_id = str((payload or {}).get("tenantId") or "").strip() if isinstance(payload, dict) else ""
+    result = await publish_submitted_employee_form(user, form_id, tenant_id=tenant_id or None)
+    return {"status": "ok", "publication": result}
 
 
 @app.post("/api/submitted-employee-forms/notify")

@@ -19189,6 +19189,38 @@ async def company_calendar_payload(user: dict, days_ahead: int = 14, max_events:
 
 SUBMITTED_EMPLOYEE_FORMS_SUBJECT_PREFIX = "New Employee Details:"
 SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH = 150
+SUBMITTED_EMPLOYEE_FORMS_MAX_HISTORIC_FETCH = 500
+SUBMITTED_EMPLOYEE_FORMS_GMAIL_QUERY = 'to:theteam@jaccountancy.co.uk subject:"New Employee Details:" has:attachment'
+XERO_PAYROLL_CALENDARS_URL = "https://api.xero.com/payroll.xro/2.0/PayRunCalendars"
+XERO_PAYROLL_WORKING_PATTERNS_URL = "https://api.xero.com/payroll.xro/2.0/WorkingPatterns"
+XERO_PAYROLL_SETTINGS_URL = "https://api.xero.com/payroll.xro/2.0/Settings"
+XERO_PAYROLL_EMPLOYMENT_URL = "https://api.xero.com/payroll.xro/2.0/Employees/{employee_id}/Employment"
+XERO_PAYROLL_SALARY_WAGES_URL = "https://api.xero.com/payroll.xro/2.0/Employees/{employee_id}/SalaryAndWages"
+XERO_PAYROLL_PAYMENT_METHODS_URL = "https://api.xero.com/payroll.xro/2.0/Employees/{employee_id}/PaymentMethods"
+XERO_PAYROLL_EMPLOYEE_WORKING_PATTERNS_URL = "https://api.xero.com/payroll.xro/2.0/Employees/{employee_id}/WorkingPatterns"
+NEW_EMPLOYEE_FORMS_FIELD_MAP = {
+    "Company/Employer Name": "employerName",
+    "Title": "title",
+    "Name": "employeeFullName",
+    "Job Title": "jobTitle",
+    "Start Date": "startDate",
+    "National Insurance Number": "nationalInsuranceNumber",
+    "Phone": "employeePhone",
+    "Email": "employeeEmail",
+    "Employee Date Of Birth": "dateOfBirth",
+    "Gender": "gender",
+    "Address": "addressLine1",
+    "Standard Working Hours": "payBasis",
+    "Hourly Rate": "hourlyRate",
+    "Number of Working Hours Per Week": "hoursPerWeek",
+    "Account Holder Name": "bankAccountName",
+    "Sort Code": "bankSortCode",
+    "Account Number": "bankAccountNumber",
+    "Do You Have A P45?": "hasP45",
+    "P45": "starterDeclaration",
+    "Do You Have A Student Loan?": "hasStudentLoan",
+    "Which Student Loan Repayment Plan Are You On?": "studentLoanPlan",
+}
 SUBMITTED_EMPLOYEE_FORMS_AI_EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -19362,6 +19394,84 @@ def _gmail_decode_body_bytes(value: str) -> bytes:
         return base64.urlsafe_b64decode(f"{raw}{padding}".encode("utf-8"))
     except Exception:
         return b""
+
+
+def _hash_sha256_bytes(value: bytes) -> str:
+    if not isinstance(value, (bytes, bytearray)) or not value:
+        return ""
+    return hashlib.sha256(bytes(value)).hexdigest()
+
+
+def _submitted_employee_forms_normalise_field_value(field_key: str, raw_value: str) -> str:
+    value = re.sub(r"\s+", " ", str(raw_value or "").strip())
+    if not value:
+        return ""
+    key = str(field_key or "").strip()
+    if key in {"startDate", "dateOfBirth"}:
+        return _submitted_employee_forms_normalise_date(value) or value
+    if key == "nationalInsuranceNumber":
+        return re.sub(r"[^A-Za-z0-9]", "", value).upper()
+    if key == "bankSortCode":
+        digits = re.sub(r"[^0-9]", "", value)
+        return digits[:6]
+    if key == "bankAccountNumber":
+        digits = re.sub(r"[^0-9]", "", value)
+        return digits[:8]
+    if key == "gender":
+        return _submitted_employee_forms_normalise_gender(value) or value
+    if key == "title":
+        return _submitted_employee_forms_normalise_title(value) or value
+    if key == "country":
+        return _submitted_employee_forms_normalise_country_name(value) or value
+    return value
+
+
+def _submitted_employee_forms_parse_csv_bytes(file_bytes: bytes) -> tuple[dict, dict, list[dict]]:
+    extracted: dict[str, str] = {}
+    unmapped: dict[str, str] = {}
+    raw_rows: list[dict] = []
+    if not file_bytes:
+        return extracted, unmapped, raw_rows
+    text = file_bytes.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    for row in reader:
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        raw_field = re.sub(r"\s+", " ", str(row[0] or "").strip())
+        raw_value = re.sub(r"\s+", " ", str(row[1] or "").strip())
+        if not raw_field:
+            continue
+        mapped_key = NEW_EMPLOYEE_FORMS_FIELD_MAP.get(raw_field)
+        if mapped_key:
+            normalised = _submitted_employee_forms_normalise_field_value(mapped_key, raw_value)
+            extracted[mapped_key] = normalised
+            raw_rows.append(
+                {
+                    "fieldName": raw_field,
+                    "rawValue": raw_value,
+                    "normalisedValue": normalised,
+                }
+            )
+        else:
+            unmapped[raw_field] = raw_value
+            raw_rows.append(
+                {
+                    "fieldName": raw_field,
+                    "rawValue": raw_value,
+                    "normalisedValue": raw_value,
+                }
+            )
+    return extracted, unmapped, raw_rows
+
+
+def _submitted_employee_forms_split_name(value: str) -> tuple[str, str]:
+    clean = re.sub(r"\s+", " ", str(value or "").strip())
+    if not clean:
+        return "", ""
+    parts = clean.split(" ")
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
 
 
 def _gmail_collect_attachment_candidates(message_payload: dict) -> list[dict]:
@@ -19923,6 +20033,10 @@ def _submitted_employee_forms_summary(rows: list[dict]) -> dict:
     pending = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() in {"", "pending"})
     failed = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "failed")
     review = sum(1 for row in rows if str(row.get("xero_status") or "").strip().lower() == "needs-review")
+    workflow_counts: dict[str, int] = {}
+    for row in rows:
+        key = str(row.get("workflow_status") or "new").strip().lower() or "new"
+        workflow_counts[key] = int(workflow_counts.get(key) or 0) + 1
     return {
         "total": total,
         "created": created,
@@ -19930,6 +20044,7 @@ def _submitted_employee_forms_summary(rows: list[dict]) -> dict:
         "pending": pending,
         "failed": failed,
         "needsReview": review,
+        "workflow": workflow_counts,
     }
 
 
@@ -19971,6 +20086,11 @@ def _submitted_employee_forms_rows_payload(rows: list[dict]) -> list[dict]:
             "xeroEmployeeId": str(row.get("xero_employee_id") or ""),
             "xeroStatus": str(row.get("xero_status") or "pending"),
             "xeroNote": str(row.get("xero_note") or ""),
+            "workflowStatus": str(row.get("workflow_status") or "new"),
+            "sectionStatus": row.get("section_status") if isinstance(row.get("section_status"), dict) else {},
+            "employeeData": row.get("employee_data") if isinstance(row.get("employee_data"), list) else [],
+            "unmappedFields": row.get("unmapped_fields") if isinstance(row.get("unmapped_fields"), dict) else {},
+            "csvSha256": str(row.get("csv_sha256") or ""),
             "attemptHistory": (
                 row.get("attempt_history")
                 if isinstance(row.get("attempt_history"), list)
@@ -20269,19 +20389,16 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
     after_date = (utcnow() - timedelta(days=safe_lookback_days)).date()
     after_token = after_date.strftime("%Y/%m/%d")
     query_candidates = [
+        f'{SUBMITTED_EMPLOYEE_FORMS_GMAIL_QUERY} after:{after_token}',
+        f'in:anywhere {SUBMITTED_EMPLOYEE_FORMS_GMAIL_QUERY} after:{after_token}',
+        f'in:anywhere to:theteam@jaccountancy.co.uk subject:"New Employee Details:" after:{after_token}',
         f'in:anywhere subject:"New Employee Details" after:{after_token}',
-        f'in:anywhere "New Employee Details:" after:{after_token}',
-        f'in:anywhere subject:"New Employee Details:New Employee Details:" after:{after_token}',
-        f'in:anywhere "New Employee Details" after:{after_token}',
-        f'in:anywhere subject:("New Employee Details" OR "New Employee Details:New Employee Details:") after:{after_token}',
+        'in:anywhere to:theteam@jaccountancy.co.uk subject:"New Employee Details:" has:attachment',
         'in:anywhere subject:"New Employee Details"',
-        'in:anywhere "New Employee Details:"',
-        'in:anywhere subject:"New Employee Details:New Employee Details:"',
-        'in:anywhere subject:("New Employee Details" OR "New Employee Details:New Employee Details:")',
     ]
 
     async with httpx.AsyncClient(timeout=30) as client:
-        async def _collect_message_ids(params: dict, limit: int = SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH, max_pages: int = 8) -> list[str]:
+        async def _collect_message_ids(params: dict, limit: int = SUBMITTED_EMPLOYEE_FORMS_MAX_HISTORIC_FETCH, max_pages: int = 8) -> list[str]:
             collected: list[str] = []
             page_token = ""
             pages = 0
@@ -20331,7 +20448,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 headers=headers,
                 params={
                     "q": query,
-                    "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH,
+                    "maxResults": SUBMITTED_EMPLOYEE_FORMS_MAX_HISTORIC_FETCH,
                     "includeSpamTrash": "true",
                 },
             )
@@ -20374,7 +20491,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                     continue
                 seen_ids.add(message_id)
                 message_ids.append(message_id)
-            if len(message_ids) >= SUBMITTED_EMPLOYEE_FORMS_MAX_FETCH:
+            if len(message_ids) >= SUBMITTED_EMPLOYEE_FORMS_MAX_HISTORIC_FETCH:
                 break
         if not message_ids:
             # Fallback: scan recent mailbox rows and filter subjects locally.
@@ -20409,15 +20526,15 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
         extraction_semaphore = asyncio.Semaphore(3)
         attachment_semaphore = asyncio.Semaphore(4)
 
-        async def _build_attachment_inputs(message_id: str, payload: dict) -> list[dict]:
+        async def _build_attachment_inputs(message_id: str, payload: dict) -> tuple[list[dict], dict, list[dict]]:
             candidates = _gmail_collect_attachment_candidates(payload)
             if not candidates:
-                return []
+                return [], {}, []
+            attachment_records: list[dict] = []
+            csv_candidate_data: dict = {}
             inputs: list[dict] = []
-            for candidate in candidates[:4]:
+            for candidate in candidates:
                 mime_type = str(candidate.get("mimeType") or "").strip().lower()
-                if not (mime_type.startswith("image/") or mime_type == "application/pdf"):
-                    continue
                 file_bytes = b""
                 inline_data = str(candidate.get("inlineData") or "").strip()
                 if inline_data:
@@ -20439,21 +20556,53 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                     file_bytes = _gmail_decode_body_bytes(attachment_data)
                 if not file_bytes or len(file_bytes) > 8 * 1024 * 1024:
                     continue
-                encoded = base64.b64encode(file_bytes).decode("ascii")
                 filename = str(candidate.get("filename") or "attachment").strip()[:120] or "attachment"
-                if mime_type.startswith("image/"):
-                    inputs.append({"type": "input_image", "image_url": f"data:{mime_type};base64,{encoded}"})
-                else:
-                    inputs.append(
-                        {
-                            "type": "input_file",
+                attachment_sha = _hash_sha256_bytes(file_bytes)
+                attachment_record = {
+                    "filename": filename,
+                    "mimeType": mime_type or "application/octet-stream",
+                    "attachmentId": attachment_id,
+                    "fileSize": len(file_bytes),
+                    "sha256": attachment_sha,
+                    "attachmentType": "OTHER",
+                }
+                lower_name = filename.lower()
+                if lower_name.endswith(".csv") or mime_type in {"text/csv", "application/csv", "application/vnd.ms-excel"}:
+                    attachment_record["attachmentType"] = "FORM_CSV"
+                    should_use = not csv_candidate_data
+                    if lower_name == "entry-details.csv":
+                        should_use = True
+                    if should_use:
+                        extracted_map, unmapped_map, raw_rows = _submitted_employee_forms_parse_csv_bytes(file_bytes)
+                        csv_candidate_data = {
                             "filename": filename,
-                            "file_data": f"data:{mime_type};base64,{encoded}",
+                            "sha256": attachment_sha,
+                            "fields": extracted_map,
+                            "unmappedFields": unmapped_map,
+                            "rawRows": raw_rows,
                         }
-                    )
-                if len(inputs) >= 3:
-                    break
-            return inputs
+                elif mime_type.startswith("image/"):
+                    attachment_record["attachmentType"] = "IDENTITY_DOCUMENT"
+                elif "pdf" in mime_type:
+                    attachment_record["attachmentType"] = "OTHER"
+
+                attachment_records.append(attachment_record)
+
+                if mime_type.startswith("image/") or mime_type == "application/pdf":
+                    encoded = base64.b64encode(file_bytes).decode("ascii")
+                    if mime_type.startswith("image/"):
+                        inputs.append({"type": "input_image", "image_url": f"data:{mime_type};base64,{encoded}"})
+                    else:
+                        inputs.append(
+                            {
+                                "type": "input_file",
+                                "filename": filename,
+                                "file_data": f"data:{mime_type};base64,{encoded}",
+                            }
+                        )
+                    if len(inputs) >= 3:
+                        continue
+            return inputs, csv_candidate_data, attachment_records
 
         async def _fetch_message(message_id: str) -> dict | None:
             async with semaphore:
@@ -20479,7 +20628,7 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
             body_text = _gmail_message_body_text(payload)
             snippet = str(payload.get("snippet") or "").strip()
             local_identity = _extract_employee_identity(subject, snippet, body_text)
-            attachment_inputs = await _build_attachment_inputs(message_id, payload)
+            attachment_inputs, csv_candidate_data, attachment_records = await _build_attachment_inputs(message_id, payload)
             async with extraction_semaphore:
                 ai_identity = await _submitted_employee_forms_extract_with_openai(
                     subject,
@@ -20489,10 +20638,30 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                     user_id=str(user.get("id") or ""),
                 )
             identity = _submitted_employee_forms_merged_identity(local_identity, ai_identity)
+            csv_fields = csv_candidate_data.get("fields") if isinstance(csv_candidate_data.get("fields"), dict) else {}
+            if csv_fields:
+                merged = dict(identity)
+                merged.update({key: value for key, value in csv_fields.items() if str(value or "").strip()})
+                csv_full_name = str(csv_fields.get("employeeFullName") or "").strip()
+                csv_first_name = str(csv_fields.get("employeeFirstName") or "").strip()
+                csv_last_name = str(csv_fields.get("employeeLastName") or "").strip()
+                if csv_full_name and (not csv_first_name or not csv_last_name):
+                    parsed_first, parsed_last = _submitted_employee_forms_split_name(csv_full_name)
+                    csv_first_name = csv_first_name or parsed_first
+                    csv_last_name = csv_last_name or parsed_last
+                if csv_first_name:
+                    merged["employeeFirstName"] = csv_first_name
+                if csv_last_name:
+                    merged["employeeLastName"] = csv_last_name
+                if csv_full_name:
+                    merged["employeeFullName"] = csv_full_name
+                identity = merged
             return {
                 "gmailMessageId": str(payload.get("id") or message_id).strip(),
                 "gmailThreadId": str(payload.get("threadId") or "").strip(),
+                "gmailHistoryId": str(payload.get("historyId") or "").strip(),
                 "subject": subject[:240],
+                "subjectEmployeeName": _submitted_employee_forms_subject_suffix(subject)[:200],
                 "receivedAt": _gmail_received_at(payload),
                 "fromName": from_name[:160],
                 "fromEmail": from_email[:160],
@@ -20502,6 +20671,10 @@ async def _gmail_fetch_submitted_employee_messages(user: dict, lookback_days: in
                 "employeeEmail": str(identity.get("employeeEmail") or ""),
                 "employerName": str(identity.get("employerName") or ""),
                 "extractedFields": identity,
+                "employeeData": csv_candidate_data.get("rawRows") if isinstance(csv_candidate_data.get("rawRows"), list) else [],
+                "unmappedFields": csv_candidate_data.get("unmappedFields") if isinstance(csv_candidate_data.get("unmappedFields"), dict) else {},
+                "csvSha256": str(csv_candidate_data.get("sha256") or ""),
+                "attachmentRecords": attachment_records,
                 "snippet": snippet[:3000],
                 "rawPayload": payload,
             }
@@ -20549,7 +20722,9 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 user_id,
                                 gmail_message_id,
                                 gmail_thread_id,
+                                gmail_history_id,
                                 subject,
+                                subject_employee_name,
                                 received_at,
                                 from_name,
                                 from_email,
@@ -20559,16 +20734,23 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 employee_email,
                                 employer_name,
                                 extracted_fields,
+                                employee_data,
+                                unmapped_fields,
+                                csv_sha256,
                                 snippet,
                                 raw_payload,
+                                workflow_status,
+                                section_status,
                                 created_at,
                                 updated_at
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s, %s, %s)
                             ON CONFLICT (user_id, gmail_message_id)
                             DO UPDATE
                             SET gmail_thread_id = EXCLUDED.gmail_thread_id,
+                                gmail_history_id = EXCLUDED.gmail_history_id,
                                 subject = EXCLUDED.subject,
+                                subject_employee_name = EXCLUDED.subject_employee_name,
                                 received_at = EXCLUDED.received_at,
                                 from_name = EXCLUDED.from_name,
                                 from_email = EXCLUDED.from_email,
@@ -20578,15 +20760,28 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 employee_email = EXCLUDED.employee_email,
                                 employer_name = EXCLUDED.employer_name,
                                 extracted_fields = EXCLUDED.extracted_fields,
+                                employee_data = EXCLUDED.employee_data,
+                                unmapped_fields = EXCLUDED.unmapped_fields,
+                                csv_sha256 = EXCLUDED.csv_sha256,
                                 snippet = EXCLUDED.snippet,
                                 raw_payload = EXCLUDED.raw_payload,
+                                workflow_status = CASE
+                                    WHEN submitted_employee_forms.workflow_status IN ('complete', 'archived') THEN submitted_employee_forms.workflow_status
+                                    ELSE EXCLUDED.workflow_status
+                                END,
+                                section_status = CASE
+                                    WHEN submitted_employee_forms.workflow_status IN ('complete', 'archived') THEN submitted_employee_forms.section_status
+                                    ELSE EXCLUDED.section_status
+                                END,
                                 updated_at = EXCLUDED.updated_at
                             """,
                             (
                                 user_id,
                                 str(row.get("gmailMessageId") or ""),
                                 str(row.get("gmailThreadId") or ""),
+                                str(row.get("gmailHistoryId") or ""),
                                 str(row.get("subject") or ""),
+                                str(row.get("subjectEmployeeName") or ""),
                                 row.get("receivedAt"),
                                 str(row.get("fromName") or ""),
                                 str(row.get("fromEmail") or ""),
@@ -20596,12 +20791,74 @@ def _upsert_submitted_employee_forms(user_id: str, rows: list[dict]) -> int:
                                 str(row.get("employeeEmail") or ""),
                                 str(row.get("employerName") or ""),
                                 json.dumps(row.get("extractedFields") if isinstance(row.get("extractedFields"), dict) else {}, default=_json_default),
+                                json.dumps(row.get("employeeData") if isinstance(row.get("employeeData"), list) else [], default=_json_default),
+                                json.dumps(row.get("unmappedFields") if isinstance(row.get("unmappedFields"), dict) else {}, default=_json_default),
+                                str(row.get("csvSha256") or ""),
                                 str(row.get("snippet") or ""),
                                 json.dumps(row.get("rawPayload") if isinstance(row.get("rawPayload"), dict) else {}, default=_json_default),
+                                "extracted",
+                                json.dumps(
+                                    {
+                                        "personalDetails": "EXTRACTED",
+                                        "employment": "NEW",
+                                        "basePay": "NEW",
+                                        "workingPattern": "NEW",
+                                        "paymentMethod": "NEW",
+                                        "tax": "NEW",
+                                        "studentLoan": "NEW",
+                                        "pension": "NEW",
+                                        "finalVerification": "NEW",
+                                    },
+                                    default=_json_default,
+                                ),
                                 utcnow(),
                                 utcnow(),
                             ),
                         )
+                        saved_message_id = str(row.get("gmailMessageId") or "")
+                        if saved_message_id:
+                            cursor.execute(
+                                "SELECT id FROM submitted_employee_forms WHERE user_id = %s AND gmail_message_id = %s",
+                                (user_id, saved_message_id),
+                            )
+                            saved_row = cursor.fetchone() or {}
+                            saved_submission_id = str(saved_row.get("id") or "").strip()
+                            if saved_submission_id:
+                                cursor.execute(
+                                    "DELETE FROM employee_submission_attachments WHERE submission_id = %s",
+                                    (saved_submission_id,),
+                                )
+                                attachment_records = row.get("attachmentRecords") if isinstance(row.get("attachmentRecords"), list) else []
+                                for attachment in attachment_records:
+                                    if not isinstance(attachment, dict):
+                                        continue
+                                    cursor.execute(
+                                        """
+                                        INSERT INTO employee_submission_attachments (
+                                            submission_id,
+                                            gmail_attachment_id,
+                                            filename,
+                                            mime_type,
+                                            storage_key,
+                                            sha256,
+                                            file_size,
+                                            attachment_type,
+                                            created_at
+                                        )
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        """,
+                                        (
+                                            saved_submission_id,
+                                            str(attachment.get("attachmentId") or ""),
+                                            str(attachment.get("filename") or "")[:255],
+                                            str(attachment.get("mimeType") or "")[:160],
+                                            "",
+                                            str(attachment.get("sha256") or "")[:128],
+                                            int(attachment.get("fileSize") or 0),
+                                            str(attachment.get("attachmentType") or "OTHER")[:40],
+                                            utcnow(),
+                                        ),
+                                    )
                 connection.commit()
             return len(rows)
         except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
@@ -22155,6 +22412,589 @@ async def sync_submitted_employee_forms(
         "selectedCount": len(selected_ids),
     }
     return payload
+
+
+async def xero_payroll_diagnostic_payload(user: dict, tenant_id: str) -> dict:
+    clean_tenant_id = str(tenant_id or "").strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant id is required.")
+    connection_row = xero_connection_for_user_tenant(user, clean_tenant_id, include_fallback=False)
+
+    diagnostics = {
+        "tenantId": clean_tenant_id,
+        "accountingApiConnected": False,
+        "payrollApiConnected": False,
+        "payrollSetupComplete": False,
+        "payrollAdminAuthorised": False,
+        "partnerPermissionAvailable": False,
+        "errors": [],
+        "checks": {},
+    }
+
+    async def _check(url: str, key: str) -> dict:
+        response_meta: dict = {}
+        def _on_response(meta: dict):
+            if isinstance(meta, dict):
+                response_meta.update(meta)
+        try:
+            payload = await xero_api_get(connection_row, url, on_response=_on_response)
+            diagnostics["checks"][key] = {
+                "ok": True,
+                "statusCode": int(response_meta.get("status_code") or 200),
+                "elapsedMs": int(response_meta.get("elapsed_ms") or 0),
+            }
+            return payload if isinstance(payload, dict) else {}
+        except Exception as exc:
+            message = _sync_error_message(exc)
+            diagnostics["checks"][key] = {
+                "ok": False,
+                "statusCode": int(response_meta.get("status_code") or 0),
+                "elapsedMs": int(response_meta.get("elapsed_ms") or 0),
+                "error": message,
+            }
+            diagnostics["errors"].append(f"{key}:{message}")
+            return {}
+
+    await _check(ORGANISATION_URL, "organisation")
+    employees_payload = await _check(XERO_PAYROLL_EMPLOYEES_URL, "employees")
+    calendars_payload = await _check(XERO_PAYROLL_CALENDARS_URL, "payRunCalendars")
+    working_payload = await _check(XERO_PAYROLL_WORKING_PATTERNS_URL, "workingPatterns")
+    settings_payload = await _check(XERO_PAYROLL_SETTINGS_URL, "settings")
+
+    diagnostics["accountingApiConnected"] = bool((diagnostics["checks"].get("organisation") or {}).get("ok"))
+    payroll_check_keys = ("employees", "payRunCalendars", "workingPatterns", "settings")
+    diagnostics["payrollApiConnected"] = all(bool((diagnostics["checks"].get(key) or {}).get("ok")) for key in payroll_check_keys)
+
+    calendars = _payroll_headcount_rows(calendars_payload, "PayRunCalendars", "PayRunCalendar")
+    working_patterns = _payroll_headcount_rows(working_payload, "WorkingPatterns", "WorkingPattern")
+    settings_rows = _payroll_headcount_rows(settings_payload, "Settings", "Setting")
+    diagnostics["payrollSetupComplete"] = bool(calendars or working_patterns or settings_rows)
+
+    has_auth_error = any(
+        "permission" in str(error).lower() or "forbidden" in str(error).lower() or "scope" in str(error).lower()
+        for error in diagnostics["errors"]
+    )
+    diagnostics["payrollAdminAuthorised"] = diagnostics["payrollApiConnected"] and not has_auth_error
+    diagnostics["partnerPermissionAvailable"] = diagnostics["payrollApiConnected"] and not any(
+        "partner" in str(error).lower() and "permission" in str(error).lower()
+        for error in diagnostics["errors"]
+    )
+
+    return diagnostics
+
+
+def _submitted_forms_submission_row(user: dict, form_id: str) -> dict:
+    clean_form_id = str(form_id or "").strip()
+    if not clean_form_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A submission id is required.")
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM submitted_employee_forms
+                        WHERE id = %s AND user_id = %s
+                        """,
+                        (clean_form_id, str(user.get("id") or "")),
+                    )
+                    row = cursor.fetchone()
+                connection.commit()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submitted employee form not found.")
+            return row
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _submitted_forms_update_workflow_status(
+    submission_id: str,
+    *,
+    workflow_status: str,
+    section_status: dict,
+    xero_status: str | None = None,
+    xero_note: str | None = None,
+    xero_employee_id: str | None = None,
+) -> None:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE submitted_employee_forms
+                        SET workflow_status = %s,
+                            section_status = %s::jsonb,
+                            xero_status = COALESCE(%s, xero_status),
+                            xero_note = COALESCE(%s, xero_note),
+                            xero_employee_id = COALESCE(%s, xero_employee_id),
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            str(workflow_status or "new"),
+                            json.dumps(section_status if isinstance(section_status, dict) else {}, default=_json_default),
+                            xero_status,
+                            xero_note,
+                            xero_employee_id,
+                            utcnow(),
+                            str(submission_id or "").strip(),
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _employee_publication_start_run(
+    *,
+    submission_id: str,
+    user_id: str,
+    tenant_id: str,
+    initiated_by: str,
+    idempotency_key: str,
+) -> str:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO employee_publication_runs (
+                            submission_id, user_id, xero_tenant_id, status, started_at, initiated_by,
+                            idempotency_key, current_step, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, 'VALIDATING', %s, %s, %s, 'VALIDATING', %s, %s)
+                        ON CONFLICT (idempotency_key)
+                        DO UPDATE SET updated_at = EXCLUDED.updated_at
+                        RETURNING id
+                        """,
+                        (
+                            submission_id,
+                            user_id,
+                            tenant_id,
+                            utcnow(),
+                            initiated_by or None,
+                            idempotency_key,
+                            utcnow(),
+                            utcnow(),
+                        ),
+                    )
+                    row = cursor.fetchone() or {}
+                connection.commit()
+            run_id = str(row.get("id") or "").strip()
+            if not run_id:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create publication run.")
+            return run_id
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _employee_publication_update_run(
+    run_id: str,
+    *,
+    status_value: str,
+    current_step: str,
+    xero_employee_id: str = "",
+    failure_step: str = "",
+    error_code: str = "",
+    error_message: str = "",
+    completed: bool = False,
+) -> None:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE employee_publication_runs
+                        SET status = %s,
+                            current_step = %s,
+                            xero_employee_id = %s,
+                            failure_step = %s,
+                            error_code = %s,
+                            error_message = %s,
+                            completed_at = CASE WHEN %s THEN %s ELSE completed_at END,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            status_value,
+                            current_step,
+                            xero_employee_id,
+                            failure_step,
+                            error_code,
+                            error_message,
+                            bool(completed),
+                            utcnow(),
+                            utcnow(),
+                            run_id,
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _employee_publication_log_step(
+    run_id: str,
+    *,
+    step_name: str,
+    status_value: str,
+    request_payload: dict | None = None,
+    response_payload: dict | None = None,
+    http_status: int = 0,
+    error_message: str = "",
+    attempt_number: int = 1,
+) -> None:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO employee_publication_steps (
+                            publication_run_id, step_name, status, request_payload, response_payload,
+                            http_status, attempt_number, started_at, completed_at, error_message
+                        )
+                        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            run_id,
+                            step_name,
+                            status_value,
+                            json.dumps(request_payload if isinstance(request_payload, dict) else {}, default=_json_default),
+                            json.dumps(response_payload if isinstance(response_payload, dict) else {}, default=_json_default),
+                            int(http_status or 0),
+                            int(attempt_number or 1),
+                            utcnow(),
+                            utcnow(),
+                            str(error_message or "")[:1600],
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+def _employee_manual_task_create(submission_id: str, task_type: str, description: str) -> None:
+    schema_repaired = False
+    while True:
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO employee_manual_tasks (
+                            submission_id, task_type, description, status, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, 'open', %s, %s)
+                        """,
+                        (
+                            submission_id,
+                            str(task_type or "").strip(),
+                            str(description or "").strip()[:1400],
+                            utcnow(),
+                            utcnow(),
+                        ),
+                    )
+                connection.commit()
+            return
+        except (pg_errors.UndefinedTable, pg_errors.UndefinedColumn):
+            if schema_repaired:
+                raise
+            ensure_schema()
+            schema_repaired = True
+
+
+async def _xero_payroll_post_json(connection_row: dict, url: str, payload: dict, action: str) -> tuple[dict, int]:
+    refreshed_connection = await refresh_connection(str(connection_row.get("id") or ""))
+    headers = {
+        "Authorization": f"Bearer {refreshed_connection.get('access_token') or ''}",
+        "xero-tenant-id": str(refreshed_connection.get("tenant_id") or ""),
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post(url, headers=headers, json=payload)
+    status_code = int(response.status_code or 0)
+    response_payload = {}
+    try:
+        response_payload = response.json() if response.content else {}
+    except Exception:
+        response_payload = {"raw": (response.text or "")[:1200]}
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{action} failed ({status_code}): {_sync_error_message(response_payload)}",
+        )
+    return (response_payload if isinstance(response_payload, dict) else {}), status_code
+
+
+def _submitted_forms_decimal(value) -> Decimal:
+    text = re.sub(r"[^0-9.\-]", "", str(value or "").strip())
+    if not text:
+        return Decimal("0")
+    try:
+        return Decimal(text)
+    except Exception:
+        return Decimal("0")
+
+
+async def publish_submitted_employee_form(user: dict, form_id: str, tenant_id: str | None = None) -> dict:
+    row = _submitted_forms_submission_row(user, form_id)
+    clean_user_id = str(user.get("id") or "").strip()
+    connection_row = _submitted_forms_target_connection(user, tenant_id or str(row.get("xero_tenant_id") or ""))
+    clean_tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    clean_tenant_name = str(connection_row.get("tenant_name") or clean_tenant_id).strip()
+    if not clean_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Xero tenant selected for publish.")
+
+    extracted_fields = row.get("extracted_fields") if isinstance(row.get("extracted_fields"), dict) else {}
+    submission_id = str(row.get("id") or "").strip()
+    approved_version = str(row.get("updated_at") or row.get("created_at") or "")
+    idempotency_key = hashlib.sha256(f"{submission_id}:{clean_tenant_id}:{approved_version}".encode("utf-8")).hexdigest()
+    run_id = _employee_publication_start_run(
+        submission_id=submission_id,
+        user_id=clean_user_id,
+        tenant_id=clean_tenant_id,
+        initiated_by=clean_user_id,
+        idempotency_key=idempotency_key,
+    )
+
+    section_status = {
+        "personalDetails": "PENDING",
+        "employment": "PENDING",
+        "basePay": "PENDING",
+        "workingPattern": "PENDING",
+        "paymentMethod": "PENDING",
+        "tax": "MANUAL_REQUIRED",
+        "studentLoan": "MANUAL_REQUIRED",
+        "pension": "MANUAL_REQUIRED",
+        "finalVerification": "PENDING",
+    }
+    _submitted_forms_update_workflow_status(
+        submission_id,
+        workflow_status="publishing",
+        section_status=section_status,
+        xero_status="publishing",
+        xero_note=f"Publishing to {clean_tenant_name}.",
+    )
+
+    created_employee_id = ""
+    try:
+        _employee_publication_update_run(run_id, status_value="VALIDATING", current_step="VALIDATING")
+        diagnostic = await xero_payroll_diagnostic_payload(user, clean_tenant_id)
+        _employee_publication_log_step(
+            run_id,
+            step_name="VALIDATING",
+            status_value="completed",
+            response_payload=diagnostic,
+            http_status=200,
+        )
+        if not diagnostic.get("payrollApiConnected"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payroll API is not connected for this tenant.")
+
+        _employee_publication_update_run(run_id, status_value="CREATING_EMPLOYEE", current_step="CREATING_EMPLOYEE")
+        employee_payload = _submitted_forms_employee_create_payload(row)
+        create_result = await _xero_payroll_create_employee(connection_row, employee_payload)
+        created_employee_id = str(create_result.get("employeeId") or "").strip()
+        if not created_employee_id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero did not return EmployeeID after create.")
+        section_status["personalDetails"] = "COMPLETE"
+        _employee_publication_log_step(
+            run_id,
+            step_name="CREATING_EMPLOYEE",
+            status_value="completed",
+            request_payload=employee_payload if isinstance(employee_payload, dict) else {},
+            response_payload=create_result if isinstance(create_result, dict) else {},
+            http_status=int(create_result.get("httpStatusCode") or 200),
+        )
+
+        start_date = _submitted_employee_forms_normalise_date(str(extracted_fields.get("startDate") or "")) or date.today().isoformat()
+        payroll_number = re.sub(r"\s+", "", str(extracted_fields.get("payrollNumber") or "")).strip() or "00001"
+        ni_category = "A"
+
+        _employee_publication_update_run(run_id, status_value="CREATING_EMPLOYMENT", current_step="CREATING_EMPLOYMENT", xero_employee_id=created_employee_id)
+        calendars_payload = await xero_api_get(connection_row, XERO_PAYROLL_CALENDARS_URL)
+        calendars = _payroll_headcount_rows(calendars_payload, "PayRunCalendars", "PayRunCalendar")
+        payroll_calendar_id = ""
+        if calendars:
+            payroll_calendar_id = str((calendars[0] or {}).get("PayrollCalendarID") or (calendars[0] or {}).get("payrollCalendarID") or "").strip()
+        employment_payload = {
+            "PayrollCalendarID": payroll_calendar_id,
+            "StartDate": start_date,
+            "EmployeeNumber": payroll_number,
+            "NICategories": [{"NICategory": ni_category, "StartDate": start_date}],
+        }
+        employment_response, employment_status = await _xero_payroll_post_json(
+            connection_row,
+            XERO_PAYROLL_EMPLOYMENT_URL.format(employee_id=quote(created_employee_id, safe="")),
+            employment_payload,
+            "Create employment",
+        )
+        section_status["employment"] = "COMPLETE"
+        _employee_publication_log_step(
+            run_id,
+            step_name="CREATING_EMPLOYMENT",
+            status_value="completed",
+            request_payload=employment_payload,
+            response_payload=employment_response,
+            http_status=employment_status,
+        )
+
+        _employee_publication_update_run(run_id, status_value="CREATING_BASE_PAY", current_step="CREATING_BASE_PAY", xero_employee_id=created_employee_id)
+        hours_per_week = _submitted_forms_decimal(extracted_fields.get("hoursPerWeek"))
+        hourly_rate = _submitted_forms_decimal(extracted_fields.get("hourlyRate") or extracted_fields.get("salary"))
+        salary_payload = {
+            "NumberOfUnitsPerWeek": float(hours_per_week),
+            "RatePerUnit": float(hourly_rate),
+            "EffectiveFrom": start_date,
+            "PaymentType": "Hourly",
+            "Status": "Active",
+        }
+        salary_response, salary_status = await _xero_payroll_post_json(
+            connection_row,
+            XERO_PAYROLL_SALARY_WAGES_URL.format(employee_id=quote(created_employee_id, safe="")),
+            salary_payload,
+            "Create salary and wages",
+        )
+        section_status["basePay"] = "COMPLETE"
+        _employee_publication_log_step(
+            run_id,
+            step_name="CREATING_BASE_PAY",
+            status_value="completed",
+            request_payload=salary_payload,
+            response_payload=salary_response,
+            http_status=salary_status,
+        )
+
+        _employee_publication_update_run(run_id, status_value="CREATING_PAYMENT_METHOD", current_step="CREATING_PAYMENT_METHOD", xero_employee_id=created_employee_id)
+        payment_payload = {
+            "PaymentMethod": "Electronically",
+            "BankAccounts": [
+                {
+                    "AccountName": str(extracted_fields.get("bankAccountName") or "").strip()[:64],
+                    "AccountNumber": re.sub(r"[^0-9]", "", str(extracted_fields.get("bankAccountNumber") or ""))[:8],
+                    "SortCode": re.sub(r"[^0-9]", "", str(extracted_fields.get("bankSortCode") or ""))[:6],
+                }
+            ],
+        }
+        payment_response, payment_status = await _xero_payroll_post_json(
+            connection_row,
+            XERO_PAYROLL_PAYMENT_METHODS_URL.format(employee_id=quote(created_employee_id, safe="")),
+            payment_payload,
+            "Create payment method",
+        )
+        section_status["paymentMethod"] = "COMPLETE"
+        _employee_publication_log_step(
+            run_id,
+            step_name="CREATING_PAYMENT_METHOD",
+            status_value="completed",
+            request_payload=payment_payload,
+            response_payload=payment_response,
+            http_status=payment_status,
+        )
+
+        _employee_publication_update_run(run_id, status_value="VERIFYING", current_step="VERIFYING", xero_employee_id=created_employee_id)
+        verify_payload = await xero_api_get(connection_row, f"{XERO_PAYROLL_EMPLOYEES_URL}/{quote(created_employee_id, safe='')}")
+        section_status["finalVerification"] = "COMPLETE"
+        _employee_publication_log_step(
+            run_id,
+            step_name="VERIFYING",
+            status_value="completed",
+            response_payload=verify_payload if isinstance(verify_payload, dict) else {},
+            http_status=200,
+        )
+
+        _employee_publication_update_run(run_id, status_value="CREATING_MANUAL_TASKS", current_step="CREATING_MANUAL_TASKS", xero_employee_id=created_employee_id)
+        _employee_manual_task_create(submission_id, "TAX_SETUP", "Complete starter declaration, tax code confirmation, and student/postgraduate loan details in Xero Payroll.")
+        _employee_manual_task_create(submission_id, "PENSION_REVIEW", "Review auto-enrolment, postponement, or pension scheme enrolment in next payroll cycle.")
+        _employee_publication_log_step(
+            run_id,
+            step_name="CREATING_MANUAL_TASKS",
+            status_value="completed",
+            http_status=200,
+            response_payload={"tasksCreated": 2},
+        )
+
+        _employee_publication_update_run(
+            run_id,
+            status_value="PARTIAL",
+            current_step="COMPLETED",
+            xero_employee_id=created_employee_id,
+            completed=True,
+        )
+        _submitted_forms_update_workflow_status(
+            submission_id,
+            workflow_status="partially-published",
+            section_status=section_status,
+            xero_status="created",
+            xero_note="Published core payroll records. Manual tax/student-loan/pension completion tasks created.",
+            xero_employee_id=created_employee_id,
+        )
+        return {
+            "runId": run_id,
+            "submissionId": submission_id,
+            "xeroTenantId": clean_tenant_id,
+            "xeroTenantName": clean_tenant_name,
+            "xeroEmployeeId": created_employee_id,
+            "status": "PARTIAL",
+            "sectionStatus": section_status,
+        }
+    except Exception as exc:
+        error_message = _sync_error_message(exc)
+        _employee_publication_log_step(
+            run_id,
+            step_name="FAILED",
+            status_value="failed",
+            error_message=error_message,
+            response_payload={"error": error_message},
+            http_status=0,
+        )
+        _employee_publication_update_run(
+            run_id,
+            status_value="FAILED",
+            current_step="FAILED",
+            xero_employee_id=created_employee_id,
+            failure_step="FAILED",
+            error_code="UNKNOWN_ERROR",
+            error_message=error_message,
+            completed=True,
+        )
+        _submitted_forms_update_workflow_status(
+            submission_id,
+            workflow_status="failed",
+            section_status=section_status,
+            xero_status="failed",
+            xero_note=f"Publish failed: {error_message}",
+            xero_employee_id=created_employee_id or None,
+        )
+        raise
 
 
 def notify_submitted_employee_form_managers(user: dict, payload: dict | None = None) -> dict:

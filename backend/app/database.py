@@ -1848,6 +1848,24 @@ ON submitted_employee_forms (user_id, received_at DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS submitted_employee_forms_user_tenant_idx
 ON submitted_employee_forms (user_id, xero_tenant_id, updated_at DESC);
 
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS gmail_history_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS subject_employee_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS processing_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS form_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS source_csv_attachment_id UUID;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS organisation_match_score NUMERIC(6, 3) NOT NULL DEFAULT 0;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS workflow_status TEXT NOT NULL DEFAULT 'new';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS section_status JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS employee_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS unmapped_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS csv_sha256 TEXT NOT NULL DEFAULT '';
+ALTER TABLE submitted_employee_forms ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS submitted_employee_forms_workflow_status_idx
+ON submitted_employee_forms (user_id, workflow_status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS submitted_employee_forms_csv_sha_idx
+ON submitted_employee_forms (user_id, csv_sha256);
+
 CREATE TABLE IF NOT EXISTS submitted_employee_form_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     submitted_employee_form_id UUID NOT NULL REFERENCES submitted_employee_forms(id) ON DELETE CASCADE,
@@ -1875,6 +1893,172 @@ CREATE INDEX IF NOT EXISTS submitted_employee_form_attempts_form_created_idx
 ON submitted_employee_form_attempts (submitted_employee_form_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS submitted_employee_form_attempts_user_created_idx
 ON submitted_employee_form_attempts (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS employee_submission_attachments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id UUID NOT NULL REFERENCES submitted_employee_forms(id) ON DELETE CASCADE,
+    gmail_attachment_id TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    storage_key TEXT NOT NULL DEFAULT '',
+    sha256 TEXT NOT NULL DEFAULT '',
+    file_size BIGINT NOT NULL DEFAULT 0,
+    attachment_type TEXT NOT NULL DEFAULT 'OTHER',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS submission_id UUID REFERENCES submitted_employee_forms(id) ON DELETE CASCADE;
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS gmail_attachment_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS storage_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS sha256 TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS file_size BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS attachment_type TEXT NOT NULL DEFAULT 'OTHER';
+ALTER TABLE employee_submission_attachments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS employee_submission_attachments_submission_idx
+ON employee_submission_attachments (submission_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS employee_submission_attachments_sha_idx
+ON employee_submission_attachments (sha256);
+
+CREATE TABLE IF NOT EXISTS xero_payroll_organisation_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id UUID,
+    xero_tenant_id TEXT NOT NULL UNIQUE,
+    tenant_name TEXT NOT NULL DEFAULT '',
+    payroll_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    payroll_api_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    default_payroll_calendar_id TEXT NOT NULL DEFAULT '',
+    default_hourly_earnings_rate_id TEXT NOT NULL DEFAULT '',
+    default_salary_earnings_rate_id TEXT NOT NULL DEFAULT '',
+    default_working_pattern_id TEXT NOT NULL DEFAULT '',
+    default_ni_category TEXT NOT NULL DEFAULT '',
+    employee_number_strategy TEXT NOT NULL DEFAULT 'NEXT_NUMERIC',
+    last_employee_number TEXT NOT NULL DEFAULT '',
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS xero_tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS tenant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS payroll_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS payroll_api_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS default_payroll_calendar_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS default_hourly_earnings_rate_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS default_salary_earnings_rate_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS default_working_pattern_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS default_ni_category TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS employee_number_strategy TEXT NOT NULL DEFAULT 'NEXT_NUMERIC';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS last_employee_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE xero_payroll_organisation_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS xero_payroll_organisation_config_tenant_uidx
+ON xero_payroll_organisation_config (xero_tenant_id);
+CREATE INDEX IF NOT EXISTS xero_payroll_organisation_config_user_idx
+ON xero_payroll_organisation_config (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS employee_publication_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id UUID NOT NULL REFERENCES submitted_employee_forms(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    xero_tenant_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'VALIDATING',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    xero_employee_id TEXT NOT NULL DEFAULT '',
+    current_step TEXT NOT NULL DEFAULT 'VALIDATING',
+    failure_step TEXT NOT NULL DEFAULT '',
+    error_code TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS submission_id UUID REFERENCES submitted_employee_forms(id) ON DELETE CASCADE;
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS xero_tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'VALIDATING';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS initiated_by UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS xero_employee_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS current_step TEXT NOT NULL DEFAULT 'VALIDATING';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS failure_step TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS error_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE employee_publication_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS employee_publication_runs_idempotency_uidx
+ON employee_publication_runs (idempotency_key);
+CREATE INDEX IF NOT EXISTS employee_publication_runs_submission_idx
+ON employee_publication_runs (submission_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS employee_publication_steps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    publication_run_id UUID NOT NULL REFERENCES employee_publication_runs(id) ON DELETE CASCADE,
+    step_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    request_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    response_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    http_status INTEGER NOT NULL DEFAULT 0,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    error_message TEXT NOT NULL DEFAULT ''
+);
+
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS publication_run_id UUID REFERENCES employee_publication_runs(id) ON DELETE CASCADE;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS step_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS request_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS response_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS http_status INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS attempt_number INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE employee_publication_steps ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS employee_publication_steps_run_idx
+ON employee_publication_steps (publication_run_id, started_at ASC);
+
+CREATE TABLE IF NOT EXISTS employee_manual_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id UUID NOT NULL REFERENCES submitted_employee_forms(id) ON DELETE CASCADE,
+    task_type TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_at TIMESTAMPTZ,
+    evidence_note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS submission_id UUID REFERENCES submitted_employee_forms(id) ON DELETE CASCADE;
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS task_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS completed_by UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS evidence_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE employee_manual_tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS employee_manual_tasks_submission_idx
+ON employee_manual_tasks (submission_id, status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
