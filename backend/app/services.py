@@ -17418,7 +17418,13 @@ def add_jashflow_payment(user: dict, loan_id: str, payload: dict) -> dict:
         },
         user["id"],
     )
-    return jashflow_payload(user)
+    return {
+        "loanId": str(loan_id),
+        "transactionId": str(transaction_id),
+        "amount": float(amount),
+        "paymentDate": payment_date.isoformat(),
+        "description": description,
+    }
 
 
 def save_jashflow_settings(user: dict, payload: dict) -> dict:

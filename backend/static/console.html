@@ -74145,8 +74145,12 @@
                         method: "POST",
                         body: JSON.stringify(payload)
                     }, { loanId: loan.id });
-                    jashflowData = normaliseJashflowPayload(response);
                     selectedJashflowLoanId = loan.id;
+                    if (response?.jashflow) {
+                        jashflowData = normaliseJashflowPayload(response);
+                    } else {
+                        await loadJashflow(true);
+                    }
                     showToast("Jashflow payment saved", "success");
                     renderJashflowScreen();
                 } catch (error) {

@@ -4321,7 +4321,7 @@ def api_delete_jashflow_loan(loan_id: str, user: dict = Depends(require_panel_us
 @app.post("/api/jashflow/loans/{loan_id}/payments")
 async def api_add_jashflow_payment(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
-    return {"status": "ok", "jashflow": add_jashflow_payment(user, loan_id, payload)}
+    return {"status": "ok", "payment": add_jashflow_payment(user, loan_id, payload)}
 
 
 @app.post("/api/jashflow/loans/{loan_id}/charges")
