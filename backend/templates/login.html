@@ -1,27 +1,323 @@
 {% extends "auth_base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Jenius Login{% endblock %}
+{% block head_extra %}
+<style>
+    .auth-body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+            radial-gradient(circle at 14% 14%, rgba(43, 110, 197, 0.26), transparent 36%),
+            radial-gradient(circle at 84% 18%, rgba(31, 74, 142, 0.25), transparent 42%),
+            linear-gradient(155deg, #072854 0%, #1a4f97 52%, #2f74bd 100%);
+        color: #eef6ff;
+    }
+    .auth-shell {
+        min-height: 100vh;
+        display: grid;
+        align-items: center;
+        justify-items: center;
+        padding: clamp(20px, 4vw, 36px);
+    }
+    .login-skip-link {
+        position: absolute;
+        left: 12px;
+        top: -48px;
+        background: #0a2e5e;
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 999px;
+        z-index: 20;
+        text-decoration: none;
+        font-weight: 700;
+    }
+    .login-skip-link:focus {
+        top: 12px;
+    }
+    .login-revamp {
+        width: min(1120px, 100%);
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(320px, 420px);
+        gap: clamp(18px, 3vw, 30px);
+    }
+    .login-hero-panel,
+    .login-auth-card {
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 28px;
+        box-shadow: 0 24px 52px rgba(3, 18, 39, 0.36);
+        backdrop-filter: blur(12px);
+    }
+    .login-hero-panel {
+        background: linear-gradient(160deg, rgba(7, 24, 52, 0.72), rgba(13, 43, 84, 0.62));
+        padding: clamp(24px, 4vw, 34px);
+        display: grid;
+        gap: 22px;
+    }
+    .login-brand {
+        display: grid;
+        gap: 16px;
+    }
+    .login-brand img {
+        width: clamp(180px, 26vw, 320px);
+        max-width: 100%;
+        height: auto;
+    }
+    .login-kicker {
+        display: inline-flex;
+        width: fit-content;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(121, 197, 255, 0.16);
+        border: 1px solid rgba(121, 197, 255, 0.25);
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 800;
+    }
+    .login-hero-panel h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.1rem);
+        letter-spacing: -0.04em;
+        line-height: 1.03;
+    }
+    .login-hero-panel p {
+        margin: 0;
+        color: rgba(228, 241, 255, 0.93);
+        line-height: 1.6;
+    }
+    .login-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .login-stat {
+        border-radius: 16px;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .login-stat strong {
+        display: block;
+        font-size: 1.1rem;
+    }
+    .login-stat span {
+        display: block;
+        margin-top: 2px;
+        font-size: 0.8rem;
+        color: rgba(226, 238, 255, 0.88);
+    }
+    .login-services {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .login-service-pill {
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .login-service-pill.is-connected { background: rgba(39, 176, 95, 0.2); border-color: rgba(39, 176, 95, 0.36); }
+    .login-service-pill.is-disconnected { background: rgba(255, 159, 47, 0.2); border-color: rgba(255, 159, 47, 0.36); }
+    .login-service-pill.is-unavailable { background: rgba(255, 83, 83, 0.2); border-color: rgba(255, 83, 83, 0.34); }
+    .login-updates {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+    }
+    .login-updates li {
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+    }
+    .login-updates strong {
+        display: block;
+        font-size: 0.9rem;
+    }
+    .login-updates span {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.82rem;
+        color: rgba(228, 241, 255, 0.86);
+    }
+    .login-auth-card {
+        background: rgba(250, 253, 255, 0.98);
+        color: #1f3358;
+        padding: clamp(22px, 3vw, 30px);
+        display: grid;
+        gap: 14px;
+        align-content: start;
+    }
+    .login-auth-card h2 {
+        margin: 0;
+        font-size: clamp(1.35rem, 2.2vw, 1.9rem);
+        letter-spacing: -0.03em;
+    }
+    .login-auth-card p {
+        margin: 0;
+        color: #4f6489;
+        line-height: 1.55;
+    }
+    .login-inline-alert {
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: 0.9rem;
+        border: 1px solid rgba(255, 83, 83, 0.3);
+        background: rgba(255, 83, 83, 0.08);
+        color: #8f1f2f;
+        display: grid;
+        gap: 8px;
+    }
+    .login-inline-alert-action {
+        color: #8f1f2f;
+        font-weight: 700;
+    }
+    .login-xero-auth-form {
+        display: grid;
+    }
+    .login-xero-button {
+        border: 0;
+        border-radius: 14px;
+        min-height: 54px;
+        background: linear-gradient(135deg, #2d86cc, #1f6fb5);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 800;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 12px 24px rgba(39, 109, 178, 0.26);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .login-xero-button:hover { transform: translateY(-1px); box-shadow: 0 16px 26px rgba(39, 109, 178, 0.32); }
+    .login-xero-button.is-loading { opacity: 0.9; pointer-events: none; }
+    .login-xero-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        min-width: 48px;
+        height: 28px;
+        padding: 0 10px;
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        text-transform: lowercase;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+    }
+    .login-trust-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 8px;
+        color: #2d466f;
+        font-size: 0.88rem;
+    }
+    .login-trust-list li::before {
+        content: "•";
+        margin-right: 8px;
+        color: #2d86cc;
+        font-weight: 800;
+    }
+    .login-links {
+        display: grid;
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .login-links a {
+        color: #325c98;
+        text-decoration: none;
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+    .login-links a:hover {
+        text-decoration: underline;
+    }
+    .login-toast {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 1000;
+        border-radius: 12px;
+        padding: 11px 14px;
+        background: rgba(7, 24, 52, 0.9);
+        color: #eaf4ff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    @media (max-width: 980px) {
+        .login-revamp {
+            grid-template-columns: 1fr;
+        }
+        .login-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    @media (max-width: 560px) {
+        .login-stats {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
 {% block content %}
 <a class="login-skip-link" href="#signInPanel">Skip to sign-in</a>
-<section class="login-blueprint">
-    <section class="login-blueprint-auth">
-        <article class="login-auth-card" id="signInPanel" aria-live="polite" tabindex="-1">
-            <section class="login-inline-alert" id="loginInlineAlert" hidden role="status" aria-live="polite">
-                <span id="loginInlineAlertText"></span>
-                <a id="loginInlineAlertAction" class="login-inline-alert-action" href="/auth/xero/start?force=1&include_all_scopes=1" hidden>Retry sign-in</a>
-            </section>
-
-            <form class="login-xero-auth-form" id="loginAssistForm" action="/auth/xero/start" method="get" novalidate>
-                <input type="hidden" name="include_all_scopes" value="1">
-                <button class="button login-xero-button" type="submit" id="xeroSignInButton">
-                    <span class="login-xero-badge" aria-hidden="true">xero</span>
-                    Continue with Xero
-                </button>
-            </form>
-            <p class="login-minimal-security">Secure and encrypted</p>
-            <a class="login-minimal-site" href="https://www.jaccountancy.co.uk" target="_blank" rel="noopener noreferrer">Visit www.Jaccountancy.co.uk</a>
-            <a class="login-minimal-help" href="mailto:support@jaccountancy.co.uk?subject=Jenius%20access%20request">Need help? <span>Contact support</span></a>
-        </article>
+<section class="login-revamp">
+    <section class="login-hero-panel" aria-label="Welcome">
+        <div class="login-brand">
+            <span class="login-kicker">Welcome{% if login_welcome_name %}, {{ login_welcome_name }}{% endif %}</span>
+            <img src="/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
+            <h1>Jenius Credit Control Console</h1>
+            <p>One place to run credit control, monitor risk, and manage connected workflows with secure Xero authentication.</p>
+        </div>
+        <div class="login-stats" aria-live="polite">
+            <article class="login-stat">
+                <strong id="landingActiveUsers">--</strong>
+                <span>Active users</span>
+            </article>
+            <article class="login-stat">
+                <strong id="landingConnectedWorkspaces">--</strong>
+                <span>Connected workspaces</span>
+            </article>
+            <article class="login-stat">
+                <strong id="landingAutomations">--</strong>
+                <span>Automations</span>
+            </article>
+        </div>
+        <div class="login-services" id="landingServicePills" aria-label="Service status"></div>
+        <ul class="login-updates" id="loginUpdatesList" aria-label="Latest updates"></ul>
     </section>
+
+    <article class="login-auth-card" id="signInPanel" aria-live="polite" tabindex="-1">
+        <h2>Sign in securely</h2>
+        <p>Use your authorised Xero account to access Jenius. Permissions and session controls are enforced server-side.</p>
+        <section class="login-inline-alert" id="loginInlineAlert" hidden role="status" aria-live="polite">
+            <span id="loginInlineAlertText"></span>
+            <a id="loginInlineAlertAction" class="login-inline-alert-action" href="/auth/xero/start?force=1&include_all_scopes=1" hidden>Retry sign-in</a>
+        </section>
+        <form class="login-xero-auth-form" id="loginAssistForm" action="/auth/xero/start" method="get" novalidate>
+            <input type="hidden" name="include_all_scopes" value="1">
+            <button class="login-xero-button" type="submit" id="xeroSignInButton">
+                <span class="login-xero-badge" aria-hidden="true">xero</span>
+                Continue with Xero
+            </button>
+        </form>
+        <ul class="login-trust-list">
+            <li>Encrypted session and approval controls</li>
+            <li>Role-based access to sensitive workflows</li>
+            <li>Audit trail for login and action history</li>
+        </ul>
+        <div class="login-links">
+            <a href="https://www.jaccountancy.co.uk" target="_blank" rel="noopener noreferrer">Visit jaccountancy.co.uk</a>
+            <a href="mailto:support@jaccountancy.co.uk?subject=Jenius%20access%20request">Need help? Contact support</a>
+        </div>
+    </article>
 </section>
 
 <section class="login-toast" id="loginToast" hidden role="status" aria-live="polite"></section>
@@ -33,6 +329,8 @@
         const inlineAlertText = document.getElementById("loginInlineAlertText");
         const inlineAlertAction = document.getElementById("loginInlineAlertAction");
         const toast = document.getElementById("loginToast");
+        const servicePills = document.getElementById("landingServicePills");
+        const updatesList = document.getElementById("loginUpdatesList");
         if (!xeroSignInButton) return;
 
         const issueCopy = {
@@ -61,7 +359,6 @@
         const setInlineAlert = (message, actionLabel = "", actionHref = "") => {
             if (!inlineAlert || !inlineAlertText) return;
             inlineAlert.hidden = false;
-            inlineAlert.classList.add("is-error");
             inlineAlertText.textContent = message;
             if (inlineAlertAction && actionLabel && actionHref) {
                 inlineAlertAction.hidden = false;
@@ -82,9 +379,43 @@
             }, 4500);
         };
 
+        const toneForService = (state = "") => {
+            const key = String(state || "").trim().toLowerCase();
+            if (key === "connected") return "is-connected";
+            if (key === "disconnected") return "is-disconnected";
+            return "is-unavailable";
+        };
+
+        const setMetric = (id, value) => {
+            const node = document.getElementById(id);
+            if (!node) return;
+            const numeric = Number(value);
+            node.textContent = Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : "--";
+        };
+
         const populateLanding = (payload) => {
             if (!payload || typeof payload !== "object") return;
-            void payload;
+            const proof = payload.proof && typeof payload.proof === "object" ? payload.proof : {};
+            setMetric("landingActiveUsers", proof.activeUsers);
+            setMetric("landingConnectedWorkspaces", proof.connectedWorkspaces);
+            setMetric("landingAutomations", proof.automations);
+
+            const services = payload.services && typeof payload.services === "object" ? Object.values(payload.services) : [];
+            if (servicePills) {
+                servicePills.innerHTML = services.map((service) => {
+                    const label = String(service?.label || "Service").trim();
+                    const state = String(service?.state || "unavailable").trim();
+                    const detail = String(service?.detail || "").trim();
+                    return `<span class="login-service-pill ${toneForService(state)}" title="${detail.replace(/"/g, "&quot;")}">${label}: ${state.replace(/_/g, " ")}</span>`;
+                }).join("");
+            }
+
+            const updates = Array.isArray(payload.updates) ? payload.updates.slice(0, 3) : [];
+            if (updatesList) {
+                updatesList.innerHTML = updates.map((item) => (
+                    `<li><strong>${String(item?.date || "").trim()} · ${String(item?.title || "Update").trim()}</strong><span>${String(item?.summary || "").trim()}</span></li>`
+                )).join("");
+            }
         };
 
         const params = new URLSearchParams(window.location.search);
@@ -109,7 +440,7 @@
             .then((payload) => populateLanding(payload))
             .catch(() => {});
 
-        xeroSignInButton?.addEventListener("click", () => {
+        xeroSignInButton.addEventListener("click", () => {
             xeroSignInButton.textContent = "Opening Xero…";
             xeroSignInButton.setAttribute("aria-disabled", "true");
             xeroSignInButton.classList.add("is-loading");
