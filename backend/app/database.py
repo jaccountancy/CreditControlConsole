@@ -213,6 +213,8 @@ CREATE TABLE IF NOT EXISTS xero_posting_settings (
     bad_debt_write_off_account_name TEXT NOT NULL DEFAULT '',
     pi_clearing_account_code TEXT NOT NULL DEFAULT 'PI Clearing Account',
     pi_clearing_account_locked BOOLEAN NOT NULL DEFAULT FALSE,
+    pi_clearing_writes_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    pi_clearing_fee_treatment TEXT NOT NULL DEFAULT 'exclude_pi_control',
     updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -225,6 +227,8 @@ ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS bad_debt_write_off_ac
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS bad_debt_write_off_account_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS pi_clearing_account_code TEXT NOT NULL DEFAULT 'PI Clearing Account';
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS pi_clearing_account_locked BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS pi_clearing_writes_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS pi_clearing_fee_treatment TEXT NOT NULL DEFAULT 'exclude_pi_control';
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -2974,6 +2978,9 @@ CREATE TABLE IF NOT EXISTS pi_clearing_credit_notes (
     amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
     currency_code TEXT NOT NULL DEFAULT 'GBP',
     account_code TEXT NOT NULL DEFAULT 'PI Clearing Account',
+    business_action_key TEXT NOT NULL DEFAULT '',
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'created',
     raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -2988,6 +2995,9 @@ ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS credit_note_date D
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS account_code TEXT NOT NULL DEFAULT 'PI Clearing Account';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS business_action_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS payload_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'created';
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -2995,6 +3005,207 @@ ALTER TABLE pi_clearing_credit_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTA
 
 CREATE INDEX IF NOT EXISTS pi_clearing_credit_notes_run_idx
 ON pi_clearing_credit_notes (run_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS pi_clearing_credit_notes_business_key_uidx
+ON pi_clearing_credit_notes (user_id, business_action_key)
+WHERE business_action_key <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS pi_clearing_credit_notes_idempotency_uidx
+ON pi_clearing_credit_notes (idempotency_key)
+WHERE idempotency_key <> '';
+
+CREATE TABLE IF NOT EXISTS pi_clearing_action_approvals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES pi_clearing_runs(id) ON DELETE CASCADE,
+    run_row_id UUID NOT NULL REFERENCES pi_clearing_run_rows(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    business_action_key TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL DEFAULT '',
+    source_snapshot_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'APPROVED',
+    notes TEXT NOT NULL DEFAULT '',
+    approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    posted_at TIMESTAMPTZ,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, business_action_key)
+);
+
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE CASCADE;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS run_row_id UUID REFERENCES pi_clearing_run_rows(id) ON DELETE CASCADE;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS business_action_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS payload_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS source_snapshot_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'APPROVED';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_action_approvals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS pi_clearing_action_approvals_business_key_uidx
+ON pi_clearing_action_approvals (user_id, business_action_key)
+WHERE business_action_key <> '';
+CREATE INDEX IF NOT EXISTS pi_clearing_action_approvals_run_idx
+ON pi_clearing_action_approvals (run_id, run_row_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_month_closes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    month_start DATE NOT NULL,
+    month_end DATE NOT NULL,
+    close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL,
+    close_sequence INTEGER NOT NULL DEFAULT 1,
+    approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    invalidated_at TIMESTAMPTZ,
+    invalidated_reason TEXT NOT NULL DEFAULT '',
+    snapshot_hash TEXT NOT NULL DEFAULT '',
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    check_results JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, month_start, close_sequence)
+);
+
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS month_end DATE;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS close_sequence INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS invalidated_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS snapshot_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS check_results JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_month_closes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_month_closes_month_idx
+ON pi_clearing_month_closes (user_id, tenant_id, month_start DESC, close_sequence DESC);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_reason_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    reason_code TEXT NOT NULL DEFAULT '',
+    treatment TEXT NOT NULL DEFAULT 'manual_review',
+    recoverable BOOLEAN NOT NULL DEFAULT FALSE,
+    auto_allowlist BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence_threshold INTEGER NOT NULL DEFAULT 95,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, reason_code)
+);
+
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS treatment TEXT NOT NULL DEFAULT 'manual_review';
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS recoverable BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS auto_allowlist BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS confidence_threshold INTEGER NOT NULL DEFAULT 95;
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_reason_policies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_reason_policies_user_tenant_idx
+ON pi_clearing_reason_policies (user_id, tenant_id, reason_code);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_month_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    month_start DATE NOT NULL,
+    month_end DATE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'locked',
+    close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL,
+    closed_at TIMESTAMPTZ,
+    reopened_at TIMESTAMPTZ,
+    reopen_reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, month_start)
+);
+
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS month_end DATE;
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'locked';
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL;
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS reopen_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_month_states ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_month_states_user_month_idx
+ON pi_clearing_month_states (user_id, tenant_id, month_start ASC);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_deferred_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    event_id TEXT NOT NULL DEFAULT '',
+    event_month DATE NOT NULL,
+    payload_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'deferred',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, tenant_id, provider, event_id)
+);
+
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS event_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS event_month DATE;
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS payload_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'deferred';
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_deferred_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_deferred_events_status_idx
+ON pi_clearing_deferred_events (user_id, tenant_id, status, event_month ASC, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS pi_clearing_sync_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    month_start DATE NOT NULL,
+    month_end DATE NOT NULL,
+    job_type TEXT NOT NULL DEFAULT 'month_sync',
+    status TEXT NOT NULL DEFAULT 'running',
+    attempt INTEGER NOT NULL DEFAULT 1,
+    error_code TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS month_start DATE;
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS month_end DATE;
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS job_type TEXT NOT NULL DEFAULT 'month_sync';
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'running';
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS error_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE pi_clearing_sync_jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS pi_clearing_sync_jobs_status_idx
+ON pi_clearing_sync_jobs (user_id, tenant_id, status, month_start ASC, started_at DESC);
 
 CREATE TABLE IF NOT EXISTS juksib_batches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

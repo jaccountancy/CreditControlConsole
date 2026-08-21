@@ -1256,7 +1256,7 @@ async def attach_file_to_contact(
         return response.json()
 
 
-async def create_credit_note(connection_row: dict, credit_note_payload: dict) -> dict:
+async def create_credit_note(connection_row: dict, credit_note_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     started = time.monotonic()
     request_payload = {"CreditNotes": [credit_note_payload]}
@@ -1269,7 +1269,7 @@ async def create_credit_note(connection_row: dict, credit_note_payload: dict) ->
                     "xero-tenant-id": connection_row["tenant_id"],
                     "Accept": "application/json",
                     "Content-Type": "application/json",
-                    "Idempotency-Key": str(uuid4()),
+                    "Idempotency-Key": idempotency_key or str(uuid4()),
                 },
                 json=request_payload,
             )

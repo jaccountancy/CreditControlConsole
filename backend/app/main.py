@@ -30,6 +30,7 @@ from .auth import (
     consume_oauth_state,
     create_device_login,
     current_user_from_request,
+    panel_user_role,
     require_api_user,
     require_panel_user,
     require_panel_roles,
@@ -174,11 +175,15 @@ from .services import (
     pending_xero_actions_payload,
     pi_clearing_payload,
     pi_clearing_dry_run_pdf,
+    pi_clearing_month_close_export,
     practice_pack_payload,
     list_retained_practice_pack_runs,
     retained_practice_pack_download,
     process_pending_xero_actions,
     run_pi_clearing_workflow,
+    close_pi_clearing_month,
+    reopen_pi_clearing_month,
+    queue_pi_clearing_connector_event,
     override_bank_statement_transaction,
     payroll_headcount_payload,
     payroll_tenant_overview_payload,
@@ -268,8 +273,11 @@ from .services import (
     update_me_report_settings,
     upsert_payroll_headcount_workspace,
     apply_pi_clearing_credit_notes,
+    retry_pi_clearing_credit_notes,
+    mark_pi_clearing_credit_notes_failed_manual,
     delete_pi_clearing_run,
     save_pi_clearing_step1_fix,
+    approve_pi_clearing_credit_notes,
     void_pi_clearing_credit_note,
     xero_lock_date_overview_payload,
     xero_lock_date_mismatch_payload,
@@ -444,6 +452,26 @@ RBAC_RULES = {
     "/api/developer/": {"read": RBAC_OWNER_ADMIN_ROLES, "write": RBAC_OWNER_ADMIN_ROLES},
     "/api/panel/factory-reset": {"read": RBAC_OWNER_ADMIN_ROLES, "write": RBAC_OWNER_ADMIN_ROLES},
 }
+PI_ROLE_ALIASES = {
+    "owner": "owner",
+    "admin": "admin",
+    "finance_admin": "admin",
+    "manager": "manager",
+    "client_manager": "manager",
+    "staff": "staff",
+    "read_only": "read_only",
+    "readonly": "read_only",
+}
+PI_CAPABILITY_ROLES = {
+    "PI_CLEARING_VIEW": {"owner", "admin", "manager", "staff", "read_only"},
+    "PI_CLEARING_RUN": {"owner", "admin", "manager"},
+    "PI_CLEARING_INVESTIGATE": {"owner", "admin", "manager"},
+    "PI_CLEARING_APPROVE_POST": {"owner", "admin"},
+    "PI_CLEARING_POST": {"owner", "admin"},
+    "PI_CLEARING_CLOSE": {"owner", "admin"},
+    "PI_CLEARING_REOPEN": {"owner", "admin"},
+    "PI_CLEARING_CONFIG": {"owner", "admin"},
+}
 CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_EXEMPT_PATHS = {
     "/api/stripe/snackccountancy-webhook",
@@ -497,6 +525,27 @@ def _allowed_roles_for_api_path(request_path: str, request_method: str) -> set[s
     if mode == "read":
         return set(RBAC_DEFAULT_READ_ROLES)
     return set(RBAC_DEFAULT_WRITE_ROLES)
+
+
+def _normalise_pi_role(user: dict) -> str:
+    role = str(panel_user_role(user) or "").strip().lower()
+    return PI_ROLE_ALIASES.get(role, "staff")
+
+
+def _require_pi_capability(user: dict, capability: str, action: str) -> dict:
+    allowed = set(PI_CAPABILITY_ROLES.get(capability) or set())
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unknown PI capability '{capability}'.")
+    actor_role = _normalise_pi_role(user)
+    if bool((user or {}).get("is_super_admin")) or actor_role in allowed:
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            f"Role '{actor_role}' is not allowed to {action}. "
+            f"Required capability: {capability}. Allowed roles: {', '.join(sorted(allowed))}."
+        ),
+    )
 
 
 @app.middleware("http")
@@ -3449,6 +3498,7 @@ async def api_xero_posting_settings(request: Request, user: dict = Depends(requi
 
 @app.post("/api/pi-clearing-account/setup")
 async def api_pi_clearing_account_setup(request: Request, user: dict = Depends(require_panel_user)):
+    require_panel_write_user(user, "update PI Clearing setup")
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     settings_payload = await save_pi_clearing_account_setup(user, payload if isinstance(payload, dict) else {})
     return {"status": "ok", **settings_payload}
@@ -4897,17 +4947,41 @@ async def api_client_call_stats_filter_presets_suggest(request: Request, user: d
 
 @app.get("/api/pi-clearing-account")
 def api_pi_clearing_account(user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_VIEW", "view PI Clearing evidence")
     return {"status": "ok", **pi_clearing_payload(user)}
 
 
 @app.post("/api/pi-clearing-account/run")
 async def api_run_pi_clearing_account_workflow(request: Request, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_RUN", "run PI Clearing workflow")
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {"status": "ok", **await run_pi_clearing_workflow(user, payload if isinstance(payload, dict) else {})}
 
 
+@app.post("/api/pi-clearing-account/close-month")
+async def api_close_pi_clearing_account_month(request: Request, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_CLOSE", "close PI Clearing months")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **await close_pi_clearing_month(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/pi-clearing-account/reopen-month")
+async def api_reopen_pi_clearing_account_month(request: Request, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_REOPEN", "reopen PI Clearing months")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **await reopen_pi_clearing_month(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/pi-clearing-account/connector-events")
+async def api_pi_clearing_account_connector_events(request: Request, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_RUN", "queue PI Clearing connector events")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **await queue_pi_clearing_connector_event(user, payload if isinstance(payload, dict) else {})}
+
+
 @app.delete("/api/pi-clearing-account/runs/{run_id}")
 async def api_delete_pi_clearing_account_run(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_INVESTIGATE", "delete PI Clearing runs")
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {"status": "ok", **await delete_pi_clearing_run(user, run_id, payload if isinstance(payload, dict) else {})}
 
@@ -4918,10 +4992,53 @@ async def api_apply_pi_clearing_account_credit_notes(
     request: Request,
     user: dict = Depends(require_panel_user),
 ):
+    _require_pi_capability(user, "PI_CLEARING_POST", "post PI Clearing corrective documents")
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {
         "status": "ok",
         **await apply_pi_clearing_credit_notes(user, run_id, payload if isinstance(payload, dict) else {}),
+    }
+
+
+@app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes/retry")
+async def api_retry_pi_clearing_account_credit_notes(
+    run_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    _require_pi_capability(user, "PI_CLEARING_POST", "retry PI Clearing corrective documents")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {
+        "status": "ok",
+        **await retry_pi_clearing_credit_notes(user, run_id, payload if isinstance(payload, dict) else {}),
+    }
+
+
+@app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes/mark-manual-failure")
+async def api_mark_manual_failed_pi_clearing_account_credit_notes(
+    run_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    _require_pi_capability(user, "PI_CLEARING_INVESTIGATE", "mark PI Clearing corrective actions for manual investigation")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {
+        "status": "ok",
+        **await mark_pi_clearing_credit_notes_failed_manual(user, run_id, payload if isinstance(payload, dict) else {}),
+    }
+
+
+@app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes/approve")
+async def api_approve_pi_clearing_account_credit_notes(
+    run_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    _require_pi_capability(user, "PI_CLEARING_APPROVE_POST", "approve PI Clearing corrective documents")
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {
+        "status": "ok",
+        **await approve_pi_clearing_credit_notes(user, run_id, payload if isinstance(payload, dict) else {}),
     }
 
 
@@ -4932,6 +5049,7 @@ async def api_save_pi_clearing_step1_fix(
     request: Request,
     user: dict = Depends(require_panel_user),
 ):
+    _require_pi_capability(user, "PI_CLEARING_INVESTIGATE", "save PI Clearing Step 1 fixes")
     payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     return {
         "status": "ok",
@@ -4945,6 +5063,7 @@ def api_pi_clearing_account_dry_run_pdf(
     row_ids: str = Query("", alias="rowIds"),
     user: dict = Depends(require_panel_user),
 ):
+    _require_pi_capability(user, "PI_CLEARING_VIEW", "view PI Clearing dry-run export")
     selected_row_ids = [item.strip() for item in str(row_ids or "").split(",") if item.strip()]
     pdf_bytes, filename = pi_clearing_dry_run_pdf(user, run_id, selected_row_ids)
     safe_filename = str(filename or "pi-clearing-dry-run.pdf").replace('"', "")
@@ -4955,6 +5074,18 @@ def api_pi_clearing_account_dry_run_pdf(
     )
 
 
+@app.get("/api/pi-clearing-account/month-closes/{close_id}/export.json")
+def api_pi_clearing_account_month_close_export(close_id: str, user: dict = Depends(require_panel_user)):
+    _require_pi_capability(user, "PI_CLEARING_VIEW", "view PI Clearing month-close export")
+    export_bytes, filename = pi_clearing_month_close_export(user, close_id)
+    safe_filename = str(filename or "pi-clearing-close-export.json").replace('"', "")
+    return Response(
+        content=export_bytes,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+    )
+
+
 @app.post("/api/pi-clearing-account/runs/{run_id}/credit-notes/{credit_note_record_id}/void")
 async def api_void_pi_clearing_account_credit_note(
     run_id: str,
@@ -4962,6 +5093,7 @@ async def api_void_pi_clearing_account_credit_note(
     request: Request,
     user: dict = Depends(require_panel_user),
 ):
+    _require_pi_capability(user, "PI_CLEARING_POST", "void PI Clearing corrective documents")
     await request.body()
     return {"status": "ok", **await void_pi_clearing_credit_note(user, run_id, credit_note_record_id)}
 

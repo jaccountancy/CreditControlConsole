@@ -290,6 +290,47 @@ PI_CLEARING_BATCH_NUMBER_PREFIX = "JUKPI"
 PI_CLEARING_MAX_MONTH_WINDOW = 24
 PI_CLEARING_BATCH_HARD_START = date(2026, 1, 1)
 PI_CLEARING_OPENAI_TIMEOUT_SECONDS = 18
+PI_CLEARING_PERIOD_LOCK_ERROR_CODE = "PERIOD_LOCKED"
+PI_CLEARING_RULE_VERSION = "2026-08-21"
+PI_CLEARING_ALLOWED_POST_ACTION = "CREATE_RECOVERY_INVOICE"
+PI_CLEARING_POSTING_MODE_REVIEW = "REVIEW_THEN_POST"
+PI_CLEARING_ACTION_STATUS_PROPOSED = "PROPOSED"
+PI_CLEARING_ACTION_STATUS_APPROVED = "APPROVED"
+PI_CLEARING_ACTION_STATUS_POSTING = "POSTING"
+PI_CLEARING_ACTION_STATUS_POSTED_UNVERIFIED = "POSTED_UNVERIFIED"
+PI_CLEARING_ACTION_STATUS_VERIFIED = "VERIFIED"
+PI_CLEARING_ACTION_STATUS_FAILED_RETRYABLE = "FAILED_RETRYABLE"
+PI_CLEARING_ACTION_STATUS_FAILED_MANUAL = "FAILED_MANUAL"
+PI_CLEARING_ACTION_STATUS_SUPERSEDED = "SUPERSEDED"
+PI_CLEARING_FEE_TREATMENT_EXCLUDE = "exclude_pi_control"
+PI_CLEARING_FEE_TREATMENT_INCLUDE = "include_pi_control"
+PI_CLEARING_FEE_TREATMENT_MANUAL = "manual_review"
+PI_CLEARING_FEE_TREATMENTS = {
+    PI_CLEARING_FEE_TREATMENT_EXCLUDE,
+    PI_CLEARING_FEE_TREATMENT_INCLUDE,
+    PI_CLEARING_FEE_TREATMENT_MANUAL,
+}
+PI_CLEARING_RECOVERABLE_REASON_DEFAULTS = {
+    "chargeback": {"treatment": "create_recovery_invoice", "recoverable": True, "auto_allowlist": True},
+    "dispute": {"treatment": "create_recovery_invoice", "recoverable": True, "auto_allowlist": True},
+    "reversal": {"treatment": "create_recovery_invoice", "recoverable": True, "auto_allowlist": True},
+    "refund": {"treatment": "manual_review", "recoverable": False, "auto_allowlist": False},
+    "unknown": {"treatment": "manual_review", "recoverable": False, "auto_allowlist": False},
+}
+PI_CLEARING_MONTH_STATUS_LOCKED = "locked"
+PI_CLEARING_MONTH_STATUS_OPEN = "open"
+PI_CLEARING_MONTH_STATUS_READY = "ready_for_close"
+PI_CLEARING_MONTH_STATUS_CLOSED = "closed"
+PI_CLEARING_MONTH_STATUS_EXCEPTION = "exception"
+PI_CLEARING_MONTH_STATUS_REOPENED = "reopened"
+PI_CLEARING_MONTH_STATUS_FAILED = "failed"
+PI_CLEARING_MONTH_ACTIVE_STATUSES = {
+    PI_CLEARING_MONTH_STATUS_OPEN,
+    PI_CLEARING_MONTH_STATUS_READY,
+    PI_CLEARING_MONTH_STATUS_EXCEPTION,
+    PI_CLEARING_MONTH_STATUS_REOPENED,
+    PI_CLEARING_MONTH_STATUS_FAILED,
+}
 PAYROLL_JOURNAL_EXTRACTION_OPENAI_TIMEOUT_SECONDS = 20
 PAYROLL_JOURNAL_FIGURES_AI_SCHEMA = {
     "type": "object",
@@ -7340,6 +7381,521 @@ def _pi_month_bounds(month_value: str | None = None) -> tuple[date, date]:
     return month_start, month_end
 
 
+def _pi_month_start(value: date) -> date:
+    return value.replace(day=1)
+
+
+def _pi_month_end(value: date) -> date:
+    start = _pi_month_start(value)
+    return start.replace(day=monthrange(start.year, start.month)[1])
+
+
+def _pi_add_months(value: date, months: int = 1) -> date:
+    month_index = (value.month - 1) + int(months or 0)
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _pi_month_key(value: date) -> str:
+    month_value = _pi_month_start(value)
+    return f"{month_value.year:04d}-{month_value.month:02d}"
+
+
+def _pi_period_locked_exception(requested_start: date, open_month_start: date) -> HTTPException:
+    requested_key = _pi_month_key(requested_start)
+    open_key = _pi_month_key(open_month_start)
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": PI_CLEARING_PERIOD_LOCK_ERROR_CODE,
+            "message": (
+                f"Requested month {requested_key} is locked. "
+                f"Complete and close {open_key} before continuing."
+            ),
+            "requestedMonth": requested_key,
+            "openMonth": open_key,
+            "foundationMonth": _pi_month_key(PI_CLEARING_BATCH_HARD_START),
+        },
+    )
+
+
+def _pi_reopen_closed_months_with_source_changes(cursor, user_id: str, tenant_id: str) -> None:
+    cursor.execute(
+        """
+        SELECT month_start, month_end, closed_at
+        FROM pi_clearing_month_states
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND status = %s
+          AND closed_at IS NOT NULL
+        ORDER BY month_start ASC
+        """,
+        (user_id, tenant_id, PI_CLEARING_MONTH_STATUS_CLOSED),
+    )
+    closed_rows = cursor.fetchall() or []
+    reopened_month_start: date | None = None
+    reopen_reason = ""
+    for row in closed_rows:
+        month_start = row.get("month_start")
+        month_end = row.get("month_end")
+        closed_at = row.get("closed_at")
+        if not isinstance(month_start, date) or not isinstance(month_end, date) or not isinstance(closed_at, datetime):
+            continue
+        cursor.execute(
+            """
+            SELECT MAX(updated_at) AS source_updated_at
+            FROM payments
+            WHERE tenant_id = %s
+              AND payment_date >= %s
+              AND payment_date <= %s
+            """,
+            (tenant_id, month_start, month_end),
+        )
+        payment_row = cursor.fetchone() or {}
+        payment_updated_at = payment_row.get("source_updated_at")
+        if isinstance(payment_updated_at, datetime) and payment_updated_at > closed_at:
+            reopened_month_start = _pi_month_start(month_start)
+            reopen_reason = "xero_payment_source_changed"
+            break
+    if reopened_month_start is None:
+        return
+    now = utcnow()
+    cursor.execute(
+        """
+        UPDATE pi_clearing_month_states
+        SET status = %s,
+            reopened_at = %s,
+            reopen_reason = %s,
+            updated_at = %s
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start = %s
+          AND status = %s
+        """,
+        (
+            PI_CLEARING_MONTH_STATUS_REOPENED,
+            now,
+            reopen_reason,
+            now,
+            user_id,
+            tenant_id,
+            reopened_month_start,
+            PI_CLEARING_MONTH_STATUS_CLOSED,
+        ),
+    )
+    record_audit_event(
+        "pi_clearing_month",
+        f"{tenant_id}:{_pi_month_key(reopened_month_start)}",
+        "MONTH_REOPENED",
+        {"tenantId": tenant_id, "month": _pi_month_key(reopened_month_start), "reason": reopen_reason},
+        user_id,
+    )
+    record_audit_event(
+        "pi_clearing_month",
+        f"{tenant_id}:{_pi_month_key(reopened_month_start)}",
+        "NEXT_MONTH_RELOCKED",
+        {"tenantId": tenant_id, "fromMonth": _pi_month_key(reopened_month_start)},
+        user_id,
+    )
+    cursor.execute(
+        """
+        UPDATE pi_clearing_month_closes
+        SET invalidated_at = %s,
+            invalidated_reason = %s
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start = %s
+          AND invalidated_at IS NULL
+        """,
+        (
+            now,
+            reopen_reason,
+            user_id,
+            tenant_id,
+            reopened_month_start,
+        ),
+    )
+    cursor.execute(
+        """
+        UPDATE pi_clearing_month_states
+        SET status = %s,
+            updated_at = %s
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start > %s
+          AND status <> %s
+        """,
+        (
+            PI_CLEARING_MONTH_STATUS_LOCKED,
+            now,
+            user_id,
+            tenant_id,
+            reopened_month_start,
+            PI_CLEARING_MONTH_STATUS_CLOSED,
+        ),
+    )
+
+
+def _pi_apply_period_gate(cursor, user_id: str, tenant_id: str) -> dict:
+    foundation_start = _pi_month_start(PI_CLEARING_BATCH_HARD_START)
+    today_month_start = _pi_month_start(utcnow().date())
+    horizon_month_start = _pi_add_months(today_month_start, 1)
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pi_clearing_month_states (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id TEXT NOT NULL DEFAULT '',
+            month_start DATE NOT NULL,
+            month_end DATE NOT NULL,
+            status TEXT NOT NULL DEFAULT 'locked',
+            close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL,
+            closed_at TIMESTAMPTZ,
+            reopened_at TIMESTAMPTZ,
+            reopen_reason TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (user_id, tenant_id, month_start)
+        )
+        """,
+        (),
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pi_clearing_month_closes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id TEXT NOT NULL DEFAULT '',
+            month_start DATE NOT NULL,
+            month_end DATE NOT NULL,
+            close_run_id UUID REFERENCES pi_clearing_runs(id) ON DELETE SET NULL,
+            close_sequence INTEGER NOT NULL DEFAULT 1,
+            approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            approved_at TIMESTAMPTZ,
+            closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            invalidated_at TIMESTAMPTZ,
+            invalidated_reason TEXT NOT NULL DEFAULT '',
+            snapshot_hash TEXT NOT NULL DEFAULT '',
+            summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+            check_results JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (user_id, tenant_id, month_start, close_sequence)
+        )
+        """,
+        (),
+    )
+
+    month_cursor = foundation_start
+    while month_cursor <= horizon_month_start:
+        cursor.execute(
+            """
+            INSERT INTO pi_clearing_month_states (
+                user_id, tenant_id, month_start, month_end, status
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, tenant_id, month_start) DO NOTHING
+            """,
+            (
+                user_id,
+                tenant_id,
+                month_cursor,
+                _pi_month_end(month_cursor),
+                PI_CLEARING_MONTH_STATUS_LOCKED,
+            ),
+        )
+        month_cursor = _pi_add_months(month_cursor, 1)
+
+    _pi_reopen_closed_months_with_source_changes(cursor, user_id, tenant_id)
+
+    cursor.execute(
+        """
+        SELECT month_start, month_end, status, closed_at
+        FROM pi_clearing_month_states
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start >= %s
+          AND month_start <= %s
+        ORDER BY month_start ASC
+        """,
+        (user_id, tenant_id, foundation_start, horizon_month_start),
+    )
+    month_rows = cursor.fetchall() or []
+    if not month_rows:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to initialise PI Clearing month states.")
+
+    closed_months = {
+        _pi_month_start(row.get("month_start"))
+        for row in month_rows
+        if str(row.get("status") or "").strip().lower() == PI_CLEARING_MONTH_STATUS_CLOSED
+        and isinstance(row.get("month_start"), date)
+    }
+    open_month_start = foundation_start
+    while open_month_start in closed_months and open_month_start <= horizon_month_start:
+        open_month_start = _pi_add_months(open_month_start, 1)
+
+    for row in month_rows:
+        month_start = row.get("month_start")
+        if not isinstance(month_start, date):
+            continue
+        month_start = _pi_month_start(month_start)
+        status_value = str(row.get("status") or "").strip().lower() or PI_CLEARING_MONTH_STATUS_LOCKED
+        target_status = status_value
+        if status_value == PI_CLEARING_MONTH_STATUS_CLOSED:
+            target_status = PI_CLEARING_MONTH_STATUS_CLOSED
+        elif month_start == open_month_start:
+            if status_value == PI_CLEARING_MONTH_STATUS_LOCKED:
+                target_status = PI_CLEARING_MONTH_STATUS_OPEN
+            elif status_value not in PI_CLEARING_MONTH_ACTIVE_STATUSES:
+                target_status = PI_CLEARING_MONTH_STATUS_OPEN
+        elif month_start > open_month_start and status_value != PI_CLEARING_MONTH_STATUS_LOCKED:
+            target_status = PI_CLEARING_MONTH_STATUS_LOCKED
+        if target_status != status_value:
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_states
+                SET status = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                """,
+                (target_status, user_id, tenant_id, month_start),
+            )
+
+    cursor.execute(
+        """
+        SELECT month_start, month_end, status, closed_at
+        FROM pi_clearing_month_states
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start >= %s
+          AND month_start <= %s
+        ORDER BY month_start ASC
+        """,
+        (user_id, tenant_id, foundation_start, horizon_month_start),
+    )
+    refreshed_rows = cursor.fetchall() or []
+    open_row = next(
+        (
+            row for row in refreshed_rows
+            if isinstance(row.get("month_start"), date)
+            and _pi_month_start(row.get("month_start")) == open_month_start
+        ),
+        None,
+    )
+    open_month_end = _pi_month_end(open_month_start)
+    if open_row and isinstance(open_row.get("month_end"), date):
+        open_month_end = open_row.get("month_end")
+    return {
+        "foundationMonth": _pi_month_key(foundation_start),
+        "openMonth": _pi_month_key(open_month_start),
+        "openMonthStart": open_month_start,
+        "openMonthEnd": open_month_end,
+        "openStatus": str((open_row or {}).get("status") or PI_CLEARING_MONTH_STATUS_OPEN),
+        "months": [
+            {
+                "month": _pi_month_key(_pi_month_start(row.get("month_start"))),
+                "monthStart": _pi_month_start(row.get("month_start")).isoformat(),
+                "monthEnd": (_pi_month_end(_pi_month_start(row.get("month_start")))).isoformat(),
+                "status": str(row.get("status") or PI_CLEARING_MONTH_STATUS_LOCKED),
+                "closedAt": _iso(row.get("closed_at")) or "",
+            }
+            for row in refreshed_rows
+            if isinstance(row.get("month_start"), date)
+        ],
+    }
+
+
+def _pi_assert_requested_open_month(
+    cursor,
+    *,
+    user_id: str,
+    tenant_id: str,
+    requested_start: date,
+    requested_end: date,
+) -> dict:
+    gate = _pi_apply_period_gate(cursor, user_id, tenant_id)
+    open_month_start = gate.get("openMonthStart")
+    open_month_end = gate.get("openMonthEnd")
+    if not isinstance(open_month_start, date) or not isinstance(open_month_end, date):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="PI Clearing period gate is unavailable.")
+    if _pi_month_start(requested_start) != _pi_month_start(requested_end):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PI Clearing batch must use a single calendar month.")
+    if requested_start != _pi_month_start(requested_start) or requested_end != _pi_month_end(requested_start):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "PI Clearing batch must cover the full open month "
+                f"({_pi_month_key(open_month_start)}) from day 1 to month end."
+            ),
+        )
+    if _pi_month_start(requested_start) != _pi_month_start(open_month_start):
+        raise _pi_period_locked_exception(requested_start, open_month_start)
+    if requested_end != open_month_end:
+        raise _pi_period_locked_exception(requested_start, open_month_start)
+    return gate
+
+
+async def queue_pi_clearing_connector_event(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero tenant is not connected for PI Clearing.")
+    provider = str(safe_payload.get("provider") or "").strip().lower() or "unknown"
+    event_id = str(safe_payload.get("eventId") or safe_payload.get("event_id") or "").strip()
+    if not event_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="eventId is required.")
+    requested_month_text = str(safe_payload.get("month") or "").strip()
+    event_date_text = str(safe_payload.get("eventDate") or safe_payload.get("event_date") or "").strip()
+    event_date = _parse_any_date(event_date_text) if event_date_text else None
+    if requested_month_text:
+        try:
+            event_month_start = _pi_month_start(date.fromisoformat(f"{requested_month_text}-01"))
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="month must use YYYY-MM format.") from exc
+    elif isinstance(event_date, date):
+        event_month_start = _pi_month_start(event_date)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide month (YYYY-MM) or eventDate.")
+    event_month_end = _pi_month_end(event_month_start)
+    metadata = safe_payload.get("metadata") if isinstance(safe_payload.get("metadata"), dict) else {}
+    payload_hash = _pi_payload_hash(
+        {
+            "provider": provider,
+            "eventId": event_id,
+            "month": _pi_month_key(event_month_start),
+            "eventDate": event_date.isoformat() if isinstance(event_date, date) else "",
+            "metadata": metadata,
+        }
+    )
+    now = utcnow()
+    is_locked = False
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            try:
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=event_month_start,
+                    requested_end=event_month_end,
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                if exc.status_code == status.HTTP_409_CONFLICT and str(detail.get("code") or "") == PI_CLEARING_PERIOD_LOCK_ERROR_CODE:
+                    is_locked = True
+                else:
+                    raise
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_deferred_events (
+                    user_id, tenant_id, provider, event_id, event_month, payload_hash, status, metadata, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                ON CONFLICT (user_id, tenant_id, provider, event_id)
+                DO UPDATE
+                SET event_month = EXCLUDED.event_month,
+                    payload_hash = EXCLUDED.payload_hash,
+                    status = EXCLUDED.status,
+                    metadata = EXCLUDED.metadata,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    user["id"],
+                    tenant_id,
+                    provider,
+                    event_id,
+                    event_month_start,
+                    payload_hash,
+                    "deferred" if is_locked else "ready",
+                    json.dumps(
+                        {
+                            "month": _pi_month_key(event_month_start),
+                            "eventDate": event_date.isoformat() if isinstance(event_date, date) else "",
+                            "metadata": metadata,
+                        },
+                        default=_json_default,
+                    ),
+                    now,
+                    now,
+                ),
+            )
+        connection.commit()
+    record_audit_event(
+        "pi_clearing_event",
+        f"{tenant_id}:{provider}:{event_id}",
+        "CONNECTOR_EVENT_QUEUED_DEFERRED" if is_locked else "CONNECTOR_EVENT_QUEUED_READY",
+        {"tenantId": tenant_id, "provider": provider, "eventId": event_id, "month": _pi_month_key(event_month_start)},
+        user["id"],
+    )
+    return {
+        "accepted": True,
+        "deferred": is_locked,
+        "provider": provider,
+        "eventId": event_id,
+        "month": _pi_month_key(event_month_start),
+    }
+
+
+def _pi_update_month_state_from_run_summary(
+    cursor,
+    *,
+    user_id: str,
+    tenant_id: str,
+    month_start: date,
+    month_end: date,
+    summary: dict,
+) -> str:
+    cursor.execute(
+        """
+        SELECT status
+        FROM pi_clearing_month_states
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start = %s
+        LIMIT 1
+        """,
+        (user_id, tenant_id, month_start),
+    )
+    previous_status = str((cursor.fetchone() or {}).get("status") or "").strip().lower()
+    finalisation = _pi_finalisation_state_from_summary(summary)
+    difference_count = int(summary.get("differenceCount") or 0)
+    unresolved = difference_count > 0 or int(finalisation.get("missingCreditCount") or 0) > 0
+    next_status = PI_CLEARING_MONTH_STATUS_READY if finalisation.get("canFinalise") and not unresolved else PI_CLEARING_MONTH_STATUS_EXCEPTION
+    cursor.execute(
+        """
+        UPDATE pi_clearing_month_states
+        SET status = %s,
+            month_end = %s,
+            updated_at = NOW()
+        WHERE user_id = %s
+          AND tenant_id = %s
+          AND month_start = %s
+          AND status <> %s
+        """,
+        (
+            next_status,
+            month_end,
+            user_id,
+            tenant_id,
+            month_start,
+            PI_CLEARING_MONTH_STATUS_CLOSED,
+        ),
+    )
+    if next_status == PI_CLEARING_MONTH_STATUS_READY and previous_status != PI_CLEARING_MONTH_STATUS_READY:
+        record_audit_event(
+            "pi_clearing_month",
+            f"{tenant_id}:{_pi_month_key(month_start)}",
+            "MONTH_READY_FOR_CLOSE",
+            {"tenantId": tenant_id, "month": _pi_month_key(month_start), "status": next_status},
+            user_id,
+        )
+    return next_status
+
+
 def _pi_batch_bounds(payload: dict | None = None) -> tuple[date, date]:
     safe_payload = payload if isinstance(payload, dict) else {}
     start_raw = (
@@ -8772,6 +9328,709 @@ def _pi_finalisation_state_from_summary(summary: dict | None) -> dict:
     )
 
 
+def _pi_payload_hash(value) -> str:
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), default=_json_default)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _pi_build_business_action_key(
+    *,
+    user_id: str,
+    tenant_id: str,
+    run_id: str,
+    run_row_id: str,
+    action_type: str,
+    payout_id: str,
+    collection_ids: list[str],
+    xero_contact_id: str,
+    amount: Decimal,
+    note_date: date,
+    rule_version: str = PI_CLEARING_RULE_VERSION,
+) -> str:
+    amount_pence = int((amount.copy_abs() * 100).quantize(Decimal("1")))
+    parts = [
+        str(user_id or "").strip(),
+        str(tenant_id or "").strip(),
+        str(run_id or "").strip(),
+        str(run_row_id or "").strip(),
+        str(action_type or "").strip().upper(),
+        str(payout_id or "").strip(),
+        ",".join(sorted(str(item).strip() for item in collection_ids if str(item).strip())),
+        str(xero_contact_id or "").strip(),
+        str(amount_pence),
+        note_date.isoformat(),
+        str(rule_version or "").strip(),
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _pi_daily_evidence_rows(
+    month_start: date,
+    month_end: date,
+    xero_rows: list[dict],
+    ignition_rows: list[dict],
+) -> list[dict]:
+    day_cursor = month_start
+    buckets: dict[date, dict] = {}
+    while day_cursor <= month_end:
+        buckets[day_cursor] = {
+            "xeroDebit": Decimal("0.00"),
+            "xeroCredit": Decimal("0.00"),
+            "ignitionNet": Decimal("0.00"),
+            "ignitionGross": Decimal("0.00"),
+            "ignitionReversal": Decimal("0.00"),
+            "xeroCount": 0,
+            "ignitionCount": 0,
+        }
+        day_cursor += timedelta(days=1)
+
+    for row in xero_rows or []:
+        paid_on = _parse_optional_iso_date(row.get("paidOn"))
+        if not isinstance(paid_on, date) or paid_on not in buckets:
+            continue
+        bucket = buckets[paid_on]
+        amount = _money(row.get("amount"))
+        if amount > 0:
+            bucket["xeroDebit"] += amount
+        elif amount < 0:
+            bucket["xeroCredit"] += amount.copy_abs()
+        bucket["xeroCount"] += 1
+
+    for row in ignition_rows or []:
+        paid_on = _parse_optional_iso_date(row.get("paidOn"))
+        if not isinstance(paid_on, date) or paid_on not in buckets:
+            continue
+        bucket = buckets[paid_on]
+        amount = _money(row.get("amount"))
+        bucket["ignitionNet"] += amount
+        if amount < 0:
+            bucket["ignitionReversal"] += amount.copy_abs()
+        else:
+            bucket["ignitionGross"] += amount
+        bucket["ignitionCount"] += 1
+
+    evidence: list[dict] = []
+    for day_key in sorted(buckets.keys()):
+        bucket = buckets[day_key]
+        xero_credit = _money(bucket.get("xeroCredit"))
+        ignition_net = _money(bucket.get("ignitionNet"))
+        variance = (xero_credit - ignition_net).quantize(Decimal("0.01"))
+        has_activity = (
+            int(bucket.get("xeroCount") or 0) > 0
+            or int(bucket.get("ignitionCount") or 0) > 0
+            or _money(bucket.get("xeroDebit")) > Decimal("0.00")
+            or _money(bucket.get("xeroCredit")) > Decimal("0.00")
+            or ignition_net.copy_abs() > Decimal("0.00")
+        )
+        if not has_activity:
+            status_value = "no_activity_confirmed"
+        elif variance.copy_abs() <= Decimal("0.01"):
+            status_value = "balanced"
+        else:
+            status_value = "action_needed"
+        source_hash = _pi_payload_hash(
+            {
+                "day": day_key.isoformat(),
+                "xeroDebit": f"{_money(bucket.get('xeroDebit')):.2f}",
+                "xeroCredit": f"{xero_credit:.2f}",
+                "ignitionNet": f"{ignition_net:.2f}",
+                "xeroCount": int(bucket.get("xeroCount") or 0),
+                "ignitionCount": int(bucket.get("ignitionCount") or 0),
+                "status": status_value,
+            }
+        )
+        evidence.append(
+            {
+                "day": day_key.isoformat(),
+                "status": status_value,
+                "xeroDebitTotal": float(_money(bucket.get("xeroDebit"))),
+                "xeroCreditTotal": float(xero_credit),
+                "ignitionNetTotal": float(ignition_net),
+                "ignitionGrossTotal": float(_money(bucket.get("ignitionGross"))),
+                "ignitionReversalTotal": float(_money(bucket.get("ignitionReversal"))),
+                "variance": float(_money(variance)),
+                "xeroCount": int(bucket.get("xeroCount") or 0),
+                "ignitionCount": int(bucket.get("ignitionCount") or 0),
+                "sourceHash": source_hash,
+                "calculationVersion": PI_CLEARING_RULE_VERSION,
+            }
+        )
+    return evidence
+
+
+def _pi_seed_reason_policy_defaults(cursor, *, user_id: str, tenant_id: str) -> None:
+    for reason_code, policy in PI_CLEARING_RECOVERABLE_REASON_DEFAULTS.items():
+        cursor.execute(
+            """
+            INSERT INTO pi_clearing_reason_policies (
+                user_id, tenant_id, reason_code, treatment, recoverable, auto_allowlist, confidence_threshold, notes, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            ON CONFLICT (user_id, tenant_id, reason_code) DO NOTHING
+            """,
+            (
+                user_id,
+                tenant_id,
+                reason_code,
+                str(policy.get("treatment") or "manual_review"),
+                bool(policy.get("recoverable")),
+                bool(policy.get("auto_allowlist")),
+                95,
+                "Default seeded policy. Replace with finance-approved mapping.",
+            ),
+        )
+
+
+def _pi_reason_code_for_row(row: dict, step1_fix: dict | None = None) -> str:
+    raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+    fix_payload = step1_fix if isinstance(step1_fix, dict) else {}
+    candidates = [
+        fix_payload.get("reasonCode"),
+        fix_payload.get("reason"),
+        raw_payload.get("reasonCode"),
+        raw_payload.get("reason"),
+        raw_payload.get("refundReasonCode"),
+        raw_payload.get("refundReason"),
+    ]
+    text = " ".join(str(item or "").strip().lower() for item in candidates if str(item or "").strip())
+    if not text:
+        return "unknown"
+    if any(token in text for token in ("chargeback", "dispute")):
+        return "chargeback"
+    if "reversal" in text:
+        return "reversal"
+    if "refund" in text:
+        return "refund"
+    return "unknown"
+
+
+def _pi_reason_policy_decision(*, user_id: str, tenant_id: str, reason_code: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            _pi_seed_reason_policy_defaults(cursor, user_id=user_id, tenant_id=tenant_id)
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_reason_policies
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND reason_code = %s
+                LIMIT 1
+                """,
+                (user_id, tenant_id, str(reason_code or "unknown").strip().lower() or "unknown"),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return {
+        "reasonCode": str(row.get("reason_code") or str(reason_code or "unknown")).strip().lower() or "unknown",
+        "treatment": str(row.get("treatment") or "manual_review").strip().lower() or "manual_review",
+        "recoverable": bool(row.get("recoverable")),
+        "autoAllowlist": bool(row.get("auto_allowlist")),
+        "confidenceThreshold": int(row.get("confidence_threshold") or 95),
+    }
+
+
+def _pi_posting_policy_for_row(
+    row: dict,
+    step1_fix: dict | None = None,
+    *,
+    user_id: str = "",
+    tenant_id: str = "",
+) -> tuple[bool, str, str, dict]:
+    raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+    fix_payload = step1_fix if isinstance(step1_fix, dict) else {}
+    difference_total = _money(row.get("difference_total")).copy_abs()
+    reversal_total = _money(raw_payload.get("ignitionReversalTotal"))
+    step1_missing = _money(raw_payload.get("step1MissingDebitTotal"))
+    risk_score = int(raw_payload.get("riskScore") or 0)
+    reason_code = _pi_reason_code_for_row(row, step1_fix)
+    policy = _pi_reason_policy_decision(user_id=user_id, tenant_id=tenant_id, reason_code=reason_code) if user_id and tenant_id else {
+        "reasonCode": reason_code,
+        "treatment": "manual_review",
+        "recoverable": False,
+        "autoAllowlist": False,
+        "confidenceThreshold": 95,
+    }
+    if _money(fix_payload.get("missingDebitAmount")) > Decimal("0.00"):
+        difference_total = _money(fix_payload.get("missingDebitAmount")).copy_abs()
+    if difference_total <= Decimal("0.00"):
+        return False, "NO_DIFFERENCE", "Row has no non-zero residual to post.", policy
+    if reversal_total <= Decimal("0.00"):
+        return False, "RULE_NOT_ALLOWLISTED", "Only recoverable clawback/reversal recovery invoices are allowlisted.", policy
+    if not bool(policy.get("recoverable")):
+        return False, "UNKNOWN_REFUND_TREATMENT", "Reason policy marks this item as non-recoverable/manual review.", policy
+    if str(policy.get("treatment") or "").strip().lower() != "create_recovery_invoice":
+        return False, "UNKNOWN_REFUND_TREATMENT", "Reason policy does not allow recovery invoice treatment.", policy
+    if not bool(policy.get("autoAllowlist")):
+        return False, "RULE_NOT_ALLOWLISTED", "Reason policy requires manual handling for this code.", policy
+    if step1_missing > Decimal("0.00"):
+        return False, "STEP1_MISSING_DEBIT", "Step 1 detected missing same-date Xero debit support.", policy
+    threshold = int(policy.get("confidenceThreshold") or 95)
+    if risk_score < threshold:
+        return False, "LOW_CONFIDENCE", f"Rule confidence is below the {threshold}% allowlist threshold.", policy
+    return True, PI_CLEARING_ALLOWED_POST_ACTION, "Allowlisted recovery invoice.", policy
+
+
+def _pi_find_existing_credit_note_action(
+    *,
+    user_id: str,
+    business_action_key: str,
+    idempotency_key: str,
+) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_credit_note_id, xero_credit_note_number, status, business_action_key, idempotency_key
+                FROM pi_clearing_credit_notes
+                WHERE user_id = %s
+                  AND (
+                        (%s <> '' AND business_action_key = %s)
+                        OR (%s <> '' AND idempotency_key = %s)
+                      )
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (
+                    user_id,
+                    business_action_key,
+                    business_action_key,
+                    idempotency_key,
+                    idempotency_key,
+                ),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return row
+
+
+def _pi_action_source_snapshot_hash(
+    *,
+    run_row_id: str,
+    row: dict,
+    step1_fix: dict,
+    amount: Decimal,
+    contact_id: str,
+    note_date: date,
+    account_code: str,
+    document_type: str,
+) -> str:
+    raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+    return _pi_payload_hash(
+        {
+            "runRowId": run_row_id,
+            "differenceTotal": float(_money(row.get("difference_total"))),
+            "step1Fix": step1_fix,
+            "rawPayloadHash": _pi_payload_hash(raw_payload),
+            "amount": float(_money(amount)),
+            "contactId": str(contact_id or ""),
+            "noteDate": note_date.isoformat(),
+            "accountCode": str(account_code or ""),
+            "documentType": str(document_type or "invoice"),
+        }
+    )
+
+
+def _pi_record_action_approval(
+    *,
+    run_id: str,
+    row_id: str,
+    user_id: str,
+    tenant_id: str,
+    business_action_key: str,
+    payload_hash: str,
+    source_snapshot_hash: str,
+    status_value: str,
+    approved_by_user_id: str | None = None,
+    notes: str = "",
+) -> None:
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_action_approvals (
+                    run_id, run_row_id, user_id, tenant_id, business_action_key,
+                    payload_hash, source_snapshot_hash, status, notes,
+                    approved_by_user_id, approved_at, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, business_action_key) DO UPDATE
+                SET payload_hash = EXCLUDED.payload_hash,
+                    source_snapshot_hash = EXCLUDED.source_snapshot_hash,
+                    status = EXCLUDED.status,
+                    notes = EXCLUDED.notes,
+                    approved_by_user_id = COALESCE(EXCLUDED.approved_by_user_id, pi_clearing_action_approvals.approved_by_user_id),
+                    approved_at = CASE
+                        WHEN EXCLUDED.approved_by_user_id IS NULL THEN pi_clearing_action_approvals.approved_at
+                        ELSE EXCLUDED.approved_at
+                    END,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    run_id,
+                    row_id,
+                    user_id,
+                    tenant_id,
+                    business_action_key,
+                    payload_hash,
+                    source_snapshot_hash,
+                    status_value,
+                    notes,
+                    approved_by_user_id,
+                    now if approved_by_user_id else None,
+                    now,
+                    now,
+                ),
+            )
+        connection.commit()
+
+
+def _pi_get_action_approval(*, user_id: str, business_action_key: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_action_approvals
+                WHERE user_id = %s
+                  AND business_action_key = %s
+                LIMIT 1
+                """,
+                (user_id, business_action_key),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return row
+
+
+def _pi_get_latest_action_approval_for_row(*, user_id: str, run_id: str, run_row_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_action_approvals
+                WHERE user_id = %s
+                  AND run_id = %s
+                  AND run_row_id = %s
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (user_id, run_id, run_row_id),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return row
+
+
+def _pi_record_sync_job_start(
+    *,
+    user_id: str,
+    tenant_id: str,
+    month_start: date,
+    month_end: date,
+    metadata: dict | None = None,
+) -> str:
+    now = utcnow()
+    metadata_payload = metadata if isinstance(metadata, dict) else {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_sync_jobs (
+                    user_id, tenant_id, month_start, month_end, job_type, status, metadata, started_at, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    user_id,
+                    tenant_id,
+                    month_start,
+                    month_end,
+                    "month_sync",
+                    "running",
+                    json.dumps(metadata_payload, default=_json_default),
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return str(row.get("id") or "")
+
+
+def _pi_record_sync_job_finish(
+    *,
+    job_id: str,
+    status_value: str,
+    error_code: str = "",
+    error_message: str = "",
+    metadata: dict | None = None,
+) -> None:
+    clean_job_id = str(job_id or "").strip()
+    if not clean_job_id:
+        return
+    now = utcnow()
+    metadata_payload = metadata if isinstance(metadata, dict) else {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE pi_clearing_sync_jobs
+                SET status = %s,
+                    error_code = %s,
+                    error_message = %s,
+                    metadata = %s::jsonb,
+                    completed_at = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (
+                    str(status_value or "completed").strip().lower() or "completed",
+                    str(error_code or "").strip(),
+                    str(error_message or "").strip(),
+                    json.dumps(metadata_payload, default=_json_default),
+                    now,
+                    now,
+                    clean_job_id,
+                ),
+            )
+        connection.commit()
+
+
+async def _pi_resolve_selected_pi_account(connection_row: dict, candidate_value: str) -> str:
+    raw_value = str(candidate_value or "").strip()
+    if not raw_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select a PI nominal account before posting the adjustment.",
+        )
+    accounts = await _fetch_xero_chart_of_accounts(connection_row)
+    account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
+    account_by_name = {str(account.get("name") or "").strip().lower(): account for account in accounts}
+    selected_account = account_by_code.get(raw_value.lower())
+    if selected_account is None:
+        selected_account = account_by_name.get(raw_value.lower())
+    if selected_account is None and "·" in raw_value:
+        code_hint = raw_value.split("·", 1)[0].strip().lower()
+        if code_hint:
+            selected_account = account_by_code.get(code_hint)
+    if selected_account is None:
+        fuzzy = [
+            account for account in accounts
+            if raw_value.lower() in str(account.get("code") or "").strip().lower()
+            or raw_value.lower() in str(account.get("name") or "").strip().lower()
+        ]
+        if len(fuzzy) == 1:
+            selected_account = fuzzy[0]
+    if selected_account is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PI nominal '{raw_value}' is not in the connected Xero chart of accounts. Re-select the PI nominal in Batch setup.",
+        )
+    return str(selected_account.get("code") or "").strip()
+
+
+def _pi_close_predicate_checks(
+    cursor,
+    *,
+    user: dict,
+    tenant_id: str,
+    run_row: dict,
+    summary: dict,
+) -> dict:
+    month_start = run_row.get("month_start")
+    month_end = run_row.get("month_end")
+    if not isinstance(month_start, date) or not isinstance(month_end, date):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Run month bounds are missing.")
+    expected_day_count = (month_end - month_start).days + 1
+    cursor.execute(
+        """
+        SELECT *
+        FROM pi_clearing_run_rows
+        WHERE run_id = %s
+          AND user_id = %s
+        ORDER BY created_at ASC
+        """,
+        (run_row.get("id"), user["id"]),
+    )
+    persisted_rows = cursor.fetchall() or []
+    xero_rows_from_persisted: list[dict] = []
+    ignition_rows_from_persisted: list[dict] = []
+    for row in persisted_rows:
+        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        raw_xero_rows = raw_payload.get("xeroRows") if isinstance(raw_payload.get("xeroRows"), list) else []
+        raw_ignition_rows = raw_payload.get("ignitionRows") if isinstance(raw_payload.get("ignitionRows"), list) else []
+        for item in raw_xero_rows:
+            if isinstance(item, dict):
+                xero_rows_from_persisted.append(item)
+        for item in raw_ignition_rows:
+            if isinstance(item, dict):
+                ignition_rows_from_persisted.append(item)
+    recomputed_day_evidence = _pi_daily_evidence_rows(
+        month_start=month_start,
+        month_end=month_end,
+        xero_rows=xero_rows_from_persisted,
+        ignition_rows=ignition_rows_from_persisted,
+    )
+    day_evidence = recomputed_day_evidence
+    xero_debit_total = sum((_money(item.get("xeroDebitTotal")) for item in day_evidence), start=Decimal("0.00"))
+    xero_credit_total = sum((_money(item.get("xeroCreditTotal")) for item in day_evidence), start=Decimal("0.00"))
+    finalisation = _pi_finalisation_state(
+        xero_debit_total=xero_debit_total,
+        xero_credit_total=xero_credit_total,
+        xero_step1=summary.get("xeroStep1") if isinstance(summary.get("xeroStep1"), dict) else {},
+    )
+    difference_count = sum(1 for row in persisted_rows if _money(row.get("difference_total")).copy_abs() > Decimal("0.005"))
+    allowed_day_statuses = {"balanced", "no_activity_confirmed"}
+    complete_day_count = sum(
+        1
+        for item in day_evidence
+        if isinstance(item, dict) and str(item.get("status") or "").strip().lower() in allowed_day_statuses
+    )
+    all_days_have_hashes = all(
+        isinstance(item, dict) and str(item.get("sourceHash") or "").strip()
+        for item in day_evidence
+    ) if day_evidence else False
+
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS unresolved_count
+        FROM pi_clearing_run_rows
+        WHERE run_id = %s
+          AND user_id = %s
+          AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+          AND ABS(difference_total) > 0.005
+        """,
+        (run_row.get("id"), user["id"]),
+    )
+    unresolved_count = int((cursor.fetchone() or {}).get("unresolved_count") or 0)
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS pending_actions
+        FROM pi_clearing_credit_notes
+        WHERE run_id = %s
+          AND user_id = %s
+          AND COALESCE(status, 'created') NOT IN ('created', 'voided')
+        """,
+        (run_row.get("id"), user["id"]),
+    )
+    pending_action_count = int((cursor.fetchone() or {}).get("pending_actions") or 0)
+    cursor.execute(
+        """
+        SELECT MAX(updated_at) AS source_updated_at
+        FROM payments
+        WHERE tenant_id = %s
+          AND payment_date >= %s
+          AND payment_date <= %s
+        """,
+        (tenant_id, month_start, month_end),
+    )
+    payments_updated_at = (cursor.fetchone() or {}).get("source_updated_at")
+    cursor.execute(
+        """
+        SELECT MAX(COALESCE(source_updated_at, updated_at, created_at)) AS source_updated_at
+        FROM ignition_reporting_records
+        WHERE user_id = %s
+        """,
+        (user["id"],),
+    )
+    ignition_updated_at = (cursor.fetchone() or {}).get("source_updated_at")
+    source_updated_candidates = [item for item in (payments_updated_at, ignition_updated_at) if isinstance(item, datetime)]
+    source_updated_at = max(source_updated_candidates) if source_updated_candidates else None
+    run_updated_at = run_row.get("updated_at")
+    source_unchanged_since_run = (
+        not isinstance(source_updated_at, datetime)
+        or not isinstance(run_updated_at, datetime)
+        or source_updated_at <= run_updated_at
+    )
+    account_code = str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE).strip() or PI_CLEARING_DEFAULT_ACCOUNT_CODE
+    fresh_xero_rows, _fresh_tenant_id, _fresh_last_refreshed_at = _pi_load_xero_payments(user, month_start, month_end, account_code)
+    fresh_xero_step1 = _pi_step1_xero_credit_debit_check(fresh_xero_rows)
+    fresh_xero_debit_total = sum((_money(item.get("amount")) for item in fresh_xero_rows if _money(item.get("amount")) > Decimal("0.00")), start=Decimal("0.00"))
+    fresh_xero_credit_total = sum((_money(item.get("amount")).copy_abs() for item in fresh_xero_rows if _money(item.get("amount")) < Decimal("0.00")), start=Decimal("0.00"))
+    fresh_finalisation = _pi_finalisation_state(
+        xero_debit_total=fresh_xero_debit_total,
+        xero_credit_total=fresh_xero_credit_total,
+        xero_step1=fresh_xero_step1,
+    )
+    absolute_closing_variance = sum((_money(row.get("difference_total")) for row in persisted_rows), start=Decimal("0.00")).copy_abs()
+    debit_credit_delta = _money(finalisation.get("debitCreditDifference")).copy_abs()
+    checks = [
+        {
+            "code": "FOUNDATION_MONTH",
+            "label": "Foundation month is on/after 2026-01",
+            "passed": _pi_month_start(month_start) >= _pi_month_start(PI_CLEARING_BATCH_HARD_START),
+            "evidence": {"month": _pi_month_key(month_start), "foundationMonth": _pi_month_key(PI_CLEARING_BATCH_HARD_START)},
+        },
+        {
+            "code": "DAILY_COVERAGE",
+            "label": "Every calendar day has durable evidence",
+            "passed": len(day_evidence) == expected_day_count and complete_day_count == expected_day_count and all_days_have_hashes,
+            "evidence": {
+                "expectedDayCount": expected_day_count,
+                "storedDayCount": len(day_evidence),
+                "completeDayCount": complete_day_count,
+                "allDaysHaveSourceHash": all_days_have_hashes,
+            },
+        },
+        {
+            "code": "UNRESOLVED_DIFFERENCES",
+            "label": "No unresolved difference rows remain",
+            "passed": difference_count == 0 and unresolved_count == 0,
+            "evidence": {
+                "summaryDifferenceCount": difference_count,
+                "unresolvedDifferenceRows": unresolved_count,
+            },
+        },
+        {
+            "code": "PENDING_ACTIONS",
+            "label": "No pending/failed remediation actions remain",
+            "passed": pending_action_count == 0,
+            "evidence": {"pendingActionCount": pending_action_count},
+        },
+        {
+            "code": "AGGREGATE_NIL",
+            "label": "Aggregate PI closing variance is within one penny",
+            "passed": absolute_closing_variance <= Decimal("0.01") and debit_credit_delta <= Decimal("0.01"),
+            "evidence": {
+                "differenceTotal": float(_money(absolute_closing_variance)),
+                "debitCreditDifference": float(_money(finalisation.get("debitCreditDifference"))),
+            },
+        },
+        {
+            "code": "STEP1_CLEAR",
+            "label": "Step 1 debit/credit gate is fully clear",
+            "passed": bool(finalisation.get("canFinalise")) and int(finalisation.get("missingCreditCount") or 0) == 0,
+            "evidence": finalisation,
+        },
+        {
+            "code": "SOURCE_UNCHANGED",
+            "label": "No source change since final run snapshot",
+            "passed": source_unchanged_since_run,
+            "evidence": {"runUpdatedAt": _iso(run_updated_at), "sourceUpdatedAt": _iso(source_updated_at)},
+        },
+        {
+            "code": "XERO_MONTH_END_DIRECT_NIL",
+            "label": "Direct Xero month-end PI control re-read is nil",
+            "passed": bool(fresh_finalisation.get("canFinalise")) and _money(fresh_finalisation.get("debitCreditDifference")).copy_abs() <= Decimal("0.01"),
+            "evidence": {
+                "accountCode": account_code,
+                "xeroRowCount": len(fresh_xero_rows),
+                "xeroDebitTotal": float(_money(fresh_xero_debit_total)),
+                "xeroCreditTotal": float(_money(fresh_xero_credit_total)),
+                "debitCreditDifference": float(_money(fresh_finalisation.get("debitCreditDifference"))),
+                "missingCreditCount": int(fresh_finalisation.get("missingCreditCount") or 0),
+            },
+        },
+    ]
+    failures = [item for item in checks if not item.get("passed")]
+    return {"canClose": not failures, "checks": checks, "failures": failures}
+
+
 def _pi_step2_ledger_rows(xero_rows: list[dict]) -> list[dict]:
     rows: list[dict] = []
     for row in xero_rows or []:
@@ -9268,9 +10527,32 @@ def _pi_backfill_missing_batch_numbers(cursor, user_id: str) -> None:
 
 
 def pi_clearing_payload(user: dict) -> dict:
+    period_gate_payload = {
+        "foundationMonth": _pi_month_key(PI_CLEARING_BATCH_HARD_START),
+        "openMonth": _pi_month_key(PI_CLEARING_BATCH_HARD_START),
+        "openStatus": PI_CLEARING_MONTH_STATUS_OPEN,
+        "months": [],
+    }
+    gate_tenant_id = ""
+    try:
+        connection_row = get_master_xero_connection_for_user(user["id"])
+        gate_tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    except HTTPException:
+        gate_tenant_id = ""
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            close_rows: list[dict] = []
+            deferred_events_summary = {"deferredCount": 0, "readyCount": 0, "latestDeferredAt": ""}
             _pi_backfill_missing_batch_numbers(cursor, user["id"])
+            if gate_tenant_id:
+                gate = _pi_apply_period_gate(cursor, user["id"], gate_tenant_id)
+                period_gate_payload = {
+                    "foundationMonth": str(gate.get("foundationMonth") or _pi_month_key(PI_CLEARING_BATCH_HARD_START)),
+                    "openMonth": str(gate.get("openMonth") or _pi_month_key(PI_CLEARING_BATCH_HARD_START)),
+                    "openStatus": str(gate.get("openStatus") or PI_CLEARING_MONTH_STATUS_OPEN),
+                    "months": gate.get("months") if isinstance(gate.get("months"), list) else [],
+                }
             cursor.execute(
                 """
                 SELECT *
@@ -9285,6 +10567,8 @@ def pi_clearing_payload(user: dict) -> dict:
             run_ids = [str(row.get("id") or "") for row in run_rows if row.get("id")]
             rows_by_run: dict[str, list[dict]] = {}
             notes_by_run: dict[str, list[dict]] = {}
+            approvals_by_run: dict[str, list[dict]] = {}
+            latest_approval_by_row: dict[str, dict] = {}
             active_note_totals_by_run_row: dict[str, dict[str, Decimal]] = {}
             active_note_totals_by_run_contact: dict[str, dict[str, Decimal]] = {}
             if run_ids:
@@ -9369,6 +10653,9 @@ def pi_clearing_payload(user: dict) -> dict:
                             "amount": float(note_amount),
                             "currencyCode": str(note.get("currency_code") or "GBP"),
                             "accountCode": str(note.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE),
+                            "businessActionKey": str(note.get("business_action_key") or ""),
+                            "idempotencyKey": str(note.get("idempotency_key") or ""),
+                            "payloadHash": str(note.get("payload_hash") or ""),
                             "status": str(note.get("status") or "created"),
                             "createdAt": _iso(note.get("created_at")) or "",
                         }
@@ -9381,6 +10668,66 @@ def pi_clearing_payload(user: dict) -> dict:
                     elif contact_id:
                         contact_totals = active_note_totals_by_run_contact.setdefault(run_id, {})
                         contact_totals[contact_id] = (contact_totals.get(contact_id) or Decimal("0.00")) + note_amount
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_action_approvals
+                    WHERE run_id = ANY(%s)
+                    ORDER BY created_at DESC
+                    """,
+                    (run_ids,),
+                )
+                for approval in cursor.fetchall() or []:
+                    run_id = str(approval.get("run_id") or "")
+                    run_row_id = str(approval.get("run_row_id") or "")
+                    approval_payload = {
+                        "id": str(approval.get("id") or ""),
+                        "runRowId": run_row_id,
+                        "businessActionKey": str(approval.get("business_action_key") or ""),
+                        "payloadHash": str(approval.get("payload_hash") or ""),
+                        "sourceSnapshotHash": str(approval.get("source_snapshot_hash") or ""),
+                        "status": str(approval.get("status") or ""),
+                        "notes": str(approval.get("notes") or ""),
+                        "approvedByUserId": str(approval.get("approved_by_user_id") or ""),
+                        "approvedAt": _iso(approval.get("approved_at")) or "",
+                        "postedAt": _iso(approval.get("posted_at")) or "",
+                        "verifiedAt": _iso(approval.get("verified_at")) or "",
+                        "createdAt": _iso(approval.get("created_at")) or "",
+                        "updatedAt": _iso(approval.get("updated_at")) or "",
+                    }
+                    approvals_by_run.setdefault(run_id, []).append(approval_payload)
+                    if run_row_id and run_row_id not in latest_approval_by_row:
+                        latest_approval_by_row[run_row_id] = approval_payload
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_month_closes
+                WHERE user_id = %s
+                ORDER BY month_start DESC, close_sequence DESC
+                LIMIT 24
+                """,
+                (user["id"],),
+            )
+            close_rows = cursor.fetchall() or []
+            if gate_tenant_id:
+                cursor.execute(
+                    """
+                    SELECT
+                        SUM(CASE WHEN status = 'deferred' THEN 1 ELSE 0 END) AS deferred_count,
+                        SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS ready_count,
+                        MAX(CASE WHEN status = 'deferred' THEN updated_at ELSE NULL END) AS latest_deferred_at
+                    FROM pi_clearing_deferred_events
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                    """,
+                    (user["id"], gate_tenant_id),
+                )
+                deferred_row = cursor.fetchone() or {}
+                deferred_events_summary = {
+                    "deferredCount": int(deferred_row.get("deferred_count") or 0),
+                    "readyCount": int(deferred_row.get("ready_count") or 0),
+                    "latestDeferredAt": _iso(deferred_row.get("latest_deferred_at")) or "",
+                }
         connection.commit()
     runs: list[dict] = []
     for row in run_rows:
@@ -9398,7 +10745,14 @@ def pi_clearing_payload(user: dict) -> dict:
             raw_difference = _money(item.get("rawDifference"))
             item["existingCreditNoteTotal"] = float(_money(existing_credit_total))
             item["differenceTotal"] = float(_money(raw_difference - existing_credit_total))
+            latest_approval = latest_approval_by_row.get(row_id)
+            if latest_approval:
+                item["actionApprovalStatus"] = str(latest_approval.get("status") or "")
+                item["actionBusinessKey"] = str(latest_approval.get("businessActionKey") or "")
+                item["actionApprovalUpdatedAt"] = str(latest_approval.get("updatedAt") or "")
+                item["actionApprovalNotes"] = str(latest_approval.get("notes") or "")
         payload = _pi_run_payload(row, run_rows_payload, run_credit_notes)
+        payload["actionApprovals"] = approvals_by_run.get(run_id, [])
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
         recalculated_xero_total = sum((_money(item.get("xeroTotal")) for item in run_rows_payload), start=Decimal("0.00"))
         recalculated_ignition_total = sum((_money(item.get("ignitionTotal")) for item in run_rows_payload), start=Decimal("0.00"))
@@ -9441,7 +10795,30 @@ def pi_clearing_payload(user: dict) -> dict:
             "creditNoteCandidateCount": int(recalculated_credit_note_candidate_count),
         }
         runs.append(payload)
-    return {"runs": runs}
+    close_records = [
+        {
+            "id": str(row.get("id") or ""),
+            "tenantId": str(row.get("tenant_id") or ""),
+            "monthStart": row.get("month_start").isoformat() if row.get("month_start") else "",
+            "monthEnd": row.get("month_end").isoformat() if row.get("month_end") else "",
+            "closeRunId": str(row.get("close_run_id") or ""),
+            "closeSequence": int(row.get("close_sequence") or 1),
+            "approvedByUserId": str(row.get("approved_by_user_id") or ""),
+            "approvedAt": _iso(row.get("approved_at")) or "",
+            "closedAt": _iso(row.get("closed_at")) or "",
+            "invalidatedAt": _iso(row.get("invalidated_at")) or "",
+            "invalidatedReason": str(row.get("invalidated_reason") or ""),
+            "snapshotHash": str(row.get("snapshot_hash") or ""),
+            "checks": (row.get("check_results") or {}).get("checks") if isinstance(row.get("check_results"), dict) else [],
+        }
+        for row in close_rows
+    ]
+    return {
+        "runs": runs,
+        "periodGate": period_gate_payload,
+        "closeRecords": close_records,
+        "deferredEvents": deferred_events_summary,
+    }
 
 
 async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None = None) -> dict:
@@ -9468,6 +10845,17 @@ async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None =
             if not run_row:
                 updated = pi_clearing_payload(user)
                 return {"deletedRunId": requested_run_id, "alreadyDeleted": True, "runs": updated.get("runs") or []}
+            tenant_id = str(run_row.get("tenant_id") or "").strip()
+            month_start = run_row.get("month_start")
+            month_end = run_row.get("month_end")
+            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=_pi_month_start(month_start),
+                    requested_end=month_end,
+                )
             resolved_run_id = str(run_row.get("id") or requested_run_id).strip()
         connection.commit()
 
@@ -9513,7 +10901,7 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT rr.id, rr.raw_payload
+                SELECT rr.id, rr.raw_payload, run.month_start, run.month_end, run.tenant_id
                 FROM pi_clearing_run_rows AS rr
                 JOIN pi_clearing_runs AS run ON run.id = rr.run_id
                 WHERE run.id = %s
@@ -9526,6 +10914,17 @@ async def save_pi_clearing_step1_fix(user: dict, run_id: str, run_row_id: str, p
             row = cursor.fetchone()
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing row not found for this run.")
+            tenant_id = str(row.get("tenant_id") or "").strip()
+            month_start = row.get("month_start")
+            month_end = row.get("month_end")
+            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=_pi_month_start(month_start),
+                    requested_end=month_end,
+                )
 
             raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
             step1_fix = {
@@ -9584,6 +10983,18 @@ def _pi_clearing_account_code_for_user(user: dict, payload: dict | None = None) 
     return configured or PI_CLEARING_DEFAULT_ACCOUNT_CODE
 
 
+def _pi_assert_writes_enabled_for_tenant(tenant_id: str) -> None:
+    settings = posting_settings_for_tenant(tenant_id)
+    if not bool(settings.get("piClearingWritesEnabled", True)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PI_CLEARING_WRITES_DISABLED",
+                "message": "PI Clearing write actions are disabled for this tenant. Enable writes in PI setup before posting or voiding.",
+            },
+        )
+
+
 def _pi_next_batch_number(cursor, user_id: str, tenant_id: str) -> str:
     cursor.execute(
         """
@@ -9609,6 +11020,39 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
     month_start, month_end = _pi_batch_bounds(safe_payload)
     month_label = f"{month_start.isoformat()} to {month_end.isoformat()}"
     account_code = _pi_clearing_account_code_for_user(user, safe_payload)
+    gate_connection_row = get_master_xero_connection_for_user(user["id"])
+    gate_tenant_id = str(gate_connection_row.get("tenant_id") or "").strip()
+    if not gate_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero tenant is not connected for PI Clearing.")
+    sync_job_id = _pi_record_sync_job_start(
+        user_id=str(user.get("id") or ""),
+        tenant_id=gate_tenant_id,
+        month_start=month_start,
+        month_end=month_end,
+        metadata={"trigger": "manual_run"},
+    )
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            _pi_assert_requested_open_month(
+                cursor,
+                user_id=user["id"],
+                tenant_id=gate_tenant_id,
+                requested_start=month_start,
+                requested_end=month_end,
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_deferred_events
+                SET status = %s,
+                    updated_at = NOW()
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND event_month = %s
+                  AND status = %s
+                """,
+                ("ready", user["id"], gate_tenant_id, month_start, "deferred"),
+            )
+        connection.commit()
     force_refresh_xero = bool(safe_payload.get("refreshXero"))
     include_ignition = bool(safe_payload.get("includeIgnition"))
     include_ai = bool(safe_payload.get("includeAI")) and include_ignition
@@ -9890,10 +11334,35 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         xero_credit_total=xero_credit_total,
         xero_step1=xero_step1,
     )
+    day_evidence = _pi_daily_evidence_rows(
+        month_start=month_start,
+        month_end=month_end,
+        xero_rows=xero_rows,
+        ignition_rows=ignition_rows,
+    )
+    day_complete_count = sum(
+        1
+        for item in day_evidence
+        if str(item.get("status") or "").strip().lower() in {"balanced", "no_activity_confirmed"}
+    )
+    fee_treatment = str(
+        posting_settings_for_tenant(tenant_id).get("piClearingFeeTreatment") or PI_CLEARING_FEE_TREATMENT_EXCLUDE
+    ).strip().lower() or PI_CLEARING_FEE_TREATMENT_EXCLUDE
     summary = {
         "refresh": {
             "xero": xero_refresh,
             "ignition": ignition_refresh,
+        },
+        "ruleVersion": PI_CLEARING_RULE_VERSION,
+        "postingMode": PI_CLEARING_POSTING_MODE_REVIEW,
+        "feePolicy": {
+            "treatment": fee_treatment,
+            "appliedToPiEquation": fee_treatment == PI_CLEARING_FEE_TREATMENT_INCLUDE,
+            "note": (
+                "Ignition fees are included in the PI Clearing control equation."
+                if fee_treatment == PI_CLEARING_FEE_TREATMENT_INCLUDE
+                else "Ignition fees are intentionally excluded from the PI Clearing control equation until finance approves treatment."
+            ),
         },
         "workflowMode": "full" if include_ignition else "transactions_only",
         "xeroCount": len(xero_rows),
@@ -9913,6 +11382,9 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         "dailyBalance": daily_balance,
         "xeroStep1": xero_step1,
         "step2Reconciliation": step2_reconciliation,
+        "dayEvidence": day_evidence,
+        "expectedDayCount": len(day_evidence),
+        "completedDayCount": day_complete_count,
         "finalisation": finalisation,
     }
     has_any_xero_rows = len(xero_rows) > 0
@@ -9957,6 +11429,14 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
             )
             run_row = cursor.fetchone() or {}
             run_id = str(run_row.get("id") or "")
+            _pi_update_month_state_from_run_summary(
+                cursor,
+                user_id=user["id"],
+                tenant_id=tenant_id or gate_tenant_id,
+                month_start=month_start,
+                month_end=month_end,
+                summary=summary,
+            )
             cursor.execute("DELETE FROM pi_clearing_run_rows WHERE run_id = %s", (run_id,))
             for row in rows_to_store:
                 cursor.execute(
@@ -9993,7 +11473,338 @@ async def run_pi_clearing_workflow(user: dict, payload: dict | None = None) -> d
         connection.commit()
     payload = pi_clearing_payload(user)
     current_run = next((item for item in payload.get("runs") or [] if str(item.get("id") or "") == run_id), None)
+    _pi_record_sync_job_finish(
+        job_id=sync_job_id,
+        status_value="completed",
+        metadata={
+            "runId": run_id,
+            "rowCount": len(rows_to_store),
+            "differenceCount": int(summary.get("differenceCount") or 0),
+            "workflowMode": "full" if include_ignition else "transactions_only",
+        },
+    )
     return {"run": current_run or {}}
+
+
+async def close_pi_clearing_month(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero tenant is not connected for PI Clearing.")
+
+    requested_month = str(safe_payload.get("month") or "").strip()
+    requested_start_raw = str(safe_payload.get("monthStart") or "").strip()
+    requested_start = None
+    if requested_month:
+        try:
+            requested_start = _pi_month_start(date.fromisoformat(f"{requested_month}-01"))
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month must use YYYY-MM format.") from exc
+    elif requested_start_raw:
+        requested_start = _parse_any_date(requested_start_raw)
+        if requested_start:
+            requested_start = _pi_month_start(requested_start)
+    now = utcnow()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            gate = _pi_apply_period_gate(cursor, user["id"], tenant_id)
+            open_month_start = gate.get("openMonthStart")
+            open_month_end = gate.get("openMonthEnd")
+            if not isinstance(open_month_start, date) or not isinstance(open_month_end, date):
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="PI Clearing period gate is unavailable.")
+            if requested_start is None:
+                requested_start = open_month_start
+            requested_end = _pi_month_end(requested_start)
+            _pi_assert_requested_open_month(
+                cursor,
+                user_id=user["id"],
+                tenant_id=tenant_id,
+                requested_start=requested_start,
+                requested_end=requested_end,
+            )
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_runs
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user["id"], tenant_id, requested_start),
+            )
+            run_row = cursor.fetchone() or {}
+            if not run_row:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No PI Clearing run exists for {requested_start.strftime('%Y-%m')}. Run the workflow first.",
+                )
+            summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
+            close_checks = _pi_close_predicate_checks(
+                cursor,
+                user=user,
+                tenant_id=tenant_id,
+                run_row=run_row,
+                summary=summary,
+            )
+            if not close_checks.get("canClose"):
+                failures = close_checks.get("failures") if isinstance(close_checks.get("failures"), list) else []
+                failed_codes = ", ".join(str(item.get("code") or "UNKNOWN") for item in failures)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "message": "This month is not ready to close.",
+                        "failedChecks": failures,
+                        "failedCodes": failed_codes,
+                    },
+                )
+            snapshot_hash = _pi_payload_hash(
+                {
+                    "summary": summary,
+                    "checks": close_checks.get("checks") or [],
+                    "runId": str(run_row.get("id") or ""),
+                    "monthStart": requested_start.isoformat(),
+                    "monthEnd": requested_end.isoformat(),
+                }
+            )
+            cursor.execute(
+                """
+                SELECT COALESCE(MAX(close_sequence), 0) AS max_sequence
+                FROM pi_clearing_month_closes
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                """,
+                (user["id"], tenant_id, requested_start),
+            )
+            close_sequence = int((cursor.fetchone() or {}).get("max_sequence") or 0) + 1
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_month_closes (
+                    user_id, tenant_id, month_start, month_end, close_run_id, close_sequence,
+                    approved_by_user_id, approved_at, closed_at, snapshot_hash, summary, check_results, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                """,
+                (
+                    user["id"],
+                    tenant_id,
+                    requested_start,
+                    requested_end,
+                    run_row.get("id"),
+                    close_sequence,
+                    user["id"],
+                    now,
+                    now,
+                    snapshot_hash,
+                    json.dumps(summary, default=_json_default),
+                    json.dumps(close_checks, default=_json_default),
+                    now,
+                ),
+            )
+            record_audit_event(
+                "pi_clearing_month",
+                f"{tenant_id}:{_pi_month_key(requested_start)}",
+                "MONTH_CLOSED",
+                {"tenantId": tenant_id, "month": _pi_month_key(requested_start), "runId": str(run_row.get("id") or "")},
+                user["id"],
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_states
+                SET status = %s,
+                    close_run_id = %s,
+                    closed_at = %s,
+                    updated_at = %s
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                """,
+                (
+                    PI_CLEARING_MONTH_STATUS_CLOSED,
+                    run_row.get("id"),
+                    now,
+                    now,
+                    user["id"],
+                    tenant_id,
+                    requested_start,
+                ),
+            )
+            next_month_start = _pi_add_months(requested_start, 1)
+            cursor.execute(
+                """
+                INSERT INTO pi_clearing_month_states (
+                    user_id, tenant_id, month_start, month_end, status, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, tenant_id, month_start) DO UPDATE
+                SET status = CASE
+                    WHEN pi_clearing_month_states.status = %s THEN %s
+                    ELSE pi_clearing_month_states.status
+                END,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    user["id"],
+                    tenant_id,
+                    next_month_start,
+                    _pi_month_end(next_month_start),
+                    PI_CLEARING_MONTH_STATUS_OPEN,
+                    now,
+                    now,
+                    PI_CLEARING_MONTH_STATUS_LOCKED,
+                    PI_CLEARING_MONTH_STATUS_OPEN,
+                ),
+            )
+            record_audit_event(
+                "pi_clearing_month",
+                f"{tenant_id}:{_pi_month_key(next_month_start)}",
+                "NEXT_MONTH_UNLOCKED",
+                {"tenantId": tenant_id, "month": _pi_month_key(next_month_start)},
+                user["id"],
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_runs
+                SET status = %s,
+                    updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                ("closed", now, run_row.get("id"), user["id"]),
+            )
+            gate_after_close = _pi_apply_period_gate(cursor, user["id"], tenant_id)
+        connection.commit()
+
+    updated = pi_clearing_payload(user)
+    return {
+        "closed": True,
+        "closedMonth": _pi_month_key(requested_start),
+        "nextOpenMonth": str(gate_after_close.get("openMonth") or ""),
+        "closeChecks": close_checks.get("checks") if isinstance(close_checks.get("checks"), list) else [],
+        "periodGate": updated.get("periodGate") if isinstance(updated.get("periodGate"), dict) else {},
+        "runs": updated.get("runs") or [],
+    }
+
+
+async def reopen_pi_clearing_month(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xero tenant is not connected for PI Clearing.")
+    requested_month = str(safe_payload.get("month") or "").strip()
+    reopen_reason = str(safe_payload.get("reason") or "manual_reopen").strip() or "manual_reopen"
+    if not requested_month:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month must use YYYY-MM format.")
+    try:
+        requested_start = _pi_month_start(date.fromisoformat(f"{requested_month}-01"))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month must use YYYY-MM format.") from exc
+    now = utcnow()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_month_states
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                LIMIT 1
+                """,
+                (user["id"], tenant_id, requested_start),
+            )
+            month_row = cursor.fetchone() or {}
+            if not month_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Month {requested_month} is not initialised.")
+            status_value = str(month_row.get("status") or "").strip().lower()
+            if status_value not in {PI_CLEARING_MONTH_STATUS_CLOSED, PI_CLEARING_MONTH_STATUS_REOPENED}:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Month {requested_month} cannot be reopened from status '{status_value or 'unknown'}'.",
+                )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_states
+                SET status = %s,
+                    reopened_at = %s,
+                    reopen_reason = %s,
+                    updated_at = %s
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                """,
+                (
+                    PI_CLEARING_MONTH_STATUS_REOPENED,
+                    now,
+                    reopen_reason,
+                    now,
+                    user["id"],
+                    tenant_id,
+                    requested_start,
+                ),
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_closes
+                SET invalidated_at = %s,
+                    invalidated_reason = %s
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start = %s
+                  AND invalidated_at IS NULL
+                """,
+                (now, reopen_reason, user["id"], tenant_id, requested_start),
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_states
+                SET status = %s,
+                    updated_at = %s
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND month_start > %s
+                  AND status <> %s
+                """,
+                (
+                    PI_CLEARING_MONTH_STATUS_LOCKED,
+                    now,
+                    user["id"],
+                    tenant_id,
+                    requested_start,
+                    PI_CLEARING_MONTH_STATUS_CLOSED,
+                ),
+            )
+            record_audit_event(
+                "pi_clearing_month",
+                f"{tenant_id}:{requested_month}",
+                "MONTH_REOPENED",
+                {"tenantId": tenant_id, "month": requested_month, "reason": reopen_reason},
+                user["id"],
+            )
+            record_audit_event(
+                "pi_clearing_month",
+                f"{tenant_id}:{requested_month}",
+                "NEXT_MONTH_RELOCKED",
+                {"tenantId": tenant_id, "fromMonth": requested_month},
+                user["id"],
+            )
+            gate = _pi_apply_period_gate(cursor, user["id"], tenant_id)
+        connection.commit()
+    updated = pi_clearing_payload(user)
+    return {
+        "reopened": True,
+        "month": requested_month,
+        "reason": reopen_reason,
+        "nextOpenMonth": str(gate.get("openMonth") or ""),
+        "periodGate": updated.get("periodGate") if isinstance(updated.get("periodGate"), dict) else {},
+        "runs": updated.get("runs") or [],
+    }
 
 
 def pi_clearing_dry_run_pdf(
@@ -10017,6 +11828,17 @@ def pi_clearing_dry_run_pdf(
             run_row = cursor.fetchone() or {}
             if not run_row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            tenant_id = str(run_row.get("tenant_id") or "").strip()
+            month_start = run_row.get("month_start")
+            month_end = run_row.get("month_end")
+            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=_pi_month_start(month_start),
+                    requested_end=month_end,
+                )
             query = """
                 SELECT *
                 FROM pi_clearing_run_rows
@@ -10118,6 +11940,347 @@ def pi_clearing_dry_run_pdf(
     return buffer.getvalue(), filename
 
 
+def pi_clearing_month_close_export(user: dict, close_id: str) -> tuple[bytes, str]:
+    close_record_id = str(close_id or "").strip()
+    if not close_record_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month close id is required.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM pi_clearing_month_closes
+                WHERE id = %s
+                  AND user_id = %s
+                LIMIT 1
+                """,
+                (close_record_id, user["id"]),
+            )
+            close_row = cursor.fetchone() or {}
+            if not close_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing month close record not found.")
+            close_summary = close_row.get("summary") if isinstance(close_row.get("summary"), dict) else {}
+            close_checks = close_row.get("check_results") if isinstance(close_row.get("check_results"), dict) else {}
+            run_id = str(close_row.get("close_run_id") or "").strip()
+            run_rows: list[dict] = []
+            credit_notes: list[dict] = []
+            action_approvals: list[dict] = []
+            run_row: dict = {}
+            if run_id:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_runs
+                    WHERE id = %s
+                      AND user_id = %s
+                    LIMIT 1
+                    """,
+                    (run_id, user["id"]),
+                )
+                run_row = cursor.fetchone() or {}
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_run_rows
+                    WHERE run_id = %s
+                      AND user_id = %s
+                    ORDER BY ABS(difference_total) DESC, client_name ASC
+                    """,
+                    (run_id, user["id"]),
+                )
+                run_rows = cursor.fetchall() or []
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_credit_notes
+                    WHERE run_id = %s
+                      AND user_id = %s
+                    ORDER BY created_at DESC
+                    """,
+                    (run_id, user["id"]),
+                )
+                credit_notes = cursor.fetchall() or []
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM pi_clearing_action_approvals
+                    WHERE run_id = %s
+                      AND user_id = %s
+                    ORDER BY created_at DESC
+                    """,
+                    (run_id, user["id"]),
+                )
+                action_approvals = cursor.fetchall() or []
+        connection.commit()
+
+    run_rows_payload = [
+        {
+            "id": str(row.get("id") or ""),
+            "clientName": str(row.get("client_name") or ""),
+            "xeroContactId": str(row.get("xero_contact_id") or ""),
+            "xeroTotal": float(_money(row.get("xero_total"))),
+            "ignitionTotal": float(_money(row.get("ignition_total"))),
+            "differenceTotal": float(_money(row.get("difference_total"))),
+            "recommendation": str(row.get("recommendation") or ""),
+            "resolutionStatus": str(row.get("resolution_status") or ""),
+            "raw": row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {},
+            "createdAt": _iso(row.get("created_at")) or "",
+            "updatedAt": _iso(row.get("updated_at")) or "",
+        }
+        for row in run_rows
+    ]
+    credit_notes_payload = [
+        {
+            "id": str(row.get("id") or ""),
+            "runRowId": str(row.get("run_row_id") or ""),
+            "xeroContactId": str(row.get("xero_contact_id") or ""),
+            "xeroDocumentId": str(row.get("xero_credit_note_id") or ""),
+            "xeroDocumentNumber": str(row.get("xero_credit_note_number") or ""),
+            "documentType": str(((row.get("raw_payload") or {}).get("documentType") if isinstance(row.get("raw_payload"), dict) else "") or "invoice"),
+            "amount": float(_money(row.get("amount"))),
+            "currencyCode": str(row.get("currency_code") or "GBP"),
+            "accountCode": str(row.get("account_code") or ""),
+            "businessActionKey": str(row.get("business_action_key") or ""),
+            "idempotencyKey": str(row.get("idempotency_key") or ""),
+            "payloadHash": str(row.get("payload_hash") or ""),
+            "status": str(row.get("status") or ""),
+            "createdAt": _iso(row.get("created_at")) or "",
+            "updatedAt": _iso(row.get("updated_at")) or "",
+        }
+        for row in credit_notes
+    ]
+    action_approvals_payload = [
+        {
+            "id": str(row.get("id") or ""),
+            "runRowId": str(row.get("run_row_id") or ""),
+            "businessActionKey": str(row.get("business_action_key") or ""),
+            "payloadHash": str(row.get("payload_hash") or ""),
+            "sourceSnapshotHash": str(row.get("source_snapshot_hash") or ""),
+            "status": str(row.get("status") or ""),
+            "notes": str(row.get("notes") or ""),
+            "approvedByUserId": str(row.get("approved_by_user_id") or ""),
+            "approvedAt": _iso(row.get("approved_at")) or "",
+            "postedAt": _iso(row.get("posted_at")) or "",
+            "verifiedAt": _iso(row.get("verified_at")) or "",
+            "createdAt": _iso(row.get("created_at")) or "",
+            "updatedAt": _iso(row.get("updated_at")) or "",
+        }
+        for row in action_approvals
+    ]
+    export_payload = {
+        "closeRecord": {
+            "id": str(close_row.get("id") or ""),
+            "tenantId": str(close_row.get("tenant_id") or ""),
+            "monthStart": close_row.get("month_start").isoformat() if close_row.get("month_start") else "",
+            "monthEnd": close_row.get("month_end").isoformat() if close_row.get("month_end") else "",
+            "closeRunId": run_id,
+            "closeSequence": int(close_row.get("close_sequence") or 1),
+            "approvedByUserId": str(close_row.get("approved_by_user_id") or ""),
+            "approvedAt": _iso(close_row.get("approved_at")) or "",
+            "closedAt": _iso(close_row.get("closed_at")) or "",
+            "invalidatedAt": _iso(close_row.get("invalidated_at")) or "",
+            "invalidatedReason": str(close_row.get("invalidated_reason") or ""),
+            "snapshotHash": str(close_row.get("snapshot_hash") or ""),
+            "checks": close_checks.get("checks") if isinstance(close_checks.get("checks"), list) else [],
+            "failures": close_checks.get("failures") if isinstance(close_checks.get("failures"), list) else [],
+        },
+        "run": {
+            "id": str(run_row.get("id") or ""),
+            "batchNumber": str(run_row.get("batch_number") or ""),
+            "status": str(run_row.get("status") or ""),
+            "monthStart": run_row.get("month_start").isoformat() if run_row.get("month_start") else "",
+            "monthEnd": run_row.get("month_end").isoformat() if run_row.get("month_end") else "",
+            "accountCode": str(run_row.get("account_code") or ""),
+            "summary": close_summary,
+        },
+        "dayEvidence": close_summary.get("dayEvidence") if isinstance(close_summary.get("dayEvidence"), list) else [],
+        "runRows": run_rows_payload,
+        "creditNotes": credit_notes_payload,
+        "actionApprovals": action_approvals_payload,
+        "exportedAt": _iso(utcnow()) or "",
+        "exportedByUserId": str(user.get("id") or ""),
+    }
+    filename_month = close_row.get("month_start").strftime("%Y-%m") if close_row.get("month_start") else "month"
+    filename = f"pi-clearing-close-export-{filename_month}-{close_record_id[:8]}.json"
+    return json.dumps(export_payload, default=_json_default, indent=2).encode("utf-8"), filename
+
+
+async def approve_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    selected_row_ids = [str(item).strip() for item in (safe_payload.get("rowIds") or []) if str(item).strip()]
+    notes = str(safe_payload.get("notes") or "").strip()
+    requested_account_code = str(safe_payload.get("accountCode") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM pi_clearing_runs WHERE id = %s AND user_id = %s",
+                (run_id, user["id"]),
+            )
+            run_row = cursor.fetchone() or {}
+            if not run_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            tenant_id = str(run_row.get("tenant_id") or "").strip()
+            month_start = run_row.get("month_start")
+            month_end = run_row.get("month_end")
+            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=_pi_month_start(month_start),
+                    requested_end=month_end,
+                )
+            run_summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
+            finalisation = _pi_finalisation_state_from_summary(run_summary)
+            run_status_after_approval = "completed" if finalisation.get("canFinalise") else "ready_for_posting"
+            account_code = requested_account_code or str(run_row.get("account_code") or PI_CLEARING_DEFAULT_ACCOUNT_CODE)
+            query = """
+                SELECT *
+                FROM pi_clearing_run_rows
+                WHERE run_id = %s
+                  AND user_id = %s
+                  AND ABS(difference_total) > 0.005
+                  AND COALESCE(resolution_status, 'pending') NOT IN ('credit_note_created', 'balanced_by_existing_credit_note')
+            """
+            params: list = [run_id, user["id"]]
+            if selected_row_ids:
+                query += " AND id = ANY(%s)"
+                params.append(selected_row_ids)
+            query += " ORDER BY ABS(difference_total) DESC, client_name ASC"
+            cursor.execute(query, tuple(params))
+            target_rows = cursor.fetchall() or []
+        connection.commit()
+    if not target_rows:
+        return {"approved": [], "skipped": [], "message": "No eligible rows were selected for approval."}
+
+    connection_row = get_master_xero_connection_for_user(user["id"])
+    account_code = await _pi_resolve_selected_pi_account(connection_row, account_code)
+    approved: list[dict] = []
+    skipped: list[dict] = []
+    for row in target_rows:
+        row_id = str(row.get("id") or "")
+        contact_id = str(row.get("xero_contact_id") or "").strip()
+        amount = _money(row.get("difference_total")).copy_abs()
+        raw_payload = row.get("raw_payload") if isinstance(row.get("raw_payload"), dict) else {}
+        step1_fix = raw_payload.get("step1AiFix") if isinstance(raw_payload.get("step1AiFix"), dict) else {}
+        has_refund = _money(raw_payload.get("ignitionReversalTotal")) > Decimal("0.00")
+        document_type = "invoice" if has_refund else "credit_note"
+        policy_allowed, policy_code, policy_reason, policy_meta = _pi_posting_policy_for_row(
+            row,
+            step1_fix,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+        )
+        if not policy_allowed:
+            skipped.append({"runRowId": row_id, "reason": policy_reason, "policyCode": policy_code})
+            continue
+        if not contact_id:
+            skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row.", "policyCode": "MISSING_CONTACT"})
+            continue
+        note_date = _parse_optional_iso_date(step1_fix.get("targetDate")) if step1_fix else None
+        if note_date is None:
+            note_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
+        note_date = note_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
+        collection_ids = [
+            str(item).strip()
+            for item in (
+                step1_fix.get("ignitionPaymentIds")
+                if isinstance(step1_fix.get("ignitionPaymentIds"), list)
+                else row.get("ignition_payment_ids")
+            ) or []
+            if str(item).strip()
+        ]
+        if not collection_ids:
+            collection_ids = [str(item).strip() for item in (raw_payload.get("ignitionPaymentIds") or []) if str(item).strip()]
+        business_action_key = _pi_build_business_action_key(
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            run_id=run_id,
+            run_row_id=row_id,
+            action_type=PI_CLEARING_ALLOWED_POST_ACTION,
+            payout_id=str(step1_fix.get("payoutId") or raw_payload.get("payoutId") or ""),
+            collection_ids=collection_ids,
+            xero_contact_id=contact_id,
+            amount=amount,
+            note_date=note_date,
+        )
+        adjustment_payload = {
+            "Type": "ACCREC" if has_refund else "ACCRECCREDIT",
+            "Contact": {"ContactID": contact_id},
+            "Date": note_date.isoformat(),
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "Reference": "PI Refund Adjustment" if has_refund else "Client Payment",
+            "LineItems": [
+                {
+                    "Description": "PI Refund Adjustment through Jenius AI" if has_refund else "PI Adjustment through Jenius AI",
+                    "Quantity": 1,
+                    "UnitAmount": float(amount),
+                    "AccountCode": account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+            "CurrencyCode": str(row.get("currency_code") or "GBP"),
+        }
+        payload_hash = _pi_payload_hash(adjustment_payload)
+        source_snapshot_hash = _pi_action_source_snapshot_hash(
+            run_row_id=row_id,
+            row=row,
+            step1_fix=step1_fix,
+            amount=amount,
+            contact_id=contact_id,
+            note_date=note_date,
+            account_code=account_code,
+            document_type=document_type,
+        )
+        _pi_record_action_approval(
+            run_id=run_id,
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=payload_hash,
+            source_snapshot_hash=source_snapshot_hash,
+            status_value=PI_CLEARING_ACTION_STATUS_APPROVED,
+            approved_by_user_id=str(user.get("id") or ""),
+            notes=notes,
+        )
+        record_audit_event(
+            "pi_clearing_action",
+            business_action_key,
+            "ACTION_APPROVED",
+            {"runId": run_id, "runRowId": row_id, "policyCode": policy_code, "reasonCode": str(policy_meta.get("reasonCode") or "")},
+            user["id"],
+        )
+        approved.append(
+            {
+                "runRowId": row_id,
+                "businessActionKey": business_action_key,
+                "payloadHash": payload_hash,
+                "sourceSnapshotHash": source_snapshot_hash,
+                "policyCode": policy_code,
+                "reasonCode": str(policy_meta.get("reasonCode") or ""),
+            }
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE pi_clearing_runs
+                SET status = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (run_status_after_approval, run_id, user["id"]),
+            )
+        connection.commit()
+    updated = pi_clearing_payload(user)
+    return {"approved": approved, "skipped": skipped, "runs": updated.get("runs") or []}
+
+
 async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict | None = None) -> dict:
     safe_payload = payload if isinstance(payload, dict) else {}
     if not bool(safe_payload.get("confirmed")):
@@ -10133,6 +12296,17 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             run_row = cursor.fetchone() or {}
             if not run_row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing run not found.")
+            tenant_id = str(run_row.get("tenant_id") or "").strip()
+            month_start = run_row.get("month_start")
+            month_end = run_row.get("month_end")
+            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=tenant_id,
+                    requested_start=_pi_month_start(month_start),
+                    requested_end=month_end,
+                )
             run_summary = run_row.get("summary") if isinstance(run_row.get("summary"), dict) else {}
             finalisation = _pi_finalisation_state_from_summary(run_summary)
             run_status_after_credit_note = "completed" if finalisation.get("canFinalise") else "credit_notes_created"
@@ -10161,42 +12335,10 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         connection.commit()
     if not target_rows:
         return {"created": [], "skipped": [], "message": "No eligible non-zero difference rows were selected."}
+    _pi_assert_writes_enabled_for_tenant(str(run_row.get("tenant_id") or ""))
 
     connection_row = get_master_xero_connection_for_user(user["id"])
-    xero_accounts = await _fetch_xero_chart_of_accounts(connection_row)
-    account_by_code = {str(account.get("code") or "").strip().lower(): account for account in xero_accounts}
-    account_by_name = {str(account.get("name") or "").strip().lower(): account for account in xero_accounts}
-
-    def _resolve_selected_pi_account(candidate_value: str) -> str:
-        raw_value = str(candidate_value or "").strip()
-        if not raw_value:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Select a PI nominal account before posting the adjustment.",
-            )
-        selected_account = account_by_code.get(raw_value.lower())
-        if selected_account is None:
-            selected_account = account_by_name.get(raw_value.lower())
-        if selected_account is None and "·" in raw_value:
-            code_hint = raw_value.split("·", 1)[0].strip().lower()
-            if code_hint:
-                selected_account = account_by_code.get(code_hint)
-        if selected_account is None:
-            fuzzy = [
-                account for account in xero_accounts
-                if raw_value.lower() in str(account.get("code") or "").strip().lower()
-                or raw_value.lower() in str(account.get("name") or "").strip().lower()
-            ]
-            if len(fuzzy) == 1:
-                selected_account = fuzzy[0]
-        if selected_account is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"PI nominal '{raw_value}' is not in the connected Xero chart of accounts. Re-select the PI nominal in Batch setup.",
-            )
-        return str(selected_account.get("code") or "").strip()
-
-    account_code = _resolve_selected_pi_account(account_code)
+    account_code = await _pi_resolve_selected_pi_account(connection_row, account_code)
     created: list[dict] = []
     skipped: list[dict] = []
     for row in target_rows:
@@ -10221,6 +12363,23 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             contact_id = fix_contact_id
         has_refund = _money(raw_payload.get("ignitionReversalTotal")) > Decimal("0.00")
         document_type = "invoice" if has_refund else "credit_note"
+        policy_allowed, policy_code, policy_reason, policy_meta = _pi_posting_policy_for_row(
+            row,
+            step1_fix,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+        )
+        if not policy_allowed:
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": policy_reason,
+                    "policyCode": policy_code,
+                    "reasonCode": str(policy_meta.get("reasonCode") or ""),
+                    "policyTreatment": str(policy_meta.get("treatment") or ""),
+                }
+            )
+            continue
         payout_date = _parse_optional_iso_date(step1_fix.get("targetDate")) if step1_fix else None
         if payout_date is None:
             payout_date = _parse_optional_iso_date(raw_payload.get("payoutDate"))
@@ -10249,6 +12408,15 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         if not contact_id:
             skipped.append({"runRowId": row_id, "reason": "No Xero contact is mapped for this row."})
             continue
+        if document_type != "invoice":
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Only allowlisted recovery invoices can be posted in this release.",
+                    "policyCode": "RULE_NOT_ALLOWLISTED",
+                }
+            )
+            continue
         note_date = payout_date or run_row.get("month_end") or run_row.get("month_start") or utcnow().date()
         line_description = str(step1_fix.get("description") or "").strip() if step1_fix else ""
         if not line_description:
@@ -10259,6 +12427,30 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             line_description = f"{line_description} · {payout_line_client}"
         if payout_identifier and payout_identifier.lower() not in line_description.lower():
             line_description = f"{line_description} · {payout_identifier}"
+        collection_ids = [
+            str(item).strip()
+            for item in (
+                step1_fix.get("ignitionPaymentIds")
+                if isinstance(step1_fix.get("ignitionPaymentIds"), list)
+                else row.get("ignition_payment_ids")
+            ) or []
+            if str(item).strip()
+        ]
+        if not collection_ids:
+            collection_ids = [str(item).strip() for item in (raw_payload.get("ignitionPaymentIds") or []) if str(item).strip()]
+        business_action_key = _pi_build_business_action_key(
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            run_id=run_id,
+            run_row_id=row_id,
+            action_type=PI_CLEARING_ALLOWED_POST_ACTION,
+            payout_id=payout_identifier or str(raw_payload.get("payoutId") or ""),
+            collection_ids=collection_ids,
+            xero_contact_id=contact_id,
+            amount=amount,
+            note_date=note_date,
+        )
+        idempotency_key = f"pi-clearing-{business_action_key[:32]}"
         adjustment_payload = {
             "Type": "ACCREC" if has_refund else "ACCRECCREDIT",
             "Contact": {"ContactID": contact_id},
@@ -10277,10 +12469,126 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
             ],
             "CurrencyCode": currency_code,
         }
+        payload_hash = _pi_payload_hash(adjustment_payload)
+        source_snapshot_hash = _pi_action_source_snapshot_hash(
+            run_row_id=row_id,
+            row=row,
+            step1_fix=step1_fix,
+            amount=amount,
+            contact_id=contact_id,
+            note_date=note_date,
+            account_code=account_code,
+            document_type=document_type,
+        )
+        approval_row = _pi_get_action_approval(
+            user_id=str(user.get("id") or ""),
+            business_action_key=business_action_key,
+        )
+        approval_status = str(approval_row.get("status") or "").strip().upper()
+        if approval_status != PI_CLEARING_ACTION_STATUS_APPROVED:
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Approval is required before posting this action.",
+                    "policyCode": "APPROVAL_REQUIRED",
+                    "businessActionKey": business_action_key,
+                }
+            )
+            continue
+        approved_payload_hash = str(approval_row.get("payload_hash") or "").strip()
+        approved_source_hash = str(approval_row.get("source_snapshot_hash") or "").strip()
+        if approved_payload_hash and approved_payload_hash != payload_hash:
+            _pi_record_action_approval(
+                run_id=run_id,
+                row_id=row_id,
+                user_id=str(user.get("id") or ""),
+                tenant_id=str(run_row.get("tenant_id") or ""),
+                business_action_key=business_action_key,
+                payload_hash=payload_hash,
+                source_snapshot_hash=source_snapshot_hash,
+                status_value=PI_CLEARING_ACTION_STATUS_SUPERSEDED,
+                notes="Payload changed after approval. Re-approve before posting.",
+            )
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Approved payload has changed. Re-approve before posting.",
+                    "policyCode": "APPROVAL_SUPERSEDED",
+                    "businessActionKey": business_action_key,
+                }
+            )
+            continue
+        if approved_source_hash and approved_source_hash != source_snapshot_hash:
+            _pi_record_action_approval(
+                run_id=run_id,
+                row_id=row_id,
+                user_id=str(user.get("id") or ""),
+                tenant_id=str(run_row.get("tenant_id") or ""),
+                business_action_key=business_action_key,
+                payload_hash=payload_hash,
+                source_snapshot_hash=source_snapshot_hash,
+                status_value=PI_CLEARING_ACTION_STATUS_SUPERSEDED,
+                notes="Source snapshot changed after approval. Re-approve before posting.",
+            )
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Source snapshot changed after approval. Re-approve before posting.",
+                    "policyCode": "APPROVAL_SUPERSEDED",
+                    "businessActionKey": business_action_key,
+                }
+            )
+            continue
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, xero_credit_note_id, xero_credit_note_number, status
+                    FROM pi_clearing_credit_notes
+                    WHERE user_id = %s
+                      AND business_action_key = %s
+                    LIMIT 1
+                    """,
+                    (user["id"], business_action_key),
+                )
+                existing_action = cursor.fetchone() or {}
+            connection.commit()
+        existing_action_id = str(existing_action.get("id") or "").strip()
+        if existing_action_id:
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Duplicate action prevented by business action key.",
+                    "policyCode": "DUPLICATE_ACTION",
+                    "existingActionId": existing_action_id,
+                    "existingDocumentId": str(existing_action.get("xero_credit_note_id") or "").strip(),
+                    "existingDocumentNumber": str(existing_action.get("xero_credit_note_number") or "").strip(),
+                    "existingStatus": str(existing_action.get("status") or "").strip(),
+                }
+            )
+            continue
+        _pi_record_action_approval(
+            run_id=run_id,
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=payload_hash,
+            source_snapshot_hash=source_snapshot_hash,
+            status_value=PI_CLEARING_ACTION_STATUS_POSTING,
+            notes="Posting request sent to Xero.",
+        )
+        record_audit_event(
+            "pi_clearing_action",
+            business_action_key,
+            "ACTION_POST_STARTED",
+            {"runId": run_id, "runRowId": row_id, "payloadHash": payload_hash},
+            user["id"],
+        )
         xero_response = (
-            await create_sales_invoice(connection_row, adjustment_payload)
+            await create_sales_invoice(connection_row, adjustment_payload, idempotency_key=idempotency_key)
             if has_refund
-            else await create_credit_note(connection_row, adjustment_payload)
+            else await create_credit_note(connection_row, adjustment_payload, idempotency_key=idempotency_key)
         )
         created_row = ((xero_response or {}).get("Invoices") or [{}])[0] if has_refund else ((xero_response or {}).get("CreditNotes") or [{}])[0]
         xero_document_id = str(
@@ -10291,6 +12599,17 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
         ).strip()
         xero_document_number = str(created_row.get("InvoiceNumber") or created_row.get("CreditNoteNumber") or "").strip()
         if not xero_document_id:
+            _pi_record_action_approval(
+                run_id=run_id,
+                row_id=row_id,
+                user_id=str(user.get("id") or ""),
+                tenant_id=str(run_row.get("tenant_id") or ""),
+                business_action_key=business_action_key,
+                payload_hash=payload_hash,
+                source_snapshot_hash=source_snapshot_hash,
+                status_value=PI_CLEARING_ACTION_STATUS_FAILED_RETRYABLE,
+                notes="Xero response missing document id.",
+            )
             skipped.append(
                 {
                     "runRowId": row_id,
@@ -10300,59 +12619,130 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 }
             )
             continue
+        _pi_record_action_approval(
+            run_id=run_id,
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=payload_hash,
+            source_snapshot_hash=source_snapshot_hash,
+            status_value=PI_CLEARING_ACTION_STATUS_POSTED_UNVERIFIED,
+            notes="Xero document created; awaiting independent verification.",
+        )
         now = utcnow()
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO pi_clearing_credit_notes (
-                        run_id, run_row_id, user_id, xero_contact_id, xero_credit_note_id, xero_credit_note_number,
-                        credit_note_date, amount, currency_code, account_code, status, raw_payload, created_at, updated_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                    """,
-                    (
-                        run_id,
-                        row_id,
-                        user["id"],
-                        contact_id,
-                        xero_document_id,
-                        xero_document_number,
-                        note_date,
-                        amount,
-                        currency_code,
-                        account_code,
-                        "created",
-                        json.dumps(
-                            {
-                                "documentType": document_type,
-                                "payload": xero_response or {},
-                            },
-                            default=_json_default,
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO pi_clearing_credit_notes (
+                            run_id, run_row_id, user_id, xero_contact_id, xero_credit_note_id, xero_credit_note_number,
+                            credit_note_date, amount, currency_code, account_code, business_action_key, idempotency_key,
+                            payload_hash, status, raw_payload, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                        """,
+                        (
+                            run_id,
+                            row_id,
+                            user["id"],
+                            contact_id,
+                            xero_document_id,
+                            xero_document_number,
+                            note_date,
+                            amount,
+                            currency_code,
+                            account_code,
+                            business_action_key,
+                            idempotency_key,
+                            payload_hash,
+                            "created",
+                            json.dumps(
+                                {
+                                    "documentType": document_type,
+                                    "postingMode": PI_CLEARING_POSTING_MODE_REVIEW,
+                                "policyCode": policy_code,
+                                "reasonCode": str(policy_meta.get("reasonCode") or ""),
+                                "policyTreatment": str(policy_meta.get("treatment") or ""),
+                                "ruleVersion": PI_CLEARING_RULE_VERSION,
+                                "businessActionKey": business_action_key,
+                                "idempotencyKey": idempotency_key,
+                                    "payloadHash": payload_hash,
+                                    "payload": xero_response or {},
+                                },
+                                default=_json_default,
+                            ),
+                            now,
+                            now,
                         ),
-                        now,
-                        now,
-                    ),
-                )
-                cursor.execute(
-                    """
-                    UPDATE pi_clearing_run_rows
-                    SET resolution_status = %s,
-                        updated_at = %s
-                    WHERE id = %s
-                    """,
-                    ("credit_note_created", now, row_id),
-                )
-                cursor.execute(
-                    """
-                    UPDATE pi_clearing_runs
-                    SET status = %s,
-                        updated_at = %s
-                    WHERE id = %s
-                    """,
-                    (run_status_after_credit_note, now, run_id),
-                )
-            connection.commit()
+                    )
+                    cursor.execute(
+                        """
+                        UPDATE pi_clearing_run_rows
+                        SET resolution_status = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        ("credit_note_created", now, row_id),
+                    )
+                    cursor.execute(
+                        """
+                        UPDATE pi_clearing_runs
+                        SET status = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (run_status_after_credit_note, now, run_id),
+                    )
+                connection.commit()
+        except pg_errors.UniqueViolation:
+            _pi_record_action_approval(
+                run_id=run_id,
+                row_id=row_id,
+                user_id=str(user.get("id") or ""),
+                tenant_id=str(run_row.get("tenant_id") or ""),
+                business_action_key=business_action_key,
+                payload_hash=payload_hash,
+                source_snapshot_hash=source_snapshot_hash,
+                status_value=PI_CLEARING_ACTION_STATUS_VERIFIED,
+                notes="Duplicate prevented by unique business key; existing action reused.",
+            )
+            existing_action = _pi_find_existing_credit_note_action(
+                user_id=str(user.get("id") or ""),
+                business_action_key=business_action_key,
+                idempotency_key=idempotency_key,
+            )
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Duplicate action prevented by unique key during concurrent processing.",
+                    "policyCode": "DUPLICATE_ACTION",
+                    "existingActionId": str(existing_action.get("id") or "").strip(),
+                    "existingDocumentId": str(existing_action.get("xero_credit_note_id") or "").strip(),
+                    "existingDocumentNumber": str(existing_action.get("xero_credit_note_number") or "").strip(),
+                    "existingStatus": str(existing_action.get("status") or "").strip(),
+                }
+            )
+            continue
+        _pi_record_action_approval(
+            run_id=run_id,
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(run_row.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=payload_hash,
+            source_snapshot_hash=source_snapshot_hash,
+            status_value=PI_CLEARING_ACTION_STATUS_VERIFIED,
+            notes="Post stored and row marked resolved.",
+        )
+        record_audit_event(
+            "pi_clearing_action",
+            business_action_key,
+            "VERIFY_RESULT",
+            {"runId": run_id, "runRowId": row_id, "documentId": xero_document_id, "status": "VERIFIED"},
+            user["id"],
+        )
         created.append(
             {
                 "runRowId": row_id,
@@ -10363,11 +12753,125 @@ async def apply_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict 
                 "currencyCode": currency_code,
                 "accountCode": account_code,
                 "description": line_description,
+                "businessActionKey": business_action_key,
+                "idempotencyKey": idempotency_key,
+                "payloadHash": payload_hash,
+                "policyCode": policy_code,
+                "reasonCode": str(policy_meta.get("reasonCode") or ""),
+                "policyTreatment": str(policy_meta.get("treatment") or ""),
             }
         )
 
     updated = pi_clearing_payload(user)
     return {"created": created, "skipped": skipped, "runs": updated.get("runs") or []}
+
+
+async def retry_pi_clearing_credit_notes(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    selected_row_ids = [str(item).strip() for item in (safe_payload.get("rowIds") or []) if str(item).strip()]
+    if not selected_row_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one row to retry.")
+    prepared: list[dict] = []
+    skipped: list[dict] = []
+    for row_id in selected_row_ids:
+        approval = _pi_get_latest_action_approval_for_row(
+            user_id=str(user.get("id") or ""),
+            run_id=str(run_id or ""),
+            run_row_id=row_id,
+        )
+        if not approval:
+            skipped.append({"runRowId": row_id, "reason": "No prior action approval exists for this row."})
+            continue
+        current_status = str(approval.get("status") or "").strip().upper()
+        if current_status != PI_CLEARING_ACTION_STATUS_FAILED_RETRYABLE:
+            skipped.append(
+                {
+                    "runRowId": row_id,
+                    "reason": "Only FAILED_RETRYABLE actions can be retried.",
+                    "status": current_status,
+                }
+            )
+            continue
+        business_action_key = str(approval.get("business_action_key") or "").strip()
+        payload_hash = str(approval.get("payload_hash") or "").strip()
+        source_snapshot_hash = str(approval.get("source_snapshot_hash") or "").strip()
+        _pi_record_action_approval(
+            run_id=str(run_id or ""),
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(approval.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=payload_hash,
+            source_snapshot_hash=source_snapshot_hash,
+            status_value=PI_CLEARING_ACTION_STATUS_APPROVED,
+            approved_by_user_id=str(user.get("id") or ""),
+            notes="Manual retry requested from PI Clearing workspace.",
+        )
+        record_audit_event(
+            "pi_clearing_action",
+            business_action_key,
+            "ACTION_RETRY_REQUESTED",
+            {"runId": run_id, "runRowId": row_id},
+            user["id"],
+        )
+        prepared.append({"runRowId": row_id, "businessActionKey": business_action_key})
+    if not prepared:
+        updated = pi_clearing_payload(user)
+        return {"prepared": [], "created": [], "skipped": skipped, "runs": updated.get("runs") or []}
+    apply_payload = {
+        "confirmed": True,
+        "rowIds": [item.get("runRowId") for item in prepared if str(item.get("runRowId") or "").strip()],
+    }
+    if "accountCode" in safe_payload:
+        apply_payload["accountCode"] = str(safe_payload.get("accountCode") or "").strip()
+    apply_result = await apply_pi_clearing_credit_notes(user, run_id, apply_payload)
+    return {
+        "prepared": prepared,
+        "created": apply_result.get("created") or [],
+        "skipped": [*skipped, *(apply_result.get("skipped") or [])],
+        "runs": apply_result.get("runs") or [],
+    }
+
+
+async def mark_pi_clearing_credit_notes_failed_manual(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    selected_row_ids = [str(item).strip() for item in (safe_payload.get("rowIds") or []) if str(item).strip()]
+    if not selected_row_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one row to mark as manual failure.")
+    notes = str(safe_payload.get("notes") or "").strip() or "Manual investigation required."
+    updated_items: list[dict] = []
+    skipped: list[dict] = []
+    for row_id in selected_row_ids:
+        approval = _pi_get_latest_action_approval_for_row(
+            user_id=str(user.get("id") or ""),
+            run_id=str(run_id or ""),
+            run_row_id=row_id,
+        )
+        if not approval:
+            skipped.append({"runRowId": row_id, "reason": "No action approval record exists for this row."})
+            continue
+        business_action_key = str(approval.get("business_action_key") or "").strip()
+        _pi_record_action_approval(
+            run_id=str(run_id or ""),
+            row_id=row_id,
+            user_id=str(user.get("id") or ""),
+            tenant_id=str(approval.get("tenant_id") or ""),
+            business_action_key=business_action_key,
+            payload_hash=str(approval.get("payload_hash") or "").strip(),
+            source_snapshot_hash=str(approval.get("source_snapshot_hash") or "").strip(),
+            status_value=PI_CLEARING_ACTION_STATUS_FAILED_MANUAL,
+            notes=notes,
+        )
+        record_audit_event(
+            "pi_clearing_action",
+            business_action_key,
+            "ACTION_FAILED_MANUAL",
+            {"runId": run_id, "runRowId": row_id, "notes": notes},
+            user["id"],
+        )
+        updated_items.append({"runRowId": row_id, "businessActionKey": business_action_key, "status": PI_CLEARING_ACTION_STATUS_FAILED_MANUAL})
+    updated = pi_clearing_payload(user)
+    return {"updated": updated_items, "skipped": skipped, "runs": updated.get("runs") or []}
 
 
 async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_record_id: str) -> dict:
@@ -10393,7 +12897,7 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PI Clearing credit note record not found.")
             cursor.execute(
                 """
-                SELECT summary
+                SELECT summary, month_start, month_end, tenant_id
                 FROM pi_clearing_runs
                 WHERE id = %s
                   AND user_id = %s
@@ -10402,6 +12906,19 @@ async def void_pi_clearing_credit_note(user: dict, run_id: str, credit_note_reco
                 (run_id, user["id"]),
             )
             run_row = cursor.fetchone() or {}
+            run_tenant_id = str(run_row.get("tenant_id") or "").strip()
+            if run_tenant_id:
+                _pi_assert_writes_enabled_for_tenant(run_tenant_id)
+            run_month_start = run_row.get("month_start")
+            run_month_end = run_row.get("month_end")
+            if run_tenant_id and isinstance(run_month_start, date) and isinstance(run_month_end, date):
+                _pi_assert_requested_open_month(
+                    cursor,
+                    user_id=user["id"],
+                    tenant_id=run_tenant_id,
+                    requested_start=_pi_month_start(run_month_start),
+                    requested_end=run_month_end,
+                )
             status_value = str(note_row.get("status") or "").strip().lower()
             if status_value in {"voided", "deleted"}:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This PI Clearing credit note is already voided.")
@@ -10615,6 +13132,8 @@ def _default_posting_settings(tenant_id: str | None = None) -> dict:
         "badDebtWriteOffAccountName": "",
         "piClearingAccountCode": PI_CLEARING_DEFAULT_ACCOUNT_CODE,
         "piClearingAccountLocked": False,
+        "piClearingWritesEnabled": True,
+        "piClearingFeeTreatment": PI_CLEARING_FEE_TREATMENT_EXCLUDE,
         "updatedAt": "",
     }
 
@@ -10632,6 +13151,8 @@ def _serialize_posting_settings(row: dict | None, tenant_id: str | None = None) 
         "badDebtWriteOffAccountName": row.get("bad_debt_write_off_account_name") or "",
         "piClearingAccountCode": row.get("pi_clearing_account_code") or defaults["piClearingAccountCode"],
         "piClearingAccountLocked": bool(row.get("pi_clearing_account_locked")),
+        "piClearingWritesEnabled": bool(row.get("pi_clearing_writes_enabled")) if row.get("pi_clearing_writes_enabled") is not None else True,
+        "piClearingFeeTreatment": str(row.get("pi_clearing_fee_treatment") or defaults["piClearingFeeTreatment"]).strip().lower() or defaults["piClearingFeeTreatment"],
         "updatedAt": _iso(row.get("updated_at")) or "",
     }
 
@@ -11401,12 +13922,27 @@ async def save_pi_clearing_account_setup(user: dict, payload: dict) -> dict:
             selected_account = fuzzy[0]
     if selected_account is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a PI nominal account from the connected Jaccountancy chart of accounts.")
-
     now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM xero_posting_settings WHERE tenant_id = %s", (tenant_id,))
             current_row = cursor.fetchone() or {}
+            writes_enabled_input = payload.get("piClearingWritesEnabled") if "piClearingWritesEnabled" in payload else payload.get("writesEnabled")
+            if writes_enabled_input is None:
+                writes_enabled = bool(current_row.get("pi_clearing_writes_enabled")) if current_row else True
+            else:
+                writes_enabled = bool(writes_enabled_input)
+            fee_treatment_input = payload.get("piClearingFeeTreatment") if "piClearingFeeTreatment" in payload else payload.get("feeTreatment")
+            fee_treatment = str(
+                fee_treatment_input
+                if fee_treatment_input is not None
+                else (current_row.get("pi_clearing_fee_treatment") if current_row else PI_CLEARING_FEE_TREATMENT_EXCLUDE)
+            ).strip().lower() or PI_CLEARING_FEE_TREATMENT_EXCLUDE
+            if fee_treatment not in PI_CLEARING_FEE_TREATMENTS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Fee treatment must be one of: {', '.join(sorted(PI_CLEARING_FEE_TREATMENTS))}.",
+                )
             current_code = str(current_row.get("pi_clearing_account_code") or "").strip()
             is_locked = bool(current_row.get("pi_clearing_account_locked"))
             if is_locked and current_code and current_code.lower() != selected_account["code"].lower():
@@ -11420,21 +13956,25 @@ async def save_pi_clearing_account_setup(user: dict, payload: dict) -> dict:
                     tenant_id,
                     pi_clearing_account_code,
                     pi_clearing_account_locked,
+                    pi_clearing_writes_enabled,
+                    pi_clearing_fee_treatment,
                     updated_by_user_id,
                     created_at,
                     updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE
                 SET pi_clearing_account_code = EXCLUDED.pi_clearing_account_code,
                     pi_clearing_account_locked = CASE
                         WHEN xero_posting_settings.pi_clearing_account_locked THEN TRUE
                         ELSE EXCLUDED.pi_clearing_account_locked
                     END,
+                    pi_clearing_writes_enabled = EXCLUDED.pi_clearing_writes_enabled,
+                    pi_clearing_fee_treatment = EXCLUDED.pi_clearing_fee_treatment,
                     updated_by_user_id = EXCLUDED.updated_by_user_id,
                     updated_at = EXCLUDED.updated_at
                 """,
-                (tenant_id, selected_account["code"], True, user["id"], now, now),
+                (tenant_id, selected_account["code"], True, writes_enabled, fee_treatment, user["id"], now, now),
             )
             settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
         connection.commit()
@@ -11446,6 +13986,8 @@ async def save_pi_clearing_account_setup(user: dict, payload: dict) -> dict:
         {
             "pi_clearing_account_code": selected_account["code"],
             "pi_clearing_account_name": selected_account.get("name") or "",
+            "pi_clearing_writes_enabled": writes_enabled,
+            "pi_clearing_fee_treatment": fee_treatment,
         },
         user["id"],
     )

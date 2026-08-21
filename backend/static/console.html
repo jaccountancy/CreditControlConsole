@@ -37057,6 +37057,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v5c0 5 3.2 8.6 7 10 3.8-1.4 7-5 7-10V6l-7-3Z"></path><path d="M9 12h6"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Risk Assessments</strong><span>Due diligence and risk review</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-pi-clearing-account-page" data-app-nav="pi-clearing-account-page">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 9h8"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>PI Clearing account</strong><span>Dedicated workspace</span></span>
+                                </a>
                             </div>
                         </div>
                         <div class="app-nav-group" data-app-nav-group="settings">
@@ -39014,6 +39018,23 @@
                                     </thead>
                                     <tbody id="riskAssessmentsTableBody"></tbody>
                                 </table>
+                            </div>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="piClearingAccountPageScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Manager</p>
+                                    <h3>PI Clearing account</h3>
+                                    <p class="detail-meta">Dedicated workspace page.</p>
+                                </div>
+                            </div>
+                            <div class="empty-state">
+                                <p class="eyebrow">Blank Page</p>
+                                <h4>PI Clearing account</h4>
+                                <p>This page is ready for PI Clearing account content.</p>
                             </div>
                         </section>
                     </section>
@@ -46207,6 +46228,8 @@
                                 <div></div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="piClearingStartWorkflowButton" type="button">Start workflow</button>
+                                    <button class="ghost-button" id="piClearingCloseMonthButton" type="button">Close open month</button>
+                                    <button class="ghost-button" id="piClearingReopenMonthButton" type="button">Reopen month</button>
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="piClearingAccountSummary"></p>
@@ -46345,6 +46368,21 @@
                                             PI nominal account (Jaccountancy COA)
                                             <select id="piClearingBatchNominalSelect"></select>
                                         </label>
+                                        <label>
+                                            Write actions
+                                            <select id="piClearingWritesEnabledSelect">
+                                                <option value="enabled">Enabled</option>
+                                                <option value="disabled">Disabled</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Fee treatment
+                                            <select id="piClearingFeeTreatmentSelect">
+                                                <option value="exclude_pi_control">Exclude from PI control</option>
+                                                <option value="include_pi_control">Include in PI control</option>
+                                                <option value="manual_review">Manual review</option>
+                                            </select>
+                                        </label>
                                         <div class="detail-actions is-wide" style="padding: 0;">
                                             <button class="ghost-button" id="piClearingConfirmNominalButton" type="button">Confirm Xero account code</button>
                                         </div>
@@ -46470,6 +46508,8 @@
                                 </section>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="piClearingDryRunPdfButton" type="button">Export dry-run PDF</button>
+                                    <button class="ghost-button" id="piClearingRetryFailedButton" type="button">Retry failed posts</button>
+                                    <button class="ghost-button" id="piClearingMarkManualButton" type="button">Mark manual investigation</button>
                                     <button class="primary-button" id="piClearingCreateCreditNotesButton" type="button">Confirm and create credit notes in Xero</button>
                                 </div>
                             </section>
@@ -47816,6 +47856,8 @@
                 badDebtWriteOffAccountName: "",
                 piClearingAccountCode: "PI Clearing Account",
                 piClearingAccountLocked: false,
+                piClearingWritesEnabled: true,
+                piClearingFeeTreatment: "exclude_pi_control",
                 updatedAt: ""
             };
             const emptyData = {
@@ -48084,6 +48126,7 @@
             const PI_CLEARING_DEFAULT_ACCOUNT_CODE = "PI Clearing Account";
             const PI_CLEARING_BATCH_HARD_START = "2026-01-01";
             let piClearingRuns = [];
+            let piClearingCloseRecords = [];
             let piClearingLoading = false;
             let piClearingWorkflowRunning = false;
             let piClearingCreditNotesRunning = false;
@@ -48098,6 +48141,7 @@
             let piClearingRunsSort = "period-desc";
             let piClearingHydrated = false;
             let piClearingWizardOpen = false;
+            let piClearingPeriodGate = null;
             let piClearingWizardStep = 0;
             let piClearingShowMatchedStep1 = false;
             let piClearingSelectedRowIds = new Set();
@@ -48510,6 +48554,7 @@
                 "submitted-employee-forms": "Submitted Employee Forms",
                 "client-call-stats": "Client Call Stats",
                 "pi-clearing-account": "PI Clearing Account",
+                "pi-clearing-account-page": "PI Clearing account",
                 vault: "Vault",
                 settings: "Settings"
             };
@@ -48559,6 +48604,7 @@
                 "submitted-employee-forms": "Load employee form emails from Gmail, then verify and create missing records in Xero Payroll.",
                 "client-call-stats": "Review client call volumes, outcomes, and follow-up coverage.",
                 "pi-clearing-account": "Open the PI Clearing Account dedicated workspace.",
+                "pi-clearing-account-page": "Open the PI Clearing Account dedicated workspace.",
                 vault: "Upload, preview, and search files with AI-driven naming, folders, dedupe, and activity tracking.",
                 settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
             };
@@ -49657,10 +49703,16 @@
                         piClearingAccountRun: config.endpoints?.piClearingAccountRun || "/api/pi-clearing-account/run",
                         piClearingAccountDeleteRun: config.endpoints?.piClearingAccountDeleteRun || "/api/pi-clearing-account/runs/:runId",
                         piClearingAccountSetup: config.endpoints?.piClearingAccountSetup || "/api/pi-clearing-account/setup",
+                        piClearingAccountCloseMonth: config.endpoints?.piClearingAccountCloseMonth || "/api/pi-clearing-account/close-month",
+                        piClearingAccountReopenMonth: config.endpoints?.piClearingAccountReopenMonth || "/api/pi-clearing-account/reopen-month",
+                        piClearingAccountApproveCreditNotes: config.endpoints?.piClearingAccountApproveCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes/approve",
                         piClearingAccountCreditNotes: config.endpoints?.piClearingAccountCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes",
+                        piClearingAccountRetryCreditNotes: config.endpoints?.piClearingAccountRetryCreditNotes || "/api/pi-clearing-account/runs/:runId/credit-notes/retry",
+                        piClearingAccountMarkManualFailure: config.endpoints?.piClearingAccountMarkManualFailure || "/api/pi-clearing-account/runs/:runId/credit-notes/mark-manual-failure",
                         piClearingAccountStep1Fix: config.endpoints?.piClearingAccountStep1Fix || "/api/pi-clearing-account/runs/:runId/rows/:runRowId/step1-fix",
                         piClearingAccountVoidCreditNote: config.endpoints?.piClearingAccountVoidCreditNote || "/api/pi-clearing-account/runs/:runId/credit-notes/:creditNoteRecordId/void",
                         piClearingAccountDryRunPdf: config.endpoints?.piClearingAccountDryRunPdf || "/api/pi-clearing-account/runs/:runId/dry-run.pdf",
+                        piClearingAccountCloseExport: config.endpoints?.piClearingAccountCloseExport || "/api/pi-clearing-account/month-closes/:closeId/export.json",
                         jukEquity: config.endpoints?.jukEquity || "/api/juk-equity",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
                         meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
@@ -49761,6 +49813,8 @@
                     badDebtWriteOffAccountName: String(settings?.badDebtWriteOffAccountName || ""),
                     piClearingAccountCode: String(settings?.piClearingAccountCode || defaultPostingSettings.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE),
                     piClearingAccountLocked: Boolean(settings?.piClearingAccountLocked),
+                    piClearingWritesEnabled: settings?.piClearingWritesEnabled === false ? false : true,
+                    piClearingFeeTreatment: String(settings?.piClearingFeeTreatment || defaultPostingSettings.piClearingFeeTreatment || "exclude_pi_control").trim().toLowerCase(),
                     updatedAt: String(settings?.updatedAt || "")
                 };
             }
@@ -54307,6 +54361,7 @@
                 if (activeView === "submitted-employee-forms") return "submitted-employee-forms";
                 if (activeView === "client-call-stats") return "client-call-stats";
                 if (activeView === "pi-clearing-account") return "pi-clearing-account";
+                if (activeView === "pi-clearing-account-page") return "pi-clearing-account-page";
                 if (activeView === "settings") return "settings";
                 if (activeView === "client") return "clients";
                 return "clients";
@@ -54341,6 +54396,10 @@
 
             function isIgnitionView(view = activeView) {
                 return view === "ignition" || view === "ignition-clients";
+            }
+
+            function isPiClearingView(view = activeView) {
+                return view === "pi-clearing-account" || view === "pi-clearing-account-page";
             }
 
             function activeBankStatementAccountForTopbar() {
@@ -54534,7 +54593,7 @@
                 if (activeView === "payroll-headcount") return "practice";
                 if (activeView === "submitted-employee-forms") return "practice";
                 if (activeView === "client-call-stats") return "practice";
-                if (activeView === "pi-clearing-account") return "practice";
+                if (isPiClearingView(activeView)) return "practice";
                 if (activeView === "vault") return "practice";
                 if (activeView === "settings") return "settings";
                 if (activeView === "insights") return "insights";
@@ -54725,7 +54784,7 @@
             }
 
             function syncBackgroundTimersForActiveView() {
-                if (activeView !== "pi-clearing-account") {
+                if (!isPiClearingView(activeView)) {
                     if (piClearingLivePollTimer) {
                         window.clearInterval(piClearingLivePollTimer);
                         piClearingLivePollTimer = null;
@@ -54831,7 +54890,8 @@
                 setElementVisible(document.getElementById("payrollHeadcountScreen"), activeView === "payroll-headcount");
                 setElementVisible(document.getElementById("submittedEmployeeFormsScreen"), activeView === "submitted-employee-forms");
                 setElementVisible(document.getElementById("clientCallStatsScreen"), activeView === "client-call-stats");
-                setElementVisible(document.getElementById("piClearingAccountScreen"), activeView === "pi-clearing-account");
+                setElementVisible(document.getElementById("piClearingAccountScreen"), isPiClearingView(activeView));
+                setElementVisible(document.getElementById("piClearingAccountPageScreen"), false);
                 setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("vaultScreen"), activeView === "vault");
                 const isClientRegisterMainPageOpen = !!(companiesHouseSettings?.authRegisterClientPage?.open);
@@ -54843,7 +54903,7 @@
                 document.body.classList.toggle("is-submitted-employee-forms-view", activeView === "submitted-employee-forms");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -54881,7 +54941,7 @@
                 const taskListHeroCard = document.getElementById("taskListHeroCard");
                 if (taskListHeroCard) taskListHeroCard.hidden = isTaskListView;
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
-                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
+                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = !isPiClearingView(activeView);
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget && !isIgnitionView()) ignitionTopbarWidget.hidden = true;
                 document.body.classList.toggle("is-ignition-batch-ref-title", false);
@@ -54997,6 +55057,16 @@
 
             function openPiClearingAccountScreen() {
                 activeView = "pi-clearing-account";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadPiClearingAccount();
+                scrollConsoleToTop();
+            }
+
+            function openPiClearingAccountPageScreen() {
+                activeView = "pi-clearing-account-page";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
@@ -61900,6 +61970,8 @@
             }
 
             function piClearingDefaultBatchStartISO() {
+                const openStart = String(piClearingPeriodGate?.openMonthStart || "").trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(openStart)) return openStart;
                 const lastRun = piClearingLastRun();
                 const lastEnd = String(lastRun?.monthEnd || "").trim();
                 const hardStart = new Date(`${PI_CLEARING_BATCH_HARD_START}T00:00:00`);
@@ -61912,6 +61984,8 @@
             }
 
             function piClearingDefaultBatchEndISO() {
+                const openEnd = String(piClearingPeriodGate?.openMonthEnd || "").trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(openEnd)) return openEnd;
                 const suggestedStart = piClearingDateOnly(piClearingDefaultBatchStartISO());
                 if (!suggestedStart) return piClearingTodayISO();
                 const monthEnd = new Date(suggestedStart.getFullYear(), suggestedStart.getMonth() + 1, 0);
@@ -61981,6 +62055,23 @@
                 }
                 if (todayDate && endDate > todayDate) {
                     return { valid: false, tone: "error", message: "Batch end date cannot be in the future.", dayCount: 0 };
+                }
+                const openStartValue = String(piClearingPeriodGate?.openMonthStart || "").trim();
+                const openEndValue = String(piClearingPeriodGate?.openMonthEnd || "").trim();
+                const openStartDate = piClearingDateOnly(openStartValue);
+                const openEndDate = piClearingDateOnly(openEndValue);
+                if (openStartDate && openEndDate) {
+                    const exactOpenStart = startDate.getTime() === openStartDate.getTime();
+                    const exactOpenEnd = endDate.getTime() === openEndDate.getTime();
+                    if (!exactOpenStart || !exactOpenEnd) {
+                        const openMonthLabel = String(piClearingPeriodGate?.openMonth || "").trim() || openStartValue.slice(0, 7);
+                        return {
+                            valid: false,
+                            tone: "warning",
+                            message: `Only ${openMonthLabel} is currently open. Complete and close that month before moving forward.`,
+                            dayCount: 0,
+                        };
+                    }
                 }
                 const dayCount = Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1;
                 const settings = normalisePostingSettings(state.postingSettings || {});
@@ -63432,6 +63523,23 @@
                 return query ? `${base}${base.includes("?") ? "&" : "?"}${query}` : base;
             }
 
+            function piCloseExportURL(closeId = "") {
+                const cleanCloseId = String(closeId || "").trim();
+                if (!cleanCloseId) return "";
+                return endpointURL(api.endpoints.piClearingAccountCloseExport, { closeId: cleanCloseId });
+            }
+
+            function piCloseRecordForRun(run = {}) {
+                const runId = String(run?.id || "").trim();
+                if (!runId) return null;
+                const records = Array.isArray(piClearingCloseRecords) ? piClearingCloseRecords : [];
+                const exact = records.find((item) => String(item?.closeRunId || "").trim() === runId);
+                if (exact) return exact;
+                const runMonth = String(run?.monthStart || "").slice(0, 7);
+                if (!runMonth) return null;
+                return records.find((item) => String(item?.monthStart || "").slice(0, 7) === runMonth) || null;
+            }
+
             function piRowMatchState(row = {}) {
                 const resolution = String(row?.resolutionStatus || "").trim().toLowerCase();
                 if (resolution === "step1_xero_check_required") {
@@ -63485,7 +63593,7 @@
             function renderPiClearingTopbarSummary() {
                 const summary = document.getElementById("piClearingTopbarSummary");
                 if (!summary) return;
-                const isActive = activeView === "pi-clearing-account";
+                const isActive = isPiClearingView(activeView);
                 summary.hidden = !isActive;
                 if (!isActive) return;
                 summary.innerHTML = piClearingTopbarCards()
@@ -63504,6 +63612,8 @@
                 try {
                     const payload = await requestJSON(api.endpoints.piClearingAccount);
                     piClearingRuns = Array.isArray(payload?.runs) ? payload.runs : [];
+                    piClearingCloseRecords = Array.isArray(payload?.closeRecords) ? payload.closeRecords : [];
+                    piClearingPeriodGate = payload?.periodGate && typeof payload.periodGate === "object" ? payload.periodGate : null;
                     if (!piClearingWorkflowRunning && !piClearingSelectedRunId && piClearingRuns[0]) {
                         piClearingSelectedRunId = String(piClearingRuns[0].id || "");
                     }
@@ -63638,7 +63748,11 @@
                 }
                 const payload = await requestJSON(api.endpoints.piClearingAccountSetup, {
                     method: "POST",
-                    body: JSON.stringify({ piClearingAccountCode: effectiveCode }),
+                    body: JSON.stringify({
+                        piClearingAccountCode: effectiveCode,
+                        piClearingWritesEnabled: settings?.piClearingWritesEnabled !== false,
+                        piClearingFeeTreatment: String(settings?.piClearingFeeTreatment || "exclude_pi_control").trim().toLowerCase(),
+                    }),
                 });
                 state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
                 xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || xeroAccounts);
@@ -63794,6 +63908,140 @@
                 }
             }
 
+            async function closePiClearingOpenMonth() {
+                if (piClearingWorkflowRunning || piClearingCreditNotesRunning) return;
+                const openMonth = String(piClearingPeriodGate?.openMonth || "").trim();
+                if (!openMonth) {
+                    showToast("Open month is unavailable. Reload the PI Clearing workspace.", "error");
+                    return;
+                }
+                const run = currentPiClearingRun();
+                const finalisation = run?.summary?.finalisation && typeof run.summary.finalisation === "object"
+                    ? run.summary.finalisation
+                    : {};
+                if (!finalisation?.canFinalise) {
+                    showToast(finalisation?.reason || "This month is not ready to close yet.", "info");
+                    return;
+                }
+                const confirmed = window.confirm(`Close ${openMonth} and unlock the next month? This action is audited.`);
+                if (!confirmed) return;
+                try {
+                    const payload = await requestJSON(api.endpoints.piClearingAccountCloseMonth, {
+                        method: "POST",
+                        body: JSON.stringify({ month: openMonth }),
+                    });
+                    if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
+                    if (payload?.periodGate && typeof payload.periodGate === "object") {
+                        piClearingPeriodGate = payload.periodGate;
+                    }
+                    piClearingStatusMessage = `Closed ${openMonth}. Next open month: ${String(payload?.nextOpenMonth || "--")}.`;
+                    piClearingStatusTone = "success";
+                    showToast(piClearingStatusMessage, "success");
+                    await loadPiClearingAccount(true, { preserveStatus: true });
+                } catch (error) {
+                    piClearingStatusMessage = error?.message || "Unable to close the PI Clearing month.";
+                    piClearingStatusTone = "error";
+                    showToast(piClearingStatusMessage, "error");
+                } finally {
+                    renderPiClearingAccountScreen();
+                }
+            }
+
+            async function reopenPiClearingMonth() {
+                if (piClearingWorkflowRunning || piClearingCreditNotesRunning) return;
+                const gateMonths = Array.isArray(piClearingPeriodGate?.months) ? piClearingPeriodGate.months : [];
+                const closedMonths = gateMonths
+                    .filter((item) => String(item?.status || "").trim().toLowerCase() === "closed")
+                    .map((item) => String(item?.month || "").trim())
+                    .filter(Boolean);
+                if (!closedMonths.length) {
+                    showToast("No closed months are available to reopen.", "info");
+                    return;
+                }
+                const defaultMonth = closedMonths[closedMonths.length - 1] || "";
+                const monthInput = window.prompt("Enter month to reopen (YYYY-MM):", defaultMonth);
+                const reopenMonth = String(monthInput || "").trim();
+                if (!/^\d{4}-\d{2}$/.test(reopenMonth)) return;
+                const reasonInput = window.prompt("Reason for reopen:", "manual_reopen");
+                const reason = String(reasonInput || "manual_reopen").trim() || "manual_reopen";
+                try {
+                    const payload = await requestJSON(api.endpoints.piClearingAccountReopenMonth, {
+                        method: "POST",
+                        body: JSON.stringify({ month: reopenMonth, reason }),
+                    });
+                    if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
+                    if (payload?.periodGate && typeof payload.periodGate === "object") {
+                        piClearingPeriodGate = payload.periodGate;
+                    }
+                    piClearingStatusMessage = `Reopened ${reopenMonth}. Later months relocked.`;
+                    piClearingStatusTone = "success";
+                    showToast(piClearingStatusMessage, "success");
+                    await loadPiClearingAccount(true, { preserveStatus: true });
+                } catch (error) {
+                    piClearingStatusMessage = error?.message || "Unable to reopen the PI Clearing month.";
+                    piClearingStatusTone = "error";
+                    showToast(piClearingStatusMessage, "error");
+                } finally {
+                    renderPiClearingAccountScreen();
+                }
+            }
+
+            async function retryPiClearingFailedPosts() {
+                const run = currentPiClearingRun();
+                if (!run?.id) return showToast("Run the workflow first.", "info");
+                const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const explicitSelection = [...piClearingSelectedRowIds];
+                const fallbackRows = runRows
+                    .filter((row) => String(row?.actionApprovalStatus || "").trim().toUpperCase() === "FAILED_RETRYABLE")
+                    .map((row) => String(row?.id || "").trim())
+                    .filter(Boolean);
+                const rowIds = explicitSelection.length ? explicitSelection : fallbackRows;
+                if (!rowIds.length) {
+                    return showToast("No FAILED_RETRYABLE rows found for retry.", "info");
+                }
+                try {
+                    const payload = await requestJSON(api.endpoints.piClearingAccountRetryCreditNotes, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            rowIds,
+                            accountCode: currentPiClearingAccountCode(),
+                        }),
+                    }, { runId: run.id });
+                    if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
+                    await loadPiClearingAccount(true, { preserveStatus: true });
+                    const createdCount = Array.isArray(payload?.created) ? payload.created.length : 0;
+                    const skippedCount = Array.isArray(payload?.skipped) ? payload.skipped.length : 0;
+                    showToast(`Retry complete. Created ${createdCount}, skipped ${skippedCount}.`, createdCount > 0 ? "success" : "info");
+                } catch (error) {
+                    showToast(error?.message || "Unable to retry failed PI clearing posts.", "error");
+                } finally {
+                    renderPiClearingAccountScreen();
+                }
+            }
+
+            async function markPiClearingManualInvestigation() {
+                const run = currentPiClearingRun();
+                if (!run?.id) return showToast("Run the workflow first.", "info");
+                const rowIds = [...piClearingSelectedRowIds];
+                if (!rowIds.length) return showToast("Select at least one row first.", "info");
+                const notesInput = window.prompt("Manual investigation note:", "Manual investigation required.");
+                const notes = String(notesInput || "").trim() || "Manual investigation required.";
+                try {
+                    const payload = await requestJSON(api.endpoints.piClearingAccountMarkManualFailure, {
+                        method: "POST",
+                        body: JSON.stringify({ rowIds, notes }),
+                    }, { runId: run.id });
+                    if (Array.isArray(payload?.runs)) piClearingRuns = payload.runs;
+                    await loadPiClearingAccount(true, { preserveStatus: true });
+                    const updatedCount = Array.isArray(payload?.updated) ? payload.updated.length : 0;
+                    showToast(`Marked ${updatedCount} row${updatedCount === 1 ? "" : "s"} for manual investigation.`, updatedCount > 0 ? "success" : "info");
+                } catch (error) {
+                    showToast(error?.message || "Unable to mark PI rows as manual investigation.", "error");
+                } finally {
+                    renderPiClearingAccountScreen();
+                }
+            }
+
             async function createPiClearingCreditNotes(options = {}) {
                 const run = currentPiClearingRun();
                 if (!run?.id) return showToast("Run the workflow first.", "info");
@@ -63818,6 +64066,14 @@
                 piClearingCreditNotesRunning = true;
                 renderPiClearingAccountScreen();
                 try {
+                    await requestJSON(api.endpoints.piClearingAccountApproveCreditNotes, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            rowIds,
+                            accountCode: currentPiClearingAccountCode(),
+                            notes: "Approved in PI Clearing wizard before posting",
+                        }),
+                    }, { runId: run.id });
                     const payload = await requestJSON(api.endpoints.piClearingAccountCreditNotes, {
                         method: "POST",
                         body: JSON.stringify({
@@ -63924,10 +64180,14 @@
             function renderPiClearingAccountScreen() {
                 const summary = document.getElementById("piClearingAccountSummary");
                 const startButton = document.getElementById("piClearingStartWorkflowButton");
+                const closeMonthButton = document.getElementById("piClearingCloseMonthButton");
+                const reopenMonthButton = document.getElementById("piClearingReopenMonthButton");
                 const batchStartInput = document.getElementById("piClearingBatchStartInput");
                 const batchEndInput = document.getElementById("piClearingBatchEndInput");
                 const lastRunInput = document.getElementById("piClearingLastRunInput");
                 const nominalSelect = document.getElementById("piClearingBatchNominalSelect");
+                const writesEnabledSelect = document.getElementById("piClearingWritesEnabledSelect");
+                const feeTreatmentSelect = document.getElementById("piClearingFeeTreatmentSelect");
                 const nominalMeta = document.getElementById("piClearingBatchNominalMeta");
                 const confirmNominalButton = document.getElementById("piClearingConfirmNominalButton");
                 const nominalSelectionStatus = document.getElementById("piClearingNominalSelectionStatus");
@@ -63965,6 +64225,8 @@
                 const wizardLoadButton = document.getElementById("piClearingLoadTransactionsButton");
                 const wizardRefreshButton = document.getElementById("piClearingRefreshTransactionsButton");
                 const dryRunButton = document.getElementById("piClearingDryRunPdfButton");
+                const retryFailedButton = document.getElementById("piClearingRetryFailedButton");
+                const markManualButton = document.getElementById("piClearingMarkManualButton");
                 const payoutDetailModal = document.getElementById("piClearingPayoutDetailModal");
                 const payoutDetailBody = document.getElementById("piClearingPayoutDetailBody");
                 const payoutDetailMeta = document.getElementById("piClearingPayoutDetailMeta");
@@ -63976,12 +64238,19 @@
                 const fixDifferenceBody = document.getElementById("piClearingFixDifferenceBody");
                 const fixDifferenceConfirm = document.getElementById("piClearingFixDifferenceConfirmButton");
                 if (!summary) return;
-                if (activeView === "pi-clearing-account" && !piClearingHydrated && !piClearingLoading) {
+                if (isPiClearingView(activeView) && !piClearingHydrated && !piClearingLoading) {
                     loadPiClearingAccount();
                 }
 
                 if (!piClearingBatchStart) piClearingBatchStart = piClearingDefaultBatchStartISO();
                 if (!piClearingBatchEnd) piClearingBatchEnd = piClearingDefaultBatchEndISO();
+                const gateOpenStart = String(piClearingPeriodGate?.openMonthStart || "").trim();
+                const gateOpenEnd = String(piClearingPeriodGate?.openMonthEnd || "").trim();
+                const gateOpenMonth = String(piClearingPeriodGate?.openMonth || "").trim();
+                if (gateOpenStart && gateOpenEnd) {
+                    piClearingBatchStart = gateOpenStart;
+                    piClearingBatchEnd = gateOpenEnd;
+                }
                 const settings = normalisePostingSettings(state.postingSettings || {});
                 if (!String(piClearingSelectedAccountCode || "").trim()) {
                     piClearingSelectedAccountCode = String(settings.piClearingAccountCode || "").trim()
@@ -63991,6 +64260,28 @@
                     startButton.disabled = piClearingWorkflowRunning;
                     startButton.textContent = piClearingWorkflowRunning ? "Running workflow..." : "Start workflow";
                 }
+                if (closeMonthButton) {
+                    const run = currentPiClearingRun();
+                    const finalisation = run?.summary?.finalisation && typeof run.summary.finalisation === "object"
+                        ? run.summary.finalisation
+                        : {};
+                    const openMonth = String(piClearingPeriodGate?.openMonth || "").trim();
+                    const canClose = Boolean(openMonth) && Boolean(finalisation?.canFinalise) && !piClearingWorkflowRunning && !piClearingCreditNotesRunning;
+                    closeMonthButton.disabled = !canClose;
+                    closeMonthButton.textContent = canClose ? `Close ${openMonth}` : "Close open month";
+                }
+                if (reopenMonthButton) {
+                    const gateMonths = Array.isArray(piClearingPeriodGate?.months) ? piClearingPeriodGate.months : [];
+                    const canReopen = gateMonths.some((item) => String(item?.status || "").trim().toLowerCase() === "closed")
+                        && !piClearingWorkflowRunning
+                        && !piClearingCreditNotesRunning;
+                    reopenMonthButton.disabled = !canReopen;
+                    reopenMonthButton.textContent = "Reopen month";
+                    if (reopenMonthButton.dataset.piWired !== "true") {
+                        reopenMonthButton.dataset.piWired = "true";
+                        reopenMonthButton.addEventListener("click", reopenPiClearingMonth);
+                    }
+                }
                 if (confirmBatchButton) {
                     const step0State = piClearingSetupState();
                     confirmBatchButton.disabled = piClearingWorkflowRunning || !step0State.valid;
@@ -63998,14 +64289,14 @@
                 }
                 if (batchStartInput) {
                     batchStartInput.value = piClearingBatchStart;
-                    batchStartInput.min = PI_CLEARING_BATCH_HARD_START;
-                    batchStartInput.max = piClearingTodayISO();
+                    batchStartInput.min = gateOpenStart || PI_CLEARING_BATCH_HARD_START;
+                    batchStartInput.max = gateOpenStart || piClearingTodayISO();
                     batchStartInput.disabled = piClearingWorkflowRunning;
                 }
                 if (batchEndInput) {
                     batchEndInput.value = piClearingBatchEnd;
-                    batchEndInput.min = PI_CLEARING_BATCH_HARD_START;
-                    batchEndInput.max = piClearingTodayISO();
+                    batchEndInput.min = gateOpenEnd || PI_CLEARING_BATCH_HARD_START;
+                    batchEndInput.max = gateOpenEnd || piClearingTodayISO();
                     batchEndInput.disabled = piClearingWorkflowRunning;
                 }
                 const lastRun = piClearingLastRun();
@@ -64033,6 +64324,16 @@
                     }
                     nominalSelect.value = String(piClearingSelectedAccountCode || "").trim();
                     nominalSelect.disabled = Boolean(settings.piClearingAccountLocked) || piClearingWorkflowRunning;
+                }
+                if (writesEnabledSelect) {
+                    writesEnabledSelect.value = settings.piClearingWritesEnabled === false ? "disabled" : "enabled";
+                    writesEnabledSelect.disabled = piClearingWorkflowRunning;
+                }
+                if (feeTreatmentSelect) {
+                    const allowedFeeTreatments = new Set(["exclude_pi_control", "include_pi_control", "manual_review"]);
+                    const selectedFeeTreatment = String(settings.piClearingFeeTreatment || "exclude_pi_control").trim().toLowerCase();
+                    feeTreatmentSelect.value = allowedFeeTreatments.has(selectedFeeTreatment) ? selectedFeeTreatment : "exclude_pi_control";
+                    feeTreatmentSelect.disabled = piClearingWorkflowRunning;
                 }
                 const resolvedNominal = piClearingResolveNominalAccount(piClearingSelectedAccountCode);
                 if (confirmNominalButton) {
@@ -64080,6 +64381,27 @@
                         renderPiClearingAccountScreen();
                     });
                 }
+                if (writesEnabledSelect && writesEnabledSelect.dataset.piWired !== "true") {
+                    writesEnabledSelect.dataset.piWired = "true";
+                    writesEnabledSelect.addEventListener("change", (event) => {
+                        const enabled = String(event.target?.value || "enabled").trim().toLowerCase() !== "disabled";
+                        state.postingSettings = normalisePostingSettings({
+                            ...state.postingSettings,
+                            piClearingWritesEnabled: enabled,
+                        });
+                        renderPiClearingAccountScreen();
+                    });
+                }
+                if (feeTreatmentSelect && feeTreatmentSelect.dataset.piWired !== "true") {
+                    feeTreatmentSelect.dataset.piWired = "true";
+                    feeTreatmentSelect.addEventListener("change", (event) => {
+                        state.postingSettings = normalisePostingSettings({
+                            ...state.postingSettings,
+                            piClearingFeeTreatment: String(event.target?.value || "exclude_pi_control").trim().toLowerCase(),
+                        });
+                        renderPiClearingAccountScreen();
+                    });
+                }
                 if (confirmNominalButton && confirmNominalButton.dataset.piWired !== "true") {
                     confirmNominalButton.dataset.piWired = "true";
                     confirmNominalButton.addEventListener("click", () => {
@@ -64124,6 +64446,10 @@
                     startButton.dataset.piWired = "true";
                     startButton.addEventListener("click", openPiClearingWizardSetup);
                 }
+                if (closeMonthButton && closeMonthButton.dataset.piWired !== "true") {
+                    closeMonthButton.dataset.piWired = "true";
+                    closeMonthButton.addEventListener("click", closePiClearingOpenMonth);
+                }
                 const step0State = piClearingSetupState();
                 if (setupState) {
                     setupState.dataset.tone = step0State.tone || "info";
@@ -64145,6 +64471,18 @@
                         <article class="pi-clearing-kpi">
                             <strong>${escapeHTML(nominalLockLabel)}</strong>
                             <span>Nominal lock state</span>
+                        </article>
+                        <article class="pi-clearing-kpi">
+                            <strong>${escapeHTML(gateOpenMonth || "--")}</strong>
+                            <span>Open period gate</span>
+                        </article>
+                        <article class="pi-clearing-kpi">
+                            <strong>${settings.piClearingWritesEnabled === false ? "Disabled" : "Enabled"}</strong>
+                            <span>PI write switch</span>
+                        </article>
+                        <article class="pi-clearing-kpi">
+                            <strong>${escapeHTML(String(settings.piClearingFeeTreatment || "exclude_pi_control").replace(/_/g, " "))}</strong>
+                            <span>Fee treatment</span>
                         </article>
                     `;
                 }
@@ -64221,6 +64559,8 @@
                             const rowToneClass = balanceClear ? "pi-clearing-run-row-clear" : "pi-clearing-run-row-problem";
                             const runId = String(entry?.id || "");
                             const isDeleting = piClearingDeletingRunIds.has(runId);
+                            const closeRecord = piCloseRecordForRun(entry);
+                            const closeRecordId = String(closeRecord?.id || "").trim();
                             return `
                                 <tr class="${escapeHTML(`${active ? "is-selected " : ""}${rowToneClass}`.trim())}">
                                     <td><strong>${escapeHTML(batchNumber)}</strong></td>
@@ -64231,6 +64571,7 @@
                                     <td>
                                         <div class="pi-clearing-runs-actions">
                                             <button class="ghost-button" type="button" data-pi-run-view-id="${escapeHTML(runId)}">View</button>
+                                            ${closeRecordId ? `<button class="ghost-button" type="button" data-pi-run-export-close-id="${escapeHTML(closeRecordId)}">Close export</button>` : ""}
                                             <button class="ghost-button danger-button" type="button" data-pi-run-delete-id="${escapeHTML(runId)}" ${isDeleting ? "disabled" : ""}>${isDeleting ? "Deleting..." : "Delete"}</button>
                                         </div>
                                     </td>
@@ -64252,6 +64593,17 @@
                                 return;
                             }
                             const deleteButton = event.target.closest("[data-pi-run-delete-id]");
+                            const exportButton = event.target.closest("[data-pi-run-export-close-id]");
+                            if (exportButton) {
+                                const closeId = String(exportButton.dataset.piRunExportCloseId || "").trim();
+                                const url = piCloseExportURL(closeId);
+                                if (!url) {
+                                    showToast("Close export record is unavailable for this run.", "info");
+                                    return;
+                                }
+                                window.open(url, "_blank", "noopener");
+                                return;
+                            }
                             if (!deleteButton) return;
                             const runId = String(deleteButton.dataset.piRunDeleteId || "");
                             if (!runId) return;
@@ -64694,11 +65046,36 @@
                     }
                 }
                 if (wizardCreateButton) {
-                    wizardCreateButton.disabled = piClearingCreditNotesRunning || !piClearingSelectedRowIds.size;
-                    wizardCreateButton.textContent = piClearingCreditNotesRunning ? "Creating..." : "Create credit notes in Xero";
+                    const writesDisabled = settings.piClearingWritesEnabled === false;
+                    wizardCreateButton.disabled = writesDisabled || piClearingCreditNotesRunning || !piClearingSelectedRowIds.size;
+                    wizardCreateButton.textContent = writesDisabled
+                        ? "Writes disabled in setup"
+                        : (piClearingCreditNotesRunning ? "Creating..." : "Create credit notes in Xero");
                     if (wizardCreateButton.dataset.piWired !== "true") {
                         wizardCreateButton.dataset.piWired = "true";
                         wizardCreateButton.addEventListener("click", createPiClearingCreditNotes);
+                    }
+                }
+                if (retryFailedButton) {
+                    const retryableCount = runRows.filter((row) => String(row?.actionApprovalStatus || "").trim().toUpperCase() === "FAILED_RETRYABLE").length;
+                    retryFailedButton.disabled = piClearingCreditNotesRunning || retryableCount <= 0;
+                    retryFailedButton.textContent = retryableCount > 0
+                        ? `Retry failed posts (${formatInteger(retryableCount)})`
+                        : "Retry failed posts";
+                    if (retryFailedButton.dataset.piWired !== "true") {
+                        retryFailedButton.dataset.piWired = "true";
+                        retryFailedButton.addEventListener("click", retryPiClearingFailedPosts);
+                    }
+                }
+                if (markManualButton) {
+                    const selectedCount = piClearingSelectedRowIds.size;
+                    markManualButton.disabled = piClearingCreditNotesRunning || selectedCount <= 0;
+                    markManualButton.textContent = selectedCount > 0
+                        ? `Mark manual investigation (${formatInteger(selectedCount)})`
+                        : "Mark manual investigation";
+                    if (markManualButton.dataset.piWired !== "true") {
+                        markManualButton.dataset.piWired = "true";
+                        markManualButton.addEventListener("click", markPiClearingManualInvestigation);
                     }
                 }
                 if (dryRunButton) {
@@ -65489,6 +65866,7 @@
                 if (section === "submitted-employee-forms") return openSubmittedEmployeeFormsScreen();
                 if (section === "client-call-stats") return openClientCallStatsScreen();
                 if (section === "pi-clearing-account") return openPiClearingAccountScreen();
+                if (section === "pi-clearing-account-page") return openPiClearingAccountPageScreen();
                 if (section === "settings") return openSettingsScreen("settings-home", "settings");
             }
 
@@ -65632,6 +66010,7 @@
                 "ignition",
                 "juk-equity",
                 "risk-assessments",
+                "pi-clearing-account-page",
             ]);
             const practiceAssuranceNavSections = new Set([
                 "identity-verification",
@@ -65777,6 +66156,7 @@
                 "submitted-employee-forms": "credit-control-submitted-employee-forms",
                 "client-call-stats": "credit-control-client-call-stats",
                 "pi-clearing-account": "credit-control-pi-clearing-account",
+                "pi-clearing-account-page": "credit-control-pi-clearing-account-page",
                 vault: "credit-control-vault",
                 settings: "credit-control-settings",
             };
@@ -96033,6 +96413,7 @@
                     "payroll-headcount": "Payroll Headcount",
                     "client-call-stats": "Client Call Stats",
                     "pi-clearing-account": "PI Clearing Account",
+                    "pi-clearing-account-page": "PI Clearing account",
                     vault: "Vault"
                 }[view] || "Console";
             }
@@ -97693,6 +98074,7 @@
                 else if (activeView === "submitted-employee-forms") activeNavSection = "submitted-employee-forms";
                 else if (activeView === "client-call-stats") activeNavSection = "client-call-stats";
                 else if (activeView === "pi-clearing-account") activeNavSection = "pi-clearing-account";
+                else if (activeView === "pi-clearing-account-page") activeNavSection = "pi-clearing-account-page";
                 else if (activeView === "vault") activeNavSection = "vault";
                 else if (activeView === "practice-packs") activeNavSection = "practice-packs";
                 else if (activeView === "settings") activeNavSection = "settings";
@@ -97811,7 +98193,7 @@
                 const taskListHeroCard = document.getElementById("taskListHeroCard");
                 if (taskListHeroCard) taskListHeroCard.hidden = isTaskListView;
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
-                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = activeView !== "pi-clearing-account";
+                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = !isPiClearingView(activeView);
                 renderPiClearingTopbarSummary();
                 renderBankStatementContinuityTopbar();
                 const disconnectButton = document.getElementById("disconnectXeroButton");
@@ -112510,6 +112892,7 @@
                     "submitted-employee-forms": new Set(["renderSubmittedEmployeeFormsScreen"]),
                     "client-call-stats": new Set(["renderClientCallStatsScreen"]),
                     "pi-clearing-account": new Set(["renderPiClearingAccountScreen"]),
+                    "pi-clearing-account-page": new Set(["renderPiClearingAccountScreen"]),
                     "identity-verification": new Set(["renderIdentityVerificationScreen"]),
                     vault: new Set(["renderVaultScreen"]),
                     "nlac-list": new Set(["renderNlacListScreen"]),
