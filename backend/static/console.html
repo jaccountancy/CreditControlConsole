@@ -37037,10 +37037,6 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 17 9 12l4 4 7-9"></path><path d="M15 7h5v5"></path><path d="M4 21h16"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Jashflow</strong><span>Loans</span></span>
                                 </a>
-                                <a class="app-nav-button" href="#credit-control-juk-invoices" data-app-nav="juk-invoices">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 10h8"></path><path d="M8 14h5"></path><path d="M8 18h4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>JUK Invoices</strong><span>Invoice checks</span></span>
-                                </a>
                             </div>
                         </div>
                         <div class="app-nav-group" data-app-nav-group="practice-manager">
@@ -48504,7 +48500,6 @@
                 ignition: "Renewals",
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "Monthly Flows",
-                "juk-invoices": "JUK Invoices",
                 "practice-packs": "Practice Pack Generator",
                 "xero-subs-review": "Xero Subs Review",
                 "supplier-payments": "Supplier Payments",
@@ -48554,7 +48549,6 @@
                 ignition: "Review and run proposal renewals from synced Ignition data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Run monthly bookkeeping flows, complete checks, route review approvals, and send client-ready outputs.",
-                "juk-invoices": "Open the dedicated JUK invoice page and route into monthly-flow invoice checks and remediation.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
                 "xero-subs-review": "Review and track Xero subscriptions, ownership and renewal timing.",
                 "supplier-payments": "Prepare supplier payments from the master Xero tenant, export Barclays bulk files, and post payment outcomes back to Xero.",
@@ -54823,7 +54817,6 @@
                 setElementVisible(document.getElementById("supplierPaymentsScreen"), activeView === "supplier-payments");
                 setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
-                setElementVisible(document.getElementById("jukInvoicesScreen"), activeView === "juk-invoices");
                 setElementVisible(document.getElementById("sa100PrepScreen"), activeView === "sa100-prep");
                 setElementVisible(document.getElementById("yePrepScreen"), activeView === "ye-prep");
                 setElementVisible(document.getElementById("vatReturnPrepareScreen"), activeView === "vat-return-prepare");
@@ -54850,7 +54843,7 @@
                 document.body.classList.toggle("is-submitted-employee-forms-view", activeView === "submitted-employee-forms");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "juk-invoices", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -54871,8 +54864,6 @@
                 if (clientRegisterTopbarActions) {
                     clientRegisterTopbarActions.hidden = activeView !== "client-auth-register" || isClientRegisterMainPageOpen;
                 }
-                const jukInvoicesTopbarActions = document.getElementById("jukInvoicesTopbarActions");
-                if (jukInvoicesTopbarActions) jukInvoicesTopbarActions.hidden = activeView !== "juk-invoices";
                 if (activeView !== "juk-invoices") {
                     if (jukInvoicesState?.batchModalOpen) {
                         jukInvoicesState.batchModalOpen = false;
@@ -54940,19 +54931,6 @@
                 closeToolbarMenus();
                 renderAll();
                 refreshPracticePackRuns({ silent: false });
-                scrollConsoleToTop();
-            }
-
-            function openJukInvoicesScreen() {
-                activeView = "juk-invoices";
-                syncActiveViewShell();
-                closeTopbarMenu();
-                closeToolbarMenus();
-                renderAll();
-                jukRefreshFromAPI({ silent: true }).catch((error) => {
-                    if (error instanceof AuthRequiredError) return;
-                    console.error("Unable to refresh JUKSIB data", error);
-                });
                 scrollConsoleToTop();
             }
 
@@ -65492,7 +65470,6 @@
                 if (section === "ignition") return openIgnitionScreen();
                 if (section === "supplier-payments") return openSupplierPaymentsScreen();
                 if (section === "me-report") return openMeReportScreen();
-                if (section === "juk-invoices") return openJukInvoicesScreen();
                 if (section === "sa100-prep") return openSa100PrepScreen();
                 if (section === "ye-prep") return openYePrepScreen();
                 if (section === "vat-return-prepare") return openVatReturnPrepareScreen();
@@ -65650,7 +65627,7 @@
             let sidebarPopstateNavigationWired = false;
             let suppressSidebarHistoryPush = false;
             let lastSidebarNavigation = { section: "", at: 0 };
-            const creditControlNavSections = new Set(["clients", "contact-archive", "lpcs", "bad-debt", "juk-invoices"]);
+            const creditControlNavSections = new Set(["clients", "contact-archive", "lpcs", "bad-debt"]);
             const practiceManagerNavSections = new Set([
                 "ignition",
                 "juk-equity",
@@ -65784,7 +65761,6 @@
                 ignition: "credit-control-ignition",
                 "supplier-payments": "credit-control-supplier-payments",
                 "me-report": "credit-control-me-report",
-                "juk-invoices": "credit-control-juk-invoices",
                 "sa100-prep": "credit-control-sa100-prep",
                 "ye-prep": "credit-control-ye-prep",
                 "vat-return-prepare": "credit-control-vat-return-prepare",
@@ -96045,7 +96021,6 @@
                     ignition: "Ignition",
                     "ignition-clients": "Ignition Client Register",
                     "me-report": "Monthly Flows",
-                    "juk-invoices": "JUK Invoices",
                     "sa100-prep": "SA100 Prep",
                     "ye-prep": "YE Prep",
                     "vat-return-prepare": "VAT Return Prepare",
@@ -97703,7 +97678,6 @@
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "supplier-payments") activeNavSection = "supplier-payments";
                 else if (activeView === "me-report") activeNavSection = "me-report";
-                else if (activeView === "juk-invoices") activeNavSection = "juk-invoices";
                 else if (activeView === "sa100-prep") activeNavSection = "sa100-prep";
                 else if (activeView === "ye-prep") activeNavSection = "ye-prep";
                 else if (activeView === "vat-return-prepare") activeNavSection = "vat-return-prepare";
@@ -98738,7 +98712,6 @@
                     "review-debtors-ledger": typeof openLedgerSection === "function" ? () => openLedgerSection("clients") : null,
                     "generate-practice-packs": typeof openPracticePackScreen === "function" ? openPracticePackScreen : null,
                     "analyze-vat-return": typeof openVatReturnPrepareScreen === "function" ? openVatReturnPrepareScreen : null,
-                    "juk-invoices": typeof openJukInvoicesScreen === "function" ? openJukInvoicesScreen : null,
                     "analyze-year-end": typeof openYePrepScreen === "function" ? openYePrepScreen : null,
                     "review-xero-lock-dates": typeof openXeroLockDateScreen === "function" ? openXeroLockDateScreen : null,
                     "review-equity-reconciliation": typeof openCodeBreakerScreen === "function" ? openCodeBreakerScreen : null,
@@ -98807,7 +98780,6 @@
                     { key: "review-debtors-ledger", icon: "👁", title: "Review Debtors", subtitle: "Credit control", badge: "Open" },
                     { key: "generate-practice-packs", icon: "📦", title: "Practice Packs", subtitle: "Batch outputs", badge: "Open" },
                     { key: "analyze-vat-return", icon: "💰", title: "VAT Return Work", subtitle: "VAT workflow", badge: "Open" },
-                    { key: "juk-invoices", icon: "🗂️", title: "JUK Invoices", subtitle: "Billing flows", badge: "Open" },
                 ];
 
                 body.innerHTML = `<section class="insights-quick-access-group">
@@ -99210,7 +99182,6 @@
                     "generate-practice-packs": { key: "generate-practice-packs", icon: "📦", title: "Practice Packs", subtitle: "Batch outputs", metric: "Generate packs", tone: "healthy", badge: "Healthy" },
                     "write-off-bad-debt": { key: "write-off-bad-debt", icon: "🧾", title: "Write Off Invoices", subtitle: "Bad debt", metric: "Review candidates", tone: overdueInvoices > 0 ? "soon" : "info", badge: overdueInvoices > 0 ? "Needs review" : "Informational" },
                     "renewals": { key: "renewals", icon: "♻️", title: "Renewals", subtitle: "Practice manager", metric: "Process queue", tone: "info", badge: "Informational" },
-                    "juk-invoices": { key: "juk-invoices", icon: "🗂️", title: "JUK Invoices", subtitle: "Billing flows", metric: "Open workspace", tone: "info", badge: "Informational" },
                     "review-xero-lock-dates": { key: "review-xero-lock-dates", icon: "🔒", title: "Xero Lock Dates", subtitle: "Tenant controls", metric: "Review mapping", tone: "info", badge: "Informational" },
                 };
 
@@ -112518,7 +112489,6 @@
                     ignition: new Set(["renderIgnitionScreen"]),
                     "supplier-payments": new Set(["renderSupplierPaymentsScreen"]),
                     "me-report": new Set(["renderMeReportScreen"]),
-                    "juk-invoices": new Set(["renderJukInvoicesScreen"]),
                     "sa100-prep": new Set(["renderSa100PrepScreen"]),
                     "ye-prep": new Set(["renderYePrepScreen"]),
                     "vat-return-prepare": new Set(["renderVatReturnPrepareScreen"]),
@@ -112591,7 +112561,6 @@
                     ["renderBankSa100EntryPanel", () => renderBankSa100EntryPanel()],
                     ["renderIgnitionScreen", () => renderIgnitionScreen()],
                     ["renderMeReportScreen", () => renderMeReportScreen()],
-                    ["renderJukInvoicesScreen", () => renderJukInvoicesScreen()],
                     ["renderSa100PrepScreen", () => {
                         if (typeof renderSa100PrepScreen === "function") {
                             renderSa100PrepScreen();
