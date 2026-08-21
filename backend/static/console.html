@@ -48180,6 +48180,7 @@
                 highestMonth: null,
                 missingMonths: [],
             };
+            const JUK_EQUITY_CACHE_KEY = `${STORAGE_KEY}:juk-equity-cache:v1`;
             const clientCallStatsFilterPresetStorageKey = `${STORAGE_KEY}:client-call-stats-filter-presets:v1`;
             const clientCallStatsUIPrefsStorageKey = `${STORAGE_KEY}:client-call-stats-ui-prefs:v1`;
             const clientCallStatsDefaultCollapsedPanels = {
@@ -54979,6 +54980,7 @@
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
+                hydrateJukEquityFromCache();
                 renderAll();
                 loadJukEquityData({ silent: false });
                 scrollConsoleToTop();
@@ -55570,6 +55572,52 @@
                 return (jukEquityData.series || []).filter((row) => Number.isFinite(Number(row?.netAssets)));
             }
 
+            function normaliseJukEquityPayload(payload) {
+                const source = payload && typeof payload === "object" ? payload : {};
+                return {
+                    generatedAt: String(source.generatedAt || ""),
+                    organisationName: String(source.organisationName || ""),
+                    latestCompletedMonthEnd: String(source.latestCompletedMonthEnd || ""),
+                    series: Array.isArray(source.series) ? source.series : [],
+                    latestNetAssets: source.latestNetAssets ?? null,
+                    twelveMonthChange: source.twelveMonthChange ?? null,
+                    highestMonth: source.highestMonth || null,
+                    missingMonths: Array.isArray(source.missingMonths) ? source.missingMonths : [],
+                };
+            }
+
+            function loadJukEquityCache() {
+                try {
+                    const raw = localStorage.getItem(JUK_EQUITY_CACHE_KEY);
+                    if (!raw) return null;
+                    const parsed = JSON.parse(raw);
+                    const normalised = normaliseJukEquityPayload(parsed);
+                    return normalised.series.length ? normalised : null;
+                } catch {
+                    try { localStorage.removeItem(JUK_EQUITY_CACHE_KEY); } catch {}
+                    return null;
+                }
+            }
+
+            function persistJukEquityCache(payload) {
+                try {
+                    const normalised = normaliseJukEquityPayload(payload);
+                    if (!normalised.series.length) {
+                        localStorage.removeItem(JUK_EQUITY_CACHE_KEY);
+                        return;
+                    }
+                    localStorage.setItem(JUK_EQUITY_CACHE_KEY, JSON.stringify(normalised));
+                } catch {}
+            }
+
+            function hydrateJukEquityFromCache() {
+                if (jukEquityValueSeries().length) return false;
+                const cached = loadJukEquityCache();
+                if (!cached) return false;
+                jukEquityData = cached;
+                return true;
+            }
+
             function jukEquityDateLabel(value) {
                 const text = String(value || "").trim();
                 if (!text) return "--";
@@ -55744,7 +55792,8 @@
                 const loadingMessage = "Loading JUK Equity data from Xero…";
                 const errorMessage = "Unable to load JUK Equity data from Xero. Please check the Xero master connection and try again.";
 
-                if (jukEquityLoading) summary.textContent = loadingMessage;
+                if (jukEquityLoading && valued.length) summary.textContent = "Showing last saved graph while refreshing from Xero…";
+                else if (jukEquityLoading) summary.textContent = loadingMessage;
                 else if (jukEquityError && !valued.length) summary.textContent = errorMessage;
                 else if (!series.length) summary.textContent = "Monthly net assets from Xero balance sheet data";
                 else summary.textContent = `${valued.length} of ${series.length} month-ends loaded from Xero balance sheet data.`;
@@ -55802,16 +55851,8 @@
                 try {
                     const payload = await requestJSON(api.endpoints.jukEquity);
                     const series = Array.isArray(payload?.series) ? payload.series : [];
-                    jukEquityData = {
-                        generatedAt: String(payload?.generatedAt || ""),
-                        organisationName: String(payload?.organisationName || ""),
-                        latestCompletedMonthEnd: String(payload?.latestCompletedMonthEnd || ""),
-                        series,
-                        latestNetAssets: payload?.latestNetAssets ?? null,
-                        twelveMonthChange: payload?.twelveMonthChange ?? null,
-                        highestMonth: payload?.highestMonth || null,
-                        missingMonths: Array.isArray(payload?.missingMonths) ? payload.missingMonths : [],
-                    };
+                    jukEquityData = normaliseJukEquityPayload(payload);
+                    persistJukEquityCache(jukEquityData);
                     if (!series.some((row) => Number.isFinite(Number(row?.netAssets)))) {
                         jukEquityError = "Unable to load JUK Equity data from Xero.";
                     }
