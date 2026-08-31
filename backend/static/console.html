@@ -89971,6 +89971,7 @@
                 }
                 const categoryStreams = jaysStats2StreamDefinitions();
                 const selectedMonthRows = groupedByMonth.get(jaysStats2SelectedMonthKey) || [];
+                const selectedMonthLabel = jaysStats2SelectedMonthKey ? formatMonthKey(jaysStats2SelectedMonthKey) : "No month selected";
                 const selectedMonthCredits = selectedMonthRows.filter((row) => Number(row?.amount || 0) > 0);
                 const selectedMonthCreditTotal = selectedMonthCredits.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
                 const selectedMonthLatestDate = selectedMonthRows.reduce((latest, row) => {
@@ -90161,7 +90162,8 @@
                         <p class="jays-stats-meta-note">Date range: ${escapeHTML(formatDate(summary.earliestDate || ""))} to ${escapeHTML(formatDate(summary.latestDate || ""))}. Edit date, description, amount, running balance, and category directly in-grid.</p>
                         <section class="jays-stats-report-panel" ${jaysStats2ReportingMode ? "" : "hidden"}>
                             <p class="eyebrow">Cash collection report</p>
-                            <h4>${escapeHTML(formatMonthKey(jaysStats2SelectedMonthKey || ""))} · as at ${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</h4>
+                            <h4>Reporting month: ${escapeHTML(selectedMonthLabel)}</h4>
+                            <p class="jays-stats-meta-note">As at ${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</p>
                             <section class="jays-stats-table-toolbar">
                                 <span class="jays-stats-table-count">This report updates automatically from imported transactions each day.</span>
                                 <button class="ghost-button" id="jaysStats2ReportingEstimateToggleButton" type="button">${jaysStats2ReportingEstimateEditorOpen ? "Close estimate editor" : "Add / edit estimates"}</button>
