@@ -37471,13 +37471,9 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 9h8"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>PI Clearing account</strong><span>Dedicated workspace</span></span>
                                 </a>
-                                <a class="app-nav-button" href="#credit-control-jays-stats" data-app-nav="jays-stats">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 15v-5"></path><path d="M12 15V6"></path><path d="M17 15v-8"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Jays Stats</strong><span>Cash collection suite</span></span>
-                                </a>
                                 <a class="app-nav-button" href="#credit-control-jays-stats-2" data-app-nav="jays-stats-2">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M6 16h12"></path><path d="M8 12h8"></path><path d="M10 8h4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Jays Stats 2</strong><span>Statement transaction loader</span></span>
+                                    <span class="app-nav-copy"><strong>Cash Collection Tracker</strong><span>Statement transaction loader</span></span>
                                 </a>
                             </div>
                         </div>
@@ -43528,10 +43524,6 @@
                         </section>
                     </section>
 
-                    <section class="late-charges-screen detail-card" id="jaysStatsScreen" hidden>
-                        <input id="jaysStatsStatementFileInput" type="file" accept=".csv,text/csv,application/pdf,.pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
-                        <section class="detail-panel" id="jaysStatsPanel"></section>
-                    </section>
                     <section class="late-charges-screen detail-card" id="jaysStats2Screen" hidden>
                         <input id="jaysStats2StatementFileInput" type="file" accept=".csv,text/csv,application/pdf,.pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xlsm" multiple hidden>
                         <section class="detail-panel" id="jaysStats2Panel"></section>
@@ -49021,8 +49013,7 @@
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 "supplier-reconciliation": "Supplier Reconciliation",
-                "jays-stats": "Jays Stats",
-                "jays-stats-2": "Jays Stats 2",
+                "jays-stats-2": "Cash Collection Tracker",
                 ignition: "Renewals",
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "Monthly Flows",
@@ -49073,8 +49064,7 @@
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 "supplier-reconciliation": "",
-                "jays-stats": "Track month-to-date cash collection, expected receipts, and rolling end-of-month estimates.",
-                "jays-stats-2": "Upload statements, append missing transactions, and monitor running balance continuity.",
+                "jays-stats-2": "Upload statements, append missing transactions, auto-categorise credits, and monitor running balance continuity.",
                 ignition: "Review and run proposal renewals from synced Ignition data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Run monthly bookkeeping flows, complete checks, route review approvals, and send client-ready outputs.",
@@ -54911,7 +54901,7 @@
                 if (activeView === "aml-verification") return "aml-verification";
                 if (activeView === "xero-lock-date") return "xero-lock-date";
                 if (activeView === "jashflow") return "jashflow";
-                if (activeView === "jays-stats") return "jays-stats";
+                if (activeView === "jays-stats") return "jays-stats-2";
                 if (activeView === "jays-stats-2") return "jays-stats-2";
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "supplier-reconciliation") return "supplier-reconciliation";
@@ -55141,7 +55131,6 @@
                 if (activeView === "xero-lock-date") return "credit";
                 if (activeView === "identity-verification") return "credit";
                 if (activeView === "jashflow") return "jashflow";
-                if (activeView === "jays-stats") return "practice";
                 if (activeView === "jays-stats-2") return "practice";
                 if (activeView === "bank-statements") return "bank";
                 if (activeView === "supplier-reconciliation") return "bank";
@@ -55436,7 +55425,6 @@
                 setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
                 setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
-                setElementVisible(document.getElementById("jaysStatsScreen"), activeView === "jays-stats");
                 setElementVisible(document.getElementById("jaysStats2Screen"), activeView === "jays-stats-2");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
@@ -55472,7 +55460,7 @@
                 document.body.classList.toggle("is-submitted-employee-forms-view", activeView === "submitted-employee-forms");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "jays-stats", "jays-stats-2", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "jays-stats-2", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -67006,7 +66994,7 @@
                 if (section === "aml-verification") return openAmlVerificationScreen();
                 if (section === "xero-lock-date") return openXeroLockDateScreen();
                 if (section === "jashflow") return openJashflowScreen();
-                if (section === "jays-stats") return openJaysStatsScreen();
+                if (section === "jays-stats") return openJaysStats2Screen();
                 if (section === "jays-stats-2") return openJaysStats2Screen();
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "supplier-reconciliation") return openSupplierReconciliationScreen();
@@ -67177,7 +67165,6 @@
                 "juk-equity",
                 "risk-assessments",
                 "pi-clearing-account-page",
-                "jays-stats",
                 "jays-stats-2",
             ]);
             const practiceAssuranceNavSections = new Set([
@@ -67303,7 +67290,6 @@
                 "xero-lock-date": "credit-control-xero-lock-date",
                 "identity-verification": "credit-control-identity-verification",
                 jashflow: "credit-control-jashflow",
-                "jays-stats": "credit-control-jays-stats",
                 "bank-statements": "credit-control-bank-statements",
                 "supplier-reconciliation": "credit-control-supplier-reconciliation",
                 ignition: "credit-control-ignition",
@@ -68944,7 +68930,6 @@
                 const riskAssessmentsScreen = document.getElementById("riskAssessmentsScreen");
                 const xeroLockDateScreen = document.getElementById("xeroLockDateScreen");
                 const jashflowScreen = document.getElementById("jashflowScreen");
-                const jaysStatsScreen = document.getElementById("jaysStatsScreen");
                 const jaysStats2Screen = document.getElementById("jaysStats2Screen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
                 const supplierReconciliationScreen = document.getElementById("supplierReconciliationScreen");
@@ -68968,7 +68953,6 @@
                 setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
                 setElementVisible(xeroLockDateScreen, activeView === "xero-lock-date");
                 setElementVisible(jashflowScreen, activeView === "jashflow");
-                setElementVisible(jaysStatsScreen, activeView === "jays-stats");
                 setElementVisible(jaysStats2Screen, activeView === "jays-stats-2");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(supplierReconciliationScreen, activeView === "supplier-reconciliation");
@@ -89034,7 +89018,7 @@
                         <header class="jays-stats-topbar">
                             <div>
                                 <p class="eyebrow">Statement transaction loader</p>
-                                <h3>Jays Stats 2</h3>
+                                <h3>Cash Collection Tracker</h3>
                                 <p class="detail-meta">${escapeHTML(String(account?.name || "JUK Trading Account"))} ${escapeHTML(String(account?.sortCode || "20-59-43"))} ${escapeHTML(String(account?.accountNumber || "93960404"))}</p>
                             </div>
                             <div class="detail-actions">
@@ -100800,7 +100784,7 @@
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
                 else if (activeView === "identity-verification") activeNavSection = "identity-verification";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
-                else if (activeView === "jays-stats") activeNavSection = "jays-stats";
+                else if (activeView === "jays-stats") activeNavSection = "jays-stats-2";
                 else if (activeView === "bank-statements") activeNavSection = "bank-statements";
                 else if (activeView === "supplier-reconciliation" || activeView === "supplier-reconciliation-statement-page") activeNavSection = "supplier-reconciliation";
                 else if (isIgnitionView()) activeNavSection = "ignition";
@@ -115612,7 +115596,7 @@
                     "aml-verification": new Set(["renderAmlVerificationScreen"]),
                     "xero-lock-date": new Set(["renderXeroLockDateScreen"]),
                     jashflow: new Set(["renderJashflowScreen"]),
-                    "jays-stats": new Set(["renderJaysStatsScreen"]),
+                    "jays-stats": new Set(["renderJaysStats2Screen"]),
                     "jays-stats-2": new Set(["renderJaysStats2Screen"]),
                     "bank-statements": new Set(["renderBankStatementsScreen", "renderBankAccountPanel", "renderBankStatementUploadPanel", "renderBankSa100EntryPanel"]),
                     "supplier-reconciliation": new Set(["renderSupplierReconciliationScreen", "renderSupplierReconciliationStatementPage"]),
@@ -144627,10 +144611,7 @@
                 if (activeView === "me-report") {
                     loadMeReport();
                 }
-                if (activeView === "jays-stats") {
-                    loadJaysStats({ silent: true });
-                }
-                if (activeView === "jays-stats-2") {
+                if (activeView === "jays-stats" || activeView === "jays-stats-2") {
                     loadJaysStats2({ silent: true });
                 }
                 if (activeView === "supplier-reconciliation") {
