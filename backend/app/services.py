@@ -40384,7 +40384,15 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
         if lower_name.endswith(".pdf") or "pdf" in content_type:
             rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
             if not rows:
-                extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                try:
+                    extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Could not extract transactions from {file_name}. Install pypdf on the server or enable AI extraction. Error: {exc}",
+                    ) from exc
                 rows = []
                 for transaction in extracted.get("transactions") or []:
                     if not isinstance(transaction, dict):
@@ -40606,7 +40614,15 @@ async def jays_stats2_preview_transactions(user: dict, file_items: list[dict]) -
         if lower_name.endswith(".pdf") or "pdf" in content_type:
             rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
             if not rows:
-                extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                try:
+                    extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Could not extract transactions from {file_name}. Install pypdf on the server or enable AI extraction. Error: {exc}",
+                    ) from exc
                 rows = []
                 for transaction in extracted.get("transactions") or []:
                     if not isinstance(transaction, dict):

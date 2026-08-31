@@ -89209,6 +89209,7 @@
                 if (jaysStats2Importing) return;
                 jaysStats2UploadSummaryModalOpen = false;
                 jaysStats2ImportWizardOpen = false;
+                jaysStats2CashAvailabilityModalOpen = false;
                 syncJaysStats2ModalBodyClass();
                 jaysStats2ImportFileCount = files.length;
                 jaysStats2ImportStartedAt = Date.now();
@@ -89819,24 +89820,46 @@
                 const item = jaysStats2ReportingEstimates && typeof jaysStats2ReportingEstimates === "object"
                     ? jaysStats2ReportingEstimates[key]
                     : null;
+                const additionalRows = Array.isArray(item?.additionalRows) ? item.additionalRows : [];
                 return {
                     ignitionBnaeom: Math.max(0, Number(item?.ignitionBnaeom || 0)),
                     bankTransfersBnaeom: Math.max(0, Number(item?.bankTransfersBnaeom || 0)),
                     cashAtBankNow: Math.max(0, Number(item?.cashAtBankNow || 0)),
                     wagesBeforeMonthEnd: Math.max(0, Number(item?.wagesBeforeMonthEnd || 0)),
-                    notes: String(item?.notes || "").trim(),
+                    additionalRows: additionalRows
+                        .map((row) => {
+                            const id = String(row?.id || "").trim();
+                            if (!id) return null;
+                            return {
+                                id,
+                                label: String(row?.label || "").trim().slice(0, 120) || "Additional estimate",
+                                amount: Math.max(0, Number(row?.amount || 0)),
+                            };
+                        })
+                        .filter(Boolean),
                 };
             }
 
             function jaysStats2SaveReportingEstimateForMonth(monthKey = "", payload = {}) {
                 const key = String(monthKey || "").trim();
                 if (!/^\d{4}-\d{2}$/.test(key)) return;
+                const additionalRows = Array.isArray(payload?.additionalRows) ? payload.additionalRows : [];
                 const next = {
                     ignitionBnaeom: Math.max(0, Number(payload?.ignitionBnaeom || 0)),
                     bankTransfersBnaeom: Math.max(0, Number(payload?.bankTransfersBnaeom || 0)),
                     cashAtBankNow: Math.max(0, Number(payload?.cashAtBankNow || 0)),
                     wagesBeforeMonthEnd: Math.max(0, Number(payload?.wagesBeforeMonthEnd || 0)),
-                    notes: String(payload?.notes || "").trim().slice(0, 400),
+                    additionalRows: additionalRows
+                        .map((row) => {
+                            const id = String(row?.id || "").trim();
+                            if (!id) return null;
+                            return {
+                                id,
+                                label: String(row?.label || "").trim().slice(0, 120) || "Additional estimate",
+                                amount: Math.max(0, Number(row?.amount || 0)),
+                            };
+                        })
+                        .filter(Boolean),
                     updatedAt: new Date().toISOString(),
                 };
                 jaysStats2ReportingEstimates = {
@@ -89844,6 +89867,14 @@
                     [key]: next,
                 };
                 persistJaysStats2ReportingEstimates();
+            }
+
+            function jaysStats2NewReportingEstimateRow() {
+                return {
+                    id: `extra-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+                    label: "Additional estimate",
+                    amount: 0,
+                };
             }
 
             function jaysStats2ReportingActuals(rows = []) {
@@ -89967,9 +89998,10 @@
             function renderJaysStats2Screen() {
                 const panel = document.getElementById("jaysStats2Panel");
                 if (!panel) return;
-                if (activeView !== "jays-stats-2" && (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen)) {
+                if (activeView !== "jays-stats-2" && (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen || jaysStats2CashAvailabilityModalOpen)) {
                     jaysStats2UploadSummaryModalOpen = false;
                     jaysStats2ImportWizardOpen = false;
+                    jaysStats2CashAvailabilityModalOpen = false;
                     syncJaysStats2ModalBodyClass();
                 }
                 if (jaysStats2Importing) ensureJaysStats2ImportUiTicker();
@@ -90003,8 +90035,10 @@
                 const selectedMonthCategoryRows = [...selectedMonthByCategory.values()].sort((left, right) => Number(right.amount || 0) - Number(left.amount || 0));
                 const reportingActuals = jaysStats2ReportingActuals(selectedMonthRows);
                 const reportingEstimates = jaysStats2ReportingEstimateForMonth(jaysStats2SelectedMonthKey || "");
-                const reportingProjectedTotal = selectedMonthCreditTotal + Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0);
-                const reportingRemainingInflow = Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0);
+                const reportingAdditionalRows = Array.isArray(reportingEstimates.additionalRows) ? reportingEstimates.additionalRows : [];
+                const reportingAdditionalTotal = reportingAdditionalRows.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
+                const reportingProjectedTotal = selectedMonthCreditTotal + Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0) + reportingAdditionalTotal;
+                const reportingRemainingInflow = Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0) + reportingAdditionalTotal;
                 const reportingCashAtBankNow = Number(reportingEstimates.cashAtBankNow || 0);
                 const reportingWagesBeforeMonthEnd = Number(reportingEstimates.wagesBeforeMonthEnd || 0);
                 const reportingProjectedPreWages = reportingCashAtBankNow + reportingRemainingInflow;
@@ -90166,10 +90200,13 @@
                                     ${monthKeys.map((monthKey) => `<option value="${escapeHTML(monthKey)}" ${monthKey === jaysStats2SelectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(monthKey))}</option>`).join("")}
                                 </select>
                                 <button class="primary-button" id="jaysStats2UploadButton" type="button" ${jaysStats2Importing ? "disabled" : ""}>${jaysStats2Importing ? "Processing..." : "Upload statement files"}</button>
-                                <label class="jays-stats-report-toggle" for="jaysStats2ReportingModeToggle">
-                                    <input type="checkbox" id="jaysStats2ReportingModeToggle" ${jaysStats2ReportingMode ? "checked" : ""}>
-                                    <span>${jaysStats2ReportingMode ? "Reporting mode on" : "Reporting mode"}</span>
-                                </label>
+                                <div class="jays-stats-reporting-controls">
+                                    <label class="jays-stats-report-toggle" for="jaysStats2ReportingModeToggle">
+                                        <input type="checkbox" id="jaysStats2ReportingModeToggle" ${jaysStats2ReportingMode ? "checked" : ""}>
+                                        <span>${jaysStats2ReportingMode ? "Reporting mode on" : "Reporting mode"}</span>
+                                    </label>
+                                    ${jaysStats2ReportingMode ? '<button class="ghost-button" id="jaysStats2CashAvailabilityOpenButton" type="button">Cash availability</button>' : ""}
+                                </div>
                             </div>
                         </header>
                         ${importProcessingBanner}
@@ -90181,6 +90218,7 @@
                             <section class="jays-stats-table-toolbar">
                                 <span class="jays-stats-table-count">This report updates automatically from imported transactions each day.</span>
                                 <button class="ghost-button" id="jaysStats2ReportingEstimateToggleButton" type="button">${jaysStats2ReportingEstimateEditorOpen ? "Close estimate editor" : "Add / edit estimates"}</button>
+                                ${jaysStats2ReportingEstimateEditorOpen ? '<button class="ghost-button" id="jaysStats2ReportingEstimateAddRowButton" type="button">Add estimate row</button>' : ""}
                             </section>
                             <section class="jays-stats-table-wrap is-excel">
                                 <table class="jays-stats-table is-excel-grid">
@@ -90240,72 +90278,34 @@
                                             </td>
                                             <td style="padding:10px;">Expected additional bank transfer receipts before month end</td>
                                         </tr>
+                                        ${reportingAdditionalRows.map((row) => `
+                                        <tr>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input" data-jays-stats2-estimate-row-id="${escapeHTML(String(row.id || ""))}" data-jays-stats2-estimate-field="label" type="text" maxlength="120" value="${escapeHTML(String(row.label || ""))}">`
+                                                    : `<strong>${escapeHTML(String(row.label || "Additional estimate"))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input is-number" data-jays-stats2-estimate-row-id="${escapeHTML(String(row.id || ""))}" data-jays-stats2-estimate-field="amount" type="text" value="${escapeHTML(String(Number(row.amount || 0).toFixed(2)))}">`
+                                                    : `<strong>${escapeHTML(formatCurrency(Number(row.amount || 0)))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<button class="ghost-button" type="button" data-jays-stats2-estimate-remove-id="${escapeHTML(String(row.id || ""))}">Remove row</button>`
+                                                    : "Additional custom forecast line"}
+                                            </td>
+                                        </tr>
+                                        `).join("")}
                                         <tr class="jays-stats-report-total-row">
                                             <td style="padding:10px;"><strong>Projected month-end cash collection</strong></td>
                                             <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedTotal))}</strong></td>
-                                            <td style="padding:10px;">MTD actuals + BNAEOM estimates</td>
+                                            <td style="padding:10px;">MTD actuals + core estimates + additional rows</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </section>
-                            ${jaysStats2ReportingEstimateEditorOpen ? `
-                            <section class="jays-stats-table-toolbar">
-                                <label for="jaysStats2ReportingEstimateNotesInput">Estimate notes</label>
-                                <input id="jaysStats2ReportingEstimateNotesInput" type="text" maxlength="400" value="${escapeHTML(reportingEstimates.notes || "")}" placeholder="Assumptions, expected invoices, client timings...">
-                                <button class="primary-button" id="jaysStats2ReportingEstimateSaveButton" type="button">Save estimates</button>
-                                <button class="ghost-button" id="jaysStats2ReportingEstimateResetButton" type="button">Reset</button>
-                            </section>
-                            ` : (reportingEstimates.notes ? `<p class="jays-stats-meta-note"><strong>Estimate notes:</strong> ${escapeHTML(reportingEstimates.notes)}</p>` : "")}
-                            <section class="jays-stats-table-wrap is-excel">
-                                <table class="jays-stats-table is-excel-grid">
-                                    <thead>
-                                        <tr>
-                                            <th>Cash availability line</th>
-                                            <th>Value</th>
-                                            <th>How this is used</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td style="padding:10px;"><strong>Current cash at bank</strong></td>
-                                            <td style="padding:10px;">
-                                                ${jaysStats2ReportingEstimateEditorOpen
-                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingCashAtBankInput" type="text" value="${escapeHTML(String(Number(reportingCashAtBankNow || 0).toFixed(2)))}">`
-                                                    : `<strong>${escapeHTML(formatCurrency(reportingCashAtBankNow))}</strong>`}
-                                            </td>
-                                            <td style="padding:10px;">Manual input from bank position now</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding:10px;"><strong>Expected inflow between now and month end</strong></td>
-                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingRemainingInflow))}</strong></td>
-                                            <td style="padding:10px;">Ignition BNAEOM + Bank transfers BNAEOM</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding:10px;"><strong>Projected cash before wages</strong></td>
-                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedPreWages))}</strong></td>
-                                            <td style="padding:10px;">Current cash at bank + expected inflow remaining</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding:10px;"><strong>Planned wages to pay before month end</strong></td>
-                                            <td style="padding:10px;">
-                                                ${jaysStats2ReportingEstimateEditorOpen
-                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingWagesInput" type="text" value="${escapeHTML(String(Number(reportingWagesBeforeMonthEnd || 0).toFixed(2)))}">`
-                                                    : `<strong>${escapeHTML(formatCurrency(reportingWagesBeforeMonthEnd))}</strong>`}
-                                            </td>
-                                            <td style="padding:10px;">Manual wages forecast</td>
-                                        </tr>
-                                        <tr class="jays-stats-report-total-row">
-                                            <td style="padding:10px;"><strong>Projected cash after wages</strong></td>
-                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedAfterWages))}</strong></td>
-                                            <td style="padding:10px;">
-                                                ${reportingCashShortfall > 0
-                                                    ? `<span class="jays-stats-balance-warning">Shortfall risk: ${escapeHTML(formatCurrency(reportingCashShortfall))}</span>`
-                                                    : '<span class="jays-stats-confidence-bubble is-high">No shortfall forecast</span>'}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </section>
+                            <p class="jays-stats-meta-note">Core forecast rows are fixed. Additional forecast rows can be added and removed in the estimate editor.</p>
                         </section>
                         <section ${jaysStats2ReportingMode ? "hidden" : ""}>
                         ${serverCapWarning ? `<p class="jays-stats-inline-warning">${escapeHTML(serverCapWarning)}</p>` : ""}
@@ -90377,6 +90377,62 @@
                             <span class="jays-stats-table-count">Page ${jaysStats2CurrentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}</span>
                         </section>
                         </section>
+                        ${jaysStats2CashAvailabilityModalOpen ? `
+                        <section class="jays-stats-upload-summary-modal" role="dialog" aria-modal="true" aria-labelledby="jaysStats2CashAvailabilityTitle" id="jaysStats2CashAvailabilityModal">
+                            <article class="jays-stats-upload-summary-card">
+                                <header class="jays-stats-upload-summary-head">
+                                    <div>
+                                        <p class="eyebrow">Cash availability</p>
+                                        <h4 id="jaysStats2CashAvailabilityTitle">${escapeHTML(selectedMonthLabel)} cash availability</h4>
+                                        <p class="jays-stats-meta-note">As at ${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</p>
+                                    </div>
+                                    <button class="ghost-button" type="button" id="jaysStats2CashAvailabilityCloseButton">Close</button>
+                                </header>
+                                <section class="jays-stats-table-wrap is-excel">
+                                    <table class="jays-stats-table is-excel-grid">
+                                        <thead>
+                                            <tr>
+                                                <th>Cash availability line</th>
+                                                <th>Value</th>
+                                                <th>How this is used</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="padding:10px;"><strong>Current cash at bank</strong></td>
+                                                <td style="padding:10px;"><input class="jays-stats-excel-input is-number" id="jaysStats2ReportingCashAtBankInput" type="text" value="${escapeHTML(String(Number(reportingCashAtBankNow || 0).toFixed(2)))}"></td>
+                                                <td style="padding:10px;">Manual input from bank position now</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:10px;"><strong>Expected inflow between now and month end</strong></td>
+                                                <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingRemainingInflow))}</strong></td>
+                                                <td style="padding:10px;">All BNAEOM forecast rows combined</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:10px;"><strong>Projected cash before wages</strong></td>
+                                                <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedPreWages))}</strong></td>
+                                                <td style="padding:10px;">Current cash at bank + expected inflow remaining</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding:10px;"><strong>Planned wages to pay before month end</strong></td>
+                                                <td style="padding:10px;"><input class="jays-stats-excel-input is-number" id="jaysStats2ReportingWagesInput" type="text" value="${escapeHTML(String(Number(reportingWagesBeforeMonthEnd || 0).toFixed(2)))}"></td>
+                                                <td style="padding:10px;">Manual wages forecast</td>
+                                            </tr>
+                                            <tr class="jays-stats-report-total-row">
+                                                <td style="padding:10px;"><strong>Projected cash after wages</strong></td>
+                                                <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedAfterWages))}</strong></td>
+                                                <td style="padding:10px;">
+                                                    ${reportingCashShortfall > 0
+                                                        ? `<span class="jays-stats-balance-warning">Shortfall risk: ${escapeHTML(formatCurrency(reportingCashShortfall))}</span>`
+                                                        : '<span class="jays-stats-confidence-bubble is-high">No shortfall forecast</span>'}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </section>
+                            </article>
+                        </section>
+                        ` : ""}
                         ${showImportExamplesModal ? `
                         <section class="jays-stats-upload-summary-modal" role="dialog" aria-modal="true" aria-labelledby="jaysStats2UploadSummaryTitle" id="jaysStats2ImportExamplesModal">
                             <article class="jays-stats-upload-summary-card">
@@ -90471,63 +90527,97 @@
                 });
                 document.getElementById("jaysStats2ReportingModeToggle")?.addEventListener("change", (event) => {
                     jaysStats2ReportingMode = Boolean(event?.target?.checked);
+                    if (!jaysStats2ReportingMode) {
+                        jaysStats2CashAvailabilityModalOpen = false;
+                        syncJaysStats2ModalBodyClass();
+                    }
                     renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2CashAvailabilityOpenButton")?.addEventListener("click", () => {
+                    jaysStats2CashAvailabilityModalOpen = true;
+                    syncJaysStats2ModalBodyClass();
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2CashAvailabilityCloseButton")?.addEventListener("click", () => {
+                    closeJaysStats2CashAvailabilityModal();
+                });
+                document.getElementById("jaysStats2CashAvailabilityModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "jaysStats2CashAvailabilityModal") closeJaysStats2CashAvailabilityModal();
                 });
                 document.getElementById("jaysStats2ReportingEstimateToggleButton")?.addEventListener("click", () => {
                     jaysStats2ReportingEstimateEditorOpen = !jaysStats2ReportingEstimateEditorOpen;
                     renderJaysStats2Screen();
                 });
-                document.getElementById("jaysStats2ReportingEstimateSaveButton")?.addEventListener("click", () => {
+                const applyReportingEstimateUpdate = (mutate) => {
                     const monthKey = String(jaysStats2SelectedMonthKey || "").trim();
                     if (!/^\d{4}-\d{2}$/.test(monthKey)) {
-                        showToast("Select a month before saving estimates.", "error");
+                        showToast("Select a month before editing estimates.", "error");
                         return;
                     }
-                    const ignitionInput = document.getElementById("jaysStats2ReportingEstimateIgnitionInput");
-                    const bankInput = document.getElementById("jaysStats2ReportingEstimateBankInput");
-                    const cashAtBankInput = document.getElementById("jaysStats2ReportingCashAtBankInput");
-                    const wagesInput = document.getElementById("jaysStats2ReportingWagesInput");
-                    const notesInput = document.getElementById("jaysStats2ReportingEstimateNotesInput");
-                    const ignitionRaw = jaysStats2MoneyInputValue(ignitionInput?.value ?? "");
-                    const bankRaw = jaysStats2MoneyInputValue(bankInput?.value ?? "");
-                    const cashAtBankRaw = jaysStats2MoneyInputValue(cashAtBankInput?.value ?? "");
-                    const wagesRaw = jaysStats2MoneyInputValue(wagesInput?.value ?? "");
-                    if (
-                        (ignitionRaw !== null && !Number.isFinite(ignitionRaw))
-                        || (bankRaw !== null && !Number.isFinite(bankRaw))
-                        || (cashAtBankRaw !== null && !Number.isFinite(cashAtBankRaw))
-                        || (wagesRaw !== null && !Number.isFinite(wagesRaw))
-                    ) {
-                        showToast("Estimate values must be valid numbers.", "error");
-                        return;
-                    }
-                    const ignitionValue = ignitionRaw === null ? 0 : Number(ignitionRaw);
-                    const bankValue = bankRaw === null ? 0 : Number(bankRaw);
-                    const cashAtBankValue = cashAtBankRaw === null ? 0 : Number(cashAtBankRaw);
-                    const wagesValue = wagesRaw === null ? 0 : Number(wagesRaw);
-                    jaysStats2SaveReportingEstimateForMonth(monthKey, {
-                        ignitionBnaeom: Math.max(0, Number(ignitionValue || 0)),
-                        bankTransfersBnaeom: Math.max(0, Number(bankValue || 0)),
-                        cashAtBankNow: Math.max(0, Number(cashAtBankValue || 0)),
-                        wagesBeforeMonthEnd: Math.max(0, Number(wagesValue || 0)),
-                        notes: String(notesInput?.value || ""),
-                    });
-                    jaysStats2ReportingEstimateEditorOpen = false;
-                    showToast("Reporting estimates saved.", "success");
+                    const existing = jaysStats2ReportingEstimateForMonth(monthKey);
+                    const next = mutate(existing);
+                    if (!next || typeof next !== "object") return;
+                    jaysStats2SaveReportingEstimateForMonth(monthKey, next);
                     renderJaysStats2Screen();
+                };
+                document.getElementById("jaysStats2ReportingEstimateAddRowButton")?.addEventListener("click", () => {
+                    applyReportingEstimateUpdate((existing) => ({
+                        ...existing,
+                        additionalRows: [...(existing.additionalRows || []), jaysStats2NewReportingEstimateRow()],
+                    }));
                 });
-                document.getElementById("jaysStats2ReportingEstimateResetButton")?.addEventListener("click", () => {
-                    const monthKey = String(jaysStats2SelectedMonthKey || "").trim();
-                    if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
-                    jaysStats2SaveReportingEstimateForMonth(monthKey, {
-                        ignitionBnaeom: 0,
-                        bankTransfersBnaeom: 0,
-                        cashAtBankNow: 0,
-                        wagesBeforeMonthEnd: 0,
-                        notes: "",
+                panel.querySelectorAll("[data-jays-stats2-estimate-remove-id]").forEach((element) => {
+                    element.addEventListener("click", (event) => {
+                        const rowId = String(event?.target?.dataset?.jaysStats2EstimateRemoveId || "").trim();
+                        if (!rowId) return;
+                        applyReportingEstimateUpdate((existing) => ({
+                            ...existing,
+                            additionalRows: (existing.additionalRows || []).filter((row) => String(row?.id || "") !== rowId),
+                        }));
                     });
-                    showToast("Reporting estimates reset.", "success");
-                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2ReportingEstimateIgnitionInput")?.addEventListener("change", (event) => {
+                    const parsed = jaysStats2MoneyInputValue(event?.target?.value ?? "");
+                    if (parsed !== null && !Number.isFinite(parsed)) return showToast("Enter a valid number.", "error");
+                    applyReportingEstimateUpdate((existing) => ({ ...existing, ignitionBnaeom: Math.max(0, Number(parsed || 0)) }));
+                });
+                document.getElementById("jaysStats2ReportingEstimateBankInput")?.addEventListener("change", (event) => {
+                    const parsed = jaysStats2MoneyInputValue(event?.target?.value ?? "");
+                    if (parsed !== null && !Number.isFinite(parsed)) return showToast("Enter a valid number.", "error");
+                    applyReportingEstimateUpdate((existing) => ({ ...existing, bankTransfersBnaeom: Math.max(0, Number(parsed || 0)) }));
+                });
+                document.getElementById("jaysStats2ReportingCashAtBankInput")?.addEventListener("change", (event) => {
+                    const parsed = jaysStats2MoneyInputValue(event?.target?.value ?? "");
+                    if (parsed !== null && !Number.isFinite(parsed)) return showToast("Enter a valid number.", "error");
+                    applyReportingEstimateUpdate((existing) => ({ ...existing, cashAtBankNow: Math.max(0, Number(parsed || 0)) }));
+                });
+                document.getElementById("jaysStats2ReportingWagesInput")?.addEventListener("change", (event) => {
+                    const parsed = jaysStats2MoneyInputValue(event?.target?.value ?? "");
+                    if (parsed !== null && !Number.isFinite(parsed)) return showToast("Enter a valid number.", "error");
+                    applyReportingEstimateUpdate((existing) => ({ ...existing, wagesBeforeMonthEnd: Math.max(0, Number(parsed || 0)) }));
+                });
+                panel.querySelectorAll("[data-jays-stats2-estimate-row-id]").forEach((element) => {
+                    element.addEventListener("change", (event) => {
+                        const rowId = String(event?.target?.dataset?.jaysStats2EstimateRowId || "").trim();
+                        const field = String(event?.target?.dataset?.jaysStats2EstimateField || "").trim();
+                        if (!rowId || !field) return;
+                        applyReportingEstimateUpdate((existing) => {
+                            const additionalRows = (existing.additionalRows || []).map((row) => ({ ...row }));
+                            const target = additionalRows.find((row) => String(row?.id || "") === rowId);
+                            if (!target) return existing;
+                            if (field === "label") {
+                                target.label = String(event?.target?.value || "").trim().slice(0, 120) || "Additional estimate";
+                            } else if (field === "amount") {
+                                const parsed = jaysStats2MoneyInputValue(event?.target?.value ?? "");
+                                if (parsed !== null && !Number.isFinite(parsed)) {
+                                    showToast("Enter a valid number.", "error");
+                                    return existing;
+                                }
+                                target.amount = Math.max(0, Number(parsed || 0));
+                            }
+                            return { ...existing, additionalRows };
+                        });
+                    });
                 });
                 document.getElementById("jaysStats2DismissExamplesButton")?.addEventListener("click", () => closeJaysStats2UploadSummaryModal());
                 document.getElementById("jaysStats2ImportExamplesModal")?.addEventListener("click", (event) => {
