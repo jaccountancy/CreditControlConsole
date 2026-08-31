@@ -37694,7 +37694,8 @@
                 padding: 5px 8px;
             }
             #jaysStats2Screen .jays-stats-table-toolbar input[type="search"],
-            #jaysStats2Screen .jays-stats-table-toolbar input[type="date"] {
+            #jaysStats2Screen .jays-stats-table-toolbar input[type="date"],
+            #jaysStats2Screen .jays-stats-table-toolbar input[type="text"] {
                 border: 1px solid rgba(61, 85, 130, 0.24);
                 border-radius: 8px;
                 background: #fff;
@@ -37717,6 +37718,9 @@
                 color: #4c658a;
                 font-size: 0.75rem;
                 font-weight: 620;
+            }
+            #jaysStats2Screen .jays-stats-report-total-row td {
+                background: #eef6ff !important;
             }
             #jaysStats2Screen .jays-stats-upload-summary-modal {
                 position: fixed;
@@ -49500,6 +49504,7 @@
                 settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
             };
             const JAYS_STATS_STORAGE_KEY = "jenius-jays-stats-v1";
+            const JAYS_STATS2_REPORTING_ESTIMATES_KEY = "jenius-jays-stats-2-reporting-estimates-v1";
             const jaysStatsSourceFields = [
                 "ignitionDisbursals",
                 "stripeIncome",
@@ -49540,6 +49545,12 @@
             let jaysStats2ImportUiTimer = null;
             let jaysStats2UploadSummaryModalOpen = false;
             let jaysStats2UploadSummaryModalKey = "";
+            let jaysStats2ImportWizardOpen = false;
+            let jaysStats2ImportWizardStep = 1;
+            let jaysStats2ImportWizardRows = [];
+            let jaysStats2ImportWizardFileSummaries = [];
+            let jaysStats2ImportWizardIntegrity = null;
+            let jaysStats2ImportWizardMessages = [];
             let jaysStats2EditDrafts = {};
             let jaysStats2SavingTransactionIds = new Set();
             let jaysStats2Categorising = false;
@@ -49556,6 +49567,8 @@
             let jaysStats2AiOrderIds = [];
             let jaysStats2AiBalanceNotes = [];
             let jaysStats2ReportingMode = false;
+            let jaysStats2ReportingEstimateEditorOpen = false;
+            let jaysStats2ReportingEstimates = loadJaysStats2ReportingEstimates();
             const jaysStats2FetchLimit = 10000;
             let jaysStats2Workspace = {
                 account: { name: "JUK Trading Account", sortCode: "20-59-43", accountNumber: "93960404" },
@@ -50611,6 +50624,8 @@
                         jaysStatsBudgetPublish: config.endpoints?.jaysStatsBudgetPublish || "/api/jays-stats/budget/publish",
                         jaysStats2: config.endpoints?.jaysStats2 || "/api/jays-stats-2",
                         jaysStats2Uploads: config.endpoints?.jaysStats2Uploads || "/api/jays-stats-2/uploads",
+                        jaysStats2UploadsPreview: config.endpoints?.jaysStats2UploadsPreview || "/api/jays-stats-2/uploads/preview",
+                        jaysStats2UploadsCommit: config.endpoints?.jaysStats2UploadsCommit || "/api/jays-stats-2/uploads/commit",
                         jaysStats2UpdateTransaction: config.endpoints?.jaysStats2UpdateTransaction || "/api/jays-stats-2/transactions/:transactionId",
                         jaysStats2VoidTransaction: config.endpoints?.jaysStats2VoidTransaction || "/api/jays-stats-2/transactions/:transactionId/void",
                         jaysStats2BulkUpdate: config.endpoints?.jaysStats2BulkUpdate || "/api/jays-stats-2/transactions/bulk",
@@ -89174,7 +89189,8 @@
                 if (!files.length) return;
                 if (jaysStats2Importing) return;
                 jaysStats2UploadSummaryModalOpen = false;
-                document.body.classList.remove("is-modal-open");
+                jaysStats2ImportWizardOpen = false;
+                syncJaysStats2ModalBodyClass();
                 jaysStats2ImportFileCount = files.length;
                 jaysStats2ImportStartedAt = Date.now();
                 jaysStats2ImportEstimatedSeconds = estimateJaysStats2ImportSeconds(files.length);
@@ -89184,39 +89200,21 @@
                 try {
                     const formData = new FormData();
                     files.forEach((file) => formData.append("files", file, file.name));
-                    const payload = await requestFormData(api.endpoints.jaysStats2Uploads, formData, {}, { timeoutMs: 240000 });
-                    if (payload?.workspace && typeof payload.workspace === "object") {
-                        jaysStats2Workspace = payload.workspace;
-                        jaysStats2SortMode = "date-desc";
-                        jaysStats2AiOrderIds = [];
-                    } else {
-                        await loadJaysStats2({ silent: true });
-                    }
-                    jaysStats2LastImportSummary = {
-                        summaryKey: `upload-${Date.now()}-${files.length}`,
-                        importedCount: Number(payload?.importedCount || 0),
-                        duplicateCount: Number(payload?.duplicateCount || 0),
-                        duplicateInFileCount: Number(payload?.duplicateInFileCount || 0),
-                        processedCount: Number(payload?.processedCount || 0),
-                        extractedCount: Number(payload?.extractedCount || 0),
-                        fileSummaries: Array.isArray(payload?.fileSummaries) ? payload.fileSummaries : [],
-                        importedSamples: Array.isArray(payload?.importedSamples) ? payload.importedSamples : [],
-                        duplicateSamples: Array.isArray(payload?.duplicateSamples) ? payload.duplicateSamples : [],
-                    };
-                    jaysStats2UploadSummaryModalKey = String(jaysStats2LastImportSummary.summaryKey || "");
-                    jaysStats2UploadSummaryModalOpen = true;
-                    document.body.classList.add("is-modal-open");
-                    const importedCount = Number(payload?.importedCount || 0);
-                    const duplicateCount = Number(payload?.duplicateCount || 0) + Number(payload?.duplicateInFileCount || 0);
-                    showToast(`Imported ${importedCount.toLocaleString("en-GB")} new transaction(s). ${duplicateCount.toLocaleString("en-GB")} duplicate(s) skipped.`, "success");
-                    const integrity = payload?.integrity && typeof payload.integrity === "object" ? payload.integrity : null;
-                    if (integrity && integrity.fullyAccounted === false) {
-                        showToast("Import integrity warning: not every extracted row was accounted for. Review upload summary.", "warning");
-                    }
-                    const gapCount = Number(integrity?.runningBalanceGapCount || 0);
-                    if (gapCount > 0) {
-                        showToast(`${gapCount.toLocaleString("en-GB")} running-balance gap(s) detected. Check highlighted rows for missing lines.`, "warning");
-                    }
+                    const payload = await requestFormData(api.endpoints.jaysStats2UploadsPreview, formData, {}, { timeoutMs: 240000 });
+                    const previewRows = Array.isArray(payload?.rows) ? payload.rows.filter((row) => row && typeof row === "object") : [];
+                    jaysStats2ImportWizardRows = previewRows.map((row) => ({ ...row, include: Boolean(row?.include) }));
+                    jaysStats2ImportWizardFileSummaries = Array.isArray(payload?.fileSummaries) ? payload.fileSummaries : [];
+                    jaysStats2ImportWizardIntegrity = payload?.integrity && typeof payload.integrity === "object" ? payload.integrity : null;
+                    jaysStats2ImportWizardMessages = Array.isArray(payload?.messages) ? payload.messages.map((item) => String(item || "")).filter(Boolean) : [];
+                    jaysStats2ImportWizardStep = 1;
+                    jaysStats2ImportWizardOpen = true;
+                    syncJaysStats2ModalBodyClass();
+                    const includedCount = jaysStats2ImportWizardRows.reduce((count, row) => (row?.include ? count + 1 : count), 0);
+                    const flaggedCount = jaysStats2ImportWizardRows.length - includedCount;
+                    showToast(
+                        `Review ${jaysStats2ImportWizardRows.length.toLocaleString("en-GB")} extracted row(s): ${includedCount.toLocaleString("en-GB")} pre-selected, ${flaggedCount.toLocaleString("en-GB")} flagged.`,
+                        "info"
+                    );
                 } catch (error) {
                     showToast(error?.message || "Statement upload failed.", "error");
                 } finally {
@@ -89224,6 +89222,11 @@
                     stopJaysStats2ImportUiTicker(true);
                     renderJaysStats2Screen();
                 }
+            }
+
+            function syncJaysStats2ModalBodyClass() {
+                if (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen) document.body.classList.add("is-modal-open");
+                else document.body.classList.remove("is-modal-open");
             }
 
             function estimateJaysStats2ImportSeconds(fileCount) {
@@ -89304,8 +89307,90 @@
 
             function closeJaysStats2UploadSummaryModal() {
                 jaysStats2UploadSummaryModalOpen = false;
-                document.body.classList.remove("is-modal-open");
+                syncJaysStats2ModalBodyClass();
                 renderJaysStats2Screen();
+            }
+
+            function closeJaysStats2ImportWizard() {
+                jaysStats2ImportWizardOpen = false;
+                jaysStats2ImportWizardStep = 1;
+                jaysStats2ImportWizardRows = [];
+                jaysStats2ImportWizardFileSummaries = [];
+                jaysStats2ImportWizardIntegrity = null;
+                jaysStats2ImportWizardMessages = [];
+                syncJaysStats2ModalBodyClass();
+                renderJaysStats2Screen();
+            }
+
+            function jaysStats2PreviewRowExcludeReasonLabel(reason) {
+                const value = String(reason || "").trim().toLowerCase();
+                if (value === "duplicate-existing") return "Already imported";
+                if (value === "likely-pending-missing-balance") return "Likely pending (no running balance)";
+                return value || "Excluded";
+            }
+
+            function jaysStats2SetPreviewRowsInclude(predicate) {
+                jaysStats2ImportWizardRows = (Array.isArray(jaysStats2ImportWizardRows) ? jaysStats2ImportWizardRows : []).map((row) => {
+                    const nextRow = row && typeof row === "object" ? { ...row } : {};
+                    nextRow.include = Boolean(predicate(nextRow));
+                    return nextRow;
+                });
+                renderJaysStats2Screen();
+            }
+
+            async function jaysStats2CommitImportWizard() {
+                if (jaysStats2Importing) return;
+                const rows = Array.isArray(jaysStats2ImportWizardRows) ? jaysStats2ImportWizardRows : [];
+                const selectedCount = rows.reduce((count, row) => (row?.include ? count + 1 : count), 0);
+                if (!selectedCount) {
+                    showToast("No rows selected for import.", "error");
+                    return;
+                }
+                jaysStats2ImportFileCount = Math.max(1, Number((jaysStats2ImportWizardFileSummaries || []).length || 1));
+                jaysStats2ImportStartedAt = Date.now();
+                jaysStats2ImportEstimatedSeconds = estimateJaysStats2ImportSeconds(jaysStats2ImportFileCount);
+                jaysStats2Importing = true;
+                ensureJaysStats2ImportUiTicker();
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2UploadsCommit, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            rows,
+                        }),
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                        jaysStats2SortMode = "date-desc";
+                        jaysStats2AiOrderIds = [];
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    closeJaysStats2ImportWizard();
+                    jaysStats2LastImportSummary = {
+                        summaryKey: `upload-${Date.now()}-${jaysStats2ImportFileCount}`,
+                        importedCount: Number(payload?.importedCount || 0),
+                        duplicateCount: Number(payload?.duplicateCount || 0),
+                        duplicateInFileCount: Number(payload?.duplicateInFileCount || 0),
+                        processedCount: Number(payload?.processedCount || 0),
+                        extractedCount: Number(payload?.extractedCount || 0),
+                        fileSummaries: Array.isArray(payload?.fileSummaries) ? payload.fileSummaries : [],
+                        importedSamples: Array.isArray(payload?.importedSamples) ? payload.importedSamples : [],
+                        duplicateSamples: Array.isArray(payload?.duplicateSamples) ? payload.duplicateSamples : [],
+                    };
+                    jaysStats2UploadSummaryModalKey = String(jaysStats2LastImportSummary.summaryKey || "");
+                    jaysStats2UploadSummaryModalOpen = true;
+                    syncJaysStats2ModalBodyClass();
+                    const importedCount = Number(payload?.importedCount || 0);
+                    const duplicateCount = Number(payload?.duplicateCount || 0) + Number(payload?.duplicateInFileCount || 0);
+                    showToast(`Imported ${importedCount.toLocaleString("en-GB")} new transaction(s). ${duplicateCount.toLocaleString("en-GB")} duplicate(s) skipped.`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Import commit failed.", "error");
+                } finally {
+                    jaysStats2Importing = false;
+                    stopJaysStats2ImportUiTicker(true);
+                    renderJaysStats2Screen();
+                }
             }
 
             function jaysStats2MoneyInputValue(value) {
@@ -89688,6 +89773,70 @@
                 };
             }
 
+            function loadJaysStats2ReportingEstimates() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(JAYS_STATS2_REPORTING_ESTIMATES_KEY) || "{}");
+                    return stored && typeof stored === "object" ? stored : {};
+                } catch {
+                    return {};
+                }
+            }
+
+            function persistJaysStats2ReportingEstimates() {
+                try {
+                    localStorage.setItem(JAYS_STATS2_REPORTING_ESTIMATES_KEY, JSON.stringify(jaysStats2ReportingEstimates || {}));
+                } catch {}
+            }
+
+            function jaysStats2ReportingEstimateForMonth(monthKey = "") {
+                const key = String(monthKey || "").trim();
+                const item = jaysStats2ReportingEstimates && typeof jaysStats2ReportingEstimates === "object"
+                    ? jaysStats2ReportingEstimates[key]
+                    : null;
+                return {
+                    ignitionBnaeom: Math.max(0, Number(item?.ignitionBnaeom || 0)),
+                    bankTransfersBnaeom: Math.max(0, Number(item?.bankTransfersBnaeom || 0)),
+                    notes: String(item?.notes || "").trim(),
+                };
+            }
+
+            function jaysStats2SaveReportingEstimateForMonth(monthKey = "", payload = {}) {
+                const key = String(monthKey || "").trim();
+                if (!/^\d{4}-\d{2}$/.test(key)) return;
+                const next = {
+                    ignitionBnaeom: Math.max(0, Number(payload?.ignitionBnaeom || 0)),
+                    bankTransfersBnaeom: Math.max(0, Number(payload?.bankTransfersBnaeom || 0)),
+                    notes: String(payload?.notes || "").trim().slice(0, 400),
+                    updatedAt: new Date().toISOString(),
+                };
+                jaysStats2ReportingEstimates = {
+                    ...(jaysStats2ReportingEstimates || {}),
+                    [key]: next,
+                };
+                persistJaysStats2ReportingEstimates();
+            }
+
+            function jaysStats2ReportingActuals(rows = []) {
+                const totals = {
+                    ignition: 0,
+                    bankTransfers: 0,
+                    stripe: 0,
+                    vending: 0,
+                    other: 0,
+                };
+                (Array.isArray(rows) ? rows : []).forEach((row) => {
+                    const amount = Number(row?.amount || 0);
+                    if (!(amount > 0)) return;
+                    const key = String(row?.categoryStreamKey || "unclassified").trim().toLowerCase();
+                    if (key === "ignition-disbursals") totals.ignition += amount;
+                    else if (key === "bank-transfers") totals.bankTransfers += amount;
+                    else if (key === "stripe-income") totals.stripe += amount;
+                    else if (key === "vending-income") totals.vending += amount;
+                    else totals.other += amount;
+                });
+                return totals;
+            }
+
             function ensureJaysStatsMonth(monthKey = "") {
                 const cleanMonthKey = String(monthKey || "").trim();
                 if (!/^\d{4}-\d{2}$/.test(cleanMonthKey)) return null;
@@ -89788,9 +89937,10 @@
             function renderJaysStats2Screen() {
                 const panel = document.getElementById("jaysStats2Panel");
                 if (!panel) return;
-                if (activeView !== "jays-stats-2" && jaysStats2UploadSummaryModalOpen) {
+                if (activeView !== "jays-stats-2" && (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen)) {
                     jaysStats2UploadSummaryModalOpen = false;
-                    document.body.classList.remove("is-modal-open");
+                    jaysStats2ImportWizardOpen = false;
+                    syncJaysStats2ModalBodyClass();
                 }
                 if (jaysStats2Importing) ensureJaysStats2ImportUiTicker();
                 else stopJaysStats2ImportUiTicker();
@@ -89820,6 +89970,9 @@
                     selectedMonthByCategory.set(key, current);
                 });
                 const selectedMonthCategoryRows = [...selectedMonthByCategory.values()].sort((left, right) => Number(right.amount || 0) - Number(left.amount || 0));
+                const reportingActuals = jaysStats2ReportingActuals(selectedMonthRows);
+                const reportingEstimates = jaysStats2ReportingEstimateForMonth(jaysStats2SelectedMonthKey || "");
+                const reportingProjectedTotal = selectedMonthCreditTotal + Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0);
                 const importSummary = jaysStats2LastImportSummary && typeof jaysStats2LastImportSummary === "object"
                     ? jaysStats2LastImportSummary
                     : null;
@@ -89932,6 +90085,26 @@
                     : "";
                 const aiBalanceNotes = (jaysStats2AiBalanceNotes || []).slice(0, 3).map((note) => `<li>${escapeHTML(String(note || ""))}</li>`).join("");
                 const showImportExamplesModal = Boolean(importSummary && jaysStats2UploadSummaryModalOpen && jaysStats2UploadSummaryModalKey === String(importSummary?.summaryKey || ""));
+                const previewRows = Array.isArray(jaysStats2ImportWizardRows) ? jaysStats2ImportWizardRows : [];
+                const previewIncludedCount = previewRows.reduce((count, row) => (row?.include ? count + 1 : count), 0);
+                const previewExcludedCount = Math.max(0, previewRows.length - previewIncludedCount);
+                const previewPendingCount = previewRows.reduce((count, row) => (
+                    Array.isArray(row?.excludeReasons) && row.excludeReasons.includes("likely-pending-missing-balance") ? count + 1 : count
+                ), 0);
+                const previewRowsMarkup = previewRows.slice(0, 200).map((row, index) => {
+                    const previewId = String(row?.previewId || index);
+                    const reasons = Array.isArray(row?.excludeReasons) ? row.excludeReasons : [];
+                    return `
+                        <tr>
+                            <td style="padding:8px;"><input type="checkbox" data-jays-stats2-preview-include-id="${escapeHTML(previewId)}" ${row?.include ? "checked" : ""}></td>
+                            <td style="padding:8px;">${escapeHTML(formatDate(String(row?.date || "")))}</td>
+                            <td style="padding:8px;">${escapeHTML(String(row?.description || ""))}</td>
+                            <td style="padding:8px;">${escapeHTML(formatCurrency(Number(row?.amount || 0)))}</td>
+                            <td style="padding:8px;">${row?.runningBalance === null || row?.runningBalance === undefined ? "--" : escapeHTML(formatCurrency(Number(row?.runningBalance || 0)))}</td>
+                            <td style="padding:8px;">${reasons.length ? reasons.map((reason) => `<span class="jays-stats-balance-warning">${escapeHTML(jaysStats2PreviewRowExcludeReasonLabel(reason))}</span>`).join(" ") : "<span class=\"jays-stats-confidence-bubble is-high\">Ready</span>"}</td>
+                        </tr>
+                    `;
+                }).join("");
                 panel.innerHTML = `
                     <section class="jays-stats-shell">
                         <header class="jays-stats-topbar">
@@ -89956,35 +90129,85 @@
                         <p class="jays-stats-meta-note">Date range: ${escapeHTML(formatDate(summary.earliestDate || ""))} to ${escapeHTML(formatDate(summary.latestDate || ""))}. Edit date, description, amount, running balance, and category directly in-grid.</p>
                         <section class="jays-stats-report-panel" ${jaysStats2ReportingMode ? "" : "hidden"}>
                             <p class="eyebrow">Cash collection report</p>
-                            <h4>${escapeHTML(formatMonthKey(jaysStats2SelectedMonthKey || ""))}</h4>
-                            <div class="jays-stats-report-grid">
-                                <article><span>Total cash collected (credits)</span><strong>${escapeHTML(formatCurrency(selectedMonthCreditTotal))}</strong></article>
-                                <article><span>Credit transactions</span><strong>${escapeHTML(selectedMonthCredits.length.toLocaleString("en-GB"))}</strong></article>
-                                <article><span>Latest transaction date</span><strong>${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</strong></article>
-                                <article><span>Rows in selected month</span><strong>${escapeHTML(selectedMonthRows.length.toLocaleString("en-GB"))}</strong></article>
-                            </div>
+                            <h4>${escapeHTML(formatMonthKey(jaysStats2SelectedMonthKey || ""))} · as at ${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</h4>
+                            <section class="jays-stats-table-toolbar">
+                                <span class="jays-stats-table-count">This report updates automatically from imported transactions each day.</span>
+                                <button class="ghost-button" id="jaysStats2ReportingEstimateToggleButton" type="button">${jaysStats2ReportingEstimateEditorOpen ? "Close estimate editor" : "Add / edit estimates"}</button>
+                            </section>
                             <section class="jays-stats-table-wrap is-excel">
                                 <table class="jays-stats-table is-excel-grid">
                                     <thead>
                                         <tr>
-                                            <th>Category</th>
-                                            <th>Credits</th>
-                                            <th>Count</th>
+                                            <th>Line</th>
+                                            <th>Value</th>
+                                            <th>Notes</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${selectedMonthCategoryRows.length
-                                            ? selectedMonthCategoryRows.map((row) => `
-                                                <tr>
-                                                    <td style="padding:10px;">${escapeHTML(String(row.label || "Unclassified"))}</td>
-                                                    <td style="padding:10px;">${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
-                                                    <td style="padding:10px;">${escapeHTML(Number(row.count || 0).toLocaleString("en-GB"))}</td>
-                                                </tr>
-                                            `).join("")
-                                            : '<tr><td colspan="3" style="padding:10px;">No credit transactions for this month yet.</td></tr>'}
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Money in from Ignition (MTD actual)</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingActuals.ignition))}</strong></td>
+                                            <td style="padding:10px;">Categorised as Ignition disbursals</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Money in from Bank Transfers (MTD actual)</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingActuals.bankTransfers))}</strong></td>
+                                            <td style="padding:10px;">Categorised as Bank transfers</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;">Stripe income (MTD actual)</td>
+                                            <td style="padding:10px;">${escapeHTML(formatCurrency(reportingActuals.stripe))}</td>
+                                            <td style="padding:10px;">Categorised as Stripe income</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;">Vending income (MTD actual)</td>
+                                            <td style="padding:10px;">${escapeHTML(formatCurrency(reportingActuals.vending))}</td>
+                                            <td style="padding:10px;">Categorised as Vending income</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;">Other credits (MTD actual)</td>
+                                            <td style="padding:10px;">${escapeHTML(formatCurrency(reportingActuals.other))}</td>
+                                            <td style="padding:10px;">Unclassified and other streams</td>
+                                        </tr>
+                                        <tr class="jays-stats-report-total-row">
+                                            <td style="padding:10px;"><strong>Total cash collected MTD</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(selectedMonthCreditTotal))}</strong></td>
+                                            <td style="padding:10px;">${escapeHTML(selectedMonthCredits.length.toLocaleString("en-GB"))} credit transaction(s)</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Ignition collections BNAEOM estimate</strong></td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingEstimateIgnitionInput" type="text" value="${escapeHTML(String(Number(reportingEstimates.ignitionBnaeom || 0).toFixed(2)))}">`
+                                                    : `<strong>${escapeHTML(formatCurrency(reportingEstimates.ignitionBnaeom || 0))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">Expected additional Ignition receipts before month end</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Predicted bank transfers BNAEOM</strong></td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingEstimateBankInput" type="text" value="${escapeHTML(String(Number(reportingEstimates.bankTransfersBnaeom || 0).toFixed(2)))}">`
+                                                    : `<strong>${escapeHTML(formatCurrency(reportingEstimates.bankTransfersBnaeom || 0))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">Expected additional bank transfer receipts before month end</td>
+                                        </tr>
+                                        <tr class="jays-stats-report-total-row">
+                                            <td style="padding:10px;"><strong>Projected month-end cash collection</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedTotal))}</strong></td>
+                                            <td style="padding:10px;">MTD actuals + BNAEOM estimates</td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </section>
+                            ${jaysStats2ReportingEstimateEditorOpen ? `
+                            <section class="jays-stats-table-toolbar">
+                                <label for="jaysStats2ReportingEstimateNotesInput">Estimate notes</label>
+                                <input id="jaysStats2ReportingEstimateNotesInput" type="text" maxlength="400" value="${escapeHTML(reportingEstimates.notes || "")}" placeholder="Assumptions, expected invoices, client timings...">
+                                <button class="primary-button" id="jaysStats2ReportingEstimateSaveButton" type="button">Save estimates</button>
+                                <button class="ghost-button" id="jaysStats2ReportingEstimateResetButton" type="button">Reset</button>
+                            </section>
+                            ` : (reportingEstimates.notes ? `<p class="jays-stats-meta-note"><strong>Estimate notes:</strong> ${escapeHTML(reportingEstimates.notes)}</p>` : "")}
                         </section>
                         <section ${jaysStats2ReportingMode ? "hidden" : ""}>
                         ${serverCapWarning ? `<p class="jays-stats-inline-warning">${escapeHTML(serverCapWarning)}</p>` : ""}
@@ -90016,8 +90239,10 @@
                             <input id="jaysStats2FilterDateTo" type="date" value="${escapeHTML(jaysStats2FilterDateTo)}">
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideDebitsToggle" ${jaysStats2HideDebitRows ? "checked" : ""}> Hide debit rows</label>
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideCategorisedToggle" ${jaysStats2HideCategorisedRows ? "checked" : ""}> Hide categorised rows</label>
+                            <button class="ghost-button" id="jaysStats2AiBalanceSortButtonTop" type="button" ${jaysStats2BulkBusy || visibleTransactions.length === 0 ? "disabled" : ""}>${jaysStats2BulkBusy ? "Working..." : "AI check"}</button>
                             <span class="jays-stats-table-count">${escapeHTML(rowCountSummary)}</span>
                         </section>
+                        ${jaysStats2SelectedIds.size > 1 ? `
                         <section class="jays-stats-table-toolbar">
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2SelectAllVisibleToggle" ${allVisibleSelected ? "checked" : ""} ${visibleTransactions.length ? "" : "disabled"}> Select visible (${visibleTransactions.length.toLocaleString("en-GB")})</label>
                             <label for="jaysStats2BulkCategorySelect">Bulk category</label>
@@ -90027,8 +90252,8 @@
                             <button class="ghost-button" id="jaysStats2BulkCategoryApplyButton" type="button" ${(jaysStats2SelectedIds.size === 0 || jaysStats2BulkBusy) ? "disabled" : ""}>Apply to selected (${jaysStats2SelectedIds.size.toLocaleString("en-GB")})</button>
                             <button class="ghost-button" id="jaysStats2BulkVoidButton" type="button" ${(jaysStats2SelectedIds.size === 0 || jaysStats2BulkBusy) ? "disabled" : ""}>Void selected</button>
                             <button class="ghost-button" id="jaysStats2ClearSelectionButton" type="button" ${jaysStats2SelectedIds.size === 0 ? "disabled" : ""}>Clear selection</button>
-                            <button class="ghost-button" id="jaysStats2AiBalanceSortButton" type="button" ${jaysStats2BulkBusy || visibleTransactions.length === 0 ? "disabled" : ""}>${jaysStats2BulkBusy ? "Working..." : "AI running-balance check"}</button>
                         </section>
+                        ` : ""}
                         ${aiBalanceNotes ? `<section class="jays-stats-settings-panel"><p class="eyebrow">AI balance notes</p><ul class="jays-stats-ai-list">${aiBalanceNotes}</ul></section>` : ""}
                         <section class="jays-stats-table-wrap is-excel">
                             <table class="jays-stats-table is-excel-grid">
@@ -90073,6 +90298,67 @@
                             </article>
                         </section>
                         ` : ""}
+                        ${jaysStats2ImportWizardOpen ? `
+                        <section class="jays-stats-upload-summary-modal" role="dialog" aria-modal="true" aria-labelledby="jaysStats2ImportWizardTitle" id="jaysStats2ImportWizardModal">
+                            <article class="jays-stats-upload-summary-card">
+                                <header class="jays-stats-upload-summary-head">
+                                    <div>
+                                        <p class="eyebrow">Import wizard · step ${jaysStats2ImportWizardStep} of 2</p>
+                                        <h4 id="jaysStats2ImportWizardTitle">Review extracted statement transactions</h4>
+                                        <p class="jays-stats-meta-note">Exclude pending or duplicate rows before import.</p>
+                                    </div>
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardCancelButton">Cancel</button>
+                                </header>
+                                ${jaysStats2ImportWizardStep === 1 ? `
+                                <section class="jays-stats-table-toolbar">
+                                    <span class="jays-stats-table-count">Extracted ${previewRows.length.toLocaleString("en-GB")} · Selected ${previewIncludedCount.toLocaleString("en-GB")} · Excluded ${previewExcludedCount.toLocaleString("en-GB")} · Pending-like ${previewPendingCount.toLocaleString("en-GB")}</span>
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardExcludePendingButton">Exclude likely pending</button>
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardIncludeSafeButton">Include safe only</button>
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardIncludeAllButton">Include all</button>
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardExcludeAllButton">Exclude all</button>
+                                </section>
+                                <section class="jays-stats-table-wrap is-excel">
+                                    <table class="jays-stats-table is-excel-grid">
+                                        <thead>
+                                            <tr>
+                                                <th>Import</th>
+                                                <th>Date</th>
+                                                <th>Description</th>
+                                                <th>Amount</th>
+                                                <th>Running Balance</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>${previewRowsMarkup || '<tr><td colspan="6" style="padding:10px;">No rows extracted.</td></tr>'}</tbody>
+                                    </table>
+                                </section>
+                                ${previewRows.length > 200 ? `<p class="jays-stats-meta-note">Showing first 200 rows for review. All rows are still included/excluded by your bulk actions.</p>` : ""}
+                                ${jaysStats2ImportWizardMessages.length ? `<section class="jays-stats-settings-panel"><p class="eyebrow">Parser messages</p><ul class="jays-stats-ai-list">${jaysStats2ImportWizardMessages.map((msg) => `<li>${escapeHTML(String(msg || ""))}</li>`).join("")}</ul></section>` : ""}
+                                <footer class="jays-stats-upload-summary-head">
+                                    <div></div>
+                                    <button class="primary-button" type="button" id="jaysStats2WizardContinueButton" ${previewRows.length ? "" : "disabled"}>Continue</button>
+                                </footer>
+                                ` : `
+                                <section class="jays-stats-upload-summary-grid">
+                                    <article class="jays-stats-settings-panel">
+                                        <p class="eyebrow">Import selection</p>
+                                        <strong>${previewIncludedCount.toLocaleString("en-GB")} rows selected</strong>
+                                        <p class="jays-stats-meta-note">${previewExcludedCount.toLocaleString("en-GB")} rows excluded before import.</p>
+                                    </article>
+                                    <article class="jays-stats-settings-panel">
+                                        <p class="eyebrow">Extraction check</p>
+                                        <strong>${Number(jaysStats2ImportWizardIntegrity?.extractedCount || 0).toLocaleString("en-GB")} extracted</strong>
+                                        <p class="jays-stats-meta-note">Duplicates in file: ${Number(jaysStats2ImportWizardIntegrity?.duplicateInFileCount || 0).toLocaleString("en-GB")} · Already imported: ${Number(jaysStats2ImportWizardIntegrity?.duplicateExistingCount || 0).toLocaleString("en-GB")}</p>
+                                    </article>
+                                </section>
+                                <footer class="jays-stats-upload-summary-head">
+                                    <button class="ghost-button" type="button" id="jaysStats2WizardBackButton">Back</button>
+                                    <button class="primary-button" type="button" id="jaysStats2WizardCommitButton" ${jaysStats2Importing || previewIncludedCount === 0 ? "disabled" : ""}>${jaysStats2Importing ? "Importing..." : `Import ${previewIncludedCount.toLocaleString("en-GB")} selected`}</button>
+                                </footer>
+                                `}
+                            </article>
+                        </section>
+                        ` : ""}
                     </section>
                 `;
                 document.getElementById("jaysStats2UploadButton")?.addEventListener("click", () => {
@@ -90082,9 +90368,92 @@
                     jaysStats2ReportingMode = Boolean(event?.target?.checked);
                     renderJaysStats2Screen();
                 });
+                document.getElementById("jaysStats2ReportingEstimateToggleButton")?.addEventListener("click", () => {
+                    jaysStats2ReportingEstimateEditorOpen = !jaysStats2ReportingEstimateEditorOpen;
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2ReportingEstimateSaveButton")?.addEventListener("click", () => {
+                    const monthKey = String(jaysStats2SelectedMonthKey || "").trim();
+                    if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+                        showToast("Select a month before saving estimates.", "error");
+                        return;
+                    }
+                    const ignitionInput = document.getElementById("jaysStats2ReportingEstimateIgnitionInput");
+                    const bankInput = document.getElementById("jaysStats2ReportingEstimateBankInput");
+                    const notesInput = document.getElementById("jaysStats2ReportingEstimateNotesInput");
+                    const ignitionValue = jaysStats2MoneyInputValue(ignitionInput?.value ?? "");
+                    const bankValue = jaysStats2MoneyInputValue(bankInput?.value ?? "");
+                    if ((ignitionInput && !Number.isFinite(ignitionValue)) || (bankInput && !Number.isFinite(bankValue))) {
+                        showToast("Estimate values must be valid numbers.", "error");
+                        return;
+                    }
+                    jaysStats2SaveReportingEstimateForMonth(monthKey, {
+                        ignitionBnaeom: Math.max(0, Number(ignitionValue || 0)),
+                        bankTransfersBnaeom: Math.max(0, Number(bankValue || 0)),
+                        notes: String(notesInput?.value || ""),
+                    });
+                    jaysStats2ReportingEstimateEditorOpen = false;
+                    showToast("Reporting estimates saved.", "success");
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2ReportingEstimateResetButton")?.addEventListener("click", () => {
+                    const monthKey = String(jaysStats2SelectedMonthKey || "").trim();
+                    if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
+                    jaysStats2SaveReportingEstimateForMonth(monthKey, {
+                        ignitionBnaeom: 0,
+                        bankTransfersBnaeom: 0,
+                        notes: "",
+                    });
+                    showToast("Reporting estimates reset.", "success");
+                    renderJaysStats2Screen();
+                });
                 document.getElementById("jaysStats2DismissExamplesButton")?.addEventListener("click", () => closeJaysStats2UploadSummaryModal());
                 document.getElementById("jaysStats2ImportExamplesModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "jaysStats2ImportExamplesModal") closeJaysStats2UploadSummaryModal();
+                });
+                document.getElementById("jaysStats2WizardCancelButton")?.addEventListener("click", () => closeJaysStats2ImportWizard());
+                document.getElementById("jaysStats2ImportWizardModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "jaysStats2ImportWizardModal") closeJaysStats2ImportWizard();
+                });
+                document.getElementById("jaysStats2WizardContinueButton")?.addEventListener("click", () => {
+                    jaysStats2ImportWizardStep = 2;
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2WizardBackButton")?.addEventListener("click", () => {
+                    jaysStats2ImportWizardStep = 1;
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2WizardCommitButton")?.addEventListener("click", () => {
+                    jaysStats2CommitImportWizard();
+                });
+                document.getElementById("jaysStats2WizardExcludePendingButton")?.addEventListener("click", () => {
+                    jaysStats2SetPreviewRowsInclude((row) => {
+                        const reasons = Array.isArray(row?.excludeReasons) ? row.excludeReasons : [];
+                        return !reasons.includes("likely-pending-missing-balance");
+                    });
+                });
+                document.getElementById("jaysStats2WizardIncludeSafeButton")?.addEventListener("click", () => {
+                    jaysStats2SetPreviewRowsInclude((row) => {
+                        const reasons = Array.isArray(row?.excludeReasons) ? row.excludeReasons : [];
+                        return reasons.length === 0;
+                    });
+                });
+                document.getElementById("jaysStats2WizardIncludeAllButton")?.addEventListener("click", () => {
+                    jaysStats2SetPreviewRowsInclude(() => true);
+                });
+                document.getElementById("jaysStats2WizardExcludeAllButton")?.addEventListener("click", () => {
+                    jaysStats2SetPreviewRowsInclude(() => false);
+                });
+                panel.querySelectorAll("[data-jays-stats2-preview-include-id]").forEach((element) => {
+                    element.addEventListener("change", (event) => {
+                        const previewId = String(event?.target?.dataset?.jaysStats2PreviewIncludeId || "");
+                        if (!previewId) return;
+                        jaysStats2ImportWizardRows = (Array.isArray(jaysStats2ImportWizardRows) ? jaysStats2ImportWizardRows : []).map((row) => {
+                            if (String(row?.previewId || "") !== previewId) return row;
+                            return { ...row, include: Boolean(event?.target?.checked) };
+                        });
+                        renderJaysStats2Screen();
+                    });
                 });
                 document.getElementById("jaysStats2MonthSelect")?.addEventListener("change", (event) => {
                     jaysStats2SelectedMonthKey = String(event?.target?.value || "");
@@ -90152,7 +90521,7 @@
                     jaysStats2SelectedIds = new Set();
                     renderJaysStats2Screen();
                 });
-                document.getElementById("jaysStats2AiBalanceSortButton")?.addEventListener("click", () => {
+                document.getElementById("jaysStats2AiBalanceSortButtonTop")?.addEventListener("click", () => {
                     jaysStats2RunAiBalanceSort(filteredTransactions);
                 });
                 panel.querySelectorAll("[data-jays-stats2-select-id]").forEach((element) => {

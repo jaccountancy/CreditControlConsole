@@ -166,7 +166,9 @@ from .services import (
     jays_stats2_ai_categorise,
     jays_stats2_ai_balance_sort,
     jays_stats2_bulk_update,
+    jays_stats2_commit_transactions,
     jays_stats2_import_transactions,
+    jays_stats2_preview_transactions,
     jays_stats2_void_transaction,
     jays_stats2_update_transaction,
     jays_stats2_update_transaction_category,
@@ -5246,6 +5248,32 @@ async def api_jays_stats2_uploads(
             "bytes": await upload.read(),
         })
     return {"status": "ok", **await jays_stats2_import_transactions(user, items)}
+
+
+@app.post("/api/jays-stats-2/uploads/preview")
+async def api_jays_stats2_uploads_preview(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one statement file.")
+    items = []
+    for upload in files:
+        items.append({
+            "filename": upload.filename or "statement",
+            "content_type": upload.content_type or "",
+            "bytes": await upload.read(),
+        })
+    return {"status": "ok", **await jays_stats2_preview_transactions(user, items)}
+
+
+@app.post("/api/jays-stats-2/uploads/commit")
+async def api_jays_stats2_uploads_commit(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_commit_transactions(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/jays-stats-2/transactions/{transaction_id}/category")

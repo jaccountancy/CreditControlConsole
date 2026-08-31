@@ -40529,6 +40529,323 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
     }
 
 
+async def jays_stats2_preview_transactions(user: dict, file_items: list[dict]) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    category_rules = _jays_stats2_load_category_rules(user_id, tenant_id)
+    extracted_rows: list[dict] = []
+    parser_messages: list[str] = []
+    file_summaries: dict[str, dict] = {}
+    file_order: list[str] = []
+
+    def _file_summary(name: str) -> dict:
+        key = str(name or "statement")
+        summary = file_summaries.get(key)
+        if summary:
+            return summary
+        summary = {
+            "fileName": key,
+            "extractedCount": 0,
+            "processedCount": 0,
+            "importedCount": 0,
+            "duplicateExistingCount": 0,
+            "duplicateInFileCount": 0,
+        }
+        file_summaries[key] = summary
+        file_order.append(key)
+        return summary
+
+    for item in file_items:
+        file_name = str(item.get("filename") or "statement")
+        content_type = str(item.get("content_type") or "")
+        file_bytes = bytes(item.get("bytes") or b"")
+        lower_name = file_name.lower()
+        file_summary = _file_summary(file_name)
+
+        if lower_name.endswith(".csv") or "csv" in content_type:
+            rows = _jays_stats_parse_csv_transactions(file_bytes)
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "csv", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        if lower_name.endswith((".xlsx", ".xlsm")) or "sheet" in content_type or "excel" in content_type:
+            rows = _jays_stats_parse_xlsx_transactions(file_bytes)
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "spreadsheet", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        if lower_name.endswith(".xls"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type for {file_name}. Save it as .xlsx, .csv, or PDF and upload again.",
+            )
+        if lower_name.endswith(".pdf") or "pdf" in content_type:
+            rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
+            if not rows:
+                extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                rows = []
+                for transaction in extracted.get("transactions") or []:
+                    if not isinstance(transaction, dict):
+                        continue
+                    rows.append({
+                        "date": transaction.get("date"),
+                        "description": transaction.get("description") or transaction.get("payee") or "",
+                        "amount": transaction.get("amount"),
+                        "runningBalance": transaction.get("balance"),
+                        "source": "pdf-openai",
+                    })
+                parser_messages.append(f"{file_name}: used OpenAI extraction fallback.")
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "pdf", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type for {file_name}. Upload PDF, CSV, or .xlsx statements.",
+        )
+
+    normalised_rows: list[dict] = []
+    invalid_row_count = 0
+    for extracted in extracted_rows:
+        if not isinstance(extracted, dict):
+            invalid_row_count += 1
+            continue
+        normalised = _jays_stats2_apply_category_rules(extracted, category_rules)
+        if not isinstance(normalised, dict):
+            invalid_row_count += 1
+            continue
+        normalised_rows.append(normalised)
+    if not normalised_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No transactions could be extracted. Confirm the statement format includes date, description, and amount columns.",
+        )
+
+    seen_signatures: set[str] = set()
+    deduped_rows: list[dict] = []
+    duplicate_in_file = 0
+    for row in normalised_rows:
+        signature = str(row.get("sourceHash") or "")
+        if not signature:
+            invalid_row_count += 1
+            continue
+        file_name = str(row.get("sourceFileName") or "statement")
+        summary = _file_summary(file_name)
+        if signature in seen_signatures:
+            duplicate_in_file += 1
+            summary["duplicateInFileCount"] += 1
+            continue
+        seen_signatures.add(signature)
+        summary["processedCount"] += 1
+        deduped_rows.append(row)
+
+    deduped_hashes = [str(row.get("sourceHash") or "") for row in deduped_rows if str(row.get("sourceHash") or "")]
+    existing_hashes: set[str] = set()
+    if deduped_hashes:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT source_hash
+                    FROM jays_stats2_transactions
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                      AND is_voided = FALSE
+                      AND source_hash = ANY(%s)
+                    """,
+                    (user_id, tenant_id, deduped_hashes),
+                )
+                existing_hashes = {str((row or {}).get("source_hash") or "") for row in (cursor.fetchall() or [])}
+            connection.commit()
+
+    preview_rows: list[dict] = []
+    duplicate_existing = 0
+    pending_like_count = 0
+    for row in deduped_rows:
+        file_name = str(row.get("sourceFileName") or "statement")
+        summary = _file_summary(file_name)
+        reasons: list[str] = []
+        signature = str(row.get("sourceHash") or "")
+        if signature in existing_hashes:
+            reasons.append("duplicate-existing")
+            duplicate_existing += 1
+            summary["duplicateExistingCount"] += 1
+        running_balance = row.get("runningBalance")
+        amount = _money(row.get("amount"))
+        if running_balance is None and amount < 0:
+            reasons.append("likely-pending-missing-balance")
+            pending_like_count += 1
+        include = not reasons
+        preview_rows.append({
+            "previewId": str(uuid4()),
+            "include": include,
+            "excludeReasons": reasons,
+            "date": str(row.get("dateISO") or ""),
+            "description": str(row.get("description") or ""),
+            "amount": float(_money(row.get("amount"))),
+            "runningBalance": float(_money(running_balance)) if running_balance is not None else None,
+            "sourceKind": str(row.get("sourceKind") or ""),
+            "sourceFileName": file_name,
+            "sourceHash": signature,
+            "categoryStreamKey": _jays_stats2_normalise_stream_key(row.get("categoryStreamKey"), row.get("categoryStreamLabel")),
+            "categoryStreamLabel": str(row.get("categoryStreamLabel") or _jays_stats2_stream_label(row.get("categoryStreamKey"))),
+            "categoryConfidence": float(_money(row.get("categoryConfidence"))) if row.get("categoryConfidence") is not None else None,
+            "categorySource": str(row.get("categorySource") or "unclassified"),
+        })
+
+    extracted_count = sum(int((file_summaries.get(name) or {}).get("extractedCount") or 0) for name in file_order)
+    included_count = sum(1 for row in preview_rows if row.get("include"))
+    integrity = {
+        "extractedCount": extracted_count,
+        "normalisedCount": len(normalised_rows),
+        "invalidCount": invalid_row_count,
+        "processedCount": len(deduped_rows),
+        "duplicateExistingCount": duplicate_existing,
+        "duplicateInFileCount": duplicate_in_file,
+        "pendingLikeCount": pending_like_count,
+        "includedCount": included_count,
+        "excludedCount": max(0, len(preview_rows) - included_count),
+    }
+    file_summary_rows = [file_summaries[name] for name in file_order if name in file_summaries]
+    return {
+        "rows": preview_rows,
+        "messages": parser_messages,
+        "integrity": integrity,
+        "fileSummaries": file_summary_rows,
+    }
+
+
+async def jays_stats2_commit_transactions(user: dict, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    body = payload if isinstance(payload, dict) else {}
+    rows = body.get("rows") if isinstance(body.get("rows"), list) else []
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No rows were selected for import.")
+    if len(rows) > 20000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Too many rows in one import commit.")
+
+    deduped_rows: list[dict] = []
+    seen_signatures: set[str] = set()
+    duplicate_in_file = 0
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        if not bool(item.get("include", True)):
+            continue
+        date_iso = str(item.get("date") or "").strip()
+        description = re.sub(r"\s+", " ", str(item.get("description") or "").strip())[:500] or "Statement transaction"
+        amount = _money(item.get("amount"))
+        if amount == Decimal("0.00"):
+            continue
+        running_balance = None if item.get("runningBalance") in (None, "") else _money(item.get("runningBalance"))
+        source_kind = str(item.get("sourceKind") or "manual")[:40]
+        source_file_name = str(item.get("sourceFileName") or "statement")[:260]
+        source_hash = str(item.get("sourceHash") or _jays_stats2_signature(date_iso, description, amount, running_balance))
+        if source_hash in seen_signatures:
+            duplicate_in_file += 1
+            continue
+        seen_signatures.add(source_hash)
+        deduped_rows.append({
+            "date": _jays_stats_parse_date(date_iso) if date_iso else None,
+            "description": description,
+            "amount": amount,
+            "runningBalance": running_balance,
+            "sourceKind": source_kind,
+            "sourceFileName": source_file_name,
+            "categoryStreamKey": _jays_stats2_normalise_stream_key(item.get("categoryStreamKey"), item.get("categoryStreamLabel")),
+            "categoryStreamLabel": str(item.get("categoryStreamLabel") or _jays_stats2_stream_label(item.get("categoryStreamKey"))),
+            "categoryConfidence": _money(item.get("categoryConfidence")) if item.get("categoryConfidence") not in (None, "") else None,
+            "categorySource": str(item.get("categorySource") or "unclassified"),
+            "sourceHash": source_hash,
+        })
+
+    inserted = 0
+    duplicate_existing = 0
+    imported_samples: list[dict] = []
+    duplicate_samples: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in deduped_rows:
+                cursor.execute(
+                    """
+                    INSERT INTO jays_stats2_transactions (
+                        id,
+                        user_id,
+                        tenant_id,
+                        transaction_date,
+                        description,
+                        amount,
+                        running_balance,
+                        source_kind,
+                        source_file_name,
+                        category_stream_key,
+                        category_stream_label,
+                        category_confidence,
+                        category_source,
+                        category_updated_at,
+                        source_hash,
+                        raw,
+                        created_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    ON CONFLICT (user_id, tenant_id, source_hash) WHERE is_voided = FALSE DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        str(uuid4()),
+                        user_id,
+                        tenant_id,
+                        row.get("date"),
+                        row.get("description"),
+                        row.get("amount"),
+                        row.get("runningBalance"),
+                        row.get("sourceKind"),
+                        row.get("sourceFileName"),
+                        row.get("categoryStreamKey"),
+                        row.get("categoryStreamLabel"),
+                        row.get("categoryConfidence"),
+                        row.get("categorySource"),
+                        utcnow(),
+                        row.get("sourceHash"),
+                        json.dumps({}, default=_json_default),
+                        utcnow(),
+                    ),
+                )
+                if cursor.fetchone():
+                    inserted += 1
+                    if len(imported_samples) < 20:
+                        imported_samples.append({
+                            "date": row.get("date").isoformat() if isinstance(row.get("date"), date) else "",
+                            "description": str(row.get("description") or ""),
+                            "amount": float(_money(row.get("amount"))),
+                            "fileName": str(row.get("sourceFileName") or ""),
+                        })
+                else:
+                    duplicate_existing += 1
+                    if len(duplicate_samples) < 20:
+                        duplicate_samples.append({
+                            "reason": "already-on-file",
+                            "date": row.get("date").isoformat() if isinstance(row.get("date"), date) else "",
+                            "description": str(row.get("description") or ""),
+                            "amount": float(_money(row.get("amount"))),
+                            "fileName": str(row.get("sourceFileName") or ""),
+                        })
+        connection.commit()
+
+    workspace = await jays_stats2_workspace(user)
+    return {
+        "importedCount": inserted,
+        "duplicateCount": duplicate_existing,
+        "duplicateInFileCount": duplicate_in_file,
+        "processedCount": len(deduped_rows),
+        "extractedCount": len(rows),
+        "messages": [],
+        "importedSamples": imported_samples,
+        "duplicateSamples": duplicate_samples,
+        "workspace": workspace,
+    }
+
+
 def _jays_stats2_upsert_category_rule(
     user_id: str,
     tenant_id: str,
